@@ -8,7 +8,10 @@ pnpm-debug.log*
 
 # Dependency directories
 node_modules/
-package-lock.json
+# 注意：上游在这里忽略了 package-lock.json。本 fork 把它提交进来 ——
+# 这是一个应用而不是库，锁定依赖才能让 CI 与发布产物可复现；
+# 而且 npm ci 与 setup-node 的缓存都要求 lockfile 存在。
+# package-lock.json
 
 # Build output
 dist/
