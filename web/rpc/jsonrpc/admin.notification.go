@@ -55,16 +55,28 @@ func reg(name string, h rpc.Handler, summary string) {
 
 func adminAddLoadNotification(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {
-		Clients   []string `json:"clients"`
-		Name      string   `json:"name"`
-		Metric    string   `json:"metric"`
-		Threshold float32  `json:"threshold"`
-		Ratio     float32  `json:"ratio"`
-		Interval  int      `json:"interval"`
+		Clients      []string `json:"clients"`
+		Name         string   `json:"name"`
+		Metric       string   `json:"metric"`
+		Threshold    float32  `json:"threshold"`
+		Ratio        float32  `json:"ratio"`
+		Interval     int      `json:"interval"`
+		Mode         string   `json:"mode"`
+		BaselineDays int      `json:"baseline_days"`
+		Multiplier   float32  `json:"multiplier"`
 	}
 	req.BindParams(&params)
-	if len(params.Clients) == 0 || params.Metric == "" || params.Threshold == 0 || params.Ratio == 0 || params.Interval == 0 {
-		return nil, rpc.MakeError(rpc.InvalidParams, "clients, metric, threshold, ratio and interval are required", nil)
+	if params.Mode == "" {
+		params.Mode = models.LoadThresholdModeFixed
+	}
+	if params.Mode != models.LoadThresholdModeFixed && params.Mode != models.LoadThresholdModeBaseline {
+		return nil, rpc.MakeError(rpc.InvalidParams, "mode must be 'fixed' or 'baseline'", nil)
+	}
+	// 基线模式下 threshold 是【下限】，允许为 0；固定模式下必须给出阈值。
+	thresholdRequired := params.Mode == models.LoadThresholdModeFixed
+	if len(params.Clients) == 0 || params.Metric == "" || params.Ratio == 0 || params.Interval == 0 ||
+		(thresholdRequired && params.Threshold == 0) {
+		return nil, rpc.MakeError(rpc.InvalidParams, "clients, metric, ratio and interval are required (threshold is required in fixed mode)", nil)
 	}
 	if params.Interval > 4*60 || params.Interval <= 0 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Interval must be between 1 and 240 minutes", nil)
@@ -72,7 +84,8 @@ func adminAddLoadNotification(_ context.Context, req *rpc.JsonRpcRequest) (any, 
 	if params.Ratio <= 0 || params.Ratio > 1 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Ratio must be between 0 and 1", nil)
 	}
-	taskID, err := notification.AddLoadNotification(params.Clients, params.Name, params.Metric, params.Threshold, params.Ratio, params.Interval)
+	taskID, err := notification.AddLoadNotification(params.Clients, params.Name, params.Metric, params.Threshold, params.Ratio, params.Interval,
+		params.Mode, params.BaselineDays, params.Multiplier)
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
 	}

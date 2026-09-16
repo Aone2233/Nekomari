@@ -2,7 +2,9 @@ package notifier
 
 import (
 	"fmt"
+	"math"
 	"reflect"
+	"sort"
 	"sync"
 	"time"
 
@@ -74,14 +76,94 @@ func executeLoadNotificationTask(task models.LoadNotification) {
 			continue
 		}
 
+		// 取阈值：固定模式直接用配置值；基线模式用该客户端自身的历史基线。
+		threshold := task.Threshold
+		if task.UsesBaseline() {
+			base, ok := resolveBaselineThreshold(clientUUID, task, now, windowStart)
+			if !ok {
+				// 历史样本不足，宁可不报，也不要凭空造一个阈值出来。
+				continue
+			}
+			threshold = base
+		}
+
 		// 检查指标是否达到阈值
-		if checkMetricThreshold(records, task) {
+		if checkMetricThresholdAt(records, task, threshold) {
 			overloadClients = append(overloadClients, clientUUID)
 		}
 
 	}
 	sendLoadNotification(overloadClients, task)
 	updateLastNotified(task.Id, now)
+}
+
+// resolveBaselineThreshold 用「当前窗口之前」的历史样本算出异常阈值。
+//
+// 关键点：基线窗口必须排除当前窗口，否则正在发生的异常会把自己的基线抬高，
+// 导致越异常越不报警。
+func resolveBaselineThreshold(clientUUID string, task models.LoadNotification, now, windowStart time.Time) (float32, bool) {
+	historyStart := windowStart.Add(-task.BaselineWindow())
+	history, err := getMetricRecordsForClient(clientUUID, task.Metric, historyStart, windowStart)
+	if err != nil || len(history) == 0 {
+		return 0, false
+	}
+	values := make([]float32, 0, len(history))
+	for _, record := range history {
+		values = append(values, getMetricValue(record, task.Metric))
+	}
+	return computeBaselineThreshold(values, task.EffectiveMultiplier(), task.Threshold)
+}
+
+// computeBaselineThreshold 由历史样本算出阈值 = max(P95 × multiplier, floor)。
+//
+// 用 P95 而不是平均值：平均会被偶发尖峰拉高，P95 更贴近「日常水位」，
+// 同时对持续劣化仍然敏感。
+// floor 就是配置里的 Threshold —— 在基线模式下退化为下限，用来避免
+// 基线接近 0 时（例如丢包率平时为 0）产生噪声告警；也避免「基线为 0 时
+// 乘任何倍数都是 0」这种退化情形。
+//
+// 返回 ok=false 表示样本不足，调用方应当跳过而不是用 0 去比较。
+func computeBaselineThreshold(values []float32, multiplier, floor float32) (float32, bool) {
+	// 样本太少时 P95 没有统计意义（3~4 个点会直接退化成最大值）。
+	const minSamples = 8
+	if len(values) < minSamples {
+		return 0, false
+	}
+	if multiplier <= 0 {
+		multiplier = 3
+	}
+	threshold := percentile(values, 0.95) * multiplier
+	if threshold < floor {
+		threshold = floor
+	}
+	// 基线与下限都为 0 时无法形成有意义的判定条件。
+	if threshold <= 0 {
+		return 0, false
+	}
+	return threshold, true
+}
+
+// percentile 返回 p 分位数（0<=p<=1），使用最近秩法，不修改入参顺序。
+func percentile(values []float32, p float64) float32 {
+	if len(values) == 0 {
+		return 0
+	}
+	if p < 0 {
+		p = 0
+	}
+	if p > 1 {
+		p = 1
+	}
+	sorted := append([]float32(nil), values...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	idx := int(math.Ceil(p*float64(len(sorted)))) - 1
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(sorted) {
+		idx = len(sorted) - 1
+	}
+	return sorted[idx]
 }
 
 // shouldSkipNotification 检查是否应该跳过通知（冷却期检查）
@@ -102,8 +184,13 @@ func getMetricRecordsForClient(clientUUID, metricName string, start, end time.Ti
 	return records.GetRecordMetricMaxByClientAndTime(clientUUID, metricName, start, end)
 }
 
-// checkMetricThreshold 检查指标是否达到阈值
+// checkMetricThreshold 检查指标是否达到【任务自身配置的】阈值。
 func checkMetricThreshold(records []models.Record, task models.LoadNotification) bool {
+	return checkMetricThresholdAt(records, task, task.Threshold)
+}
+
+// checkMetricThresholdAt 检查指标是否达到给定阈值（基线模式下阈值由历史算出）。
+func checkMetricThresholdAt(records []models.Record, task models.LoadNotification, threshold float32) bool {
 	if len(records) == 0 {
 		return false
 	}
@@ -118,7 +205,7 @@ func checkMetricThreshold(records []models.Record, task models.LoadNotification)
 
 	for _, record := range records {
 		metricValue := getMetricValue(record, task.Metric)
-		if metricValue >= task.Threshold {
+		if metricValue >= threshold {
 			exceededCount++
 		}
 	}

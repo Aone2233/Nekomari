@@ -9,6 +9,10 @@ export interface LoadAlert {
   ratio?: number;
   interval?: number;
   last_notified?: string;
+  /** fixed = 用固定阈值；baseline = 与自身历史基线比较 */
+  mode?: "fixed" | "baseline";
+  baseline_days?: number;
+  multiplier?: number;
   [property: string]: any;
 }
 

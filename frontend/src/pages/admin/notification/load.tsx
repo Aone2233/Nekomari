@@ -101,6 +101,9 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
     ratio: alert.ratio || 0.8,
     clients: alert.clients || [],
     interval: alert.interval || 15,
+    mode: (alert.mode as "fixed" | "baseline") || "fixed",
+    baseline_days: alert.baseline_days || 7,
+    multiplier: alert.multiplier || 3,
   });
 
   const submitEdit = (newForm: typeof form) => {
@@ -118,6 +121,9 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
             ratio: newForm.ratio,
             clients: newForm.clients,
             interval: newForm.interval,
+            mode: newForm.mode,
+            baseline_days: newForm.baseline_days,
+            multiplier: newForm.multiplier,
           },
         ],
       }),
@@ -211,7 +217,11 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
         </Flex>
       </TableCell>
       <TableCell>{alert.metric?.toUpperCase()}</TableCell>
-      <TableCell>{alert.threshold}%</TableCell>
+      <TableCell>
+        {alert.mode === "baseline"
+          ? `P95 × ${alert.multiplier ?? 3} (${alert.baseline_days ?? 7}d)`
+          : `${alert.threshold}%`}
+      </TableCell>
       <TableCell>{alert.ratio}</TableCell>
       <TableCell>
         {alert.interval} {t("time.minute")}
@@ -255,7 +265,66 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
                   <Select.Item value="net_out">Net Out</Select.Item>
                 </Select.Content>
               </Select.Root>
-              <label>{t("common.threshold")} (%)</label>
+              <label>{t("loadAlert.threshold_mode", "Threshold mode")}</label>
+              <Select.Root
+                value={form.mode}
+                onValueChange={(v) =>
+                  setForm((f) => ({ ...f, mode: v as "fixed" | "baseline" }))
+                }
+              >
+                <Select.Trigger />
+                <Select.Content>
+                  <Select.Item value="fixed">
+                    {t("loadAlert.mode_fixed", "Fixed threshold")}
+                  </Select.Item>
+                  <Select.Item value="baseline">
+                    {t(
+                      "loadAlert.mode_baseline",
+                      "Baseline (vs its own history)",
+                    )}
+                  </Select.Item>
+                </Select.Content>
+              </Select.Root>
+              {form.mode === "baseline" && (
+                <>
+                  <label>
+                    {t("loadAlert.baseline_days", "Baseline lookback (days)")}
+                  </label>
+                  <TextField.Root
+                    type="number"
+                    min="1"
+                    max="365"
+                    value={form.baseline_days}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        baseline_days: Number(e.target.value),
+                      }))
+                    }
+                  />
+                  <label>
+                    {t("loadAlert.multiplier", "Alert above N x baseline (P95)")}
+                  </label>
+                  <TextField.Root
+                    type="number"
+                    step="0.1"
+                    min="1"
+                    value={form.multiplier}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        multiplier: Number(e.target.value),
+                      }))
+                    }
+                  />
+                </>
+              )}
+              <label>
+                {t("common.threshold")} (%)
+                {form.mode === "baseline"
+                  ? " — " + t("loadAlert.floor_hint", "acts as a floor")
+                  : ""}
+              </label>
               <TextField.Root
                 type="number"
                 value={form.threshold}
@@ -363,6 +432,7 @@ const AddButton: React.FC = () => {
     "cpu" | "ram" | "disk" | "net_in" | "net_out"
   >("cpu");
   const [saving, setSaving] = React.useState(false);
+  const [mode, setMode] = React.useState<"fixed" | "baseline">("fixed");
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const payload = {
@@ -372,6 +442,13 @@ const AddButton: React.FC = () => {
       ratio: parseFloat(e.currentTarget.ratio.value),
       clients: selected,
       interval: parseInt(e.currentTarget.interval.value, 10),
+      mode,
+      baseline_days:
+        mode === "baseline"
+          ? parseInt(e.currentTarget.baseline_days.value, 10)
+          : 0,
+      multiplier:
+        mode === "baseline" ? parseFloat(e.currentTarget.multiplier.value) : 0,
     };
     setSaving(true);
     fetch("/api/admin/notification/load/add", {
@@ -386,6 +463,7 @@ const AddButton: React.FC = () => {
           setIsOpen(false);
           setSelected([]);
           setSelectedType("cpu");
+          setMode("fixed");
           toast.success(t("common.success"));
         } else {
           response
@@ -436,7 +514,55 @@ const AddButton: React.FC = () => {
                 <Select.Item value="net_out">Net Out(Mbps)</Select.Item>
               </Select.Content>
             </Select.Root>
-            <label htmlFor="threshold">{t("common.threshold")} (%/Mbps)</label>
+            <label htmlFor="mode">
+              {t("loadAlert.threshold_mode", "Threshold mode")}
+            </label>
+            <Select.Root
+              value={mode}
+              onValueChange={(v) => setMode(v as "fixed" | "baseline")}
+            >
+              <Select.Trigger id="mode" name="mode" />
+              <Select.Content>
+                <Select.Item value="fixed">
+                  {t("loadAlert.mode_fixed", "Fixed threshold")}
+                </Select.Item>
+                <Select.Item value="baseline">
+                  {t("loadAlert.mode_baseline", "Baseline (vs its own history)")}
+                </Select.Item>
+              </Select.Content>
+            </Select.Root>
+            {mode === "baseline" && (
+              <>
+                <label htmlFor="baseline_days">
+                  {t("loadAlert.baseline_days", "Baseline lookback (days)")}
+                </label>
+                <TextField.Root
+                  id="baseline_days"
+                  name="baseline_days"
+                  type="number"
+                  min="1"
+                  max="365"
+                  defaultValue={7}
+                />
+                <label htmlFor="multiplier">
+                  {t("loadAlert.multiplier", "Alert above N x baseline (P95)")}
+                </label>
+                <TextField.Root
+                  id="multiplier"
+                  name="multiplier"
+                  type="number"
+                  step="0.1"
+                  min="1"
+                  defaultValue={3}
+                />
+              </>
+            )}
+            <label htmlFor="threshold">
+              {t("common.threshold")} (%/Mbps)
+              {mode === "baseline"
+                ? " — " + t("loadAlert.floor_hint", "acts as a floor")
+                : ""}
+            </label>
             <TextField.Root
               id="threshold"
               name="threshold"
