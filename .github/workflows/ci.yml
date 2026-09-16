@@ -1,0 +1,94 @@
+name: ci
+
+# 每次 push / PR：构建并测试。
+#
+# 与 release.yml 保持同一套「各平台原生构建」的思路，原因见那个文件的头部说明：
+# 服务端依赖 CGO（sqlite），交叉编译需要额外的 C 工具链，原生构建则与本地
+# 已验证的命令完全一致。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: build & test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Build theme packer
+        shell: bash
+        run: |
+          cd tools/zstdpack
+          go build -o zstdpack${{ runner.os == 'Windows' && '.exe' || '' }} .
+
+      - name: Pack embedded theme
+        shell: bash
+        # 服务端用 //go:embed defaultTheme/dist.tar.zst，这一步必须先于 go build，
+        # 否则编译会直接失败（pattern: no matching files found）。
+        run: |
+          mkdir -p web/public/defaultTheme
+          ./tools/zstdpack/zstdpack${{ runner.os == 'Windows' && '.exe' || '' }} \
+            -src frontend/dist \
+            -out web/public/defaultTheme/dist.tar.zst
+          cp -f frontend/komari-theme.json web/public/defaultTheme/
+          for f in preview.png perview.png preview.webp; do
+            [ -f "frontend/$f" ] && cp -f "frontend/$f" web/public/defaultTheme/ || true
+          done
+
+      - name: Test server
+        # 只跑密封用例。上游自带的 TestICMPPing / TestTCPPing / TestHTTPPing
+        # 依赖真实网络、root 权限与 IPv6，在 CI 上不稳定（在未改动的上游代码上
+        # 同样失败），详见 docs/TESTING.md。
+        run: go test ./... -run 'TestDecide|TestRun|TestWritePing|TestPercentile|TestComputeBaseline|TestCheckMetric|TestLoadNotification|TestReportMetric|TestSplitPublic|TestGetPingRecords|TestDefaultRollup|TestBuildMetric|TestCreateMetric'
+
+      - name: Test agent
+        working-directory: agent
+        run: go test ./monitoring/ ./server/ -run 'TestEvaluate|TestCollect|TestBackup|TestDecideAuto|TestIsPermission|TestResolveAuto'
+
+      - name: Build server
+        run: go build -o /dev/null .
+        if: runner.os != 'Windows'
+        shell: bash
+
+      - name: Build server (Windows)
+        run: go build -o NUL .
+        if: runner.os == 'Windows'
+        shell: bash
+
+      - name: Build agent
+        working-directory: agent
+        shell: bash
+        run: go build -o /dev/null . || go build -o NUL .

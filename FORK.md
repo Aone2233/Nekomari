@@ -58,7 +58,22 @@ Upstream published `komari-agent` `1.5.10` *after* the last server release. The 
 | `tools/zstdpack/` | Theme packer. Replaces the `zstd` CLI (not available on Windows) using the same `klauspost/compress/zstd` library the server decodes with. |
 | `build.sh` | One-shot build for the whole monorepo. |
 | `scripts/linux-dev.sh` | Sync + build + test on a Linux host (the server needs CGO, so cross-compiling from Windows fails). |
+| `.github/workflows/ci.yml` | Build + hermetic tests on push and pull request (native builds on ubuntu/windows runners). |
+| `.github/workflows/release.yml` | Multi-platform release pipeline; produces `nekomari-<os>-<arch>` and `komari-agent-<os>-<arch>` plus `SHA256SUMS.txt`. |
+| `docs/RELEASING.md` | How to cut a release, and the two traps (the agent asset-name contract, and why builds are native). |
 | `FORK.md`, `docs/` | This file and documentation. |
+
+### Removed from upstream
+
+The upstream repository shipped **ten** workflows wired to its multi-repo layout
+and to the old `github.com/komari-monitor/komari` module path — both of which no
+longer exist here, so every one of them would have failed on first run. They
+were deleted rather than left in place to rot:
+`auto-merge-dev-to-main`, `build`, `cleanup-packages`, `development`,
+`docker-publish`, `generate-release-notes`, `rebuild-release`, `release`,
+`release-docker`, `snapshot`.
+
+Two replacements cover the useful parts: `ci.yml` and `release.yml`.
 
 ## Attribution obligations
 
