@@ -52,3 +52,7 @@ komari
 /nekomari
 /tools/zstdpack/zstdpack
 /tools/zstdpack/zstdpack.exe
+
+# local test artifacts
+*.db
+*.db-journal

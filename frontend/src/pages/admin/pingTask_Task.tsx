@@ -28,17 +28,52 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Button,
+  Callout,
   Checkbox,
   Dialog,
   Flex,
   IconButton,
   Select,
+  Text,
   TextField,
 } from "@radix-ui/themes";
-import { MenuIcon, MoreHorizontal, Pencil, Trash } from "lucide-react";
+import { MenuIcon, MoreHorizontal, Pencil, Radar, Trash } from "lucide-react";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+
+/**
+ * 目标预检结果。后端 admin:netcheck 返回 pkg/netcheck.Report。
+ * verdict 取值见 pkg/netcheck：both_ok / icmp_only / tcp_only /
+ * tcp_ok_icmp_untested / icmp_denied / unreachable / dns_failure
+ */
+type ProbeState = {
+  loading: boolean;
+  error?: string;
+  verdict?: string;
+  summary?: string;
+  advice?: string;
+  probedFrom?: string;
+};
+
+/** 判定 -> 提示配色：绿=都好，黄=只有一种能用，红=不可达/没测成 */
+const verdictColor = (v?: string): "green" | "amber" | "red" | "gray" => {
+  switch (v) {
+    case "both_ok":
+      return "green";
+    case "icmp_only":
+    case "tcp_only":
+      return "amber";
+    case "tcp_ok_icmp_untested":
+      return "gray";
+    case "unreachable":
+    case "dns_failure":
+    case "icmp_denied":
+      return "red";
+    default:
+      return "gray";
+  }
+};
 
 const getTaskSortableId = (task: { id?: number; name?: string; target?: string }) =>
   task.id !== undefined
@@ -198,6 +233,41 @@ const Row = ({
     default_on: task.default_on || false,
     interval: task.interval || 60,
   });
+  const [probe, setProbe] = React.useState<ProbeState | null>(null);
+
+  // 目标预检：在保存前先探测目标，避免选了目标不答应的协议
+  // （监测任务类型是每个任务一个，选错会恒定 100% 丢包）
+  const runProbe = () => {
+    const target = form.target.trim();
+    if (!target) {
+      toast.error(t("ping.target"));
+      return;
+    }
+    setProbe({ loading: true });
+    fetch("/api/admin/ping/netcheck", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target, timeout_ms: 3000 }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.message || t("common.error"));
+        return data;
+      })
+      .then((data) => {
+        const rep = data?.data?.report ?? data?.report ?? {};
+        setProbe({
+          loading: false,
+          verdict: rep.verdict,
+          summary: rep.summary,
+          advice: rep.advice,
+          probedFrom: data?.data?.probed_from,
+        });
+      })
+      .catch((err) =>
+        setProbe({ loading: false, error: String(err?.message || err) }),
+      );
+  };
 
   const submitEdit = (newForm: typeof form) => {
     if (!newForm.default_on && newForm.clients.length === 0) {
@@ -379,11 +449,49 @@ const Row = ({
               <label>{t("ping.target")}</label>
               <TextField.Root
                 value={form.target}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, target: e.target.value }))
-                }
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, target: e.target.value }));
+                  setProbe(null); // 目标改了，旧结论作废
+                }}
                 required
               />
+              <Flex align="center" gap="2" wrap="wrap">
+                <Button
+                  type="button"
+                  variant="soft"
+                  size="1"
+                  disabled={probe?.loading}
+                  onClick={runProbe}
+                >
+                  <Radar size="14" />
+                  {probe?.loading
+                    ? t("ping.probing", "Probing…")
+                    : t("ping.probe_target", "Check target")}
+                </Button>
+                {probe && !probe.loading && probe.summary && (
+                  <Text size="1" color={verdictColor(probe.verdict)} weight="medium">
+                    {probe.summary}
+                  </Text>
+                )}
+              </Flex>
+              {probe?.error && (
+                <Text size="1" color="red">
+                  {probe.error}
+                </Text>
+              )}
+              {probe && !probe.loading && probe.advice && (
+                <Callout.Root size="1" color={verdictColor(probe.verdict)}>
+                  <Callout.Text>
+                    {probe.advice}
+                    <Text as="div" size="1" color="gray" mt="1">
+                      {t(
+                        "ping.probed_from_server",
+                        "Probed from the panel server — the verdict reflects that vantage point.",
+                      )}
+                    </Text>
+                  </Callout.Text>
+                </Callout.Root>
+              )}
               <label>{t("common.server")}</label>
               <Flex direction="column" gap="2">
                 <NodeSelectorDialog
