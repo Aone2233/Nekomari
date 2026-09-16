@@ -26,6 +26,8 @@ type Config struct {
 	GetIpAddrFromNic    bool    `json:"get_ip_addr_from_nic" env:"AGENT_GET_IP_ADDR_FROM_NIC"`     // 从网卡获取IP地址
 	HostProc            string  `json:"host_proc" env:"HOST_PROC"`                                 // 容器环境下宿主机/proc目录的挂载点，用于监控宿主机进程
 	ConfigFile          string  `json:"config_file" env:"AGENT_CONFIG_FILE"`                       // JSON配置文件路径
+	BackupStatusFile    string  `json:"backup_status_file" env:"AGENT_BACKUP_STATUS_FILE"`         // 备份状态 JSON 路径；配置后上报 backup.age_seconds / backup.ok
+	UpdateRepo          string  `json:"update_repo" env:"AGENT_UPDATE_REPO"`                       // 自动更新的 GitHub 仓库（owner/name），默认本 fork
 	DisableCompression  bool    `json:"disable_compression" env:"AGENT_DISABLE_COMPRESSION"`       // 禁用v2传输压缩
 	PreferIPVersion     string  `json:"prefer_ip_version" env:"AGENT_PREFER_IP_VERSION"`           // 面板连接优先使用的 IP 版本：4 或 6
 

@@ -94,6 +94,11 @@ type Record struct {
 	Process        int       `json:"process"`
 	Connections    int       `json:"connections"`
 	ConnectionsUdp int       `json:"connections_udp"`
+	// BackupAge 距最后一次成功备份的秒数（-1 = 未知）。
+	// 命名保持与其它字段一致，使负载告警的反射取值路径可直接使用 "BackupAge"。
+	BackupAge int64 `json:"backup_age" gorm:"type:bigint"`
+	// BackupOk 1=最近一次备份成功，0=失败或未知。
+	BackupOk int `json:"backup_ok" gorm:"type:int"`
 	//Uptime         int64     `json:"uptime" gorm:"type:bigint"`
 }
 

@@ -22,6 +22,8 @@ const (
 	MetricConnectionsUDP = "connections.udp"
 	MetricPingLatency    = "ping.latency_ms"
 	MetricPingLoss       = "ping.loss"
+	MetricBackupAge      = "backup.age_seconds"
+	MetricBackupOK       = "backup.ok"
 )
 
 // loadRecordMetricNames are the entity-level metrics used to reconstruct the
@@ -30,6 +32,7 @@ var loadRecordMetricNames = []string{
 	MetricCPU, MetricGPU, MetricRAM, MetricSwap, MetricLoad, MetricDisk, MetricNetIn, MetricNetOut,
 	MetricNetTotalUp, MetricNetTotalDown, MetricTrafficUp, MetricTrafficDown,
 	MetricProcess, MetricConnections, MetricConnectionsUDP,
+	MetricBackupAge, MetricBackupOK,
 }
 
 // gpuDeviceRecordMetricNames are stored separately from the entity-level GPU

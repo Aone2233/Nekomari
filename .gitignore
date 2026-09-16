@@ -56,3 +56,6 @@ komari
 # local test artifacts
 *.db
 *.db-journal
+
+# local run artifacts
+/.runtest/

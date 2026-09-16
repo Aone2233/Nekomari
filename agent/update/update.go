@@ -13,14 +13,21 @@ import (
 	"strings"
 	"time"
 
-	"github.com/blang/semver"
 	"github.com/Aone2233/nekomari/agent/dnsresolver"
+	"github.com/blang/semver"
 	"github.com/rhysd/go-github-selfupdate/selfupdate"
 )
 
 var (
 	CurrentVersion string = "0.0.1"
-	Repo           string = "komari-monitor/komari-agent"
+	// Repo 是自动更新所查询的 GitHub 仓库（owner/name）。
+	//
+	// 注意：这是 fork 的仓库，不是上游！上游把 agent 与面板分在两个仓库，
+	// 而 Nekomari 是单仓，发布产物集中在同一个仓库里。
+	// 若这里沿用上游的 slug，fork 出来的 agent 会在一次自动更新后把自己
+	// 替换成上游二进制，从而静默丢掉本 fork 的全部新功能。
+	// 可通过 --update-repo / AGENT_UPDATE_REPO 覆盖。
+	Repo string = "Aone2233/Nekomari"
 )
 
 const (

@@ -30,6 +30,14 @@ func reportMetricPoints(report v2.Report, trafficUp, trafficDown int64) []metric
 		{MetricName: MetricConnections, EntityID: entityID, Timestamp: ts, Value: float64(report.Connections.TCP)},
 		{MetricName: MetricConnectionsUDP, EntityID: entityID, Timestamp: ts, Value: float64(report.Connections.UDP)},
 	}
+	// 备份新鲜度：仅在 agent 配置了状态文件时上报，避免给未使用该功能的
+	// 部署凭空写入零值序列（那样会让图表显示成「备份一直是 0 秒前」）。
+	if report.Backup != nil {
+		points = append(points,
+			metric.Point{MetricName: MetricBackupAge, EntityID: entityID, Timestamp: ts, Value: float64(report.Backup.AgeSeconds)},
+			metric.Point{MetricName: MetricBackupOK, EntityID: entityID, Timestamp: ts, Value: float64(report.Backup.Ok)},
+		)
+	}
 	if report.GPU == nil {
 		return points
 	}

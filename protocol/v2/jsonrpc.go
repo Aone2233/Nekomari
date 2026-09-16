@@ -78,9 +78,27 @@ type Report struct {
 	GPU         *GPUDetailReport  `json:"gpu,omitempty"`
 	Uptime      int64             `json:"uptime"`
 	Process     int               `json:"process"`
-	Message     string            `json:"message"`
-	Method      string            `json:"method,omitempty"`
-	UpdatedAt   time.Time         `json:"updated_at"`
+	// Backup 是可选的备份新鲜度上报。agent 未配置备份状态文件时为 nil，
+	// 因此不影响未使用该功能的部署，也不会写入任何 point。
+	Backup    *BackupReport `json:"backup,omitempty"`
+	Message   string        `json:"message"`
+	Method    string        `json:"method,omitempty"`
+	UpdatedAt time.Time     `json:"updated_at"`
+}
+
+// BackupReport 是备份新鲜度上报。
+//
+// 动机：备份「有没有在跑」和「最后一次成功是什么时候」往往没有人看，
+// 直到真需要恢复时才发现已经坏了几个月。把最后成功时间变成可监控的指标，
+// 就能用与主机指标相同的方式设阈值/基线告警。
+type BackupReport struct {
+	// AgeSeconds 距最后一次【成功】备份的秒数；-1 表示无法确定
+	//（状态文件缺失或不可解析），此时 Ok 必为 0。
+	AgeSeconds int64 `json:"age_seconds"`
+	// Ok 为 1 表示最近一次备份成功，0 表示失败或状态未知。
+	Ok int `json:"ok"`
+	// Message 是可选的人类可读说明（例如失败原因），便于排查。
+	Message string `json:"message,omitempty"`
 }
 
 type CPUReport struct {

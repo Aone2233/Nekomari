@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
+	"time"
 
 	pkg_flags "github.com/Aone2233/nekomari/agent/cmd/flags"
 	unit "github.com/Aone2233/nekomari/agent/monitoring/unit"
@@ -22,7 +24,9 @@ type report struct {
 	GPU         interface{}       `json:"gpu,omitempty"`
 	Uptime      uint64            `json:"uptime"`
 	Process     int               `json:"process"`
-	Message     string            `json:"message"`
+	// Backup 仅在配置了 --backup-status-file 时填充，否则为 nil（omitempty）。
+	Backup  *backupReport `json:"backup,omitempty"`
+	Message string        `json:"message"`
 }
 
 type cpuReport struct {
@@ -111,6 +115,15 @@ func GenerateReport() []byte {
 	data.Uptime = uptime
 
 	data.Process = unit.ProcessCount()
+
+	// 备份新鲜度（可选）：未配置状态文件时不上报，避免写入无意义的零值序列。
+	if path := strings.TrimSpace(flags.BackupStatusFile); path != "" {
+		age, ok, msg := CollectBackupStatus(path, time.Now())
+		data.Backup = &backupReport{AgeSeconds: age, Ok: ok, Message: msg}
+		if ok == 0 && msg != "" {
+			message += fmt.Sprintf("backup status: %s\n", msg)
+		}
+	}
 
 	// GPU监控 - 根据标志决定详细程度
 	if flags.EnableGPU {

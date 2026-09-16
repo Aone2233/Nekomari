@@ -83,6 +83,8 @@ func createMetricDefinitionsWithDefaultRetention(ctx context.Context, s *metric.
 		{Name: MetricConnectionsUDP, Type: metric.TypeGauge, Unit: "count", Description: "UDP connections", RetentionDays: defaultRetentionDays},
 		{Name: MetricPingLatency, Type: metric.TypeGauge, Unit: "ms", Description: "Ping latency", RetentionDays: defaultRetentionDays},
 		{Name: MetricPingLoss, Type: metric.TypeGauge, Unit: "ratio", Description: "Ping packet loss indicator", RetentionDays: defaultRetentionDays},
+		{Name: MetricBackupAge, Type: metric.TypeGauge, Unit: "s", Description: "Seconds since the last successful backup", RetentionDays: defaultRetentionDays},
+		{Name: MetricBackupOK, Type: metric.TypeGauge, Unit: "bool", Description: "Last backup succeeded (1) or not (0)", RetentionDays: defaultRetentionDays},
 	}
 
 	for _, def := range definitions {
