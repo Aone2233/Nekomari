@@ -126,13 +126,23 @@ jobs:
             -ldflags="-s -w -X github.com/Aone2233/nekomari/agent/update.CurrentVersion=${{ github.ref_name }}" \
             -o komari-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} .
 
+      # 把探针产物平铺到仓库根目录再上传。
+      # 否则它会带着 agent/ 这一层目录进 artifact，而 download-artifact 的
+      # merge-multiple 是保留 artifact 内部相对路径的 —— 结果发布时
+      # dist/agent/komari-agent-* 被非递归的 dist/* 漏掉，
+      # Release 里就只剩服务端产物，探针的自更新会找不到附件。
+      - name: Stage release assets
+        shell: bash
+        run: |
+          cp -f agent/komari-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} .
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: nekomari-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
             nekomari-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
-            agent/komari-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+            komari-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
           if-no-files-found: error
 
   release:
@@ -168,7 +178,7 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
           generate_release_notes: true
-          files: dist/*
+          files: dist/**
           body: |
             ## Nekomari ${{ steps.tag.outputs.tag }}
 
