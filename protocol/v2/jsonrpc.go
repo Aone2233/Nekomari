@@ -159,6 +159,8 @@ type PingResultParams struct {
 	PingType   string    `json:"ping_type"`
 	Value      int       `json:"value"`
 	FinishedAt time.Time `json:"finished_at"`
+	// Role 为空表示主目标；"reference" 表示这是参考点的结果。
+	Role string `json:"role,omitempty"`
 }
 
 type TaskResultParams struct {
@@ -183,6 +185,9 @@ type PingParams struct {
 	TaskID uint   `json:"ping_task_id"`
 	Type   string `json:"ping_type"`
 	Target string `json:"ping_target"`
+	// Reference 非空时，agent 会在同一周期额外探测该目标，
+	// 并以 role="reference" 上报，用于主机 vs 网关的路径归因。
+	Reference string `json:"ping_reference,omitempty"`
 }
 
 type MessageParams struct {

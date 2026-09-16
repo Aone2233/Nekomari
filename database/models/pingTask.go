@@ -13,6 +13,8 @@ type PingRecord struct {
 	// 双协议并列探测（dual）会让同一个任务在同一周期产出多条结果，
 	// 靠这个字段区分，避免两条序列互相覆盖。
 	PingType string `json:"ping_type" gorm:"type:varchar(12);not null;default:'';index"`
+	// Role 区分本条结果测的是主目标（空/""）还是参考点（"reference"）。
+	Role string `json:"role" gorm:"type:varchar(12);not null;default:'';index"`
 }
 
 // PingTask 表示一次延迟监测任务配置。
@@ -22,9 +24,14 @@ type PingTask struct {
 	Name      string      `json:"name" gorm:"type:varchar(255);not null;index"`
 	Clients   StringArray `json:"clients" gorm:"type:longtext"`
 	DefaultOn bool        `json:"default_on" gorm:"column:all_clients;not null;default:false"` // 新加入的服务器是否自动开启此监测；现有服务器不受此字段影响
-	Type      string      `json:"type" gorm:"type:varchar(12);not null;default:'icmp'"`        // icmp tcp http
+	Type      string      `json:"type" gorm:"type:varchar(12);not null;default:'icmp'"`        // icmp tcp http auto dual
 	Target    string      `json:"target" gorm:"type:varchar(255);not null"`                    // Ping 目标地址
-	Interval  int         `json:"interval" gorm:"type:int;not null;default:60"`                // 间隔时间
+	// Reference 是可选【参考目标】，用于路径归因：同一个探针在同一个周期里
+	// 既测目标也测参考点（典型做法是填本机网关或一个已知良好的节点）。
+	// 两者并列后就能区分「本机/内网出问题」还是「上游线路/代理出问题」，
+	// 而不是只看到一条延迟曲线在抖却不知道是哪一段。
+	Reference string `json:"reference" gorm:"type:varchar(255);not null;default:''"`
+	Interval  int    `json:"interval" gorm:"type:int;not null;default:60"` // 间隔时间
 }
 
 // AppliesToClient 判断当前 PingTask 是否适用于指定服务器。

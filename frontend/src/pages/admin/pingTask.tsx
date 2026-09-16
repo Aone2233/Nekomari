@@ -91,6 +91,7 @@ const AddButton: React.FC = () => {
       name: e.currentTarget.ping_name.value,
       type: selectedType,
       target: e.currentTarget.ping_target.value,
+      reference: e.currentTarget.ping_reference?.value || "",
       default_on: defaultOn,
       clients: selected,
       interval: parseInt(e.currentTarget.interval.value, 10),
@@ -167,6 +168,23 @@ const AddButton: React.FC = () => {
               name="ping_target"
               placeholder="1.1.1.1 | 1.1.1.1:80 | https://1.1.1.1"
             />
+            <label htmlFor="ping_reference">
+              {t("ping.reference", "Reference target (optional)")}
+            </label>
+            <TextField.Root
+              id="ping_reference"
+              name="ping_reference"
+              placeholder={t(
+                "ping.reference_placeholder",
+                "e.g. your gateway — probed alongside the target",
+              )}
+            />
+            <label className="text-sm font-normal text-gray-500">
+              {t(
+                "ping.reference_hint",
+                "When set, the agent probes this too in the same cycle and reports it as role=reference. Compare the two series: if both degrade together the problem is local or upstream of both; if only the target degrades, the problem is on the target's path.",
+              )}
+            </label>
             <label htmlFor="ping_server">{t("common.server")}</label>
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-start gap-2">

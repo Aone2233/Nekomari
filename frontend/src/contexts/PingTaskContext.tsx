@@ -6,6 +6,8 @@ export interface PingTask {
   id?: number;
   interval?: number;
   target?: string;
+  // reference 可选：路径归因用的参考目标（典型填本机网关）
+  reference?: string;
   type?: string;
   [property: string]: any;
 }

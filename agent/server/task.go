@@ -362,7 +362,59 @@ func isPermissionErr(err error) bool {
 	return false
 }
 
-func NewPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget string) {
+// NewPingTask 执行一次延迟监测任务。
+//
+// reference 非空时，会在【同一周期内】额外探测该参考目标并以 role="reference"
+// 上报，用于路径归因（主机 vs 网关）：两条曲线并列后，
+//
+//	· 两者同时变差 -> 问题在本机 / 内网 / 共同上游
+//	· 只有主目标变差 -> 问题在主目标那一段路径
+//
+// 否则只看到一条抖动的曲线，无从判断是哪一段出了问题。
+func NewPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget, reference string) {
+	if taskID == 0 {
+		log.Printf("Invalid task ID: %d", taskID)
+		return
+	}
+	runPingTask(conn, taskID, pingType, pingTarget)
+
+	if ref := strings.TrimSpace(reference); ref != "" {
+		runReferenceProbe(conn, taskID, pingType, ref, 3*time.Second)
+	}
+}
+
+// runReferenceProbe 探测参考目标并以 role="reference" 上报。
+// 协议沿用主任务的协议（icmp/tcp/http）；不认识的协议按 icmp 处理。
+func runReferenceProbe(conn *ws.SafeConn, taskID uint, pingType, reference string, timeout time.Duration) {
+	// 归一化：auto/dual 这类「主目标侧的策略」对参考点没有意义，退回 icmp。
+	kind := pingType
+	switch kind {
+	case "tcp", "http", "icmp":
+	default:
+		kind = "icmp"
+	}
+
+	value := -1
+	var latency int64
+	var err error
+	switch kind {
+	case "tcp":
+		latency, err = tcpPing(reference, timeout)
+	case "http":
+		latency, err = httpPing(reference, timeout)
+	default:
+		latency, err = icmpPing(reference, timeout)
+	}
+	if err == nil {
+		value = int(latency)
+	} else {
+		log.Printf("reference probe task %d [%s] target=%s failed: %v", taskID, kind, reference, err)
+	}
+	uploadPingResult(conn, kind, v2.BuildPingResultPayloadWithRole(taskID, kind, "reference", value, time.Now()))
+}
+
+// runPingTask 是单个目标的实际测量逻辑（原 NewPingTask 主体）。
+func runPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget string) {
 	if taskID == 0 {
 		log.Printf("Invalid task ID: %d", taskID)
 		return

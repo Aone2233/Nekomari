@@ -133,8 +133,21 @@ class FakeAgent:
                         "value": value,
                         "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                     }, f"ping-{task_id}-{kind}-{time.time_ns()}")
-                logging.info("reported fake ping result(s) for task %d: %s",
-                             task_id, ", ".join(k for k, _ in legs))
+                # 路径归因：事件里带了参考目标时，再上报一条 role=reference 的结果。
+                # 取值刻意与主目标相反（参考点正常 2ms），便于验证两条序列可分辨。
+                reference = (params.get("ping_reference") or "").strip()
+                if reference:
+                    ref_value = 2
+                    self.rpc("agent.pingResult", {
+                        "task_id": task_id,
+                        "ping_type": legs[0][0],
+                        "role": "reference",
+                        "value": ref_value,
+                        "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    }, f"ping-{task_id}-ref-{time.time_ns()}")
+                logging.info("reported fake ping result(s) for task %d: %s%s",
+                             task_id, ", ".join(k for k, _ in legs),
+                             " + reference" if reference else "")
                 if event_id:
                     with self.ack_lock:
                         self.pending_ack_ids.append(event_id)

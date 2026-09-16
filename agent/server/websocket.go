@@ -14,13 +14,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/Aone2233/nekomari/agent/dnsresolver"
 	"github.com/Aone2233/nekomari/agent/monitoring"
 	v2 "github.com/Aone2233/nekomari/agent/protocol/v2"
 	"github.com/Aone2233/nekomari/agent/terminal"
 	"github.com/Aone2233/nekomari/agent/utils"
 	"github.com/Aone2233/nekomari/agent/ws"
+	"github.com/gorilla/websocket"
 )
 
 var (
@@ -383,12 +383,13 @@ func processV2Event(conn *ws.SafeConn, method string, params interface{}, eventI
 		}
 	case v2.MethodAgentPing:
 		var p struct {
-			TaskID uint   `json:"ping_task_id"`
-			Type   string `json:"ping_type"`
-			Target string `json:"ping_target"`
+			TaskID    uint   `json:"ping_task_id"`
+			Type      string `json:"ping_type"`
+			Target    string `json:"ping_target"`
+			Reference string `json:"ping_reference"`
 		}
 		if err := v2.BindParams(params, &p); err == nil {
-			go NewPingTask(conn, p.TaskID, p.Type, p.Target)
+			go NewPingTask(conn, p.TaskID, p.Type, p.Target, p.Reference)
 			return true
 		} else {
 			log.Printf("bad v2 ping params: %v", err)

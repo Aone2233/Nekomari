@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/database/tasks"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
@@ -20,6 +18,8 @@ import (
 	"github.com/Aone2233/nekomari/web/api"
 	"github.com/Aone2233/nekomari/web/connection"
 	"github.com/Aone2233/nekomari/web/filemanager"
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
 func readMaybeCompressedBody(r *http.Request) ([]byte, error) {
@@ -74,7 +74,7 @@ func handleV2RPC(uuid string, req v2.Request, allowWait bool) v2.Response {
 		if err := bindV2Params(req.Params, &params); err != nil {
 			return v2.Error(req.ID, -32602, "invalid ping result params", err.Error())
 		}
-		if err := ingestPingResult(uuid, params.TaskID, params.PingType, params.Value); err != nil {
+		if err := ingestPingResult(uuid, params.TaskID, params.PingType, params.Role, params.Value); err != nil {
 			return v2.Error(req.ID, -32000, "failed to save ping result", err.Error())
 		}
 		return v2.Success(req.ID, gin.H{"status": "success"})

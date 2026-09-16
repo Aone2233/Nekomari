@@ -1,11 +1,11 @@
 package client
 
 import (
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/utils"
 	"github.com/Aone2233/nekomari/web/api"
+	"github.com/gin-gonic/gin"
 )
 
 func RegisterClient(c *gin.Context) {

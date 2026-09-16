@@ -106,15 +106,26 @@ type reportParams struct {
 }
 
 func BuildPingResultPayload(taskID uint, pingType string, value int, finishedAt time.Time) interface{} {
+	return BuildPingResultPayloadWithRole(taskID, pingType, "", value, finishedAt)
+}
+
+// BuildPingResultPayloadWithRole 在基础负载上附加 role。
+// role 为空表示测的是主目标；"reference" 表示测的是参考点（路径归因用）。
+// 空 role 不写入字段，保持与旧服务端/旧数据的兼容。
+func BuildPingResultPayloadWithRole(taskID uint, pingType, role string, value int, finishedAt time.Time) interface{} {
+	params := map[string]interface{}{
+		"task_id":     taskID,
+		"ping_type":   pingType,
+		"value":       value,
+		"finished_at": finishedAt.Format(time.RFC3339Nano),
+	}
+	if role != "" {
+		params["role"] = role
+	}
 	return Request{
 		JSONRPC: Version,
 		Method:  MethodAgentPingResult,
-		Params: map[string]interface{}{
-			"task_id":     taskID,
-			"ping_type":   pingType,
-			"value":       value,
-			"finished_at": finishedAt.Format(time.RFC3339Nano),
-		},
+		Params:  params,
 	}
 }
 

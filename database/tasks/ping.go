@@ -3,6 +3,7 @@ package tasks
 import (
 	"context"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Aone2233/nekomari/database/dbcore"
@@ -13,7 +14,7 @@ import (
 )
 
 // AddPingTask 创建延迟监测任务。defaultOn 表示新加入的服务器是否自动开启此监测。
-func AddPingTask(clients []string, defaultOn bool, name string, target, task_type string, interval int) (uint, error) {
+func AddPingTask(clients []string, defaultOn bool, name string, target, task_type string, interval int, reference string) (uint, error) {
 	db := dbcore.GetDBInstance()
 	normalizedClients := normalizePingClients(models.StringArray(clients))
 	task := models.PingTask{
@@ -22,6 +23,7 @@ func AddPingTask(clients []string, defaultOn bool, name string, target, task_typ
 		Name:      name,
 		Type:      task_type,
 		Target:    target,
+		Reference: strings.TrimSpace(reference),
 		Interval:  interval,
 	}
 	err := db.Transaction(func(tx *gorm.DB) error {

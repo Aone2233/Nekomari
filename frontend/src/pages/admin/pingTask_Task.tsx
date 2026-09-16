@@ -232,6 +232,7 @@ const Row = ({
     clients: task.clients || [],
     default_on: task.default_on || false,
     interval: task.interval || 60,
+    reference: task.reference || "",
   });
   const [probe, setProbe] = React.useState<ProbeState | null>(null);
 
@@ -285,6 +286,7 @@ const Row = ({
             name: newForm.name,
             type: newForm.type,
             target: newForm.target,
+            reference: newForm.reference,
             default_on: newForm.default_on,
             clients: newForm.clients,
             interval: newForm.interval,
@@ -498,6 +500,25 @@ const Row = ({
                   </Callout.Text>
                 </Callout.Root>
               )}
+              <label>
+                {t("ping.reference", "Reference target (optional)")}
+              </label>
+              <TextField.Root
+                value={form.reference}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, reference: e.target.value }))
+                }
+                placeholder={t(
+                  "ping.reference_placeholder",
+                  "e.g. your gateway — probed alongside the target",
+                )}
+              />
+              <label className="text-sm font-normal text-gray-500">
+                {t(
+                  "ping.reference_hint",
+                  "Probed in the same cycle and reported as role=reference, so the two series can be compared on one chart.",
+                )}
+              </label>
               <label>{t("common.server")}</label>
               <Flex direction="column" gap="2">
                 <NodeSelectorDialog

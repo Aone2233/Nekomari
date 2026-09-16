@@ -43,6 +43,11 @@ func writePingRecords(ctx context.Context, records []models.PingRecord) error {
 		if rec.PingType != "" {
 			tags["protocol"] = rec.PingType
 		}
+		// role 标签让「主目标」与「参考点」成为两条可分辨的序列，
+		// 这就是路径归因（主机 vs 网关）能在同一张图里并列的前提。
+		if rec.Role != "" {
+			tags["role"] = rec.Role
+		}
 		loss := 0.0
 		if rec.Value < 0 {
 			loss = 1
@@ -113,6 +118,7 @@ func GetPingRecords(ctx context.Context, clientUUID string, taskID int, start, e
 			Client:   p.EntityID,
 			TaskId:   taskIDVal,
 			PingType: p.Tags["protocol"], // dual 任务靠它区分 icmp/tcp 两条序列
+			Role:     p.Tags["role"],     // 路径归因靠它区分主目标/参考点
 			Time:     p.Bucket.UTC(),
 			Value:    int(p.Value),
 		})
