@@ -69,4 +69,22 @@ Nekomari's own additions are released under the same MIT license.
 
 Upstream is archived, so no further upstream commits are expected. If upstream were ever unarchived, the layout difference (monorepo) means a plain `git merge` would need care around `frontend/` and `agent/`, which do not exist upstream.
 
-The fork remains a real GitHub fork (`parent: komari-monitor/komari`), so GitHub's fork UI and "forked from" attribution stay correct.
+## Fork network status (important)
+
+This repository was created as a real GitHub fork of `komari-monitor/komari`, but **was then switched to private — which permanently detaches it from the fork network**. GitHub removes the `parent` link when a fork is made private, and **switching back to public does not restore it** (verified empirically: `fork: false`, `parent: null` after toggling back).
+
+So while Nekomari is private, GitHub's native *"forked from komari-monitor/komari"* banner **will not be shown**, even though the code lineage is exactly as documented above.
+
+**Plan to restore the native fork attribution before the public release:**
+
+1. Develop privately in this repository.
+2. When ready to publish: create a **fresh public fork** —
+   `gh repo fork komari-monitor/komari --fork-name Nekomari`
+   (or delete this repo and re-fork; fork names must be unique per account).
+3. Force-push this repository's `main` to the fresh fork:
+   `git remote add public-fork git@github.com:Aone2233/Nekomari.git && git push --force public-fork main`
+
+The resulting public repository is a genuine fork (with the banner **and** the *"N commits ahead of komari-monitor:main"* indicator), while all private development happened out of the public eye.
+
+Until then, the fork lineage is documented in this file and in both READMEs, and every upstream-derived file retains its original git history.
+
