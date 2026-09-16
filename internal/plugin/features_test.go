@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/komari-monitor/komari/database/dbcore"
-	"github.com/komari-monitor/komari/database/models"
-	"github.com/komari-monitor/komari/pkg/rpc"
+	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
 const featureManifest = `{"name":"Feat","short":"feat","version":"1.0.0","permissions":{"timeout":5,"allowRoutes":true,"allowHooks":true}}`

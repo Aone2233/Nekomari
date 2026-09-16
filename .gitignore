@@ -38,3 +38,17 @@ komari
 .codex
 
 /web/filemanager/data
+# --- Nekomari monorepo additions ---
+# frontend (was komari-web, vendored into frontend/)
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.vite/
+
+# agent (was komari-agent, vendored into agent/)
+/agent/nekomari-agent
+/agent/nekomari-agent.exe
+
+# server binary (root of repo)
+/nekomari
+/tools/zstdpack/zstdpack
+/tools/zstdpack/zstdpack.exe

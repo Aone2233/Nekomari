@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/komari-monitor/komari/internal/plugin"
+	"github.com/Aone2233/nekomari/internal/plugin"
 )
 
 // ServePluginFile serves a public iframe page declared in a plugin manifest

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/komari-monitor/komari/database/auditlog"
-	"github.com/komari-monitor/komari/internal/config"
-	"github.com/komari-monitor/komari/pkg/rpc"
+	"github.com/Aone2233/nekomari/database/auditlog"
+	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
 // admin.xtermjs.go

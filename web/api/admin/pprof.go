@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/komari-monitor/komari/web/api"
+	"github.com/Aone2233/nekomari/web/api"
 )
 
 const (

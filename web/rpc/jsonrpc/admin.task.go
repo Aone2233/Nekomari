@@ -3,9 +3,9 @@ package jsonrpc
 import (
 	"context"
 
-	"github.com/komari-monitor/komari/database/models"
-	"github.com/komari-monitor/komari/database/tasks"
-	"github.com/komari-monitor/komari/pkg/rpc"
+	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/database/tasks"
+	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
 // admin.task.go

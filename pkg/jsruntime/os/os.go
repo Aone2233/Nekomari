@@ -8,7 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/dop251/goja"
-	"github.com/komari-monitor/komari/pkg/jsruntime/internal/metrics"
+	"github.com/Aone2233/nekomari/pkg/jsruntime/internal/metrics"
 )
 
 func Load(vm *goja.Runtime, module *goja.Object) {

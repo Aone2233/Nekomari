@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/komari-monitor/komari/internal/plugin"
-	"github.com/komari-monitor/komari/pkg/rpc"
+	"github.com/Aone2233/nekomari/internal/plugin"
+	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
 func init() {

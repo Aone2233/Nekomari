@@ -14,14 +14,14 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
-	"github.com/komari-monitor/komari/database/accounts"
-	"github.com/komari-monitor/komari/database/models"
-	appconfig "github.com/komari-monitor/komari/internal/config"
-	"github.com/komari-monitor/komari/internal/metricstore"
-	logger "github.com/komari-monitor/komari/utils/log"
-	"github.com/komari-monitor/komari/web/api"
-	"github.com/komari-monitor/komari/web/backup"
-	"github.com/komari-monitor/komari/web/upload"
+	"github.com/Aone2233/nekomari/database/accounts"
+	"github.com/Aone2233/nekomari/database/models"
+	appconfig "github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/metricstore"
+	logger "github.com/Aone2233/nekomari/utils/log"
+	"github.com/Aone2233/nekomari/web/api"
+	"github.com/Aone2233/nekomari/web/backup"
+	"github.com/Aone2233/nekomari/web/upload"
 	"gorm.io/gorm"
 )
 

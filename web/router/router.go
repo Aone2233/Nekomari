@@ -2,14 +2,14 @@ package router
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/komari-monitor/komari/web/api"
-	"github.com/komari-monitor/komari/web/api/admin"
-	"github.com/komari-monitor/komari/web/api/client"
-	public_api "github.com/komari-monitor/komari/web/api/public"
-	"github.com/komari-monitor/komari/web/api/terminal"
-	"github.com/komari-monitor/komari/web/filemanager"
-	"github.com/komari-monitor/komari/web/public"
-	jsonRpc "github.com/komari-monitor/komari/web/rpc/jsonrpc"
+	"github.com/Aone2233/nekomari/web/api"
+	"github.com/Aone2233/nekomari/web/api/admin"
+	"github.com/Aone2233/nekomari/web/api/client"
+	public_api "github.com/Aone2233/nekomari/web/api/public"
+	"github.com/Aone2233/nekomari/web/api/terminal"
+	"github.com/Aone2233/nekomari/web/filemanager"
+	"github.com/Aone2233/nekomari/web/public"
+	jsonRpc "github.com/Aone2233/nekomari/web/rpc/jsonrpc"
 )
 
 // Register binds all HTTP, WebSocket, JSON-RPC and static frontend routes.

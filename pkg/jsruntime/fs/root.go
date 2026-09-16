@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/komari-monitor/komari/pkg/jsruntime/internal/filepathutil"
+	"github.com/Aone2233/nekomari/pkg/jsruntime/internal/filepathutil"
 )
 
 const rootPathEscapeText = "path escapes from parent"

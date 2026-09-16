@@ -1,11 +1,11 @@
 package auditlog
 
 import (
-	logger "github.com/komari-monitor/komari/utils/log"
+	logger "github.com/Aone2233/nekomari/utils/log"
 	"time"
 
-	"github.com/komari-monitor/komari/database/dbcore"
-	"github.com/komari-monitor/komari/database/models"
+	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/Aone2233/nekomari/database/models"
 )
 
 func Log(ip, uuid, message, msgType string) {

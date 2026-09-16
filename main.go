@@ -3,9 +3,9 @@ package main
 import (
 	"log/slog"
 
-	"github.com/komari-monitor/komari/cmd"
-	"github.com/komari-monitor/komari/utils"
-	logger "github.com/komari-monitor/komari/utils/log"
+	"github.com/Aone2233/nekomari/cmd"
+	"github.com/Aone2233/nekomari/utils"
+	logger "github.com/Aone2233/nekomari/utils/log"
 )
 
 func main() {

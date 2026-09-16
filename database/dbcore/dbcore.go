@@ -10,12 +10,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/komari-monitor/komari/cmd/flags"
-	"github.com/komari-monitor/komari/database/models"
-	"github.com/komari-monitor/komari/internal/config"
-	"github.com/komari-monitor/komari/internal/migrations"
-	"github.com/komari-monitor/komari/internal/sqlitetune"
-	logger "github.com/komari-monitor/komari/utils/log"
+	"github.com/Aone2233/nekomari/cmd/flags"
+	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/migrations"
+	"github.com/Aone2233/nekomari/internal/sqlitetune"
+	logger "github.com/Aone2233/nekomari/utils/log"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

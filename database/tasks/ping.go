@@ -5,10 +5,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/komari-monitor/komari/database/dbcore"
-	"github.com/komari-monitor/komari/database/models"
-	"github.com/komari-monitor/komari/internal/metricstore"
-	"github.com/komari-monitor/komari/utils"
+	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/utils"
 	"gorm.io/gorm"
 )
 

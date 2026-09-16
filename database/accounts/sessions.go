@@ -6,13 +6,13 @@ import (
 	"net"
 	"time"
 
-	"github.com/komari-monitor/komari/database/dbcore"
-	"github.com/komari-monitor/komari/database/models"
-	messageevent "github.com/komari-monitor/komari/database/models/messageEvent"
-	"github.com/komari-monitor/komari/internal/config"
-	"github.com/komari-monitor/komari/utils"
-	"github.com/komari-monitor/komari/utils/geoip"
-	"github.com/komari-monitor/komari/utils/messageSender"
+	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/Aone2233/nekomari/database/models"
+	messageevent "github.com/Aone2233/nekomari/database/models/messageEvent"
+	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/utils"
+	"github.com/Aone2233/nekomari/utils/geoip"
+	"github.com/Aone2233/nekomari/utils/messageSender"
 )
 
 // GetAllSessions 获取所有会话

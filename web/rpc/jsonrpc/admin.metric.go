@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/komari-monitor/komari/database/auditlog"
-	"github.com/komari-monitor/komari/internal/metricstore"
-	"github.com/komari-monitor/komari/pkg/metric"
-	"github.com/komari-monitor/komari/pkg/rpc"
+	"github.com/Aone2233/nekomari/database/auditlog"
+	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/pkg/metric"
+	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
 // admin.metric.go

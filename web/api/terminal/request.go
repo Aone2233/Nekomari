@@ -5,12 +5,12 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/komari-monitor/komari/database/clients"
-	v2 "github.com/komari-monitor/komari/protocol/v2"
-	"github.com/komari-monitor/komari/utils"
-	logger "github.com/komari-monitor/komari/utils/log"
-	agent_runtime "github.com/komari-monitor/komari/web/agent"
-	"github.com/komari-monitor/komari/web/api"
+	"github.com/Aone2233/nekomari/database/clients"
+	v2 "github.com/Aone2233/nekomari/protocol/v2"
+	"github.com/Aone2233/nekomari/utils"
+	logger "github.com/Aone2233/nekomari/utils/log"
+	agent_runtime "github.com/Aone2233/nekomari/web/agent"
+	"github.com/Aone2233/nekomari/web/api"
 )
 
 func dispatchTerminalRequest(uuid, id string) bool {

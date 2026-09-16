@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	v2 "github.com/komari-monitor/komari/protocol/v2"
+	v2 "github.com/Aone2233/nekomari/protocol/v2"
 )
 
 const (

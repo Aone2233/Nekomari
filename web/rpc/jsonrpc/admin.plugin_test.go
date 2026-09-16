@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/komari-monitor/komari/cmd/flags"
-	"github.com/komari-monitor/komari/database/dbcore"
-	"github.com/komari-monitor/komari/database/models"
-	"github.com/komari-monitor/komari/internal/plugin"
-	"github.com/komari-monitor/komari/pkg/rpc"
+	"github.com/Aone2233/nekomari/cmd/flags"
+	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/internal/plugin"
+	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
 // TestMain wires a shared in-memory SQLite database for tests that read and

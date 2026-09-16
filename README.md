@@ -1,20 +1,54 @@
-# Komari
-
-![Badge](https://hitscounter.dev/api/hit?url=https%3A%2F%2Fgithub.com%2Fkomari-monitor%2Fkomari&label=&icon=github&color=%23a370f7&message=&style=flat&tz=UTC)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/komari-monitor/komari)
-
-![komari](https://socialify.git.ci/komari-monitor/komari/image?description=1&font=Inter&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2Fkomari-monitor%2Fkomari-web%2Fd54ce1288df41ead08aa19f8700186e68028a889%2Fpublic%2Ffavicon.png&name=1&owner=1&pattern=Plus&pulls=1&stargazers=1&theme=Auto)
+# Nekomari
 
 [English](./README.md) | [简体中文](./README_zh-cn.md)
 
-Komari is a lightweight, self-hosted server monitoring solution. It provides a simple and efficient way to track server performance through a web interface, with metrics collected by a lightweight agent.
+> ### 🐱 Nekomari is a fork of [Komari](https://github.com/komari-monitor/komari)
+>
+> **Base version: `1.5.0-fix1` (commit `0ca87aa`, 2026-09-14)** — the last release published before upstream was archived.
+> Upstream is **archived** and no longer maintained; Nekomari continues it with new features.
+> See **[FORK.md](./FORK.md)** for full provenance and the change list.
+>
+> Licensed MIT, same as upstream. The original copyright (c) 2025 Komari Moniter is preserved verbatim in `LICENSE` and `NOTICE`.
+
+Nekomari is a lightweight, self-hosted server monitoring solution — a maintained continuation of Komari. It provides a simple and efficient way to track server performance through a web interface, with metrics collected by a lightweight agent.
 
 > [!WARNING]
-> Komari is a self-hosted monitoring and control application. Deploy it only on systems you own or are authorized to manage. You are solely responsible for how you deploy and use Komari. The developers accept no liability for unauthorized access, persistence, command execution, other misuse, or any resulting consequences.
+> Nekomari is a self-hosted monitoring and control application. Deploy it only on systems you own or are authorized to manage. You are solely responsible for how you deploy and use it. The developers accept no liability for unauthorized access, persistence, command execution, other misuse, or any resulting consequences.
 
-[Documentation](https://www.komari.wiki/) | [Telegram Group](https://t.me/komari_monitor)
+## What Nekomari adds over upstream
+
+| Change | Status |
+|---|---|
+| **`netcheck`** — multi-protocol reachability probe (DNS + ICMP + TCP) that tells you which probe type a target actually supports | ✅ available |
+| Monorepo layout — server + `frontend/` + `agent/` in one repository | ✅ |
+| Bundled theme packer (`tools/zstdpack`) — builds without the `zstd` CLI (useful on Windows) | ✅ |
+| One-shot build script (`build.sh`) | ✅ |
+| Further features in progress | 🚧 see [FORK.md](./FORK.md) |
+
+### `netcheck` in 20 seconds
+
+Monitoring tasks probe a target with **one** protocol (ICMP, TCP or HTTP). Pick the wrong one and you get a flat 100% packet loss — which looks like an outage but is really a **protocol mismatch**. `netcheck` tells you up front which one to use:
+
+```
+$ ./nekomari netcheck 1.51.3.134
+
+ICMP probe (3x, timeout 3s)
+  x recv 0/3  loss 100%   -- target does not answer ICMP
+TCP probe (timeout 3s)
+  x 22     unreachable
+  v 80     open   (handshake 2 ms)
+  v 443    open   (handshake 2 ms)
+----------------------------------------------------------
+Verdict: TCP-only reachable (does not answer ICMP)
+Advice:  this target does NOT answer ICMP, but TCP:80,443 is open. Use a `tcp`
+         probe task and write the target as host:port (e.g. 1.51.3.134:80),
+         otherwise you will get 100% packet loss.
+```
+
+It also distinguishes **"permission denied"** from **"target unreachable"** — otherwise a non-privileged ICMP attempt leads to the *opposite* conclusion.
 
 ## Features
+
 
 - **Real-time monitoring**: Displays monitoring data at one-second intervals.
 - **Lightweight and efficient**: Uses minimal system resources and works well on servers of any size.

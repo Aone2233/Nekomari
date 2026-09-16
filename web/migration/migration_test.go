@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/komari-monitor/komari/internal/metricstore"
-	appconfig "github.com/komari-monitor/komari/internal/config"
-	"github.com/komari-monitor/komari/internal/migrations"
-	"github.com/komari-monitor/komari/web/api"
+	"github.com/Aone2233/nekomari/internal/metricstore"
+	appconfig "github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/migrations"
+	"github.com/Aone2233/nekomari/web/api"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

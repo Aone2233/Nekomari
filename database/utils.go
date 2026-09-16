@@ -7,13 +7,13 @@ import (
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
-	"github.com/komari-monitor/komari/database/dbcore"
-	"github.com/komari-monitor/komari/database/models"
-	"github.com/komari-monitor/komari/internal/config"
-	"github.com/komari-monitor/komari/internal/managedconfig"
-	"github.com/komari-monitor/komari/internal/metricstore"
-	logger "github.com/komari-monitor/komari/utils/log"
-	"github.com/komari-monitor/komari/web/public"
+	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/managedconfig"
+	"github.com/Aone2233/nekomari/internal/metricstore"
+	logger "github.com/Aone2233/nekomari/utils/log"
+	"github.com/Aone2233/nekomari/web/public"
 )
 
 func GetPublicInfo() (map[string]interface{}, error) {

@@ -3,9 +3,9 @@ package client
 import (
 	"net"
 
-	"github.com/komari-monitor/komari/database/clients"
-	"github.com/komari-monitor/komari/internal/config"
-	"github.com/komari-monitor/komari/utils/geoip"
+	"github.com/Aone2233/nekomari/database/clients"
+	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/utils/geoip"
 )
 
 func getClientIPType(ip net.IP) int {

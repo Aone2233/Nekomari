@@ -1,9 +1,9 @@
 package factory
 
 import (
-	logger "github.com/komari-monitor/komari/utils/log"
+	logger "github.com/Aone2233/nekomari/utils/log"
 
-	"github.com/komari-monitor/komari/utils/item"
+	"github.com/Aone2233/nekomari/utils/item"
 )
 
 var (

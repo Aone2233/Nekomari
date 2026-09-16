@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/komari-monitor/komari/internal/config"
-	"github.com/komari-monitor/komari/internal/plugin"
-	"github.com/komari-monitor/komari/web/api"
+	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/plugin"
+	"github.com/Aone2233/nekomari/web/api"
 )
 
 // Plugin market mirrors the theme market: admin-managed catalog sources that

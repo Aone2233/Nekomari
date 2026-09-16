@@ -4,10 +4,10 @@ import (
 	"errors"
 	"os"
 
-	appserver "github.com/komari-monitor/komari/internal/server"
-	logger "github.com/komari-monitor/komari/utils/log"
+	appserver "github.com/Aone2233/nekomari/internal/server"
+	logger "github.com/Aone2233/nekomari/utils/log"
 
-	"github.com/komari-monitor/komari/cmd/flags"
+	"github.com/Aone2233/nekomari/cmd/flags"
 	"github.com/spf13/cobra"
 )
 

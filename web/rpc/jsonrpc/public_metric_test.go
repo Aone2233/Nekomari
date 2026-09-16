@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/komari-monitor/komari/database/models"
-	"github.com/komari-monitor/komari/internal/metricstore"
-	"github.com/komari-monitor/komari/pkg/metric"
-	"github.com/komari-monitor/komari/pkg/rpc"
+	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/pkg/metric"
+	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
 func TestMetricQueryParamsRequireRFC3339Time(t *testing.T) {

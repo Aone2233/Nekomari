@@ -4,10 +4,10 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/komari-monitor/komari/database/auditlog"
-	clipboardDB "github.com/komari-monitor/komari/database/clipboard"
-	"github.com/komari-monitor/komari/database/models"
-	"github.com/komari-monitor/komari/pkg/rpc"
+	"github.com/Aone2233/nekomari/database/auditlog"
+	clipboardDB "github.com/Aone2233/nekomari/database/clipboard"
+	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
 // admin.clipboard.go

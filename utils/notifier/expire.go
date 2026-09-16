@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/komari-monitor/komari/database/clients"
-	"github.com/komari-monitor/komari/database/models"
-	messageevent "github.com/komari-monitor/komari/database/models/messageEvent"
-	"github.com/komari-monitor/komari/internal/config"
-	"github.com/komari-monitor/komari/pkg/timeutil"
-	"github.com/komari-monitor/komari/utils/messageSender"
-	"github.com/komari-monitor/komari/utils/renewal"
+	"github.com/Aone2233/nekomari/database/clients"
+	"github.com/Aone2233/nekomari/database/models"
+	messageevent "github.com/Aone2233/nekomari/database/models/messageEvent"
+	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/pkg/timeutil"
+	"github.com/Aone2233/nekomari/utils/messageSender"
+	"github.com/Aone2233/nekomari/utils/renewal"
 )
 
 func CheckExpireScheduledWork() {

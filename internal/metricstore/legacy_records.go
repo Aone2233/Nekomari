@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/komari-monitor/komari/database/models"
-	"github.com/komari-monitor/komari/pkg/metric"
+	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/pkg/metric"
 )
 
 // GetRecordsByClientAndTime 从 metric store 查询记录并重构为 models.Record

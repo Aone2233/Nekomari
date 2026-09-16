@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/gin-gonic/gin"
-	"github.com/komari-monitor/komari/internal/config"
+	"github.com/Aone2233/nekomari/internal/config"
 )
 
 // CorsController 保存 CORS 中间件的可热更新状态。

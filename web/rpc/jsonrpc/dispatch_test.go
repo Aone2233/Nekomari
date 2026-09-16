@@ -3,7 +3,7 @@ package jsonrpc
 import (
 	"testing"
 
-	"github.com/komari-monitor/komari/pkg/rpc"
+	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
 func TestRpcHelpUsesQualifiedMethodName(t *testing.T) {

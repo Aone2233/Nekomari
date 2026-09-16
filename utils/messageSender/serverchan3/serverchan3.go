@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/komari-monitor/komari/utils/messageSender/factory"
+	"github.com/Aone2233/nekomari/utils/messageSender/factory"
 )
 
 // ServerChan3Sender 为 Server酱³ 推送实现

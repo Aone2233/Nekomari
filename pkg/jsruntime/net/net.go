@@ -14,9 +14,9 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/buffer"
-	"github.com/komari-monitor/komari/pkg/jsruntime/events"
-	"github.com/komari-monitor/komari/pkg/jsruntime/internal/bridge"
-	"github.com/komari-monitor/komari/pkg/jsruntime/internal/writequeue"
+	"github.com/Aone2233/nekomari/pkg/jsruntime/events"
+	"github.com/Aone2233/nekomari/pkg/jsruntime/internal/bridge"
+	"github.com/Aone2233/nekomari/pkg/jsruntime/internal/writequeue"
 )
 
 type Module struct {

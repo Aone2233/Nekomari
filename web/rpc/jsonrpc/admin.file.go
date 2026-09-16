@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/komari-monitor/komari/database/auditlog"
-	"github.com/komari-monitor/komari/database/clients"
-	"github.com/komari-monitor/komari/pkg/rpc"
-	"github.com/komari-monitor/komari/web/filemanager"
+	"github.com/Aone2233/nekomari/database/auditlog"
+	"github.com/Aone2233/nekomari/database/clients"
+	"github.com/Aone2233/nekomari/pkg/rpc"
+	"github.com/Aone2233/nekomari/web/filemanager"
 )
 
 func init() {

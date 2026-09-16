@@ -1,18 +1,51 @@
-# Komari
-
-![Badge](https://hitscounter.dev/api/hit?url=https%3A%2F%2Fgithub.com%2Fkomari-monitor%2Fkomari&label=&icon=github&color=%23a370f7&message=&style=flat&tz=UTC)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/komari-monitor/komari)
-
-![komari](https://socialify.git.ci/komari-monitor/komari/image?description=1&font=Inter&forks=1&issues=1&language=1&logo=https%3A%2F%2Fraw.githubusercontent.com%2Fkomari-monitor%2Fkomari-web%2Fd54ce1288df41ead08aa19f8700186e68028a889%2Fpublic%2Ffavicon.png&name=1&owner=1&pattern=Plus&pulls=1&stargazers=1&theme=Auto)
+# Nekomari
 
 [English](./README.md) | [简体中文](./README_zh-cn.md)
 
-Komari 是一款轻量级的自托管服务器监控工具，旨在提供简单、高效的服务器性能监控解决方案。它支持通过 Web 界面查看服务器状态，并通过轻量级 Agent 收集数据。
+> ### 🐱 Nekomari 是 [Komari](https://github.com/komari-monitor/komari) 的 fork
+>
+> **基线版本：`1.5.0-fix1`（commit `0ca87aa`，2026-09-14）** —— 上游归档前发布的最后一个版本。
+> 上游仓库已 **归档**、不再维护；Nekomari 在其基础上继续开发新功能。
+> 完整的来源说明与改动清单见 **[FORK.md](./FORK.md)**。
+>
+> 许可证与上游一致（MIT）。原始版权声明 `Copyright (c) 2025 Komari Moniter` 已在 `LICENSE` 与 `NOTICE` 中**原样保留**。
+
+Nekomari 是一款轻量级的自托管服务器监控工具 —— Komari 的持续维护版本。它支持通过 Web 界面查看服务器状态，并通过轻量级 Agent 收集数据。
 
 > [!WARNING]
-> Komari 是一款自托管的监控/控制程序，仅应部署在你拥有或已获得授权管理的系统上。在未获授权的情况下部署、访问、持久化、执行命令及从事其他滥用行为，用户需要自行承担部署和使用 Komari 的责任。开发者不对未经授权或滥用行为及其后果承担责任。
+> Nekomari 是一款自托管的监控/控制程序，仅应部署在你拥有或已获得授权管理的系统上。在未获授权的情况下部署、访问、持久化、执行命令及从事其他滥用行为，用户需要自行承担部署和使用的责任。开发者不对未经授权或滥用行为及其后果承担责任。
 
-[文档](https://www.komari.wiki/) | [Telegram 群](https://t.me/komari_monitor)
+## Nekomari 相对上游新增了什么
+
+| 改动 | 状态 |
+|---|---|
+| **`netcheck`** —— 多协议可达性自检（DNS + ICMP + TCP），直接告诉你目标该用哪种探测类型 | ✅ 已可用 |
+| 单仓结构 —— 服务端 + `frontend/` + `agent/` 合并到一个仓库 | ✅ |
+| 自带主题打包器（`tools/zstdpack`）—— 无需 `zstd` CLI 即可构建（Windows 上尤其实用） | ✅ |
+| 一键构建脚本（`build.sh`） | ✅ |
+| 更多功能开发中 | 🚧 见 [FORK.md](./FORK.md) |
+
+### 20 秒看懂 `netcheck`
+
+监控任务对目标只用**一种**协议探测（ICMP / TCP / HTTP）。**选错协议就会得到恒定的 100% 丢包** —— 看起来像宕机，实际是协议不匹配。`netcheck` 让你提前知道该选哪种：
+
+```
+$ ./nekomari netcheck 1.51.3.134
+
+ICMP 探测 (3 次, 单次超时 3s)
+  ✗ 收 0/3  丢包 100%   —— 目标不响应 ICMP
+TCP 探测 (单次超时 3s)
+  ✗ 22     不可达
+  ✓ 80     开放   (握手 2 ms)
+  ✓ 443    开放   (握手 2 ms)
+----------------------------------------------------------
+判定: 仅 TCP 可达（不响应 ICMP）
+建议: 该目标【不响应 ICMP】，但 TCP:80,443 可用。监测任务必须选 tcp，
+      目标写成 host:port（例如 1.51.3.134:80），否则会 100% 超时。
+```
+
+它还会刻意区分 **「权限不足」与「目标不可达」** —— 否则非特权环境下的 ICMP 失败会得出**完全相反**的结论。
+
 
 ## 特性
 

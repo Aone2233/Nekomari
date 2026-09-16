@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/komari-monitor/komari/pkg/metric"
+	"github.com/Aone2233/nekomari/pkg/metric"
 )
 
 // QueryContext runs a raw read query against the active metric store. The

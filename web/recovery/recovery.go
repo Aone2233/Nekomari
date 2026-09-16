@@ -14,11 +14,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/komari-monitor/komari/internal/metricstore"
-	appconfig "github.com/komari-monitor/komari/internal/config"
-	"github.com/komari-monitor/komari/web/api"
-	publicapi "github.com/komari-monitor/komari/web/api/public"
-	jsonrpc "github.com/komari-monitor/komari/web/rpc/jsonrpc"
+	"github.com/Aone2233/nekomari/internal/metricstore"
+	appconfig "github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/web/api"
+	publicapi "github.com/Aone2233/nekomari/web/api/public"
+	jsonrpc "github.com/Aone2233/nekomari/web/rpc/jsonrpc"
 )
 
 const (

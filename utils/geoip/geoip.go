@@ -6,8 +6,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/komari-monitor/komari/internal/config"
-	logger "github.com/komari-monitor/komari/utils/log"
+	"github.com/Aone2233/nekomari/internal/config"
+	logger "github.com/Aone2233/nekomari/utils/log"
 	"github.com/patrickmn/go-cache"
 )
 

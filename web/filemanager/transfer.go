@@ -17,9 +17,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/komari-monitor/komari/database/auditlog"
-	logger "github.com/komari-monitor/komari/utils/log"
-	"github.com/komari-monitor/komari/web/api"
+	"github.com/Aone2233/nekomari/database/auditlog"
+	logger "github.com/Aone2233/nekomari/utils/log"
+	"github.com/Aone2233/nekomari/web/api"
 )
 
 const (

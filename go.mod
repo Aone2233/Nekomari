@@ -1,4 +1,4 @@
-module github.com/komari-monitor/komari
+module github.com/Aone2233/nekomari
 
 go 1.25.0
 
@@ -15,6 +15,7 @@ require (
 	github.com/oschwald/maxminddb-golang v1.13.1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pquerna/otp v1.5.0
+	github.com/prometheus-community/pro-bing v0.7.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/sys v0.33.0

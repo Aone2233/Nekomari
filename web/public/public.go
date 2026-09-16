@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/komari-monitor/komari/internal/config"
+	"github.com/Aone2233/nekomari/internal/config"
 )
 
 //go:embed defaultTheme/komari-theme.json

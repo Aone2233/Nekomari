@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	v2 "github.com/komari-monitor/komari/protocol/v2"
-	agent_runtime "github.com/komari-monitor/komari/web/agent"
+	v2 "github.com/Aone2233/nekomari/protocol/v2"
+	agent_runtime "github.com/Aone2233/nekomari/web/agent"
 )
 
 const defaultTimeout = 30 * time.Second

@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/komari-monitor/komari/database/auditlog"
-	"github.com/komari-monitor/komari/utils/geoip"
-	logger "github.com/komari-monitor/komari/utils/log"
-	"github.com/komari-monitor/komari/utils/messageSender"
-	"github.com/komari-monitor/komari/web/oauth"
+	"github.com/Aone2233/nekomari/database/auditlog"
+	"github.com/Aone2233/nekomari/utils/geoip"
+	logger "github.com/Aone2233/nekomari/utils/log"
+	"github.com/Aone2233/nekomari/utils/messageSender"
+	"github.com/Aone2233/nekomari/web/oauth"
 )
 
 // InitProviders initializes providers needed by the normal application.

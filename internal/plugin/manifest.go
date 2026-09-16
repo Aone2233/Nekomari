@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/komari-monitor/komari/database/models"
+	"github.com/Aone2233/nekomari/database/models"
 )
 
 // urlSchemeRE matches a leading URL scheme such as "http:" or "javascript:",
