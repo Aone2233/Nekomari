@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Aone2233/nekomari/agent/dnsresolver"
@@ -247,10 +248,131 @@ func httpPing(target string, timeout time.Duration) (int64, error) {
 	return latency, errors.New("http status not ok")
 }
 
+// auto 类型的协议解析（新增）
+//
+// 背景：监测任务的类型是每个任务一个（icmp/tcp/http）。选错协议的后果是恒定的
+// 100% 丢包 —— 看起来像宕机，其实是协议不匹配。auto 让 agent 自己先探一次，
+// 选一个该目标真正答应的协议，从而不需要人工判断。
+//
+// 判定顺序：
+//  1. 先试 ICMP（便宜，一次探测）；
+//  2. ICMP 不通则试 TCP —— 目标自带端口就用它，否则依次试 443/80；
+//  3. 都不通时保持 icmp 并如实报告失败（不假装成功）。
+//
+// 结果按目标缓存在进程内，避免每个上报周期都重新探测。
+
+type autoDecision struct {
+	kind   string // 实际采用的协议："icmp" 或 "tcp"
+	target string // 实际使用的目标（tcp 时可能被补上端口）
+	at     time.Time
+}
+
+var (
+	autoMu    sync.Mutex
+	autoCache = map[string]autoDecision{}
+)
+
+// autoCacheTTL 决定多久重新解析一次。目标开放的协议通常很稳定，
+// 但偶尔会变（例如防火墙策略调整），所以不做永久缓存。
+const autoCacheTTL = 10 * time.Minute
+
+const autoProbeTimeout = 2 * time.Second
+
+// ResolveAuto 把 auto 解析成具体的 (协议, 目标)。
+func ResolveAuto(pingTarget string) (string, string) {
+	autoMu.Lock()
+	if d, ok := autoCache[pingTarget]; ok && time.Since(d.at) < autoCacheTTL {
+		autoMu.Unlock()
+		return d.kind, d.target
+	}
+	autoMu.Unlock()
+
+	kind, tgt := probeAutoProtocol(pingTarget)
+
+	autoMu.Lock()
+	autoCache[pingTarget] = autoDecision{kind: kind, target: tgt, at: time.Now()}
+	autoMu.Unlock()
+	return kind, tgt
+}
+
+// autoProbeResult 汇总一次 auto 探测的原始结果（便于把「决策」与「探测」分开测试）。
+type autoProbeResult struct {
+	icmpOK     bool   // ICMP 探通了
+	icmpDenied bool   // ICMP 是因本地权限不足而失败（≠ 目标不答 ICMP）
+	openPort   string // 第一个 TCP 可用的端口（空 = 没有）
+}
+
+// decideAuto 是纯函数：给定探测结果，决定用哪个协议、什么目标。
+//
+// 规则：
+//  1. 目标自带端口 —— 尊重用户的显式指定，直接用 tcp（不再探测、不做猜测）；
+//  2. 否则 ICMP 通 -> icmp；
+//  3. 否则 TCP 443/80 有可用端口 -> tcp + 该端口；
+//  4. 都不通 -> 保持 icmp，让上报如实反映失败（不假装成功）。
+func decideAuto(target string, r autoProbeResult) (string, string) {
+	if _, port, err := net.SplitHostPort(target); err == nil && port != "" {
+		return "tcp", target
+	}
+	if r.icmpOK {
+		return "icmp", target
+	}
+	if r.openPort != "" {
+		return "tcp", net.JoinHostPort(target, r.openPort)
+	}
+	return "icmp", target
+}
+
+func probeAutoProtocol(pingTarget string) (string, string) {
+	// 目标已显式带端口：直接按 tcp 处理，无需探测
+	if _, port, err := net.SplitHostPort(pingTarget); err == nil && port != "" {
+		return decideAuto(pingTarget, autoProbeResult{})
+	}
+
+	var r autoProbeResult
+	if _, err := icmpPing(pingTarget, autoProbeTimeout); err == nil {
+		r.icmpOK = true
+	} else if isPermissionErr(err) {
+		// 本地没有发 ICMP 的权限 —— 与「目标不答 ICMP」是两回事，
+		// 但无论哪种，icmp 在这台机器上都用不了，所以继续尝试 TCP。
+		r.icmpDenied = true
+	}
+	if !r.icmpOK {
+		for _, port := range []string{"443", "80"} {
+			if _, err := tcpPing(net.JoinHostPort(pingTarget, port), autoProbeTimeout); err == nil {
+				r.openPort = port
+				break
+			}
+		}
+	}
+	return decideAuto(pingTarget, r)
+}
+
+// isPermissionErr 判断 ping 失败是否源于本地权限，而不是目标不可达。
+// 这个区分很关键：把工具的限制误读成目标的事实，会得出相反的结论。
+func isPermissionErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	low := strings.ToLower(err.Error())
+	for _, s := range []string{"permission", "operation not permitted", "privilege", "access is denied", "not permitted"} {
+		if strings.Contains(low, s) {
+			return true
+		}
+	}
+	return false
+}
+
 func NewPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget string) {
 	if taskID == 0 {
 		log.Printf("Invalid task ID: %d", taskID)
 		return
+	}
+	// auto：先探一次，选一个该目标真正答应的协议；下游逻辑（含上报的 ping_type）
+	// 统一使用解析后的值，因此面板上能看到实际采用的协议。
+	if pingType == "auto" {
+		resolvedKind, resolvedTarget := ResolveAuto(pingTarget)
+		log.Printf("ping task %d: auto resolved target=%s -> type=%s target=%s", taskID, pingTarget, resolvedKind, resolvedTarget)
+		pingType, pingTarget = resolvedKind, resolvedTarget
 	}
 	var err error = nil
 	var latency int64
