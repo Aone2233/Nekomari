@@ -240,8 +240,11 @@ func TestCreateMetricDefinitionsUsesExplicitRetentionAndPreservesOverrides(t *te
 	if err != nil {
 		t.Fatalf("list definitions: %v", err)
 	}
-	if len(defs) != 21 {
-		t.Fatalf("definition count = %d, want 21", len(defs))
+	// 与指标名清单保持一致，而不是写死一个数字：
+	// 新增内置指标时这个断言应当自动跟随，否则每次加指标都要来改测试，
+	// 久而久之就会变成「改数字让它变绿」而不是真的在验证行为。
+	if len(defs) != len(builtinMetricNames) {
+		t.Fatalf("definition count = %d, want %d (builtinMetricNames)", len(defs), len(builtinMetricNames))
 	}
 	for _, def := range defs {
 		if def.RetentionDays != defaultBuiltinMetricRetentionDays {
