@@ -446,6 +446,9 @@ const Row = ({
                   <Select.Item value="auto">
                     Auto (probe the target and pick a protocol it answers)
                   </Select.Item>
+                  <Select.Item value="dual">
+                    Dual (probe with ICMP and TCP, report both)
+                  </Select.Item>
                   <Select.Item value="http">HTTP</Select.Item>
                 </Select.Content>
               </Select.Root>

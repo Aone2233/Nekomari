@@ -45,11 +45,14 @@ func ingestBasicInfo(uuid string, info map[string]interface{}, fallbackIP string
 }
 
 // ingestPingResult 保存一条 ping 探测结果。
-func ingestPingResult(uuid string, taskID uint, value int) error {
+// pingType 是实际使用的探测协议（icmp/tcp/http）；双协议并列探测时
+// 同一任务会先后上报多条不同协议的结果，必须保留该字段以示区分。
+func ingestPingResult(uuid string, taskID uint, pingType string, value int) error {
 	return tasks.SavePingRecord(models.PingRecord{
-		Client: uuid,
-		TaskId: taskID,
-		Value:  value,
-		Time:   time.Now().UTC(),
+		Client:   uuid,
+		TaskId:   taskID,
+		PingType: pingType,
+		Value:    value,
+		Time:     time.Now().UTC(),
 	})
 }

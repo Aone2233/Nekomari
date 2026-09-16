@@ -9,6 +9,10 @@ type PingRecord struct {
 	Task       PingTask  `json:"task" gorm:"foreignKey:TaskId;references:Id;constraint:OnDelete:CASCADE,OnUpdate:CASCADE;"`
 	Time       time.Time `json:"time" gorm:"index;not null"`
 	Value      int       `json:"value" gorm:"type:int;not null"` // Ping 值，单位毫秒
+	// PingType 记录本条结果是用哪种协议测出来的（icmp/tcp/http）。
+	// 双协议并列探测（dual）会让同一个任务在同一周期产出多条结果，
+	// 靠这个字段区分，避免两条序列互相覆盖。
+	PingType string `json:"ping_type" gorm:"type:varchar(12);not null;default:'';index"`
 }
 
 // PingTask 表示一次延迟监测任务配置。

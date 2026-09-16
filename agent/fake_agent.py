@@ -115,14 +115,26 @@ class FakeAgent:
             if not isinstance(task_id, int) or task_id <= 0:
                 logging.warning("ignoring malformed ping event: %s", event)
                 continue
+            ping_type = params.get("ping_type", "icmp")
+            # 双协议并列探测：真实 agent 会在同一周期用 ICMP 与 TCP 各测一次，
+            # 上报两条同 task_id、不同 ping_type 的结果。这里如实模拟，取值也
+            # 刻意对应「目标只答 TCP」这一真实场景（ICMP 丢包 / TCP 正常），
+            # 便于验证服务端把两条结果存成可分辨的两条序列。
+            legs = (
+                [("icmp", -1), ("tcp", 2)]
+                if ping_type == "dual"
+                else [(ping_type, random.randint(10, 100))]
+            )
             try:
-                self.rpc("agent.pingResult", {
-                    "task_id": task_id,
-                    "ping_type": params.get("ping_type", "icmp"),
-                    "value": random.randint(10, 100),
-                    "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                }, f"ping-{task_id}-{time.time_ns()}")
-                logging.info("reported fake ping result for task %d", task_id)
+                for kind, value in legs:
+                    self.rpc("agent.pingResult", {
+                        "task_id": task_id,
+                        "ping_type": kind,
+                        "value": value,
+                        "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    }, f"ping-{task_id}-{kind}-{time.time_ns()}")
+                logging.info("reported fake ping result(s) for task %d: %s",
+                             task_id, ", ".join(k for k, _ in legs))
                 if event_id:
                     with self.ack_lock:
                         self.pending_ack_ids.append(event_id)

@@ -47,12 +47,18 @@ Upstream published `komari-agent` `1.5.10` *after* the last server release. The 
 
 | Path | What |
 |---|---|
-| `cmd/netcheck.go` | **`netcheck`** subcommand — multi-protocol reachability probe (DNS + ICMP + TCP) that reports which probe type a target actually supports. See README. |
+| `pkg/netcheck/` | Multi-protocol reachability probe (DNS + ICMP + TCP) with a machine-readable verdict. Distinguishes "no permission to send ICMP" from "target unreachable". |
+| `cmd/netcheck.go` | **`netcheck`** CLI subcommand over the above. |
+| `admin:netcheck` + `POST /api/admin/ping/netcheck` | Runs the same probe from the panel server, for the **target preflight** button in the ping task editor. |
+| `agent` — task type `auto` | The agent probes once and uses a protocol the target actually answers, so nobody has to guess. |
+| `agent` — task type `dual` | Probes **both** ICMP and TCP in one cycle and reports two results, so "target only answers TCP" shows up as `ICMP 100% / TCP 2ms` instead of a misleading flat 100% loss. |
+| `internal/metricstore` — `protocol` tag | Keeps the two protocols of a `dual` task as two distinguishable series. |
+| `agent/fake_agent.py` | Extended to simulate `dual`, so the ingest path is integration-testable. |
+| `docs/TESTING.md` | Which tests are hermetic and which need root/IPv6. |
 | `tools/zstdpack/` | Theme packer. Replaces the `zstd` CLI (not available on Windows) using the same `klauspost/compress/zstd` library the server decodes with. |
 | `build.sh` | One-shot build for the whole monorepo. |
-| `FORK.md` | This file. |
-
-*(Further features will be appended here as they land.)*
+| `scripts/linux-dev.sh` | Sync + build + test on a Linux host (the server needs CGO, so cross-compiling from Windows fails). |
+| `FORK.md`, `docs/` | This file and documentation. |
 
 ## Attribution obligations
 

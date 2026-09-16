@@ -37,7 +37,12 @@ func writePingRecords(ctx context.Context, records []models.PingRecord) error {
 
 	points := make([]metric.Point, 0, len(records)*2)
 	for _, rec := range records {
+		// protocol 标签让同一任务的 icmp / tcp 两条序列在查询侧可分辨，
+		// 这是「双协议并列探测」的数据基础。空值不写标签，保持与历史数据兼容。
 		tags := map[string]string{"task_id": fmt.Sprintf("%d", rec.TaskId)}
+		if rec.PingType != "" {
+			tags["protocol"] = rec.PingType
+		}
 		loss := 0.0
 		if rec.Value < 0 {
 			loss = 1
@@ -105,10 +110,11 @@ func GetPingRecords(ctx context.Context, clientUUID string, taskID int, start, e
 		}
 
 		records = append(records, models.PingRecord{
-			Client: p.EntityID,
-			TaskId: taskIDVal,
-			Time:   p.Bucket.UTC(),
-			Value:  int(p.Value),
+			Client:   p.EntityID,
+			TaskId:   taskIDVal,
+			PingType: p.Tags["protocol"], // dual 任务靠它区分 icmp/tcp 两条序列
+			Time:     p.Bucket.UTC(),
+			Value:    int(p.Value),
 		})
 	}
 	sort.Slice(records, func(i, j int) bool {

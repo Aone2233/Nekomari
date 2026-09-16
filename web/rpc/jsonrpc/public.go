@@ -302,6 +302,8 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		Time   time.Time `json:"time"`
 		Value  int       `json:"value"`
 		Client string    `json:"client,omitempty"`
+		// PingType 是实际使用的探测协议（icmp/tcp/http）；dual 任务靠它区分两条记录。
+		PingType string `json:"ping_type,omitempty"`
 	}
 	type clientBasicInfo struct {
 		Client string  `json:"client"`
@@ -362,7 +364,7 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		if r.Client != "" && !isLogin && hiddenMap[r.Client] {
 			continue
 		}
-		rec := recordsResp{Time: r.Time.UTC(), Value: r.Value, Client: r.Client, TaskId: r.TaskId}
+		rec := recordsResp{Time: r.Time.UTC(), Value: r.Value, Client: r.Client, TaskId: r.TaskId, PingType: r.PingType}
 		stats := clientStats[r.Client]
 		stats.total++
 		if r.Value < 0 {

@@ -367,6 +367,12 @@ func NewPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget string) {
 		log.Printf("Invalid task ID: %d", taskID)
 		return
 	}
+	// dual：同一周期内 ICMP 与 TCP 各测一次，上报两条结果。
+	// 这条路径不参与单协议的测量/重试逻辑，直接返回。
+	if pingType == "dual" {
+		runDualPing(conn, taskID, pingTarget, 3*time.Second)
+		return
+	}
 	// auto：先探一次，选一个该目标真正答应的协议；下游逻辑（含上报的 ping_type）
 	// 统一使用解析后的值，因此面板上能看到实际采用的协议。
 	if pingType == "auto" {
@@ -434,16 +440,77 @@ func NewPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget string) {
 	//if pingResult == -1 {
 	//	return
 	//}
+	uploadPingResult(conn, pingType, wsPayload)
+}
+
+// uploadPingResult 统一上报一条 ping 结果（WebSocket 优先，否则退回 POST）。
+func uploadPingResult(conn *ws.SafeConn, pingType string, payload interface{}) {
 	if conn == nil {
-		if err := postV2RPC(wsPayload); err != nil {
-			log.Printf("Failed to upload ping result over POST: %v", err)
+		if err := postV2RPC(payload); err != nil {
+			log.Printf("Failed to upload %s ping result over POST: %v", pingType, err)
 		}
 		return
 	}
-	if err := conn.WriteJSON(wsPayload); err != nil {
-		log.Printf("Failed to write JSON to WebSocket: %v", err)
+	if err := conn.WriteJSON(payload); err != nil {
+		log.Printf("Failed to write %s ping JSON to WebSocket: %v", pingType, err)
+	}
+}
+
+// dualTCPTarget 决定 dual 任务的 TCP 腿用哪个目标地址。
+// 目标自带端口就尊重它；否则优先复用 auto 的缓存解析结果，最后才现场探 443/80。
+func dualTCPTarget(target string) string {
+	if _, port, err := net.SplitHostPort(target); err == nil && port != "" {
+		return target
+	}
+	autoMu.Lock()
+	d, ok := autoCache[target]
+	autoMu.Unlock()
+	if ok && d.kind == "tcp" && d.target != "" {
+		return d.target
+	}
+	for _, port := range []string{"443", "80"} {
+		cand := net.JoinHostPort(target, port)
+		if _, err := tcpPing(cand, autoProbeTimeout); err == nil {
+			return cand
+		}
+	}
+	return net.JoinHostPort(target, "443")
+}
+
+// runDualPing 执行「双协议并列探测」：同一周期内用 ICMP 和 TCP 各测一次目标，
+// 分别上报两条结果（同一 task_id、不同 ping_type）。
+//
+// 为什么需要它：任务的探测协议是每个任务一个，选错就会得到恒定的 100% 丢包，
+// 看起来像宕机，实际是协议不匹配。并列探测后，面板上会同时出现
+// 「ICMP 100%」和「TCP 2ms」两组数据 —— 一眼就能区分「目标不答这个协议」
+// 和「目标真的不可达」，不再需要人来推断。
+func runDualPing(conn *ws.SafeConn, taskID uint, pingTarget string, timeout time.Duration) {
+	legs := []struct {
+		kind   string
+		target string
+	}{
+		{"icmp", pingTarget},
+		{"tcp", dualTCPTarget(pingTarget)},
 	}
 
+	for _, leg := range legs {
+		value := -1
+		var latency int64
+		var err error
+		switch leg.kind {
+		case "icmp":
+			latency, err = icmpPing(leg.target, timeout)
+		case "tcp":
+			latency, err = tcpPing(leg.target, timeout)
+		}
+		if err == nil {
+			value = int(latency)
+		} else {
+			log.Printf("dual ping task %d [%s] target=%s failed: %v", taskID, leg.kind, leg.target, err)
+		}
+		// -1 表示丢包，由服务端统一换算丢包率
+		uploadPingResult(conn, leg.kind, v2.BuildPingResultPayload(taskID, leg.kind, value, time.Now()))
+	}
 }
 
 func postV2RPC(payload interface{}) error {
