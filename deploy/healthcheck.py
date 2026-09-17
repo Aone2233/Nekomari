@@ -48,8 +48,17 @@ record("Up" in ps and "healthy" in ps, "container up + healthy", ps)
 record("ipinfo" in ps or "v0.1.2" in ps, "image is the ip-info build", ps.split("|")[-1])
 
 print("\n=== 3. agent ===")
-agent = sh("systemctl is-active komari-agent-oc424")
-record(agent == "active", "agent service active", agent)
+# Report by node token rather than a hardcoded unit name: the unit is named after
+# the host role and was renamed once already when the restored node identity
+# replaced the throwaway verification agent.
+units = sh("systemctl list-units --type=service --no-pager --plain 2>/dev/null "
+           "| awk '{print $1}' | grep -i '^komari-agent' || true").split()
+if units:
+    for unit in units:
+        state = sh(f"systemctl is-active {unit}")
+        record(state == "active", f"{unit} active", state)
+else:
+    record(False, "an agent unit exists", "no komari-agent* unit found")
 
 print("\n=== 4. databases ===")
 for db in ("komari.db", "metrics.db"):

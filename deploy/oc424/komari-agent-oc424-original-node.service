@@ -1,0 +1,35 @@
+[Unit]
+Description=Nekomari agent reporting OC424 to the local panel (restored node)
+Documentation=https://github.com/Aone2233/Nekomari
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/komari
+
+# Reports as the *restored* node "甲骨文 OC424" by reusing that node's token from
+# the recovered database, so the panel keeps its group/tags/pricing and its
+# historical series instead of gaining a duplicate node.
+#
+# Deliberately NOT --auto-discovery: that would register a new node, and this
+# host's node already exists in the restored data.
+#
+# The original unit pointed at http://127.0.0.1:25774 and so does this one --
+# the panel port did not change when the instance was rebuilt.
+ExecStart=/home/ubuntu/nekomari-agent/komari-agent-linux-arm64 \
+  -e http://127.0.0.1:25774 \
+  -t HW41Se2JiX2861PARbuyni \
+  -i 5 \
+  --info-report-interval 10 \
+  --exclude-nics lo,docker0 \
+  --month-rotate 1 \
+  --disable-auto-update \
+  --disable-web-ssh
+
+Restart=always
+RestartSec=5
+User=root
+
+[Install]
+WantedBy=multi-user.target
