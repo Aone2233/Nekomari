@@ -995,7 +995,7 @@
       "favicon_default_error": "Failed to restore the default favicon",
       "favicon_default_success": "Default favicon has been restored",
       "favicon_description": "Icons displayed in browser tabs",
-      "favicon_note": "Favicon icons can be slow to update and it is often necessary to clear your browser's cache to see the changes.",
+      "favicon_note": "The preview updates immediately. An already-open browser tab may keep showing the previous icon until it is reloaded.",
       "favicon_update_success": "updated favicon",
       "header": "Custom Header",
       "header_description": "Add custom HTML/CSS/JavaScript to the site header. This will be loaded on all pages.",

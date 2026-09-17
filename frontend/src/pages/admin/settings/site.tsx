@@ -22,6 +22,11 @@ export default function SiteSettings() {
   const { settings, loading, error, refetch } = useSettings();
   const [shareHours, setShareHours] = useState(1);
 
+  // favicon 预览的缓存版本号：上传/恢复默认后自增，让 <img> 重新取图。
+  // 服务端已对 /favicon.ico 关闭缓存，但浏览器对同 URL 的图标仍可能沿用旧图，
+  // 预览是用户判断「有没有生效」的唯一依据，所以这里显式换 URL。
+  const [faviconVersion, setFaviconVersion] = useState(0);
+
   // 恢复备份对话框与上传状态
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -295,7 +300,7 @@ export default function SiteSettings() {
           <Flex gap="2" align="center">
             {t("settings.custom.favicon_current", "当前 Favicon")}
             <img
-              src="/favicon.ico"
+              src={`/favicon.ico?v=${faviconVersion}`}
               alt="Favicon"
               style={{ width: 32, height: 32 }}
             />
@@ -339,6 +344,7 @@ export default function SiteSettings() {
                           })
                           .then((data) => {
                             if (data.status === "success") {
+                              setFaviconVersion((v) => v + 1);
                               toast.success(t("settings.custom.favicon_default_success"));
                             } else {
                               toast.error(
@@ -378,6 +384,7 @@ export default function SiteSettings() {
                       );
                       const data = await response.json();
                       if (data.status === "success") {
+                        setFaviconVersion((v) => v + 1);
                         toast.success(
                           t(
                             "settings.custom.favicon_update_success"

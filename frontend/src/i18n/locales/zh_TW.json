@@ -1000,7 +1000,7 @@
       "favicon_default_error": "恢復預設 Favicon 失敗",
       "favicon_default_success": "已恢復預設 Favicon",
       "favicon_description": "在瀏覽器標籤頁顯示的圖示",
-      "favicon_note": "Favicon 圖示的更新速度可能較慢，通常需要清除瀏覽器快取後才能看到更改。",
+      "favicon_note": "預覽會立即更新。已開啟的瀏覽器分頁可能仍顯示舊圖示，重新載入後生效。",
       "favicon_update_success": "已更新 Favicon",
       "header": "自定義頭部",
       "header_description": "新增自定義 HTML/CSS/JavaScript 到站點頭部，這些內容將會在所有頁面載入",

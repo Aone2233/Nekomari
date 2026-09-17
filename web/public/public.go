@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -229,6 +230,14 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 			htmlStr = replaceHTMLLanguage(htmlStr, language)
 		}
 
+		// favicon 的 URL 带上版本号，必须在下面那条「不替换」的早退之前执行 ——
+		// /admin 与 /terminal 走的就是那条路径，而站点设置页恰好在那里预览图标。
+		// 浏览器标签图标和 Cloudflare 都会长期缓存 /favicon.ico（Cloudflare 甚至
+		// 把源站的 no-store 换成自己的 max-age），只靠响应头不足以保证换了图标
+		// 就能看到。版本取自文件修改时间：图标没变 URL 不变、缓存照旧生效；换了
+		// 图标 URL 立刻变化、绕过所有缓存层。
+		htmlStr = withVersionedFavicon(htmlStr)
+
 		// 如果不替换，保留系统内置页面内容，仅同步 html lang。
 		if !shouldReplace {
 			c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(htmlStr))
@@ -249,6 +258,13 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 	// ================= 路由定义 =================
 	// 1. Favicon 优先策略
 	r.GET("/favicon.ico", func(c *gin.Context) {
+		// favicon 是可替换的，而且浏览器/CDN 对它的缓存极其激进 —— 没有缓存头时
+		// 会长期沿用旧图标，表现就是「上传成功但图标不变」。这里禁止缓存并每次都
+		// 回源校验，代价只是几十 KB 以内的一个小文件。
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.Header("Pragma", "no-cache")
+		c.Header("Expires", "0")
+
 		// 优先：./data/favicon.ico
 		localFavicon := filepath.Join(DataDir, FaviconFile)
 		if !forceDefaultTheme {
@@ -399,4 +415,37 @@ func sniffFaviconType(data []byte) string {
 		}
 		return "application/octet-stream"
 	}
+}
+
+// faviconVersion 返回当前 favicon 的版本串。
+//
+// 用文件修改时间而不是内容哈希：图标文件很小，读一次做哈希也便宜，但修改时间
+// 已经足够表达「这个图标换过了」，而且不需要每次请求都读文件内容。文件不存在
+// （尚未自定义）时返回空串，此时保持原样、不做任何改写。
+func faviconVersion() string {
+	info, err := os.Stat(filepath.Join(DataDir, FaviconFile))
+	if err != nil {
+		return ""
+	}
+	return strconv.FormatInt(info.ModTime().Unix(), 36)
+}
+
+// withVersionedFavicon 给 index.html 里的 favicon 引用加上 ?v=<mtime>。
+//
+// 为什么必须改 URL 而不能只靠响应头：浏览器标签图标与 Cloudflare 都会长期缓存
+// /favicon.ico，而 Cloudflare 会用自己配置的 max-age 覆盖源站的 Cache-Control
+// （实测源站发 no-store，边缘仍回 max-age=14400）。URL 一变，所有缓存层都失效。
+func withVersionedFavicon(html string) string {
+	version := faviconVersion()
+	if version == "" {
+		return html
+	}
+	suffix := FaviconFile + "?v=" + version
+	for _, original := range []string{
+		`href="favicon.ico"`,
+		`href="/favicon.ico"`,
+	} {
+		html = strings.ReplaceAll(html, original, `href="/`+suffix+`"`)
+	}
+	return html
 }

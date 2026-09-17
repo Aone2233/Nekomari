@@ -1000,7 +1000,7 @@
       "favicon_default_error": "Gagal memulihkan favicon bawaan",
       "favicon_default_success": "Favicon default telah dipulihkan",
       "favicon_description": "Ikon yang ditampilkan di tab peramban",
-      "favicon_note": "Ikon favicon mungkin lambat diperbarui, sering kali perlu membersihkan cache peramban untuk melihat perubahan.",
+      "favicon_note": "Pratinjau diperbarui segera. Tab peramban yang sudah terbuka mungkin masih menampilkan ikon lama sampai dimuat ulang.",
       "favicon_update_success": "favicon berhasil diperbarui",
       "header": "Header Kustom",
       "header_description": "Tambahkan HTML/CSS/JavaScript kustom ke header situs. Akan dimuat di semua halaman.",

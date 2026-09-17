@@ -1000,7 +1000,7 @@
       "favicon_default_error": "デフォルトのファビコンの復元に失敗しました",
       "favicon_default_success": "デフォルトのファビコンに戻しました",
       "favicon_description": "ブラウザのタブに表示されるアイコン",
-      "favicon_note": "ファビコンアイコンの更新速度は遅い場合があり、変更を確認するには通常ブラウザのキャッシュをクリアする必要があります。",
+      "favicon_note": "プレビューはすぐに更新されます。すでに開いているタブは、再読み込みするまで古いアイコンを表示し続けることがあります。",
       "favicon_update_success": "ファビコンを更新しました",
       "header": "カスタムヘッダー",
       "header_description": "サイトのヘッダーにカスタム HTML/CSS/JavaScript を追加します。これらの内容はすべてのページで読み込まれます",

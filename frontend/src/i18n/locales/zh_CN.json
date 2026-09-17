@@ -1000,7 +1000,7 @@
       "favicon_default_error": "恢复默认 Favicon 失败",
       "favicon_default_success": "已恢复默认 Favicon",
       "favicon_description": "在浏览器标签页显示的图标",
-      "favicon_note": "Favicon 图标的更新速度可能较慢，通常需要清除浏览器缓存后才能看到更改。",
+      "favicon_note": "预览会立即更新。已打开的浏览器标签页可能仍显示旧图标，重新加载后生效。",
       "favicon_update_success": "已更新 Favicon",
       "header": "自定义头部",
       "header_description": "添加自定义 HTML/CSS/JavaScript 到站点头部，这些内容将会在所有页面加载",
