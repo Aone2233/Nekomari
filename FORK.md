@@ -134,22 +134,27 @@ Nekomari's own additions are released under the same MIT license.
 
 Upstream is archived, so no further upstream commits are expected. If upstream were ever unarchived, the layout difference (monorepo) means a plain `git merge` would need care around `frontend/` and `agent/`, which do not exist upstream.
 
-## Fork network status (important)
+## Fork network status
 
-This repository was created as a real GitHub fork of `komari-monitor/komari`, but **was then switched to private — which permanently detaches it from the fork network**. GitHub removes the `parent` link when a fork is made private, and **switching back to public does not restore it** (verified empirically: `fork: false`, `parent: null` after toggling back).
+Nekomari is a **genuine GitHub fork** of `komari-monitor/komari` and is **public**,
+so the native *"forked from komari-monitor/komari"* banner and the *"N commits
+ahead"* indicator are both shown. Current state, as reported by the API:
 
-So while Nekomari is private, GitHub's native *"forked from komari-monitor/komari"* banner **will not be shown**, even though the code lineage is exactly as documented above.
+```
+isFork = true   visibility = PUBLIC   parent = komari-monitor/komari
+```
 
-**Plan to restore the native fork attribution before the public release:**
+`main` is **23 commits ahead** of the upstream base `0ca87aa` (`1.5.0-fix1`).
 
-1. Develop privately in this repository.
-2. When ready to publish: create a **fresh public fork** —
-   `gh repo fork komari-monitor/komari --fork-name Nekomari`
-   (or delete this repo and re-fork; fork names must be unique per account).
-3. Force-push this repository's `main` to the fresh fork:
-   `git remote add public-fork git@github.com:Aone2233/Nekomari.git && git push --force public-fork main`
+> Earlier development happened in this repository while it was private. Making a
+> fork private removes GitHub's `parent` link, and switching back to public does
+> **not** restore it — so at that point the plan was to re-fork and force-push to
+> recover the attribution. That turned out to be unnecessary: the repository was
+> made public again and the fork relationship is intact (`isFork: true`), which is
+> what the API reports above. The original caution is kept here only as a note,
+> because the detach behaviour itself is real and worth remembering before
+> toggling a fork's visibility.
 
-The resulting public repository is a genuine fork (with the banner **and** the *"N commits ahead of komari-monitor:main"* indicator), while all private development happened out of the public eye.
-
-Until then, the fork lineage is documented in this file and in both READMEs, and every upstream-derived file retains its original git history.
+Every upstream-derived file retains its original git history, and the lineage is
+documented in this file and in both READMEs.
 
