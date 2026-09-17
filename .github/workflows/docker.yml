@@ -1,0 +1,102 @@
+name: docker
+
+# 把已发布的二进制打包成多架构容器镜像，推到 GHCR。
+#
+# 设计说明
+# --------
+# 1) 为什么从 Release 附件构建，而不是在这里重新编译：
+#    release.yml 已经按各平台原生构建好了产物（服务端依赖 CGO，交叉编译
+#    需要额外工具链）。这里直接取用那些产物，既不必重复构建，也保证了
+#    「镜像里的二进制」与「Release 里的二进制」是同一份。
+#
+# 2) Dockerfile 依赖产物位于构建上下文根目录且命名为 nekomari-<os>-<arch>，
+#    这正是 release.yml 的命名，也是本工作流 --pattern 抓取的命名。
+#    改任意一边都必须同步改另一边。
+#
+# 3) 只推 GHCR（用内置 GITHUB_TOKEN，无需额外密钥）。
+#    要同时推 Docker Hub 的话，需要 DOCKERHUB_USERNAME / DOCKERHUB_TOKEN 两个
+#    secret，这里刻意不默认开启，避免缺密钥时整个流程失败。
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag to build an image for (e.g. v0.1.1)'
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # docker/build-push-action 的 file 是相对 context 解析的，
+      # 所以 Dockerfile 必须和二进制放在同一个目录里。
+      - name: Assemble the build context
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p ctx
+          cp Dockerfile ctx/
+          # 只要服务端产物：探针不进镜像（它跑在被监控的机器上）。
+          gh release download "${{ steps.tag.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --pattern 'nekomari-*' \
+            --dir ctx
+          ls -la ctx
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.tag.outputs.tag }}
+            type=raw,value=latest,enable=${{ !contains(steps.tag.outputs.tag, '-') }}
+            type=semver,pattern={{version}},value=${{ steps.tag.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ctx
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Dockerfile 里的 ARG TARGETOS/TARGETARCH 由 buildx 自动填充。
+          provenance: false
