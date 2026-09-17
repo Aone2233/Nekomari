@@ -20,10 +20,15 @@ Nekomari is a lightweight, self-hosted server monitoring solution — a maintain
 | Change | Status |
 |---|---|
 | **`netcheck`** — multi-protocol reachability probe (DNS + ICMP + TCP) that tells you which probe type a target actually supports | ✅ available |
+| Ping task type **`auto`** — probes once and uses a protocol the target actually answers | ✅ available |
+| Ping task type **`dual`** — measures ICMP and TCP in the same cycle, so "target only answers TCP" reads as `ICMP 100% / TCP 2ms` instead of a flat 100% loss | ✅ available |
+| **Reference target** on a ping task — probe your gateway alongside the target, to tell a local problem from an upstream one | ✅ available |
+| **Baseline alerting** — alert on deviation from a rule's own P95 history instead of a hand-tuned absolute threshold | ✅ available |
+| **Backup freshness metric** (`backup.age_seconds` / `backup.ok`) — alert when backups stop, not only when a host goes down | ✅ available |
+| **IP information API** (`/api/*/ip-info/v1`) — geo, ASN, network type and Globalping latency, for themes that render an IP panel | ✅ available |
 | Monorepo layout — server + `frontend/` + `agent/` in one repository | ✅ |
 | Bundled theme packer (`tools/zstdpack`) — builds without the `zstd` CLI (useful on Windows) | ✅ |
 | One-shot build script (`build.sh`) | ✅ |
-| Further features in progress | 🚧 see [FORK.md](./FORK.md) |
 
 ### `netcheck` in 20 seconds
 
@@ -46,14 +51,6 @@ Advice:  this target does NOT answer ICMP, but TCP:80,443 is open. Use a `tcp`
 ```
 
 It also distinguishes **"permission denied"** from **"target unreachable"** — otherwise a non-privileged ICMP attempt leads to the *opposite* conclusion.
-
-## Features
-
-
-- **Real-time monitoring**: Displays monitoring data at one-second intervals.
-- **Lightweight and efficient**: Uses minimal system resources and works well on servers of any size.
-- **Self-hosted**: Keeps you in control of your data and privacy.
-- **Web interface**: Provides an intuitive, easy-to-use monitoring dashboard.
 
 ## Features
 
