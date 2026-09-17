@@ -26,6 +26,7 @@ Nekomari is a lightweight, self-hosted server monitoring solution — a maintain
 | **Baseline alerting** — alert on deviation from a rule's own P95 history instead of a hand-tuned absolute threshold | ✅ available |
 | **Backup freshness metric** (`backup.age_seconds` / `backup.ok`) — alert when backups stop, not only when a host goes down | ✅ available |
 | **IP information API** (`/api/*/ip-info/v1`) — geo, ASN, network type and Globalping latency, for themes that render an IP panel | ✅ available |
+| **Address-family aware scheduling** — a node with no IPv4 address is skipped on IPv4-literal targets instead of reporting a permanent 100% loss, which is a structural mismatch rather than an outage | ✅ available |
 | Monorepo layout — server + `frontend/` + `agent/` in one repository | ✅ |
 | Bundled theme packer (`tools/zstdpack`) — builds without the `zstd` CLI (useful on Windows) | ✅ |
 | One-shot build script (`build.sh`) | ✅ |
@@ -77,6 +78,48 @@ release ships the server and the agent for `linux/amd64`, `linux/arm64` and
 
 The agent binary keeps the `komari-agent-` prefix because that is the filename
 its self-updater looks for — see [docs/RELEASING.md](./docs/RELEASING.md).
+
+### Docker
+
+```bash
+docker run -d --name nekomari \
+  -p 25774:25774 \
+  -v nekomari-data:/app/data \
+  ghcr.io/aone2233/nekomari:latest
+```
+
+Multi-arch (`linux/amd64`, `linux/arm64`), anonymously pullable. The binary inside
+is the same one attached to the release.
+
+> [!IMPORTANT]
+> **Always pass `-v`.** The image declares `VOLUME /app/data`, so running it
+> without one makes Docker create an *anonymous* volume. Updating the image means
+> recreating the container, and the new container gets a **different** anonymous
+> volume — so the panel starts with an empty data directory and shows the install
+> wizard again. Your data is not deleted, just orphaned, but from the outside it
+> looks exactly like "the update reset my settings".
+>
+> Either a named volume (`-v nekomari-data:/app/data`, above) or a bind mount
+> (`-v /opt/nekomari/data:/app/data`) is fine. The server logs a warning at
+> startup if it detects the anonymous case.
+
+With Compose:
+
+```yaml
+services:
+  nekomari:
+    image: ghcr.io/aone2233/nekomari:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:25774:25774"   # keep it on loopback; put a reverse proxy in front
+    volumes:
+      - ./data:/app/data
+    environment:
+      TZ: Asia/Shanghai
+```
+
+Agents hold long-lived WebSocket connections, so a reverse proxy in front must
+pass the upgrade headers — see [deploy/nginx-nekomari.conf](./deploy/nginx-nekomari.conf).
 
 ### Build from source
 

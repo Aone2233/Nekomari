@@ -222,16 +222,25 @@ jobs:
             - backup freshness metric (`backup.age_seconds` / `backup.ok`)
             - IP information API (`/api/*/ip-info/v1`) — geo, ASN, network type and
               Globalping latency, for themes that render an IP panel
+            - address-family aware scheduling — a node with no IPv4 address is skipped
+              on IPv4-literal targets instead of reporting a permanent 100% loss
 
             ### Container image
 
             ```bash
             docker run -d --name nekomari -p 25774:25774 \
-              -v nekomari-data:/app/data ghcr.io/aone2233/nekomari:${{ steps.tag.outputs.tag }}
+              -v nekomari-data:/app/data \
+              ghcr.io/aone2233/nekomari:${{ steps.tag.outputs.tag }}
             ```
 
             Multi-arch (`linux/amd64`, `linux/arm64`), anonymously pullable. The binary
             inside is the same one attached below, not a separate build.
+
+            > **Always pass `-v`.** The image declares `VOLUME /app/data`, so without it
+            > Docker creates an anonymous volume — and recreating the container (which
+            > is what an image update does) attaches a different one, so the panel comes
+            > up empty and shows the install wizard. The data is orphaned, not deleted.
+            > A named volume or a bind mount both work.
 
             See [FORK.md](https://github.com/${{ github.repository }}/blob/main/FORK.md)
             for provenance, and `docs/TESTING.md` for which tests need a privileged or

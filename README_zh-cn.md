@@ -26,6 +26,7 @@ Nekomari 是一款轻量级的自托管服务器监控工具 —— Komari 的�
 | **基线告警** —— 与规则自身的历史 P95 比较，不必为每台机器手调一个绝对阈值 | ✅ 已可用 |
 | **备份新鲜度指标**（`backup.age_seconds` / `backup.ok`）—— 备份停了会告警，而不只是主机掉线才告警 | ✅ 已可用 |
 | **IP 信息接口**（`/api/*/ip-info/v1`）—— 归属地、ASN、网络类型与 Globalping 延迟，供主题渲染 IP 面板 | ✅ 已可用 |
+| **按地址族调度** —— 没有 IPv4 的节点在 IPv4 字面量目标上会被跳过，而不是报一条恒定的 100% 丢包；那是结构上做不到，不是故障 | ✅ 已可用 |
 | 单仓结构 —— 服务端 + `frontend/` + `agent/` 合并到一个仓库 | ✅ |
 | 自带主题打包器（`tools/zstdpack`）—— 无需 `zstd` CLI 即可构建（Windows 上尤其实用） | ✅ |
 | 一键构建脚本（`build.sh`） | ✅ |
@@ -76,6 +77,46 @@ TCP 探测 (单次超时 3s)
 
 探针产物的文件名保留 `komari-agent-` 前缀 —— 那是探针自更新逻辑要查找的名字，
 理由见 [docs/RELEASING.md](./docs/RELEASING.md)。
+
+### Docker
+
+```bash
+docker run -d --name nekomari \
+  -p 25774:25774 \
+  -v nekomari-data:/app/data \
+  ghcr.io/aone2233/nekomari:latest
+```
+
+多架构（`linux/amd64`、`linux/arm64`），可匿名拉取。镜像里的二进制与 Release
+附件是同一份。
+
+> [!IMPORTANT]
+> **务必带 `-v`。** 镜像声明了 `VOLUME /app/data`，所以不带 `-v` 运行时 Docker 会
+> 创建一个**匿名卷**。而更新镜像意味着重建容器，新容器会挂上**另一个**匿名卷 ——
+> 面板于是以空数据目录启动、重新显示安装向导。**数据没有被删除，只是成了没人引用
+> 的孤儿卷**，但从外部看和「一升级设置就被初始化」完全一样。
+>
+> 命名卷（`-v nekomari-data:/app/data`，如上）或绑定挂载
+> （`-v /opt/nekomari/data:/app/data`）都可以。服务端启动时若检测到匿名卷，会在
+> 日志里明确警告。
+
+用 Compose 的话：
+
+```yaml
+services:
+  nekomari:
+    image: ghcr.io/aone2233/nekomari:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:25774:25774"   # 只监听回环，公网入口交给反向代理
+    volumes:
+      - ./data:/app/data
+    environment:
+      TZ: Asia/Shanghai
+```
+
+探针持有长连接 WebSocket，所以前面的反向代理必须放行升级头 —— 可参考
+[deploy/nginx-nekomari.conf](./deploy/nginx-nekomari.conf)。
 
 ### 从源码构建
 

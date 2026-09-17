@@ -14,6 +14,10 @@ for the incident that rule came from.
 | Script | What it does |
 |---|---|
 | `deploy-verify.sh` | Proves a **published release** actually deploys: downloads the assets, checks `SHA256SUMS.txt`, starts the server on its own port and data directory, completes the first-run install via the API, connects an agent, confirms the node reports. Cleans up after itself. Runs in CI as the `verify` job. |
+| `verify-image.sh` | Pulls a published container image and proves the binary inside it actually starts. Listing tags needs `read:packages`, but that is not the question — the question is whether the binary executes on the image's own base, which is what broke in v0.1.1 (glibc binary in a musl base). |
+| `verify-settings-persist.sh` | Runs a real upgrade (old image → new image) against a **copy** of production data and diffs the settings. Evidence that an update does not reset anything, rather than an assurance. |
+| `test-volume-footgun.sh` | Reproduces the anonymous-volume trap: install without `-v`, recreate the container, watch the settings disappear. |
+| `test-persist-warning.sh` | Checks the startup warning fires on an anonymous volume and stays quiet on a named volume and a bind mount. |
 | `docker-compose.yml` | The reference container setup: host networking off, bound to `127.0.0.1`, bind-mounted `./data`. |
 | `nginx-nekomari.conf` | Host nginx vhost. WebSocket-safe (agents hold long-lived connections) and forwards `CF-Connecting-IP` so the panel records the real visitor rather than Cloudflare's edge. |
 | `install-node-agent.sh` | Installs the agent on a node: refuses to run if one is already active, verifies the download against `SHA256SUMS.txt`, retires older agent units, writes a systemd unit. Works as root or through passwordless sudo. |
@@ -31,6 +35,10 @@ for the incident that rule came from.
 | `fix-ping-family.py` | Removes those mismatches and stale references. Reads address families from the database, not `/api/nodes`, which does not expose them. `--apply` to write; dry run by default. |
 | `ping-store-locate.py` | Where ping results are stored and at what resolution, for when a chart's granularity is mistaken for packet loss. |
 | `ping-history-depth.py` | How much ping history is actually retained. |
+| `check-node-freshness.py` | Which tasks are producing fresh samples and whether a given node is in any of them. Answers "is this node actually contributing anything" after the address-family filter means an IPv6-only node legitimately reports on some targets and not others. |
+| `test-family-skip-live.py` | End-to-end: re-adds an IPv6-only node to an IPv4 task and confirms the panel skips it without configuration help. |
+| `unhide-node.py` | Unhides a node once it is genuinely contributing data. Dry run by default, and refuses while nothing is fresh — a hidden node with no data is usually hidden for a reason. |
+| `webhook_receiver.py` | A throwaway HTTP endpoint that records every request it receives, used to prove the notifier really dispatched an alert rather than trusting the UI's "sent" state. |
 | `traffic_explain.py` | Prints, per node, the counters the panel divides by the limit and the resulting percentage — so a traffic figure can be checked against the provider's dashboard instead of guessed at. |
 | `validate_contract.py` | Field-level validation of the `/api/*/ip-info/v1` responses against the shape the theme requires. |
 | `inventory-monitoring.sh` | Lists every monitoring agent on a host. Kept because two systems coexisted here and are easy to confuse. |
