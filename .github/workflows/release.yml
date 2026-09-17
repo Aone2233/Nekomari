@@ -61,8 +61,14 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          # The agent module requires a newer Go than the root (1.26.0 vs 1.25.0).
+          # Reading the root go.mod installed too old a toolchain and the agent
+          # build failed. This job builds both, so take the higher requirement.
+          go-version-file: agent/go.mod
           cache: true
+          cache-dependency-path: |
+            go.sum
+            agent/go.sum
 
       - name: Setup Node
         uses: actions/setup-node@v7
