@@ -126,3 +126,30 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           # Dockerfile 里的 ARG TARGETOS/TARGETARCH 由 buildx 自动填充。
           provenance: false
+      # 探测：GITHUB_TOKEN（带 packages: write）能否直接把包改成公开。
+      # GHCR 新建的包默认私有，而对最终用户来说私有包等于不能用
+      # （docker pull 需要登录）。这里逐个试候选端点并把结果打出来，
+      # 以便确定到底哪条路可行 —— 而不是靠猜。
+      - name: Probe package visibility endpoints
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          echo "== token permissions in this run =="
+          gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --jq '.permissions // "n/a"' 2>&1 | head -3
+
+          try() {
+            echo "--- $1"
+            gh api -X PATCH "$1" -f visibility=public 2>&1 | head -c 300
+            echo
+          }
+          try "user/packages/container/nekomari"
+          try "repos/${{ github.repository }}/packages/container/nekomari"
+          try "orgs/${{ github.repository_owner }}/packages/container/nekomari"
+
+          echo "== 复核：匿名能否拉取 manifest =="
+          curl -s -o /dev/null -w "anonymous manifest: %{http_code}\n" \
+            -H "Accept: application/vnd.oci.image.index.v1+json" \
+            "https://ghcr.io/v2/${{ github.repository_owner }}/nekomari/manifests/${{ steps.tag.outputs.tag }}"
