@@ -36,12 +36,44 @@ for the incident that rule came from.
 Run with Playwright against a live panel. Each drives the real UI rather than the
 API, because that is the only way to see what a user sees.
 
+### Setup
+
+Needs Node 20+ and a Chromium download (~115 MB). From this directory:
+
+```bash
+npm install          # installs playwright (declared in deploy/package.json)
+npm run setup        # playwright install chromium
+```
+
+### Running
+
+All four take the same arguments — panel URL, username, password, and optionally
+an output directory for screenshots:
+
+```bash
+node ip_panel_check.js    https://your-panel admin 'password' /tmp
+node ip_panel_capture.js  https://your-panel admin 'password'
+node favicon_ui_check.js  https://your-panel admin 'password' /tmp
+node admin_version_check.js https://your-panel admin 'password'
+```
+
+The password goes on the command line, so it is visible in `ps` while the script
+runs and lands in your shell history. That is acceptable for a throwaway test
+account and not for a real one; see [docs/SECRETS.md](../docs/SECRETS.md).
+
+A panel with `private_site` enabled answers anonymous requests with 401, so the
+scripts log in through `/api/login` first rather than driving a login form.
+
 | Script | What it does |
 |---|---|
 | `ip_panel_check.js` | Logs in, opens a node detail, reports which tabs render and every ip-info response the browser saw. |
 | `ip_panel_capture.js` | Installs a fetch interceptor before app code runs, so the exact bodies the theme parses are recorded. This is what separates "the server sent something the theme rejects" from "the theme gates the UI elsewhere". |
 | `favicon_ui_check.js` | Uploads a favicon through the admin UI and reports whether the icon actually changed. |
 | `admin_version_check.js` | Confirms the admin version banner queries this repository, not upstream's. |
+
+Each exits non-zero if its own expectations fail, so they can be wired into a
+script; none of them are part of CI, because all four need a running panel and
+real credentials.
 
 ## Themes
 

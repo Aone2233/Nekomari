@@ -1,0 +1,16 @@
+{
+  "name": "nekomari-deploy-checks",
+  "private": true,
+  "description": "Browser checks for a live Nekomari panel. Not part of the build; see deploy/README.md.",
+  "type": "commonjs",
+  "scripts": {
+    "setup": "playwright install chromium",
+    "check:ip-panel": "node ip_panel_check.js",
+    "check:ip-capture": "node ip_panel_capture.js",
+    "check:favicon": "node favicon_ui_check.js",
+    "check:version-banner": "node admin_version_check.js"
+  },
+  "dependencies": {
+    "playwright": "^1.63.0"
+  }
+}
