@@ -33,12 +33,24 @@ It consumes the binaries from the GitHub Release rather than rebuilding them, so
 the binary inside the image is the same one you download from the release page —
 and the CGO cross-compile problem does not come back.
 
-> **One manual step after the first push:** GHCR creates packages as *private*.
-> A token without the `read:packages` scope cannot change that through the API,
-> so the first time you publish an image, flip it in the UI:
-> **Package settings → Change visibility → Public**. The check is
-> `curl -o /dev/null -w '%{http_code}' https://ghcr.io/v2/<owner>/nekomari/manifests/latest`
-> — `401` means it is still private, `200` means it is pullable anonymously.
+### Checking that the image is publicly pullable
+
+GHCR answers the *first* unauthenticated manifest request with `401` **whether or
+not the package is public** -- you have to fetch an anonymous token first. A bare
+`curl .../manifests/latest` therefore tells you nothing, which is an easy way to
+misread a public image as private.
+
+Do it in two steps instead:
+
+```bash
+TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:<owner>/nekomari:pull&service=ghcr.io" | jq -r .token)
+curl -s -o /dev/null -w '%{http_code}
+'   -H "Authorization: Bearer $TOKEN"   -H "Accept: application/vnd.oci.image.index.v1+json"   "https://ghcr.io/v2/<owner>/nekomari/manifests/latest"
+```
+
+`200` means anyone can `docker pull` it. The docker workflow runs this check at
+the end of every build, so a package that ends up private is reported rather
+than discovered by a user.
 
 ## What gets built
 
