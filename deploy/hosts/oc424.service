@@ -17,6 +17,9 @@ WorkingDirectory=/opt/komari
 #
 # The original unit pointed at http://127.0.0.1:25774 and so does this one --
 # the panel port did not change when the instance was rebuilt.
+#
+# Web SSH left enabled, matching what this host had before the rebuild (the flag
+# that disables it also disables rce).
 ExecStart=/home/ubuntu/nekomari-agent/komari-agent-linux-arm64 \
   -e http://127.0.0.1:25774 \
   -t HW41Se2JiX2861PARbuyni \
@@ -24,8 +27,7 @@ ExecStart=/home/ubuntu/nekomari-agent/komari-agent-linux-arm64 \
   --info-report-interval 10 \
   --exclude-nics lo,docker0 \
   --month-rotate 1 \
-  --disable-auto-update \
-  --disable-web-ssh
+  --disable-auto-update
 
 Restart=always
 RestartSec=5

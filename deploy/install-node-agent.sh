@@ -11,12 +11,22 @@
 #     and verifies it against SHA256SUMS.txt.
 #
 # Usage: install-node-agent.sh <panel-url> <token> <node-name> [--force]
+#
+# Web SSH: the agent flag `--disable-web-ssh` disables "remote control (web ssh
+# and rce)" — one switch covering both. These nodes had it enabled before this
+# fork's panel existed, so it stays enabled here to keep the panel's terminal
+# working; pass NO_WEB_SSH=1 to harden a node that does not need it.
 set -euo pipefail
 
 PANEL_URL="${1:?panel url required}"
 TOKEN="${2:?token required}"
 NODE_NAME="${3:?node name required}"
 FORCE="${4:-}"
+
+WEB_SSH_FLAG=""
+if [ "${NO_WEB_SSH:-0}" = "1" ]; then
+  WEB_SSH_FLAG="  --disable-web-ssh"
+fi
 
 VERSION="v0.1.2"
 REPO="Aone2233/Nekomari"
@@ -101,8 +111,7 @@ ExecStart=${WORKDIR}/komari-agent-linux-${ARCH} \\
   -i 5 \\
   --info-report-interval 10 \\
   --exclude-nics lo,docker0 \\
-  --disable-auto-update \\
-  --disable-web-ssh
+  --disable-auto-update${WEB_SSH_FLAG}
 Restart=always
 RestartSec=5
 User=root

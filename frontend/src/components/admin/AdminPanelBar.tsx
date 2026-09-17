@@ -251,7 +251,11 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
     return false;
   }
 
-  // 获取 GitHub releases 列表，并筛选出“比当前版本新的所有 release”
+  // 获取本仓库的 GitHub releases 列表，并筛选出“比当前版本新的所有 release”
+  //
+  // 必须指向 Nekomari 自己的仓库：上游 komari 的版本号（1.5.0-fix1）在本仓库的
+  // 版本序列（0.1.x）之上，拿上游的 release 列表来比会永远显示“有新版本”，
+  // 而且弹窗里的链接会跳到别人的仓库。这个 fork 的版本以自己的 tag 为准。
   useEffect(() => {
     let ignore = false;
     const currentVersion = (publicInfo as any)?.version || versionInfo?.version;
@@ -260,7 +264,7 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
     async function loadReleases() {
       try {
         const resp = await fetch(
-          "https://api.github.com/repos/komari-monitor/komari/releases?per_page=100",
+          "https://api.github.com/repos/Aone2233/Nekomari/releases?per_page=100",
           {
             headers: {
               Accept: "application/vnd.github+json",

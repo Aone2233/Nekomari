@@ -46,8 +46,7 @@ ExecStart=${BIN} \\
   -i 5 \\
   --info-report-interval 10 \\
   --exclude-nics lo,docker0 \\
-  --disable-auto-update \\
-  --disable-web-ssh
+  --disable-auto-update
 Restart=always
 RestartSec=5
 User=root

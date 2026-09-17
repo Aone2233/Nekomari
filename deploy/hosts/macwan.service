@@ -13,21 +13,22 @@ WorkingDirectory=%h/nekomari-agent
 #
 # Runs as a *user* unit: this host has no passwordless sudo, and user units with
 # linger enabled survive logout just as well. The cost is that the agent is not
-# root, so raw ICMP is unavailable — use the `auto` ping type for tasks here, or
-# grant cap_net_raw if ICMP matters.
+# root, so raw ICMP is unavailable — ping tasks of type `icmp` will report loss
+# here. Grant the binary cap_net_raw (and drop NoNewPrivileges) to fix that.
+#
+# Web SSH is left enabled: the flag that disables it also disables rce, and this
+# host was reachable that way before the fork's panel existed.
 ExecStart=%h/nekomari-agent/komari-agent-linux-amd64 \
   -e https://komari.orderly2233.org \
   -t ZIbRPVhoIjF7wRzGwZffaC \
   -i 5 \
   --info-report-interval 10 \
   --exclude-nics lo,docker0 \
-  --disable-auto-update \
-  --disable-web-ssh
+  --disable-auto-update
 
 Restart=always
 RestartSec=5
 
-NoNewPrivileges=yes
 PrivateTmp=yes
 
 [Install]
