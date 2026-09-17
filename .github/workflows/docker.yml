@@ -20,6 +20,13 @@ name: docker
 on:
   release:
     types: [published]
+  # release.yml 是用 GITHUB_TOKEN 创建 Release 的，而 GitHub 会抑制由
+  # GITHUB_TOKEN 触发的事件 —— 所以 release:published 在自动发布时【不会】
+  # 触发本工作流（实测 v0.1.1 就没有触发）。workflow_run 正是为这种串联场景
+  # 设计的：等 release 工作流跑完再取产物打镜像。
+  workflow_run:
+    workflows: ["release"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -34,21 +41,40 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+concurrency:
+  # release 与 workflow_run 可能同时命中，按 tag 去重避免重复推送。
+  group: docker-${{ github.event.inputs.tag || github.event.workflow_run.head_branch || github.event.release.tag_name }}
+  cancel-in-progress: false
+
 jobs:
   build-and-push:
+    # workflow_run 时不关心成功与否就白跑，先判断结论。
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Resolve tag
         id: tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+            TAG="${{ github.event.inputs.tag }}"
+          elif [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
           else
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+            # workflow_run：tag 推送触发的 run 会把 tag 放在 head_branch 上。
+            TAG="${{ github.event.workflow_run.head_branch }}"
           fi
+          case "$TAG" in
+            v*) ;;
+            *) echo "::error::resolved tag '$TAG' does not look like a release tag; nothing to build"; exit 1 ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Building image for $TAG"
 
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # 用 tag 本身而不是默认分支，保证 Dockerfile 与产物同代。
+          ref: ${{ steps.tag.outputs.tag || github.ref }}
 
       # docker/build-push-action 的 file 是相对 context 解析的，
       # 所以 Dockerfile 必须和二进制放在同一个目录里。
