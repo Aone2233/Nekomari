@@ -115,6 +115,34 @@ jobs:
             type=semver,pattern={{version}},value=${{ steps.tag.outputs.tag }}
             type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }}
 
+      # 冒烟测试：镜像必须真的能跑起来。
+      #
+      # 为什么必须有这一步：下面那个「匿名可拉取」检查只验证 manifest 能取到，
+      # 也就是「镜像存在」。它不关心容器能不能启动 —— 而镜像【存在但启动即崩】
+      # 是完全可能的，v0.1.1 就是这样：release 在 ubuntu-latest 上原生构建出
+      # glibc 二进制，Dockerfile 却把它放进 alpine（musl），容器一启动就
+      # `exec /app/nekomari: no such file or directory`（报的是找不到程序解释器）。
+      # 三个工作流当时全绿，用户拉下来却跑不起来。
+      #
+      # 这里先把镜像按本机架构单平台 load 进来，真正执行一次 --help：
+      # 动态链接器缺失/不匹配、架构不符、入口路径写错，都会在这里失败。
+      - name: Smoke test the image actually starts
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --build-arg TARGETOS=linux \
+            --build-arg TARGETARCH=amd64 \
+            --platform linux/amd64 \
+            --load \
+            -t nekomari-smoke:local \
+            -f ctx/Dockerfile ctx
+          echo "--- 入口路径是否存在且可执行 ---"
+          docker run --rm --entrypoint /app/nekomari nekomari-smoke:local --help > /tmp/smoke.txt 2>&1
+          head -3 /tmp/smoke.txt
+          echo "--- 二进制是否报告了版本 ---"
+          grep -q "Monitor" /tmp/smoke.txt
+          echo "smoke test passed"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:

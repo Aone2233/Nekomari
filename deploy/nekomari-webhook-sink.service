@@ -1,0 +1,17 @@
+[Unit]
+Description=Nekomari deploy-verify webhook receiver (artificial notification sink)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/nekomari-testctl
+ExecStart=/usr/bin/python3 %h/nekomari-testctl/webhook_receiver.py 25999 %h/nekomari-testctl/webhook_received.jsonl
+Restart=always
+RestartSec=3
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target

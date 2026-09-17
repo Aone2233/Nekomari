@@ -1,4 +1,14 @@
-FROM alpine:3.21
+# 基础镜像必须是 glibc 系（Debian），不能用 alpine。
+#
+# 原因：服务端依赖 CGO（mattn/go-sqlite3），而 release.yml 是在
+# ubuntu-latest 上原生构建的（CGO_ENABLED=1，系统 gcc），产出的二进制
+# 动态链接 glibc，程序解释器是 /lib64/ld-linux-x86-64.so.2。
+# 把它放进 alpine（musl）会以 `exec /app/nekomari: no such file or directory`
+# 启动失败 —— 这个报错说的是【找不到程序解释器】，不是文件不存在。
+#
+# 上游之所以能用 alpine，是因为它用 zig cc 交叉编译出的是 musl 二进制；
+# 本仓库改用「各平台原生构建」后这个前提就不成立了。
+FROM debian:bookworm-slim
 
 WORKDIR /app
 
@@ -6,7 +16,9 @@ WORKDIR /app
 ARG TARGETOS
 ARG TARGETARCH
 
-RUN apk add --no-cache ca-certificates curl tzdata
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl tzdata \
+ && rm -rf /var/lib/apt/lists/*
 
 # 依赖发布产物已放在构建上下文根目录，命名形如 nekomari-linux-amd64。
 # 注意：改名后这里必须用 nekomari- 前缀 —— 发布流水线产出的是 nekomari-<os>-<arch>。
