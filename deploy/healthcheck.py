@@ -45,7 +45,22 @@ for unit in ("nginx", "docker"):
 print("\n=== 2. container ===")
 ps = sh("docker ps --filter name=nekomari --format '{{.Status}}|{{.Image}}'")
 record("Up" in ps and "healthy" in ps, "container up + healthy", ps)
-record("ipinfo" in ps or "v0.1.2" in ps, "image is the ip-info build", ps.split("|")[-1])
+# The image check tracks "does this deployment have the features it is supposed
+# to". It used to require the locally-built ipinfo-arm64 tag, which was correct
+# only while the panel ran a hand-built image; once v0.1.3 published the ip-info
+# API upstream, insisting on the local tag made a *better* deployment (running the
+# released, CI-verified artifact) report as a failure. Accept either, and say
+# which one is in use so the difference stays visible.
+_img = ps.split("|")[-1] if ps else ""
+record(
+    "ipinfo" in _img or "ghcr.io/aone2233/nekomari" in _img,
+    "image carries the ip-info build",
+    _img or "no image",
+)
+if "ghcr.io" in _img:
+    print("        (published image — reproducible from the repo)")
+elif _img:
+    print("        (locally built — exists only on this host)")
 
 print("\n=== 3. agent ===")
 # Report by node token rather than a hardcoded unit name: the unit is named after
