@@ -47,6 +47,11 @@ komari
 # agent (was komari-agent, vendored into agent/)
 /agent/nekomari-agent
 /agent/nekomari-agent.exe
+# A rebuilt agent kept as a side-by-side backup. The *.exe rule above does not
+# catch it because of the trailing .old, which is how a 16 MB stale binary ended
+# up tracked in the first place.
+/agent/.*.exe.old
+/agent/*.old
 
 # server binary (root of repo)
 /nekomari
