@@ -101,6 +101,12 @@ Komari，也就是 Nekomari 的基座；两者不一致之处，以本仓库的 
 | [FORK.md](./FORK.md) | 来源、基座 commit、完整改动清单 |
 | [docs/RELEASING.md](./docs/RELEASING.md) | 如何发版，以及两个容易踩的坑 |
 | [docs/TESTING.md](./docs/TESTING.md) | 哪些测试是密闭的，哪些需要 root 或 IPv6 |
+| [docs/DEPLOY-OC424.md](./docs/DEPLOY-OC424.md) | 参考部署：拓扑、数据恢复、节点接入 |
+| [docs/DEPLOY-VERIFICATION.md](./docs/DEPLOY-VERIFICATION.md) | 在一台测试机上做部署验证，以及它发现了什么 |
+| [docs/RETIRE-CF-PROBE.md](./docs/RETIRE-CF-PROBE.md) | 退役上一套监控栈，以及如何回滚 |
+| [docs/SECRETS.md](./docs/SECRETS.md) | 「凭据不入库」的规矩，以及 token 泄漏事件记录 |
+| [docs/IP-INFO-API.md](./docs/IP-INFO-API.md) | `/api/*/ip-info/v1` 契约、上游数据源与缓存 |
+| [deploy/README.md](./deploy/README.md) | 各运维脚本做什么，以及为什么有些主机要单独处理 |
 
 ## 来源与致谢
 

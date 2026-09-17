@@ -114,6 +114,7 @@ checksum check and the systemd unit.
 | [docs/SECRETS.md](./docs/SECRETS.md) | The no-credentials rule, and the token-leak incident record |
 | [docs/DEPLOY-VERIFICATION.md](./docs/DEPLOY-VERIFICATION.md) | Deploy verification on a test host, and what it found |
 | [docs/IP-INFO-API.md](./docs/IP-INFO-API.md) | The `/api/*/ip-info/v1` contract, its upstreams, and caching |
+| [deploy/README.md](./deploy/README.md) | What each operational script does, and why some hosts need their own |
 
 ## Credits and provenance
 

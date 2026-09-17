@@ -1,0 +1,102 @@
+# deploy/
+
+Operational scripts and host configuration for running Nekomari. None of this is
+needed to *use* the project — it is the tooling used to deploy, verify and operate
+the reference instance, kept in-tree so the steps are reproducible rather than
+folklore.
+
+**No credentials belong in this directory.** Tokens and passwords come from the
+panel or the environment; see [docs/SECRETS.md](../docs/SECRETS.md) for why, and
+for the incident that rule came from.
+
+## Deploy
+
+| Script | What it does |
+|---|---|
+| `deploy-verify.sh` | Proves a **published release** actually deploys: downloads the assets, checks `SHA256SUMS.txt`, starts the server on its own port and data directory, completes the first-run install via the API, connects an agent, confirms the node reports. Cleans up after itself. Runs in CI as the `verify` job. |
+| `docker-compose.yml` | The reference container setup: host networking off, bound to `127.0.0.1`, bind-mounted `./data`. |
+| `nginx-nekomari.conf` | Host nginx vhost. WebSocket-safe (agents hold long-lived connections) and forwards `CF-Connecting-IP` so the panel records the real visitor rather than Cloudflare's edge. |
+| `install-node-agent.sh` | Installs the agent on a node: refuses to run if one is already active, verifies the download against `SHA256SUMS.txt`, retires older agent units, writes a systemd unit. Works as root or through passwordless sudo. |
+| `enable-webssh-all.sh` | Re-applies units without `--disable-web-ssh`. That flag also disables remote command execution, so it is opt-in per node. Tokens come from `NEKOMARI_NODE_TOKENS`. |
+| `set-month-rotate.sh` | Sets `--month-rotate` to a node's billing day and adopts the previous agent's `net_static.json`. Without it the panel divides a since-boot counter by the plan limit and reports inflated traffic. |
+
+## Check
+
+| Script | What it does |
+|---|---|
+| `healthcheck.py` | Post-deployment check of the running instance: host services, container, agent unit, databases, API reachability, which nodes are actually reporting, retained history, the ip-info endpoints, private-IP rejection, active theme. |
+| `node_status.py` | Which nodes are live. Distinguishes a restored-but-silent node from a reconnected one. |
+| `traffic_explain.py` | Prints, per node, the counters the panel divides by the limit and the resulting percentage — so a traffic figure can be checked against the provider's dashboard instead of guessed at. |
+| `validate_contract.py` | Field-level validation of the `/api/*/ip-info/v1` responses against the shape the theme requires. |
+| `inventory-monitoring.sh` | Lists every monitoring agent on a host. Kept because two systems coexisted here and are easy to confuse. |
+| `inspect-node-traffic.sh`, `inspect-netstatic.sh` | Per-interface kernel counters and the agent's netstatic coverage. |
+
+## Browser checks
+
+Run with Playwright against a live panel. Each drives the real UI rather than the
+API, because that is the only way to see what a user sees.
+
+| Script | What it does |
+|---|---|
+| `ip_panel_check.js` | Logs in, opens a node detail, reports which tabs render and every ip-info response the browser saw. |
+| `ip_panel_capture.js` | Installs a fetch interceptor before app code runs, so the exact bodies the theme parses are recorded. This is what separates "the server sent something the theme rejects" from "the theme gates the UI elsewhere". |
+| `favicon_ui_check.js` | Uploads a favicon through the admin UI and reports whether the icon actually changed. |
+| `admin_version_check.js` | Confirms the admin version banner queries this repository, not upstream's. |
+
+## Themes
+
+| Script | What it does |
+|---|---|
+| `upload_theme.py` | Uploads a theme archive through the server's chunked upload API, so its own extract-and-validate path runs rather than files being written into the data volume by hand. |
+| `rebrand_theme.py` | Rebrands a third-party theme's user-visible strings for Nekomari, while deliberately leaving the theme *identifier* alone — that string is the theme's contract with the server. |
+
+## Cloudflare
+
+| Script | What it does |
+|---|---|
+| `cloudflare_dns.py` | Lists, shows or points a hostname at the origin. Reuses the token `cloudflared tunnel login` wrote, so no separate secret is needed. |
+| `retire-monitor-dns.py` | Removes the DNS record fronting the retired CF-Server-Monitor worker. Documents why it cannot finish the job: worker-managed records are read-only through the DNS API. |
+
+## Retiring the previous stack
+
+See [docs/RETIRE-CF-PROBE.md](../docs/RETIRE-CF-PROBE.md) for the full record.
+These are kept because the rollback path matters more than the removal path.
+
+| Script | What it does |
+|---|---|
+| `retire-cf-probe.sh` | Per host: backs up, disables, removes, and sweeps for residual traces. `--dry-run` supported. |
+| `retire-cf-probe-all.sh` | Drives the above across the fleet. |
+| `verify-cf-probe-retired.sh` | Confirms cf-probe is gone **and** that the Nekomari agent is still active. |
+
+## Token rotation
+
+| Script | What it does |
+|---|---|
+| `rotate-all-tokens.py` | Issues a new token for every node through `admin:editClient` and writes a push map to a `0600` file. Tokens never reach stdout. |
+
+Pushing the new tokens to each host depends on where the SSH keys live, so it is
+done per-reachability rather than by one script: some hosts are reachable from the
+panel host, others only from a workstation, one only over IPv6, and two need a
+sudo password. That variation is why the ad-hoc push scripts were removed once
+used — keeping them implied a single supported path that does not exist.
+
+## hosts/
+
+Per-host configuration that does not fit the generic installer.
+
+| File | Why it is separate |
+|---|---|
+| `oc424.service` | The reference panel host. Uses the restored node's own token rather than `--auto-discovery`, so the panel keeps that node's group, tags and history. |
+| `macwan.service` | Runs as a **user** unit: that host has no passwordless sudo. Also documents that `PrivateTmp` and `NoNewPrivileges` must stay unset or a file capability stops working. |
+| `pzyc.sh` | Cannot fetch release assets (the CDN resets TLS), so it installs a separately fetched, checksum-verified binary. Takes its token from `NEKOMARI_AGENT_TOKEN`. |
+| `macwan-webhook-sink.service` | An artificial notification channel used to prove alerts are really dispatched. |
+
+## experiments/
+
+One-off probes kept because they captured knowledge that was otherwise expensive
+to obtain. Not part of any operational path.
+
+| File | What it established |
+|---|---|
+| `capability-probe.sh` | That `NoNewPrivileges=yes` and `PrivateTmp=yes` each defeat a `setcap cap_net_raw` file capability — with `/proc/<pid>/status` still reporting `CAP_NET_RAW` in `CapEff`. This is why MAC-WAN's ICMP tasks failed while an identical command from a login shell worked. |
+| `rawicmp-probe.go` | Minimal raw-ICMP socket probe, used to separate "the capability does not work here" from "the agent does something else". |

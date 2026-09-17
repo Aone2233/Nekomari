@@ -103,19 +103,23 @@ every command is the same one a contributor would run locally. The one
 exception is `linux/arm64`, which cross-compiles on an amd64 runner using
 `gcc-aarch64-linux-gnu`.
 
-## Verifying a release locally
+## Verifying a release
+
+There are two levels, and the second is the one that matters most.
+
+### 1. Reproduce the build locally
 
 Both workflow build commands can be reproduced without CI:
 
 ```bash
 # server (add GOOS/GOARCH for a non-native target)
 go build -trimpath \
-  -ldflags="-s -w -X github.com/Aone2233/nekomari/utils.CurrentVersion=v0.1.0" \
+  -ldflags="-s -w -X github.com/Aone2233/nekomari/utils.CurrentVersion=v0.1.2" \
   -o nekomari-$(go env GOOS)-$(go env GOARCH) .
 
 # agent
 (cd agent && go build -trimpath \
-  -ldflags="-s -w -X github.com/Aone2233/nekomari/agent/update.CurrentVersion=v0.1.0" \
+  -ldflags="-s -w -X github.com/Aone2233/nekomari/agent/update.CurrentVersion=v0.1.2" \
   -o komari-agent-$(go env GOOS)-$(go env GOARCH) .)
 ```
 
@@ -123,8 +127,29 @@ Check that the version actually landed in the binary — a wrong package path in
 `-X` fails silently:
 
 ```bash
-./nekomari-<os>-<arch> --help | head -1     # expect "Komari Monitor v0.1.0"
+./nekomari-<os>-<arch> --help | head -1     # expect "Nekomari Monitor v0.1.2"
 ```
+
+### 2. Deploy the published artifacts
+
+`deploy/deploy-verify.sh` treats the Release as a user would: it downloads the
+assets, verifies them against `SHA256SUMS.txt`, starts the server on its own port
+with its own data directory, completes the first-run install through the API,
+connects an agent, and confirms the node reports. It cleans up after itself.
+
+```bash
+bash deploy/deploy-verify.sh                 # latest release, throwaway temp dir
+bash deploy/deploy-verify.sh /tmp/dv 25799 v0.1.2   # explicit dir/port/tag
+```
+
+This runs automatically in CI as the `verify` job, after `release`. It exists
+because `build` only proves the code compiles and `release` only proves the assets
+upload — neither would have caught the v0.1.2 container bug, where the image's
+binary did not match its base image's libc so every `docker run` failed instantly
+while all three pipelines were green.
+
+Because it uses its own port and data directory, it is safe to run on a host that
+is already serving a panel.
 
 ## A note on which workflow files exist
 
@@ -133,7 +158,9 @@ a module path this fork no longer uses. They were removed rather than left to
 fail. What remains:
 
 - `ci.yml` — build + hermetic tests on push and pull request
-- `release.yml` — the release pipeline above
+- `release.yml` — the release pipeline, then the deploy verification above
+- `docker.yml` — multi-arch container images to GHCR, chained off `release`
 
 `docs/TESTING.md` explains which tests are hermetic and which need a privileged
-or IPv6-capable host.
+or IPv6-capable host. `docs/DEPLOY-OC424.md` documents the reference deployment,
+and `docs/RETIRE-CF-PROBE.md` the monitoring stack this fork replaced.
