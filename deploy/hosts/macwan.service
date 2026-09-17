@@ -1,0 +1,34 @@
+[Unit]
+Description=Nekomari monitoring agent (reports MAC-WAN to the public panel)
+Documentation=https://github.com/Aone2233/Nekomari
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/nekomari-agent
+
+# Reports as the restored node "MAC Server | 微服务器" by reusing that node's own
+# token, so the panel keeps its group/tags/pricing and historical series.
+#
+# Runs as a *user* unit: this host has no passwordless sudo, and user units with
+# linger enabled survive logout just as well. The cost is that the agent is not
+# root, so raw ICMP is unavailable — use the `auto` ping type for tasks here, or
+# grant cap_net_raw if ICMP matters.
+ExecStart=%h/nekomari-agent/komari-agent-linux-amd64 \
+  -e https://komari.orderly2233.org \
+  -t ZIbRPVhoIjF7wRzGwZffaC \
+  -i 5 \
+  --info-report-interval 10 \
+  --exclude-nics lo,docker0 \
+  --disable-auto-update \
+  --disable-web-ssh
+
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target

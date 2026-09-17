@@ -74,6 +74,9 @@ try:
 except Exception as e:
     record(False, "/api/public", str(e))
 
+# A missing or expired cookie makes /api/nodes answer 401; report that as a
+# failure instead of letting the later checks raise NameError.
+nodes = []
 try:
     nodes = get("/api/nodes", COOKIE)["data"]
     record(len(nodes) >= 9, "nodes present", f"{len(nodes)} nodes")

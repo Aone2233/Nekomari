@@ -131,3 +131,42 @@ sudo systemctl enable --now komari-agent-oc424.service
   with the default 60 s the agents visibly flap on and off the panel.
 - `X-Real-IP` prefers `CF-Connecting-IP` and falls back to `$remote_addr`, so the
   panel records the visitor's address rather than Cloudflare's edge.
+
+## Reconnecting the nodes (9/9 online)
+
+Restoring `komari.db` brought back all nine nodes' metadata, but their agents had
+been retired with the old panel, so nothing was reporting. Each node is now back
+with its **own** token from the recovered database — deliberately not
+`--auto-discovery`, which would have registered a *new* node and orphaned the
+restored one's group, tags, pricing and historical series.
+
+`deploy/install-node-agent.sh` does this for a node: rejects an install if an
+agent is already active for that host, downloads the agent from the release,
+verifies it against `SHA256SUMS.txt`, disables any older agent unit so only one
+process reports per host, and starts a `nekomari-agent.service`.
+
+| Node | How it was reached |
+|---|---|
+| 甲骨文 OC424 | local, reusing the node's token |
+| 华纳云 HN-JP1, HK04, AkkoCloud | direct root SSH |
+| BandwagonHost (megabox) | SSH config, port 9950 |
+| 并行智算云服务器 | SSH config `PZYC`, non-root + passwordless sudo |
+| MAC Server (MAC-WAN) | **user** unit — that host has no passwordless sudo |
+| Nomao v6_1 | IPv6 only; reachable from OC424 |
+| CloudLeadInno | root SSH from OC424 (the key is not present on every machine) |
+
+### Two things worth knowing
+
+**PZYC cannot reliably fetch release assets.** `github.com` answers, but
+`objects.githubusercontent.com` resets the TLS connection, so `curl` on the
+release URL fails intermittently and a timed-out download leaves a truncated
+file. The binary was fetched elsewhere, checksum-verified, and installed by
+`deploy/hosts/pzyc.sh`, which skips the download.
+
+**MAC-WAN runs the agent unprivileged**, because that host has no passwordless
+sudo and user units are the only option. The agent therefore cannot open raw
+ICMP sockets, so ping tasks 17/18/19 (`原生电信/移动/联通IP`, type `icmp`) fail
+there with `operation not permitted` while succeeding from the root agents. The
+fork's `auto` task type does not help for those specific targets: they are bare
+IPs, and `auto` falls back to TCP 443/80, which these hosts do not answer. Either
+grant the binary `cap_net_raw` or leave those three tasks to the root nodes.
