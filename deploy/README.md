@@ -94,6 +94,27 @@ real credentials.
 | `cloudflare_dns.py` | Lists, shows or points a hostname at the origin. Reuses the token `cloudflared tunnel login` wrote, so no separate secret is needed. |
 | `retire-monitor-dns.py` | Removes the DNS record fronting the retired CF-Server-Monitor worker. Documents why it cannot finish the job: worker-managed records are read-only through the DNS API. |
 
+## CI maintenance
+
+Actions pinned to a Node 20 runtime still run, but GitHub forces them onto Node 24
+and warns on every job. These four make the upgrade a re-run rather than a
+research task, and they check the things that only fail at run time.
+
+| Script | What it does |
+|---|---|
+| `check-action-versions.py` | Which pinned actions are behind their latest release. Reads the list out of the workflows, so it cannot drift from what is used. |
+| `check-action-breaking.py` | Surfaces the breaking-change lines between the pinned version and the latest, before jumping majors. |
+| `check-action-inputs.py` | Confirms every `with:` input a workflow passes still exists on the pinned action. A dropped input only fails when the workflow runs — for `release.yml` that means at release time, which is the worst moment to find out. |
+| `bump-actions.py` | Rewrites the pins to each action's latest major. Targets come from the actions themselves, because they differ per publisher — `docker/build-push-action` was already past the version `actions/checkout` needed. Dry run by default. |
+
+Watch out for one thing when bumping `setup-go`: `go-version-file` must point at
+the **higher** of the two modules' requirements. The root `go.mod` says 1.25.0 and
+`agent/go.mod` says 1.26.0, and both are built from the same job. Pointing at the
+root installed too old a toolchain and the agent tests failed with
+`go.mod requires go >= 1.26.0`. Older versions of the action tolerated the
+mismatch; v7 installs exactly what the file asks for, which is correct behaviour
+that simply exposed the wrong file being named.
+
 ## Retiring the previous stack
 
 See [docs/RETIRE-CF-PROBE.md](../docs/RETIRE-CF-PROBE.md) for the full record.
