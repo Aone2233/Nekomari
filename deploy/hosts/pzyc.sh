@@ -9,7 +9,8 @@
 set -euo pipefail
 
 PANEL_URL="https://komari.orderly2233.org"
-TOKEN="HK8hyFjfQxB4Dgx8cW2Zzp"
+# Never hardcode the token: this repository is public. Export it before running.
+TOKEN="${NEKOMARI_AGENT_TOKEN:?set NEKOMARI_AGENT_TOKEN to this node's token}"
 NAME="并行智算云服务器"
 WORKDIR=/opt/nekomari-agent
 BIN="$WORKDIR/komari-agent-linux-amd64"

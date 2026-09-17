@@ -33,7 +33,7 @@ WorkingDirectory=%h/nekomari-agent
 # counter by the plan limit and shows a wildly inflated figure.
 ExecStart=%h/nekomari-agent/komari-agent-linux-amd64 \
   -e https://komari.orderly2233.org \
-  -t ZIbRPVhoIjF7wRzGwZffaC \
+  -t <AGENT_TOKEN> \
   -i 5 \
   --info-report-interval 10 \
   --exclude-nics lo,docker0 \

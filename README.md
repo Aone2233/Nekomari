@@ -114,6 +114,7 @@ checksum check and the systemd unit.
 | [docs/TESTING.md](./docs/TESTING.md) | Which tests are hermetic; which need root or IPv6 |
 | [docs/DEPLOY-OC424.md](./docs/DEPLOY-OC424.md) | The public deployment: topology, data restore, node reconnection |
 | [docs/RETIRE-CF-PROBE.md](./docs/RETIRE-CF-PROBE.md) | Retiring the previous monitoring stack, and how to roll it back |
+| [docs/SECRETS.md](./docs/SECRETS.md) | The no-credentials rule, and the token-leak incident record |
 | [docs/DEPLOY-VERIFICATION.md](./docs/DEPLOY-VERIFICATION.md) | Deploy verification on a test host, and what it found |
 | [docs/IP-INFO-API.md](./docs/IP-INFO-API.md) | The `/api/*/ip-info/v1` contract, its upstreams, and caching |
 
