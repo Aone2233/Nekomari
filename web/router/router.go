@@ -1,7 +1,6 @@
 package router
 
 import (
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/web/api"
 	"github.com/Aone2233/nekomari/web/api/admin"
 	"github.com/Aone2233/nekomari/web/api/client"
@@ -11,6 +10,7 @@ import (
 	"github.com/Aone2233/nekomari/web/filemanager"
 	"github.com/Aone2233/nekomari/web/public"
 	jsonRpc "github.com/Aone2233/nekomari/web/rpc/jsonrpc"
+	"github.com/gin-gonic/gin"
 )
 
 // Register binds all HTTP, WebSocket, JSON-RPC and static frontend routes.
