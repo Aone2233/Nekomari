@@ -180,8 +180,11 @@ const ApiCard = ({ settings }: { settings: SettingsResponse }) => {
           variant="soft"
           color="mint"
           onClick={() => {
+            // 指向本仓库的 Releases：agent 二进制、SHA256SUMS 与安装说明都在那里。
+            // 之前指向上游的文档站，那是 Komari 的安装说明，与这个 fork 的产物
+            // 和参数并不一致。
             window.open(
-              "https://komari-document.pages.dev/install/agent-ad.html",
+              "https://github.com/Aone2233/Nekomari/releases",
               "_blank"
             );
           }}

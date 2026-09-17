@@ -1280,7 +1280,7 @@
       "enable_description": "通过首选方式获取及时通知。",
       "Javascript": {
         "script": "JavaScript 代码",
-        "script_help": "实现 sendMessage(message, title) 及可选的 sendEvent(event) 函数的 JavaScript 代码（部分支持 ES6）。两者均应返回 Promise 或布尔值。可用 API：fetch()、xhr()、console.log()。指南: https://komari-document.pages.dev/faq/notification-template.html"
+        "script_help": "实现 sendMessage(message, title) 及可选的 sendEvent(event) 函数的 JavaScript 代码（部分支持 ES6）。两者均应返回 Promise 或布尔值。可用 API：fetch()、xhr()、console.log()。指南: https://github.com/Aone2233/Nekomari/tree/main/docs"
       },
       "method": "通知渠道",
       "method_description": "选择您偏好的通知平台",

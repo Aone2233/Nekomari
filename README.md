@@ -95,11 +95,15 @@ external `zstd` binary.
 
 ### Installation notes
 
-The installer asks for a **metric store DSN** (SQLite by default). See the
-[installation guide](https://www.komari.wiki/en/install/quick-start) for the
-base software's Docker and deployment options — that documentation describes
-Komari, which Nekomari is built on; where the two differ, this repository's
-`docs/` wins.
+The installer asks for a **metric store DSN** (SQLite by default). The upstream
+[installation guide](https://www.komari.wiki/en/install/quick-start) describes the
+base software's Docker and deployment options; it documents Komari, so where the
+two differ, this repository's `docs/` wins.
+
+To connect a node, download the agent from
+[Releases](https://github.com/Aone2233/Nekomari/releases) and point it at the
+panel — `deploy/install-node-agent.sh` does it for a Linux host, including the
+checksum check and the systemd unit.
 
 ## Documentation
 
@@ -108,6 +112,9 @@ Komari, which Nekomari is built on; where the two differ, this repository's
 | [FORK.md](./FORK.md) | Provenance, base commit, and the full change list |
 | [docs/RELEASING.md](./docs/RELEASING.md) | How to cut a release, and the two traps |
 | [docs/TESTING.md](./docs/TESTING.md) | Which tests are hermetic; which need root or IPv6 |
+| [docs/DEPLOY-OC424.md](./docs/DEPLOY-OC424.md) | The public deployment: topology, data restore, node reconnection |
+| [docs/DEPLOY-VERIFICATION.md](./docs/DEPLOY-VERIFICATION.md) | Deploy verification on a test host, and what it found |
+| [docs/IP-INFO-API.md](./docs/IP-INFO-API.md) | The `/api/*/ip-info/v1` contract, its upstreams, and caching |
 
 ## Credits and provenance
 

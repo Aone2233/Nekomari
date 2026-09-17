@@ -13,23 +13,35 @@ WorkingDirectory=%h/nekomari-agent
 #
 # Runs as a *user* unit: this host has no passwordless sudo, and user units with
 # linger enabled survive logout just as well. The cost is that the agent is not
-# root, so raw ICMP is unavailable — ping tasks of type `icmp` will report loss
-# here. Grant the binary cap_net_raw (and drop NoNewPrivileges) to fix that.
+# root, so raw ICMP sockets need a file capability, granted once as root:
+#
+#   setcap cap_net_raw+ep ~/nekomari-agent/komari-agent-linux-amd64
+#
+# Two unit settings then matter, and both were measured rather than assumed:
+#   * NoNewPrivileges must stay unset -- systemd's default would block file
+#     capabilities and the agent reports "socket: operation not permitted".
+#   * PrivateTmp must stay unset -- with a private /tmp the same binary *still*
+#     failed with EPERM even though /proc/<pid>/status showed CAP_NET_RAW in
+#     CapEff. A standalone probe reproduced it exactly: same command, capability
+#     present, EPERM only when PrivateTmp=yes.
 #
 # Web SSH is left enabled: the flag that disables it also disables rce, and this
 # host was reachable that way before the fork's panel existed.
+#
+# --month-rotate 1 makes the agent report traffic since the 1st rather than the
+# raw kernel counter since boot. Without it the panel divides a months-long
+# counter by the plan limit and shows a wildly inflated figure.
 ExecStart=%h/nekomari-agent/komari-agent-linux-amd64 \
   -e https://komari.orderly2233.org \
   -t ZIbRPVhoIjF7wRzGwZffaC \
   -i 5 \
   --info-report-interval 10 \
   --exclude-nics lo,docker0 \
+  --month-rotate 1 \
   --disable-auto-update
 
 Restart=always
 RestartSec=5
-
-PrivateTmp=yes
 
 [Install]
 WantedBy=default.target

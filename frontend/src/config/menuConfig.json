@@ -165,7 +165,7 @@
     },
     {
       "labelKey": "common.documentation",
-      "path": "https://komari-document.pages.dev/",
+      "path": "https://github.com/Aone2233/Nekomari/tree/main/docs",
       "icon": "Book",
       "newTab": true,
       "bottom": true

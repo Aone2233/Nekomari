@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/gin-gonic/gin"
 )
 
 //go:embed defaultTheme/komari-theme.json
@@ -252,8 +252,11 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		// 优先：./data/favicon.ico
 		localFavicon := filepath.Join(DataDir, FaviconFile)
 		if !forceDefaultTheme {
-			if _, err := os.Stat(localFavicon); err == nil {
-				c.File(localFavicon)
+			if data, err := os.ReadFile(localFavicon); err == nil {
+				// 上传接口收的是任意图片，却统一存成 favicon.ico，所以不能按扩展名
+				// 判断类型：一个 PNG 被标成 image/vnd.microsoft.icon 后浏览器会直接
+				// 忽略它，表现就是「上传成功但图标不变」。按内容的魔数判断。
+				c.Data(http.StatusOK, sniffFaviconType(data), data)
 				return
 			}
 		}
@@ -366,4 +369,34 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		// 路由 (如 /dashboard, /settings) -> 返回 index.html
 		serveIndex(c)
 	})
+}
+
+// sniffFaviconType 按内容判断 favicon 的真实类型。
+//
+// 上传接口接受任意图片（前端 input 的 accept 是 image/*），但一律写成
+// favicon.ico。若按扩展名返回 image/vnd.microsoft.icon，浏览器会把 PNG 数据
+// 当成损坏的图标丢弃，用户看到的就是「上传成功但图标没变」。这里按魔数判断，
+// 让内容与 Content-Type 一致。
+func sniffFaviconType(data []byte) string {
+	switch {
+	case len(data) >= 8 && string(data[:8]) == "\x89PNG\r\n\x1a\n":
+		return "image/png"
+	case len(data) >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF:
+		return "image/jpeg"
+	case len(data) >= 6 && string(data[:6]) == "GIF87a":
+		return "image/gif"
+	case len(data) >= 6 && string(data[:6]) == "GIF89a":
+		return "image/gif"
+	case len(data) >= 12 && string(data[:4]) == "RIFF" && string(data[8:12]) == "WEBP":
+		return "image/webp"
+	case len(data) >= 4 && data[0] == 0x00 && data[1] == 0x00 && data[2] == 0x01 && data[3] == 0x00:
+		return "image/vnd.microsoft.icon"
+	default:
+		// SVG 是文本，先跳过空白再找 "<svg" / "<?xml"
+		head := strings.TrimSpace(string(data[:min(len(data), 256)]))
+		if strings.HasPrefix(head, "<svg") || strings.HasPrefix(head, "<?xml") {
+			return "image/svg+xml"
+		}
+		return "application/octet-stream"
+	}
 }
