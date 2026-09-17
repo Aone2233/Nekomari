@@ -218,3 +218,38 @@ jobs:
             See [FORK.md](https://github.com/${{ github.repository }}/blob/main/FORK.md)
             for provenance, and `docs/TESTING.md` for which tests need a privileged or
             IPv6-capable host.
+
+  # 发布后的部署验证：真的把 Release 产物当成"用户拿到的东西"跑一遍。
+  #
+  # 为什么必须有这一步：build 作业只证明【能编译】，release 作业只证明【能上传】。
+  # 两者都不会发现"产物下载下来跑不起来"这类问题——v0.1.2 之前就发生过一次：
+  # 镜像里的二进制与基础镜像 libc 不匹配，容器启动即崩，而当时所有流水线都是绿的。
+  #
+  # 这里下载刚发布的产物、校验 SHA256SUMS、启动服务端、走 API 完成首次安装、
+  # 接一个 agent 并确认节点真的在上报。用的是独立端口与独立临时目录，
+  # 脚本自己清理，所以在 runner 上不留痕迹。
+  #
+  # 放在 release 之后：产物必须先存在于 Release，才能像用户那样下载它们。
+  verify:
+    name: verify the release deploys
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy the published artifacts and check they work
+        run: |
+          # Give the Release a moment to become downloadable, then run the same
+          # script a user would: no source tree, no local build, only the assets.
+          sleep 20
+          bash deploy/deploy-verify.sh "" 25799 "${{ steps.tag.outputs.tag }}"

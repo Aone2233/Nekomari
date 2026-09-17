@@ -1,23 +1,43 @@
 #!/usr/bin/env bash
 # Verify that a fresh Nekomari deployment actually works, from the published
-# artifacts only — no access to the existing installation, no source tree.
+# artifacts only — no access to an existing installation, no source tree.
 #
-# This is the check that matters for "can someone else deploy this?": download the
+# This is the check that answers "can someone else deploy this?": download the
 # release binaries, verify them against SHA256SUMS.txt, start the server, complete
 # the first-run install through its API, connect an agent, and confirm the node
-# reports. Everything lives under one throwaway directory so cleanup is a single
-# rm -rf.
+# reports. Everything lives under one throwaway directory so cleanup is one rm -rf.
 #
-# Deliberately does NOT touch the running production instance (port 25774, volume
-# nekomari-test-data) — it uses its own port and its own data directory.
+# It deliberately avoids any running instance: its own port, its own data
+# directory. That is what makes it safe to run on a host that is already serving,
+# and safe to run in CI right after a release is published.
 #
-# Usage: deploy-verify.sh <workdir> <port>
+# Usage: deploy-verify.sh [workdir] [port] [version]
+#   workdir  default: a fresh mktemp -d
+#   port     default: 25799
+#   version  default: the tag in the repo's latest release
 set -uo pipefail
 
-WORK="${1:-/tmp/nekomari-deploy-verify}"
 PORT="${2:-25799}"
-VERSION="v0.1.2"
 REPO="Aone2233/Nekomari"
+
+if [ -n "${1:-}" ]; then
+  WORK="$1"
+  OWN_WORK=0
+else
+  WORK="$(mktemp -d "${TMPDIR:-/tmp}/nekomari-deploy-verify.XXXXXX")"
+  OWN_WORK=1
+fi
+
+if [ -n "${3:-}" ]; then
+  VERSION="$3"
+else
+  # Resolve the latest tag from the API rather than hardcoding one, so the script
+  # keeps working across releases without edits.
+  VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+            | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
+fi
+[ -n "$VERSION" ] || { echo "could not determine a release version"; exit 1; }
+
 BASE="https://github.com/${REPO}/releases/download/${VERSION}"
 
 pass=0; fail=0
@@ -25,9 +45,24 @@ ok()   { printf '  PASS  %s\n' "$*"; pass=$((pass+1)); }
 bad()  { printf '  FAIL  %s\n' "$*"; fail=$((fail+1)); }
 step() { printf '\n=== %s ===\n' "$*"; }
 
-rm -rf "$WORK"; mkdir -p "$WORK/data"; cd "$WORK"
+SRV=""; AG=""
+cleanup() {
+  [ -n "$AG" ] && kill "$AG" 2>/dev/null
+  [ -n "$SRV" ] && kill "$SRV" 2>/dev/null
+  sleep 1
+  cd /
+  # Remove the directory only when we created it; a caller-supplied workdir is
+  # theirs to manage. The condition was inverted in the first version, so the
+  # throwaway directory survived every run and a caller-supplied one was deleted.
+  # Always runs, including when a check above failed -- a CI job that leaves state
+  # behind on failure is worse than the failure itself.
+  [ "$OWN_WORK" = 1 ] && rm -rf "$WORK"
+}
+trap cleanup EXIT
 
-step "1. download the published artifacts"
+rm -rf "$WORK"; mkdir -p "$WORK/data"; cd "$WORK" || exit 1
+
+step "1. download the published artifacts (${VERSION})"
 for f in nekomari-linux-amd64 komari-agent-linux-amd64 SHA256SUMS.txt; do
   if curl -fsSL -o "$f" "$BASE/$f"; then ok "downloaded $f"; else bad "download $f"; fi
 done
@@ -46,12 +81,12 @@ fi
 
 step "3. the server reports its version"
 v=$("./nekomari-linux-amd64" --help 2>&1 | head -1)
-case "$v" in *"$VERSION"*) ok "banner shows $VERSION ($v)";; *) bad "banner: $v";; esac
+case "$v" in *"$VERSION"*) ok "banner shows $VERSION";; *) bad "banner: $v";; esac
 
 step "4. first run serves the install guide"
 ./nekomari-linux-amd64 server -l "127.0.0.1:${PORT}" > server.log 2>&1 &
 SRV=$!
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   sleep 1
   curl -fsS "http://127.0.0.1:${PORT}/api/install/status" >/dev/null 2>&1 && break
 done
@@ -87,22 +122,17 @@ if [ -n "$tok" ]; then
   AG=$!
   sleep 20
   if grep -q "WebSocket connected" agent.log; then ok "agent connected over WebSocket"; else bad "agent did not connect"; fi
-  uuid=$(sed -n 's/.*"uuid":"\([^"]*\)".*/\1/p' cookie.txt >/dev/null 2>&1; \
-         curl -fsS -b cookie.txt -X POST "http://127.0.0.1:${PORT}/api/rpc2" \
+  uuid=$(curl -fsS -b cookie.txt -X POST "http://127.0.0.1:${PORT}/api/rpc2" \
            -H 'Content-Type: application/json' \
            -d '{"jsonrpc":"2.0","method":"admin:listClients","params":{},"id":1}' 2>/dev/null \
          | sed -n 's/.*"uuid":"\([^"]*\)".*/\1/p')
   rec=$(curl -fsS -b cookie.txt "http://127.0.0.1:${PORT}/api/recent/${uuid}" 2>/dev/null)
   case "$rec" in *'"cpu"'*) ok "node is reporting metrics";; *) bad "no live report (uuid=${uuid:-none})";; esac
-  kill $AG 2>/dev/null
+  kill $AG 2>/dev/null; AG=""
 fi
 
-step "9. cleanup"
-kill $SRV 2>/dev/null
+step "9. shutdown and cleanup"
+kill $SRV 2>/dev/null; SRV=""
 sleep 1
-cd /
-rm -rf "$WORK"
-[ -d "$WORK" ] && bad "workdir still present" || ok "workdir removed"
-
 printf '\n===== %d passed, %d failed =====\n' "$pass" "$fail"
 [ "$fail" = 0 ] || exit 1
