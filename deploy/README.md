@@ -26,6 +26,11 @@ for the incident that rule came from.
 |---|---|
 | `healthcheck.py` | Post-deployment check of the running instance: host services, container, agent unit, databases, API reachability, which nodes are actually reporting, retained history, the ip-info endpoints, private-IP rejection, active theme. |
 | `node_status.py` | Which nodes are live. Distinguishes a restored-but-silent node from a reconnected one. |
+| `ping-task-stats.py` | Per-node loss and latency for one ping task. Picks the newest series tag shape automatically — the pre-fork agents tagged `{"task_id":"N"}` and this fork's tag `{"protocol":"tcp","task_id":"N"}`, so matching only the old shape returns history that stopped when the old instance was retired and makes every node look dead. |
+| `ping-tasks-audit-all.py` | Fleet-wide: which tasks pair a node with a target its address family cannot reach, and which carry references to deleted nodes. |
+| `fix-ping-family.py` | Removes those mismatches and stale references. Reads address families from the database, not `/api/nodes`, which does not expose them. `--apply` to write; dry run by default. |
+| `ping-store-locate.py` | Where ping results are stored and at what resolution, for when a chart's granularity is mistaken for packet loss. |
+| `ping-history-depth.py` | How much ping history is actually retained. |
 | `traffic_explain.py` | Prints, per node, the counters the panel divides by the limit and the resulting percentage — so a traffic figure can be checked against the provider's dashboard instead of guessed at. |
 | `validate_contract.py` | Field-level validation of the `/api/*/ip-info/v1` responses against the shape the theme requires. |
 | `inventory-monitoring.sh` | Lists every monitoring agent on a host. Kept because two systems coexisted here and are easy to confuse. |
