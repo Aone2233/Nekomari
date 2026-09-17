@@ -71,7 +71,7 @@ jobs:
           echo "Building image for $TAG"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # 用 tag 本身而不是默认分支，保证 Dockerfile 与产物同代。
           ref: ${{ steps.tag.outputs.tag || github.ref }}
@@ -92,13 +92,13 @@ jobs:
           ls -la ctx
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -106,7 +106,7 @@ jobs:
 
       - name: Derive image metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -144,7 +144,7 @@ jobs:
           echo "smoke test passed"
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ctx
           file: Dockerfile
