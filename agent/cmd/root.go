@@ -90,7 +90,7 @@ var RootCmd = &cobra.Command{
 		if repo := strings.TrimSpace(flags.UpdateRepo); repo != "" {
 			update.Repo = repo
 		}
-		log.Println("Komari Agent", update.CurrentVersion)
+		log.Println("Nekomari Agent", update.CurrentVersion)
 		log.Println("Github Repo:", update.Repo)
 
 		// 设置 DNS 解析行为

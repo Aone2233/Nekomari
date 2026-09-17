@@ -491,7 +491,7 @@ export default function PluginMarketPage() {
                               )
                             : t(
                                 "plugin.market_update_required",
-                                "Komari update required",
+                                "Nekomari update required",
                               )}
                         </Badge>
                       )}

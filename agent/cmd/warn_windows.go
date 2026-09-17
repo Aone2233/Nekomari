@@ -96,8 +96,8 @@ func ShowToast() {
 }
 
 func showSecurityToast(warning securityWarning) {
-	const aumid = "Komari.Monitor.Agent"
-	const linkName = "Komari Warning (Auto Delete Later)"
+	const aumid = "Nekomari.Monitor.Agent"
+	const linkName = "Nekomari Warning (Auto Delete Later)"
 
 	if err := ensureStartMenuShortcut(aumid, linkName); err != nil {
 		log.Printf("[warn] ensureStartMenuShortcut failed: %v", err)
@@ -120,13 +120,13 @@ func showSecurityToast(warning securityWarning) {
 
 func securityToast(warning securityWarning) toast.Notification {
 	return toast.Notification{
-		AppID:               "Komari.Monitor.Agent",
+		AppID:               "Nekomari.Monitor.Agent",
 		Title:               escapeToastText(warningTitle),
 		Message:             escapeToastText(warning.message()),
 		Duration:            toast.Long,
 		ActivationArguments: warningUninstallURL,
 		Actions: []toast.Action{
-			{Type: "protocol", Label: "Uninstall Komari Agent", Arguments: warningUninstallURL},
+			{Type: "protocol", Label: "Uninstall Nekomari Agent", Arguments: warningUninstallURL},
 		},
 	}
 }
@@ -186,7 +186,7 @@ func ensureStartMenuShortcut(aumid, linkName string) error {
 	if _, err = oleutil.PutProperty(shortcut, "WorkingDirectory", exeDir); err != nil {
 		return fmt.Errorf("set WorkingDirectory: %w", err)
 	}
-	_, _ = oleutil.PutProperty(shortcut, "Description", "Komari Agent")
+	_, _ = oleutil.PutProperty(shortcut, "Description", "Nekomari Agent")
 	// 设置 AUMID
 	if _, err = oleutil.PutProperty(shortcut, "AppUserModelID", aumid); err != nil {
 		// 某些系统该属性不存在时，依然尝试保存；Toast 可能仍然显示

@@ -63,6 +63,27 @@ Upstream published `komari-agent` `1.5.10` *after* the last server release. The 
 | `docs/RELEASING.md` | How to cut a release, and the two traps (the agent asset-name contract, and why builds are native). |
 | `FORK.md`, `docs/` | This file and documentation. |
 
+### Rebranding: what was renamed, and what deliberately was not
+
+User-visible branding now says Nekomari throughout — the server banner, the
+panel title and navbar, the footer, the installer's default site name, the CLI
+help text, the EULA shown to users, and the prose in all five locale files
+(~110 strings).
+
+Four things were deliberately **left as Komari**, because they are contracts or
+legal requirements rather than branding:
+
+| Kept | Why |
+|---|---|
+| `LICENSE`, `utils/field.ts`, and the About page's copyright line | MIT requires the original copyright notice to be preserved. The About page now reads "Copyright (C) 2025 Komari Monitor (upstream, preserved under MIT)" so the attribution is unambiguous rather than looking like an oversight. |
+| `X-Komari-Transfer-*` / `X-Komari-Upload-*` HTTP headers | Exchanged between the agent and the server for file transfer. Renaming them means changing both sides in lockstep and would break any older agent or server. |
+| The `komari` field and `CheckKomariVersion` in the plugin market API | Part of the plugin-market wire format; upstream plugins depend on it. |
+| `komari-plugin.json` / `komari-theme.json` manifest filenames | Every existing plugin and theme uses these names. Renaming would break the ecosystem this fork inherits. |
+| `komari-agent-<os>-<arch>` release asset name | What the agent's self-updater looks for (see docs/RELEASING.md). Already published as v0.1.0. |
+
+The Go module path was renamed earlier and is `github.com/Aone2233/nekomari`
+throughout, so no import path still points at upstream.
+
 ### Upstream content removed from the README
 
 Forking copies upstream's README *and* its repository metadata. Rewriting the

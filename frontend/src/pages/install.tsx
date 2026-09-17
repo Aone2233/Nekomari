@@ -53,7 +53,7 @@ export default function Install() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [passwordAgain, setPasswordAgain] = useState("");
-  const [sitename, setSitename] = useState("Komari");
+  const [sitename, setSitename] = useState("Nekomari");
   const [description, setDescription] = useState(
     "A simple server monitor tool.",
   );

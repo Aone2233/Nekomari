@@ -147,7 +147,7 @@ export default function AboutPage() {
                 <div className="km-about-license text-foreground flex flex-col gap-4">
                   <SettingCardCollapse
                     title="MIT License"
-                    description="Copyright (C) 2025 Komari Monitor"
+                    description="Copyright (C) 2025 Komari Monitor (upstream, preserved under MIT)"
                   >
                     <pre className="text-wrap">{MIT_LICENSE}</pre>
                   </SettingCardCollapse>

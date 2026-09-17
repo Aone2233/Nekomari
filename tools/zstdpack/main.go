@@ -1,10 +1,10 @@
-// zstdpack —— 把前端 dist 目录打成 Komari 内嵌主题所需的 defaultTheme/dist.tar.zst
+// zstdpack —— 把前端 dist 目录打成 Nekomari 内嵌主题所需的 defaultTheme/dist.tar.zst
 //
-// 为什么需要它：Komari 服务端用 //go:embed defaultTheme/dist.tar.zst 把默认主题
+// 为什么需要它：Nekomari 服务端用 //go:embed defaultTheme/dist.tar.zst 把默认主题
 // 编进二进制（见 komari/web/public/public.go）。官方 CI 的做法是：
 //     tar -cf dist.tar -C komari-web/dist .
 //     zstd -19 -T0 -f dist.tar -o web/public/defaultTheme/dist.tar.zst
-// 但 Windows 上不一定有 zstd CLI，所以这里直接用 Komari 自身依赖的
+// 但 Windows 上不一定有 zstd CLI，所以这里直接用 Nekomari 自身依赖的
 // github.com/klauspost/compress/zstd 来实现，保证与运行时解码器完全一致
 //（解码逻辑见 komari/web/public/embedded.go 的 decodeEmbeddedDist）。
 //

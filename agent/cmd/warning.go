@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	warningTitle        = "[Komari] Remote control is enabled on this device"
+	warningTitle        = "[Nekomari] Remote control is enabled on this device"
 	warningAdvice       = "If you did not set this up, your device may have been accessed without authorization."
-	warningCompromise   = "Stop Komari Agent immediately and check your device for signs of compromise."
+	warningCompromise   = "Stop Nekomari Agent immediately and check your device for signs of compromise."
 	warningUninstallURL = "https://komari-document.pages.dev/en/faq/uninstall"
 )
 
@@ -32,12 +32,12 @@ func newSecurityWarning(endpoint, runAsUser string) securityWarning {
 }
 
 func (w securityWarning) message() string {
-	return fmt.Sprintf("%s can execute commands and read or modify files on this device as %s.\n\n%s\n%s\n\nUninstall Komari Agent: %s",
+	return fmt.Sprintf("%s can execute commands and read or modify files on this device as %s.\n\n%s\n%s\n\nUninstall Nekomari Agent: %s",
 		w.PanelHost, w.RunAsUser, warningAdvice, warningCompromise, warningUninstallURL)
 }
 
 func warningHost(endpoint string) string {
-	const unknownHost = "the configured Komari server"
+	const unknownHost = "the configured Nekomari server"
 	endpoint = strings.TrimSpace(endpoint)
 	if !strings.Contains(endpoint, "://") && !strings.HasPrefix(endpoint, "//") {
 		endpoint = "//" + endpoint
