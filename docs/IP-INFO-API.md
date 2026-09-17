@@ -147,3 +147,41 @@ provide.
   (Globalping gives up after 20 s and returns what it has).
 * No goroutine or timer outlives a request; the service needs no `Close`.
 * Nothing is persisted: caches live in the process and are per-IP.
+
+## Verification against the real theme (open item)
+
+Verified on the live instance with a real browser (Playwright, logged in as a
+visitor), not just with curl:
+
+* The theme issues `GET /status` and then a `GET /lookup` for **each** of the
+  node's addresses — IPv4 and IPv6 — and all three answer **200**.
+* The bodies are accepted by the theme's strict schemas: no zod error and no
+  console error of any kind, with real values (`SG` / Singapore, `AS31898`,
+  route `213.35.96.0/19` for IPv4 and `2603:c024:4000::/35` for IPv6).
+* `/latency` is not called on page load; the theme treats it as on-demand.
+
+**Still open:** the "IP 信息" tab does not appear. The tab is rendered as
+`x.available && <button>IP 信息</button>` where
+
+```js
+// Instance-B37568w_.js
+function gn(e, t, n, r, i = true) {
+  const a = mn(t), o = mn(n), c = !!(a || o), l = T(r) === 'CN';
+  const u = useQuery({ queryKey: ['ip-info','status'], enabled: !!(i && e && c && !l) });
+  const d = i && !l && u.data?.available === true;   // <- gates the lookups
+  const f = hn(e, a, d), p = hn(e, o, d);
+  const m = (!i || l) ? [] : [f.data, p.data].filter((x) => !!(x && !x.data.excluded));
+  return { available: m.length > 0, lookups: m };
+}
+```
+
+Everything that function tests is satisfied in the captured traffic
+(`status.available === true`, both lookups `200` with `excluded: false`), and the
+lookups only fire when `d` is true — so the gate passed at least once. Note also
+`T(region) === 'CN'`: the theme deliberately hides this panel for
+mainland-China nodes, which is worth remembering because the restored node
+metadata carries Chinese `region`/`group` values.
+
+So the server side is confirmed correct and the remaining cause is inside the
+theme's own gating. Anyone picking this up should instrument `gn` (or the
+`['ip-info','status']` query cache) rather than re-check the API.
