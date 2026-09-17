@@ -214,6 +214,18 @@ jobs:
               to tell a local problem from an upstream one
             - baseline alerting — alert on deviation from a rule's own P95 history
             - backup freshness metric (`backup.age_seconds` / `backup.ok`)
+            - IP information API (`/api/*/ip-info/v1`) — geo, ASN, network type and
+              Globalping latency, for themes that render an IP panel
+
+            ### Container image
+
+            ```bash
+            docker run -d --name nekomari -p 25774:25774 \
+              -v nekomari-data:/app/data ghcr.io/aone2233/nekomari:${{ steps.tag.outputs.tag }}
+            ```
+
+            Multi-arch (`linux/amd64`, `linux/arm64`), anonymously pullable. The binary
+            inside is the same one attached below, not a separate build.
 
             See [FORK.md](https://github.com/${{ github.repository }}/blob/main/FORK.md)
             for provenance, and `docs/TESTING.md` for which tests need a privileged or
