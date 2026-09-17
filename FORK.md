@@ -63,6 +63,29 @@ Upstream published `komari-agent` `1.5.10` *after* the last server release. The 
 | `docs/RELEASING.md` | How to cut a release, and the two traps (the agent asset-name contract, and why builds are native). |
 | `FORK.md`, `docs/` | This file and documentation. |
 
+### Upstream content removed from the README
+
+Forking copies upstream's README *and* its repository metadata. Rewriting the
+top of the file was not enough — the tail still carried content that belonged
+to upstream and read as if it belonged here:
+
+| Removed | Why |
+|---|---|
+| Sponsors (AxisNow, DreamCloud, Sharon Networks) | They sponsor **upstream**. Two of the links carry tracking/affiliate parameters (`utm=komari`, `aff=110`). |
+| Donation QR codes (WeChat Pay, TRON) | These were **the upstream author's payment channels**. Leaving them in a fork means readers donate to someone who has nothing to do with this repository. |
+| "Deploy on Rainyun / 1Panel" slots | Affiliate storefront links, again upstream's. |
+| Screenshots | Upstream's demo images, hotlinked from upstream's own object storage (`b2.akz.moe`). |
+| "Support the Project" | Pointed at upstream's funding. |
+
+The repository's `homepage` field also arrived as `https://ss.akz.moe` — the
+upstream maintainer's site — because GitHub copies that metadata when forking.
+It has been cleared, along with the inherited description.
+
+This fork now states plainly that it has no sponsors and no donation channel,
+and points anyone who wants to support the original author at the upstream
+repository. Attribution is kept where it is due: the fork banner, the credits
+section, and the upstream contributors link.
+
 ### Removed from upstream
 
 The upstream repository shipped **ten** workflows wired to its multi-repo layout
