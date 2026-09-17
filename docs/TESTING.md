@@ -43,6 +43,12 @@ These are hermetic (no network) unless noted:
 | `agent/server` — `TestProbeAutoProtocolLive` | **opt-in**, real network: `NEKOMARI_LIVE_PROBE=1` (run as root) |
 | `internal/metricstore` — `TestWritePingRecordsKeepsProtocolsDistinct` | dual-probe results stay two distinguishable series |
 | `internal/metricstore` — `TestWritePingRecordsOmitsEmptyProtocol` | old probes without a protocol keep the historical tag shape |
+| `web/api/ipinfo` — `TestIpInfo*` | IP information API: contract shapes for all four endpoints, per-source graceful degradation, stale/negative caching, the ip-api.com rate-limit cooldown, private-IP rejection, IPv6, and classification derivation. All four upstreams are faked with `httptest`, so the package is hermetic |
+| `web/router` — `TestIpInfoRoutesRegistered` / `TestIpInfoAdminRefreshRequiresAdmin` | the four `/api/*/ip-info/v1` routes exist and the refresh route stays behind `RequireRole(admin)` |
+
+> The CI `-run` filter uses `TestIpInfo[A-Z]` instead of a bare `TestIpInfo`
+> prefix: the upstream `utils/geoip` package already has a test literally named
+> `TestIpInfo`, and it makes real requests to ipinfo.io.
 
 ```bash
 # live protocol-resolution check (needs root for real ICMP)

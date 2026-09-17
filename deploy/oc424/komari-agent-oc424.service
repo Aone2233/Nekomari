@@ -1,0 +1,29 @@
+[Unit]
+Description=Nekomari monitoring agent (reports this host to the local panel)
+Documentation=https://github.com/Aone2233/Nekomari
+After=network-online.target docker.service
+Wants=network-online.target
+# 面板就在本机容器里，等它起来再连，避免开机顺序造成的重连噪声。
+After=nekomari.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/nekomari-agent
+ExecStart=/home/ubuntu/nekomari-agent/komari-agent-linux-arm64 \
+  -e http://127.0.0.1:25774 \
+  -t Ld7plsN8AKpqS0dXlpjVyg \
+  -i 3 \
+  --disable-auto-update \
+  --disable-web-ssh
+Restart=always
+RestartSec=5
+
+# 探针只需要读 /proc /sys；显式收敛写权限，并且不给它开 web ssh。
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/nekomari-agent
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

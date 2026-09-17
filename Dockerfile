@@ -22,7 +22,12 @@ RUN apt-get update \
 
 # 依赖发布产物已放在构建上下文根目录，命名形如 nekomari-linux-amd64。
 # 注意：改名后这里必须用 nekomari- 前缀 —— 发布流水线产出的是 nekomari-<os>-<arch>。
-COPY --chmod=755 nekomari-${TARGETOS}-${TARGETARCH} /app/nekomari
+#
+# 刻意不用 `COPY --chmod=755`：那个选项要求 BuildKit，而没装 buildx 的机器
+# （例如只有 legacy builder 的服务器）会直接构建失败。产物本身已经带可执行位，
+# 这里再显式 chmod 一次，两种 builder 都能用，代价只是一个层。
+COPY nekomari-${TARGETOS}-${TARGETARCH} /app/nekomari
+RUN chmod 755 /app/nekomari
 
 ENV GIN_MODE=release
 # KOMARI_LISTEN 特意保留旧名：它是启动配置的契约，改名会让既有的

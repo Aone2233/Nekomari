@@ -5,6 +5,7 @@ import (
 	"github.com/Aone2233/nekomari/web/api"
 	"github.com/Aone2233/nekomari/web/api/admin"
 	"github.com/Aone2233/nekomari/web/api/client"
+	"github.com/Aone2233/nekomari/web/api/ipinfo"
 	public_api "github.com/Aone2233/nekomari/web/api/public"
 	"github.com/Aone2233/nekomari/web/api/terminal"
 	"github.com/Aone2233/nekomari/web/filemanager"
@@ -45,6 +46,14 @@ func registerPublicRoutes(r *gin.Engine) {
 	// /api/clients 是 WebSocket 端点（客户端发 "get"/"get <uuid>" 拉取在线列表与最新上报），
 	// 非 JSON-RPC，保留为 WS handler。
 	r.GET("/api/clients", api.GetClients)
+
+	// IP 信息面板（第三方主题 LuminaPlus）：响应外壳是 {ok,data,meta} 而不是
+	// RPC2 的 {status,message,data}，因此走独立的 REST handler 包，不做 Bind。
+	// 公开读接口与 /api/admin 下的刷新接口共用同一个 handler，从而共用缓存。
+	ipInfo := ipinfo.Default()
+	r.GET("/api/public/ip-info/v1/status", ipInfo.Status)
+	r.GET("/api/public/ip-info/v1/lookup", ipInfo.Lookup)
+	r.GET("/api/public/ip-info/v1/latency", ipInfo.Latency)
 
 	// JSON 接口 -> RPC2。
 	r.GET("/api/me", jsonRpc.Bind("public:getMe", jsonRpc.WithRaw()))
@@ -95,6 +104,8 @@ func registerAdminRoutes(r *gin.Engine) {
 	}
 	g.GET("/test/geoip", jsonRpc.Bind("admin:testGeoip", jsonRpc.WithQuery("ip")))
 	g.POST("/test/sendMessage", jsonRpc.Bind("admin:testSendMessage"))
+	// IP 信息面板的手工刷新入口，与公开读接口共用缓存。
+	g.POST("/ip-info/v1/refresh", ipinfo.Default().Refresh)
 	g.POST("/update/mmdb", admin.UpdateMmdbGeoIP)
 	g.POST("/update/user", admin.UpdateUser)
 	g.PUT("/update/favicon", admin.UploadFavicon)
