@@ -9,6 +9,7 @@ import (
 	"github.com/Aone2233/nekomari/database/notification"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 	"github.com/Aone2233/nekomari/utils/messageSender"
+	"github.com/Aone2233/nekomari/utils/notifier"
 	"gorm.io/gorm/clause"
 )
 
@@ -64,6 +65,8 @@ func adminAddLoadNotification(_ context.Context, req *rpc.JsonRpcRequest) (any, 
 		Mode         string   `json:"mode"`
 		BaselineDays int      `json:"baseline_days"`
 		Multiplier   float32  `json:"multiplier"`
+		// Tasks 仅 ping 指标需要：要盯的延迟监测任务 id 列表。
+		Tasks []string `json:"tasks"`
 	}
 	req.BindParams(&params)
 	if params.Mode == "" {
@@ -72,20 +75,31 @@ func adminAddLoadNotification(_ context.Context, req *rpc.JsonRpcRequest) (any, 
 	if params.Mode != models.LoadThresholdModeFixed && params.Mode != models.LoadThresholdModeBaseline {
 		return nil, rpc.MakeError(rpc.InvalidParams, "mode must be 'fixed' or 'baseline'", nil)
 	}
+	// ping 指标必须有目标任务，否则规则无从求值。
+	if notifier.IsPingAlertMetric(params.Metric) && len(params.Tasks) == 0 {
+		return nil, rpc.MakeError(rpc.InvalidParams, "tasks are required for ping metrics", nil)
+	}
 	// 基线模式下 threshold 是【下限】，允许为 0；固定模式下必须给出阈值。
 	thresholdRequired := params.Mode == models.LoadThresholdModeFixed
-	if len(params.Clients) == 0 || params.Metric == "" || params.Ratio == 0 || params.Interval == 0 ||
-		(thresholdRequired && params.Threshold == 0) {
-		return nil, rpc.MakeError(rpc.InvalidParams, "clients, metric, ratio and interval are required (threshold is required in fixed mode)", nil)
+	pingMode := notifier.IsPingAlertMetric(params.Metric)
+
+	// ping 指标的「对象」是任务，服务器由任务自身推导，因此不要求选客户端；
+	// 主机指标反过来，必须选客户端。Ratio 只被主机指标使用。
+	if params.Metric == "" || params.Interval == 0 || (thresholdRequired && params.Threshold == 0) {
+		return nil, rpc.MakeError(rpc.InvalidParams, "metric and interval are required (threshold is required in fixed mode)", nil)
+	}
+	if !pingMode && len(params.Clients) == 0 {
+		return nil, rpc.MakeError(rpc.InvalidParams, "clients are required for host metrics", nil)
 	}
 	if params.Interval > 4*60 || params.Interval <= 0 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Interval must be between 1 and 240 minutes", nil)
 	}
-	if params.Ratio <= 0 || params.Ratio > 1 {
+	// Ratio 只对主机指标有意义；ping 用整窗聚合值直接比阈值。
+	if !pingMode && (params.Ratio <= 0 || params.Ratio > 1) {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Ratio must be between 0 and 1", nil)
 	}
 	taskID, err := notification.AddLoadNotification(params.Clients, params.Name, params.Metric, params.Threshold, params.Ratio, params.Interval,
-		params.Mode, params.BaselineDays, params.Multiplier)
+		params.Mode, params.BaselineDays, params.Multiplier, params.Tasks)
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
 	}

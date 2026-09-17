@@ -17,9 +17,11 @@ import {
   NodeDetailsProvider,
   useNodeDetails,
 } from "@/contexts/NodeDetailsContext";
+import { usePingTask } from "@/contexts/PingTaskContext";
 
 import {
   Button,
+  Checkbox,
   Dialog,
   Flex,
   IconButton,
@@ -104,6 +106,7 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
     mode: (alert.mode as "fixed" | "baseline") || "fixed",
     baseline_days: alert.baseline_days || 7,
     multiplier: alert.multiplier || 3,
+    tasks: (alert.tasks as string[]) || [],
   });
 
   const submitEdit = (newForm: typeof form) => {
@@ -123,6 +126,7 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
             interval: newForm.interval,
             mode: newForm.mode,
             baseline_days: newForm.baseline_days,
+            tasks: newForm.tasks,
             multiplier: newForm.multiplier,
           },
         ],
@@ -263,6 +267,14 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
                   <Select.Item value="disk">Disk</Select.Item>
                   <Select.Item value="net_in">Net In</Select.Item>
                   <Select.Item value="net_out">Net Out</Select.Item>
+                  <Select.Item value="load">Load</Select.Item>
+                  <Select.Item value="swap">Swap</Select.Item>
+                  <Select.Item value="temp">Temp</Select.Item>
+                  <Select.Item value="gpu">GPU</Select.Item>
+                  <Select.Item value="backup_age">{t("loadAlert.m_backup_age", "Backup age (s)")}</Select.Item>
+                  <Select.Item value="backup_ok">{t("loadAlert.m_backup_ok", "Backup ok (1/0)")}</Select.Item>
+                  <Select.Item value="ping_loss">{t("loadAlert.m_ping_loss", "Ping loss (%)")}</Select.Item>
+                  <Select.Item value="ping_latency">{t("loadAlert.m_ping_latency", "Ping latency (ms)")}</Select.Item>
                 </Select.Content>
               </Select.Root>
               <label>{t("loadAlert.threshold_mode", "Threshold mode")}</label>
@@ -345,6 +357,15 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
                 }
                 required
               />
+              {isPingMetric(form.metric) && (
+                <>
+                  <label>{t("loadAlert.ping_tasks", "Ping tasks to watch")}</label>
+                  <PingTaskPicker
+                    value={form.tasks}
+                    onChange={(v) => setForm((f) => ({ ...f, tasks: v }))}
+                  />
+                </>
+              )}
               <label>{t("common.server")}</label>
               <Flex>
                 <NodeSelectorDialog
@@ -423,16 +444,75 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
   );
 };
 
+/** 这两个指标的数据来自延迟监测任务，而不是主机指标。 */
+const PING_METRICS = new Set(["ping_latency", "ping_loss"]);
+const isPingMetric = (m: string) => PING_METRICS.has(m);
+
+/**
+ * PingTaskPicker —— 选择要盯的延迟监测任务。
+ * 只在指标选了 ping_latency / ping_loss 时出现：这两个指标的值来自具体任务，
+ * 不选任务就无从求值（服务端也会拒绝）。
+ */
+const PingTaskPicker: React.FC<{
+  value: string[];
+  onChange: (v: string[]) => void;
+}> = ({ value, onChange }) => {
+  const { pingTasks } = usePingTask();
+  const list = pingTasks || [];
+  if (list.length === 0) {
+    return (
+      <label className="text-sm font-normal text-gray-500">
+        还没有延迟监测任务，请先到「延迟监测」里创建。
+      </label>
+    );
+  }
+  return (
+    <Flex direction="column" gap="1">
+      {list.map((task) => {
+        const id = String(task.id ?? "");
+        const checked = value.includes(id);
+        return (
+          <label key={id} className="flex items-center gap-2 text-sm font-normal">
+            <Checkbox
+              checked={checked}
+              onCheckedChange={(c: boolean | "indeterminate") =>
+                onChange(
+                  c === true ? [...value, id] : value.filter((x) => x !== id),
+                )
+              }
+            />
+            <span>
+              {task.name || `#${id}`}
+              <span className="text-gray-500"> · {task.target}</span>
+            </span>
+          </label>
+        );
+      })}
+    </Flex>
+  );
+};
+
 const AddButton: React.FC = () => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = React.useState(false);
   const [selected, setSelected] = React.useState<string[]>([]);
   const { refresh } = useLoadAlert();
   const [selectedType, setSelectedType] = React.useState<
-    "cpu" | "ram" | "disk" | "net_in" | "net_out"
+    | "cpu"
+    | "ram"
+    | "disk"
+    | "net_in"
+    | "net_out"
+    | "load"
+    | "swap"
+    | "temp"
+    | "gpu"
+    | "backup_age"
+    | "backup_ok"
   >("cpu");
   const [saving, setSaving] = React.useState(false);
   const [mode, setMode] = React.useState<"fixed" | "baseline">("fixed");
+  const [pingTaskIds, setPingTaskIds] = React.useState<string[]>([]);
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const payload = {
@@ -449,6 +529,7 @@ const AddButton: React.FC = () => {
           : 0,
       multiplier:
         mode === "baseline" ? parseFloat(e.currentTarget.multiplier.value) : 0,
+      tasks: isPingMetric(selectedType) ? pingTaskIds : [],
     };
     setSaving(true);
     fetch("/api/admin/notification/load/add", {
@@ -464,6 +545,7 @@ const AddButton: React.FC = () => {
           setSelected([]);
           setSelectedType("cpu");
           setMode("fixed");
+          setPingTaskIds([]);
           toast.success(t("common.success"));
         } else {
           response
@@ -501,7 +583,18 @@ const AddButton: React.FC = () => {
               value={selectedType}
               onValueChange={(value) =>
                 setSelectedType(
-                  value as "cpu" | "ram" | "disk" | "net_in" | "net_out",
+                  value as
+                    | "cpu"
+                    | "ram"
+                    | "disk"
+                    | "net_in"
+                    | "net_out"
+                    | "load"
+                    | "swap"
+                    | "temp"
+                    | "gpu"
+                    | "backup_age"
+                    | "backup_ok",
                 )
               }
             >
@@ -512,6 +605,14 @@ const AddButton: React.FC = () => {
                 <Select.Item value="disk">Disk</Select.Item>
                 <Select.Item value="net_in">Net In(Mbps)</Select.Item>
                 <Select.Item value="net_out">Net Out(Mbps)</Select.Item>
+                <Select.Item value="load">Load</Select.Item>
+                <Select.Item value="swap">Swap</Select.Item>
+                <Select.Item value="temp">Temp</Select.Item>
+                <Select.Item value="gpu">GPU</Select.Item>
+                <Select.Item value="backup_age">{t("loadAlert.m_backup_age", "Backup age (s)")}</Select.Item>
+                <Select.Item value="backup_ok">{t("loadAlert.m_backup_ok", "Backup ok (1/0)")}</Select.Item>
+                <Select.Item value="ping_loss">{t("loadAlert.m_ping_loss", "Ping loss (%)")}</Select.Item>
+                <Select.Item value="ping_latency">{t("loadAlert.m_ping_latency", "Ping latency (ms)")}</Select.Item>
               </Select.Content>
             </Select.Root>
             <label htmlFor="mode">
@@ -580,6 +681,12 @@ const AddButton: React.FC = () => {
               max="1"
               defaultValue={0.8}
             />
+            {isPingMetric(selectedType) && (
+              <>
+                <label>{t("loadAlert.ping_tasks", "Ping tasks to watch")}</label>
+                <PingTaskPicker value={pingTaskIds} onChange={setPingTaskIds} />
+              </>
+            )}
             <label htmlFor="select">{t("common.server")}</label>
             <div className="flex items-center justify-start gap-2">
               <NodeSelectorDialog value={selected} onChange={setSelected} />

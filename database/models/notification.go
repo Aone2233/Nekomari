@@ -42,6 +42,11 @@ type LoadNotification struct {
 	Mode         string  `json:"mode" gorm:"type:varchar(12);not null;default:'fixed'"`     // fixed | baseline
 	BaselineDays int     `json:"baseline_days" gorm:"type:int;not null;default:7"`          // 基线回看天数
 	Multiplier   float32 `json:"multiplier" gorm:"type:decimal(6,2);not null;default:3.00"` // 超过基线的倍数即视为异常
+
+	// Tasks 仅在 Metric 为 ping 指标（ping_latency / ping_loss）时使用，
+	// 存放延迟监测任务的 id。告警会应用到「运行该任务的服务器」上，
+	// 因此不需要再单独选客户端；若同时选了客户端，则只在其中求值。
+	Tasks StringArray `json:"tasks" gorm:"type:longtext"`
 }
 
 // UsesBaseline 报告该规则是否按历史基线取阈值。

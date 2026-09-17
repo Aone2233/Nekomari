@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func AddLoadNotification(clients []string, name string, metric string, threshold float32, ratio float32, interval int, mode string, baselineDays int, multiplier float32) (uint, error) {
+func AddLoadNotification(clients []string, name string, metric string, threshold float32, ratio float32, interval int, mode string, baselineDays int, multiplier float32, tasks []string) (uint, error) {
 	db := dbcore.GetDBInstance()
 	if mode == "" {
 		mode = models.LoadThresholdModeFixed
@@ -37,6 +37,7 @@ func AddLoadNotification(clients []string, name string, metric string, threshold
 		Mode:         mode,
 		BaselineDays: baselineDays,
 		Multiplier:   multiplier,
+		Tasks:        models.StringArray(tasks),
 	}
 	if err := db.Create(&notification).Error; err != nil {
 		return 0, err

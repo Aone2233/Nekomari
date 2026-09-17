@@ -68,6 +68,15 @@ func executeLoadNotificationTask(task models.LoadNotification) {
 
 	now := time.Now().UTC()
 	windowStart := now.Add(-time.Duration(task.Interval) * time.Minute)
+
+	// ping 指标走独立求值分支：数据来自延迟监测任务的记录，而不是主机指标。
+	// 规则本身、调度器与通知派发都与主机指标共用（见 ping_alert.go）。
+	if IsPingAlertMetric(task.Metric) {
+		sendLoadNotification(evaluatePingRules(task, now, windowStart), task)
+		updateLastNotified(task.Id, now)
+		return
+	}
+
 	overloadClients := make([]string, 0)
 	for _, clientUUID := range task.Clients {
 		// 仅查询当前通知使用的指标，避免重建完整监控记录。
@@ -248,6 +257,13 @@ func getMetricValue(record models.Record, metric string) float32 {
 		return record.Load
 	case "temp":
 		return record.Temp
+	// 备份新鲜度：由 agent 读备份状态文件上报（见 agent/monitoring/backup.go）。
+	// 不依赖反射而写显式分支，因为 UI 传的是 snake_case（backup_age），
+	// 而反射要找的是 Go 字段名（BackupAge）。
+	case "backup_age":
+		return float32(record.BackupAge)
+	case "backup_ok":
+		return float32(record.BackupOk)
 	case "disk":
 		client, err := clients.GetClientByUUID(record.Client) // 确保客户端信息已加载
 		if err != nil {
