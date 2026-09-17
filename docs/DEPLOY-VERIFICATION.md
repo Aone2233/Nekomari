@@ -13,15 +13,19 @@ stack) was **not touched**.
 | Piece | Detail |
 |---|---|
 | Instance | Docker container `nekomari-test`, **host network**, port **25775** |
-| Image | `ghcr.io/aone2233/nekomari:latest` (anonymous pull) |
+| Image | `ghcr.io/aone2233/nekomari:v0.1.2` (anonymous pull) |
 | Data | named volume `nekomari-test-data` → `/app/data` |
 | Agent | `komari-agent-linux-amd64` v0.1.1, systemd **user** service `komari-agent-test` |
 | Notification sink | `webhook_receiver.py` on `:25999` (artificial channel, records JSONL) |
 | Real channel | Telegram bot `@THU_Elec_BW2233_bot` → chat `5847308461` |
 
-The image's server binary is **byte-identical** to the `v0.1.1` release asset
-(`sha256 fd0be077f14bb8c65d01dbfc9c3223c008b0013b1a8334bb5ed73db6d5776fe9`), so
-what was verified is exactly what users download.
+The verification ran against the published **v0.1.1** image; the instance was
+afterwards moved to **v0.1.2**, which contains the fix below and is otherwise
+byte-identical (no Go code changed between the two tags, only the Dockerfile and
+workflows). The binary inside the v0.1.1 image was
+`sha256 fd0be077f14bb8c65d01dbfc9c3223c008b0013b1a8334bb5ed73db6d5776fe9`,
+i.e. exactly the `nekomari-linux-amd64` release asset, so what was verified is
+what users download.
 
 Port 25775 was chosen so it cannot collide with a default (`25774`) instance.
 `--network host` was used so the panel sees the agent's real IP rather than a
@@ -98,11 +102,20 @@ Error relocating /app/nekomari: __vfprintf_chk: symbol not found
 
 Upstream could use alpine because it cross-compiled with `zig cc` and shipped
 musl binaries; this fork switched to native builds, which silently invalidated
-that assumption. Fixed by moving the base image to `debian:bookworm-slim`.
+that assumption. Fixed by moving the base image to `debian:bookworm-slim`, and
+released as **v0.1.2** (the published `v0.1.1` image was broken; rebuilding it
+was not an option because `docker.yml` checks out the **tag**, so it would just
+rebuild the same broken Dockerfile).
 
 Why CI stayed green: the only image check was "is the manifest anonymously
 pullable", which tests that the image *exists*, not that it *runs*. A smoke test
-that actually executes the binary has been added to `docker.yml`.
+that actually executes the binary has been added to `docker.yml`. It was
+validated in both directions — exit 0 on the fixed image, exit 255 with the
+original error on the broken one — and it now runs on every docker build.
+
+The `debian:bookworm-slim` base grows the image from 72 MB to 184 MB. That is
+the price of matching the libc the binary is actually linked against; a
+distroless base would be smaller but needs `docker.yml` validation first.
 
 ### 2. A target that is "unreachable" may not be
 
@@ -112,12 +125,23 @@ this network answers *every* outbound TCP connect in ~1 ms from an intercepting
 device, including for a reserved address. A reliable failure target has to be one
 that cannot be intercepted: a **closed port on loopback**.
 
-### 3. The rebrand missed a user-visible string
+### 3. The rebrand missed a user-visible string (fixed here)
 
-`adminTestSendMessage` still sends `"This is a test message from Komari."`
+`adminTestSendMessage` still sent `"This is a test message from Komari."`
 (`web/rpc/jsonrpc/admin.system.go`). It is the first string a user sees when
-testing a notification channel, and it is the one place the old name is still
-shown deliberately — see the exception list in `FORK.md`; this one is not on it.
+testing a notification channel, and it was found by doing exactly that against
+the live instance. Fixed in the same batch as this document.
+
+A sweep for other `Komari` strings found three more that are **deliberately left
+alone**, because they sit on the contract boundary described in `FORK.md` rather
+than being branding. They are recorded here so the next person does not
+"helpfully" change them:
+
+| Left as-is | Why |
+|---|---|
+| `TwoFactorIssuer = "Komari Monitor"` (`database/accounts/2fa.go`) | The TOTP issuer already stored in every user's authenticator app. Changing it relabels existing entries and splits one account across two names. |
+| `"Komari Official"` theme market source (`web/api/admin/theme_market.go`) | The display name of a catalog that really is upstream's; it points at `defaultThemeMarketURL`. |
+| `./data/komari.db` (CLI default) | On-disk filename; existing installs depend on it. |
 
 ### 4. ICMP needs privileges the agent cannot assume
 
