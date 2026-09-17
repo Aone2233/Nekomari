@@ -14,6 +14,32 @@ platform, creates the GitHub Release and attaches the artifacts plus
 You can also run it manually from the Actions tab (`workflow_dispatch`) by
 supplying a tag name.
 
+## Container images
+
+`.github/workflows/docker.yml` builds multi-arch images (`linux/amd64`,
+`linux/arm64`) and pushes them to GHCR:
+
+```
+ghcr.io/aone2233/nekomari:<tag>
+ghcr.io/aone2233/nekomari:latest
+```
+
+```bash
+docker run -d --name nekomari   -p 25774:25774   -v nekomari-data:/app/data   ghcr.io/aone2233/nekomari:latest
+```
+
+It runs on `release: published`, or manually via `workflow_dispatch` with a tag.
+It consumes the binaries from the GitHub Release rather than rebuilding them, so
+the binary inside the image is the same one you download from the release page —
+and the CGO cross-compile problem does not come back.
+
+> **One manual step after the first push:** GHCR creates packages as *private*.
+> A token without the `read:packages` scope cannot change that through the API,
+> so the first time you publish an image, flip it in the UI:
+> **Package settings → Change visibility → Public**. The check is
+> `curl -o /dev/null -w '%{http_code}' https://ghcr.io/v2/<owner>/nekomari/manifests/latest`
+> — `401` means it is still private, `200` means it is pullable anonymously.
+
 ## What gets built
 
 | Artifact | Contents |
