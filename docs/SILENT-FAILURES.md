@@ -19,7 +19,11 @@ already has the answer.
 | `utils/pingSchedule` | Skipped address-family mismatches silently; now annotated in the task list. |
 | `dbcore.warnIfDataNotPersistent` | Added: says so at startup when the data directory will not survive a container update. |
 
-## Open
+## Open — none of these is currently firing
+
+Checked against the running instance on 2026-09-18: the two remaining entries below
+are latent. The scheduler case above was the only one actually happening, and it is
+fixed.
 
 ### 1. A scheduled job with no next run time never runs, and only logs — **fixed**
 
@@ -63,6 +67,11 @@ expected symptom, and a server log is the only diagnostic. The response does car
 a `meta.warning`, so the information is already on the wire — nothing consumes it.
 A theme that rendered a small "some sources unavailable" note would turn an
 unexplained blank panel into an explained one.
+
+**Latent, not active.** Checked against the running instance: zero degradations in
+the log, and a live lookup returns full data with `meta.warning` unset. So this is
+not the explanation for the missing IP panel either — worth stating explicitly,
+because it was a plausible one.
 
 ### 3. Every geoip provider falls back to `EmptyProvider` on init failure
 
