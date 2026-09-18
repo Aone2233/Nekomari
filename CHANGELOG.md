@@ -1,0 +1,113 @@
+# Changelog
+
+Notable changes per release. Dates are UTC.
+
+This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release before
+upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
+Nekomari's own.
+
+## [v0.1.4] — 2026-09-17
+
+### Added
+
+- **Address-family aware scheduling.** A node with no IPv4 address is no longer sent
+  an IPv4-literal target, where it could only ever report a permanent 100% loss.
+  Hostname targets are never filtered (the agent resolves them per family), and a
+  node with no recorded addresses yet is not filtered either, so a newly added node
+  is not silently dropped from monitoring. Skips are logged once per schedule
+  reload. Fixes a target that looked unstable when the real problem was structural.
+
+### Fixed
+
+- **The 2FA issuer said `Komari Monitor`.** That string is stored permanently in
+  the user's authenticator app, so every user who enabled 2FA saw the upstream
+  project's name.
+- **The PWA manifest said `Komari Monitor`**, in both `public/manifest.json` and the
+  `VitePWA` block — the name shown when the panel is installed as an app.
+
+### Changed
+
+- CI actions moved to the majors that ship a Node 24 runtime (checkout v7,
+  setup-go v7, setup-node v7, upload-artifact v7, download-artifact v8, docker
+  actions v4/v6/v7, action-gh-release v3). The Node 20 deprecation warning is gone.
+- `setup-go` now reads `agent/go.mod` rather than the root `go.mod`. The agent is a
+  separate module requiring a newer Go (1.26.0 vs 1.25.0) and both are built from
+  the same job; the older action tolerated the mismatch and v7 correctly did not.
+- README documents the container deployment, which it previously did not mention at
+  all — including that `-v` is required and why.
+
+## [v0.1.3] — 2026-09-17
+
+### Added
+
+- **IP information API** (`/api/*/ip-info/v1`): geo, ASN, network type and Globalping
+  latency, for themes that render an IP panel. Multiple upstreams with caching; see
+  [docs/IP-INFO-API.md](./docs/IP-INFO-API.md).
+
+### Fixed
+
+- **A replaced favicon did not take effect**, for three independent reasons: the
+  response type came from the file extension so a PNG was served as
+  `image/vnd.microsoft.icon` and discarded by browsers; no cache directives were
+  sent; and the admin preview used a fixed URL. Now the type is sniffed from
+  content, `no-store` is sent, and the served HTML versions the favicon URL by file
+  mtime so a changed icon bypasses every cache layer — including Cloudflare, which
+  overrides the origin's `Cache-Control` with its own.
+- **Traffic was reported as since-boot rather than per billing cycle**, because the
+  installer never set `--month-rotate`. A node up 151 days reported 599 GB against a
+  26 GB plan.
+- The admin version banner compared against upstream's releases, so it always
+  offered an "update" to a version this fork is ahead of.
+- Web SSH was disabled on every node by the installer's default flag, which also
+  disables remote command execution.
+
+### Added (infrastructure)
+
+- `deploy/deploy-verify.sh`, run in CI as the `verify` job after every release: it
+  downloads the published assets, checks them against `SHA256SUMS.txt`, starts the
+  server, completes the first-run install, connects an agent and confirms the node
+  reports. `build` only proves it compiles and `release` only proves it uploads;
+  neither would have caught the v0.1.2 container bug below.
+
+## [v0.1.2] — 2026-09-17
+
+### Fixed
+
+- **The container image could not start at all.** The binary was linked against
+  glibc but the image was based on Alpine (musl), so every `docker run` died with
+  `exec /app/nekomari: no such file or directory` while all three pipelines were
+  green. The base is now `debian:bookworm-slim`, and the Docker workflow smoke-tests
+  that the image actually starts before pushing.
+
+## [v0.1.1] — 2026-09-17
+
+### Fixed
+
+- `COPY --chmod` required BuildKit, which not every build host has.
+
+## [v0.1.0] — 2026-09-16
+
+First Nekomari release, forked from Komari `1.5.0-fix1`.
+
+### Added
+
+- `netcheck` — probes a target with DNS, ICMP and TCP and reports which protocol it
+  actually answers, so a monitoring task can be configured around reality instead of
+  guesswork. It also distinguishes "no permission to send ICMP" from "target
+  unreachable", because conflating those leads to the opposite conclusion.
+- Ping task type `auto` — the agent picks a protocol the target answers.
+- Ping task type `dual` — measures ICMP and TCP in the same cycle, so a target that
+  only answers TCP reads as `ICMP 100% / TCP 2ms` rather than a flat outage.
+- Reference target on a ping task — probe a gateway alongside the target to tell a
+  local problem from an upstream one.
+- Baseline alerting — alert on deviation from a rule's own P95 history instead of a
+  hand-tuned absolute threshold.
+- Backup freshness metric (`backup.age_seconds` / `backup.ok`).
+- Monorepo layout (server + `frontend/` + `agent/`), a bundled theme packer that
+  needs no `zstd` binary, and `build.sh`.
+
+[v0.1.4]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.4
+[v0.1.3]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.3
+[v0.1.2]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.2
+[v0.1.1]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.1
+[v0.1.0]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.0

@@ -150,6 +150,8 @@ checksum check and the systemd unit.
 | Document | Contents |
 |---|---|
 | [FORK.md](./FORK.md) | Provenance, base commit, and the full change list |
+| [CHANGELOG.md](./CHANGELOG.md) | What changed in each release, and why |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | How to build, test and submit a change |
 | [docs/RELEASING.md](./docs/RELEASING.md) | How to cut a release, and the two traps |
 | [docs/TESTING.md](./docs/TESTING.md) | Which tests are hermetic; which need root or IPv6 |
 | [docs/DEPLOY-OC424.md](./docs/DEPLOY-OC424.md) | The public deployment: topology, data restore, node reconnection |
