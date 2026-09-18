@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""把 LuminaPlus 的背景从「局域网 WebDAV 上的签名 URL」换成主题自带的本地背景。
+"""把 LuminaPlus 的背景从「外部 OpenList 上的签名 URL」换成主题自带的本地背景。
 
 问题
 ----
-主题配置里的 backgroundImage / backgroundImageMobile 指向 dav.orderly2233.org，而那个
-域名解析到 192.168.100.168 —— 一个【局域网地址】。所以：
+主题配置里的 backgroundImage / backgroundImageMobile 指向 dav.orderly2233.org，那两条
+URL 是取不到的。原因我一开始判断错了，记在这里免得下次再错：
 
-  * 公网访客取不到它（DNS 指向内网）
-  * 面板服务器自己也取不到
-  * URL 还带签名（sign=...），会过期
+  ✗ 「该域名只解析到局域网」—— 不对。它是【分离解析】：局域网内是 192.168.100.168，
+    公网是 59.66.23.138。从公网解析是通的，我第一次只在本机查了 DNS 就下了结论。
 
-结果就是背景永远不显示。主题自带的 LanternRivers 视频就在 /assets/ 下、由面板自己提供、
-不会过期，是唯一对所有人都能工作的选择。
+  ✓ 真正的原因是 OpenList 换了端口（443 -> 49185）。那两条 URL 用的是默认端口，所以
+    一直超时。换到 :49185 之后 OpenList 首页立刻 200。
+
+  但换端口还不够：URL 上的 sign= 是旧实例签的，新实例一律返回 401；不带签名的路径同样
+  401（整个 /d/ 都需要鉴权）。所以要么拿一条新签名，要么在 OpenList 里把该路径设为公开。
+
+在拿到可用 URL 之前，主题自带的 LanternRivers 视频是唯一对所有人都能工作的背景：它就
+在 /assets/ 下、由面板自己提供、不会过期。这个脚本切的就是它。
 
 用法（在面板主机上）：
   sudo ./set-theme-background-local.py [--dry-run]
