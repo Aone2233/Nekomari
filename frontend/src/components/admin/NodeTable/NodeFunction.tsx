@@ -83,17 +83,29 @@ export function ActionsCell({ row }: { row: Row<z.infer<typeof schema>> }) {
       args.push(serviceName);
     }
 
+    // These point at THIS repository's installers, not upstream's.
+    //
+    // They used to reference komari-monitor/komari-agent, which installs the
+    // upstream agent from an archived project -- without the flags this fork added
+    // (--month-rotate, --disable-web-ssh, and the rest). Anyone copying the command
+    // out of the panel got the wrong binary. The scripts below accept exactly the
+    // agent flags this function generates, so the command works verbatim.
+    const INSTALL_SH =
+      "https://raw.githubusercontent.com/Aone2233/Nekomari/main/deploy/install-node-agent.sh";
+    const INSTALL_PS1 =
+      "https://raw.githubusercontent.com/Aone2233/Nekomari/main/deploy/install-node-agent.ps1";
+
     let finalCommand = "";
     switch (selectedPlatform) {
       case "linux":
         finalCommand =
-          `wget -qO- https://raw.githubusercontent.com/komari-monitor/komari-agent/refs/heads/main/install.sh | sudo bash -s -- ` +
+          `curl -fsSL ${INSTALL_SH} | sudo bash -s -- ` +
           quoteShellArgs(args);
         break;
       case "windows":
         finalCommand =
           `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ` +
-          `"iwr 'https://raw.githubusercontent.com/komari-monitor/komari-agent/refs/heads/main/install.ps1'` +
+          `"iwr '${INSTALL_PS1}'` +
           ` -UseBasicParsing -OutFile 'install.ps1'; &` +
           ` '.\\install.ps1'`;
         args.forEach((arg) => {
@@ -103,7 +115,7 @@ export function ActionsCell({ row }: { row: Row<z.infer<typeof schema>> }) {
         break;
       case "macos":
         finalCommand =
-          `zsh <(curl -sL https://raw.githubusercontent.com/komari-monitor/komari-agent/refs/heads/main/install.sh) ` +
+          `curl -fsSL ${INSTALL_SH} | sudo bash -s -- ` +
           quoteShellArgs(args);
         break;
     }

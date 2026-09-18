@@ -151,9 +151,60 @@ jobs:
             komari-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
           if-no-files-found: error
 
+  # macOS 只构建【探针】，不构建服务端。
+  #
+  # 原因：服务端通过 CGO 链接 SQLite，需要目标平台的原生工具链，而 GitHub 的
+  # macOS runner 是付费额度；探针是纯 Go（CGO_ENABLED=0），在 Linux runner 上
+  # 交叉编译即可，零额外成本。
+  #
+  # 而面板的"安装命令"对话框本来就有 macOS 选项，此前它指向的却是上游的
+  # install.sh —— 上游归档后既没有新版产物，也不含本 fork 的 flag。加上这两个
+  # 产物，那个选项才真的可用。
+  build-agent-darwin:
+    name: build agent darwin/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [amd64, arm64]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: agent/go.mod
+          cache: true
+          cache-dependency-path: agent/go.sum
+
+      - name: Build agent
+        shell: bash
+        working-directory: agent
+        env:
+          GOOS: darwin
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          go build -trimpath \
+            -ldflags="-s -w -X github.com/Aone2233/nekomari/agent/update.CurrentVersion=${{ github.ref_name }}" \
+            -o komari-agent-darwin-${{ matrix.goarch }} .
+
+      - name: Stage release asset
+        shell: bash
+        run: cp -f agent/komari-agent-darwin-${{ matrix.goarch }} .
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: nekomari-darwin-${{ matrix.goarch }}
+          path: komari-agent-darwin-${{ matrix.goarch }}
+          if-no-files-found: error
+
   release:
     name: create release
-    needs: build
+    needs: [build, build-agent-darwin]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
