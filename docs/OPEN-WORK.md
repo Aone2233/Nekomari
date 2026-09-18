@@ -10,22 +10,19 @@ without re-deriving anything.
 | One-line agent installer | **Done and released** in v0.1.6 |
 | `logged_in` missing from `/api/public` | **Done and released** in v0.1.6 |
 | macOS agent builds | **Done and released** in v0.1.6 |
-| Scheduler accepting a job that never runs | **Fixed, not released** |
+| Scheduler accepting a job that never runs | **Fixed and released** in v0.1.7 |
 | Silent-failure catalogue | **Done** — 4 entries, 2 real, 2 latent |
 | LuminaPlus IP panel | **Open** — one real bug fixed, remaining cause unexplained |
-| Family mixing within one ping task | **Diagnosed, not fixed** — needs a decision |
+| Family mixing within one ping task | **Fixed** — tasks split per family, verified single-family |
 
-Production runs `ghcr.io/aone2233/nekomari:v0.1.6`. Nothing below is urgent.
+Production runs `ghcr.io/aone2233/nekomari:v0.1.7`.
 
-## Unreleased
+## Released
 
-Two commits sit on `main`, both hardening, neither in a release:
+Everything in this batch is now in a release; nothing is waiting on `main`.
 
-- `f534f19` — `AddContextFunc` rejects a cron spec whose next run is the zero time.
-  Such a job used to be accepted, then silently never executed. Tests included.
-- `581bb2d` — runs those tests in the CI filter.
-
-Roll them into the next release. No migration, no config change.
+- v0.1.7 — the scheduler guard, and the per-family task split
+- v0.1.6 — the one-line installers, macOS agent builds, and `logged_in`
 
 ## Decisions waiting
 
