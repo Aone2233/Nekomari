@@ -17,6 +17,11 @@ import (
 
 // Save 覆盖写入一个节点的最近一次探测结果。
 func Save(uuid string, params v2.UnlockParams) error {
+	db := dbcore.GetDBInstance()
+	if db == nil {
+		// 数据库还没起来。解锁是附加信息，不值得让上报流程炸掉。
+		return errors.New("database is not initialized")
+	}
 	encoded, err := json.Marshal(params.Results)
 	if err != nil {
 		return err
@@ -34,14 +39,21 @@ func Save(uuid string, params v2.UnlockParams) error {
 		UpdatedAt:    time.Now().UTC(),
 	}
 	// 一次探测就是一份完整快照，直接整体替换，不需要合并。
-	return dbcore.GetDBInstance().Save(&report).Error
+	return db.Save(&report).Error
 }
 
 // Load 读取一个节点的探测结果。没有记录时返回 (nil, nil) —— 「还没测过」不是错误，
 // 面板据此显示成「等待探测」而不是报错。
+//
+// 数据库不可用时同样返回 (nil, nil)：ip-info 的单元测试不建库，而解锁只是这个接口
+// 的附加字段，不能因为它把地理与延迟数据一起拖垮。
 func Load(uuid string) (*v2.UnlockParams, error) {
+	db := dbcore.GetDBInstance()
+	if db == nil {
+		return nil, nil
+	}
 	var report models.UnlockReport
-	err := dbcore.GetDBInstance().Where("uuid = ?", uuid).First(&report).Error
+	err := db.Where("uuid = ?", uuid).First(&report).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
