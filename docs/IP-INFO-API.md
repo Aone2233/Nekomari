@@ -198,6 +198,27 @@ fails and retries; that is the theme's design, not a server fault.
 `deploy/ws_upgrade_probe.js` confirms the server side directly — an authenticated
 upgrade returns a real JSON-RPC reply over the socket.
 
+**Found and fixed: `logged_in` was missing from `/api/public`.** The theme reads
+account state from the public settings (`n?.logged_in === true`), and the field was
+only on `/api/me`. Adding it was a real fix and is deployed, but it is **not
+sufficient** — the tab still does not render, so at least one more condition inside
+the theme is unmet.
+
+What is established about that second condition, so it does not have to be redone:
+
+  * the gate is `b = !r && n?.logged_in === true` where `r` is `isPending` and `n`
+    is `data` from one query in the instance component; both now report correctly
+    (`/api/me` and `/api/public` return `logged_in: true`, and the lookups fire,
+    which requires `d` — and therefore `b` — to be true)
+  * so the failure is downstream of the gate: `gn()` computes
+    `available = [f.data, p.data].filter(x => !!(x && !x.data.excluded)).length > 0`
+    and that filter is dropping the result
+  * reading the minified code two ways (wrapped body vs unwrapped) both predict the
+    filter keeps the entry, so the reading is wrong somewhere — the next step is to
+    instrument the bundle to print `gn`'s return value rather than reason about it
+  * note only ONE lookup fires for a node without IPv6, so `p.data` is undefined and
+    the whole result rests on `f.data`
+
 So the server side is confirmed correct and the remaining cause is inside the
 theme's own gating. Anyone picking this up should instrument `gn` (or the
 `['ip-info','status']` query cache) rather than re-check the API — the two
