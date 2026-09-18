@@ -153,6 +153,7 @@ checksum check and the systemd unit.
 | [CHANGELOG.md](./CHANGELOG.md) | What changed in each release, and why |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | How to build, test and submit a change |
 | [docs/SILENT-FAILURES.md](./docs/SILENT-FAILURES.md) | Where the system knows something is wrong and does not say so |
+| [docs/OPEN-WORK.md](./docs/OPEN-WORK.md) | What is unfinished, what is blocked, and what will bite again |
 | [docs/RELEASING.md](./docs/RELEASING.md) | How to cut a release, and the two traps |
 | [docs/TESTING.md](./docs/TESTING.md) | Which tests are hermetic; which need root or IPv6 |
 | [docs/DEPLOY-OC424.md](./docs/DEPLOY-OC424.md) | The public deployment: topology, data restore, node reconnection |
