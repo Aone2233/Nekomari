@@ -107,6 +107,9 @@ function buildProbe(assetsDir, block) {
 
 async function get(base, route, cookie) {
   const response = await fetch(base + route, {
+    // The theme fetches with cache: 'no-store'. Match it: behind Cloudflare an edge copy
+    // of the previous build's response would otherwise make a fix look like a no-op.
+    cache: 'no-store',
     headers: { Accept: 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
   });
   const text = await response.text();
