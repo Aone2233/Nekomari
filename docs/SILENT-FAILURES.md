@@ -78,6 +78,12 @@ dependency — silently degrades geo lookups to returning nothing. Callers get a
 empty result, not an error, so nothing downstream can distinguish "no data for this
 IP" from "the provider never started".
 
+**Latent, not active.** Checked against the running instance: geoip initialises
+normally (`using GeoIP provider provider=ipinfo.io`) and none of the three fallback
+branches has fired. Recorded because the failure mode would be invisible if it ever
+does, not because it is happening — the same check is worth repeating after any
+change to the geoip configuration.
+
 ### 4. A probe knows which address it measured, and never says
 
 Found while investigating reported jitter on a dual-stack target. Task 11/12 point at
