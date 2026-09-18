@@ -241,7 +241,27 @@ never executes there. So the gate logic above, however it is read, is not what
 decides this page; `deploy/chunk_list.js` and `deploy/ip_gate_dump.js` are the tools
 that established that.
 
-The next step is therefore to find the component that actually renders the instance
+**And the component DOES receive the injected code.** Probed against the origin
+directly (no Cloudflare in the path), with the service worker confirmed active: the
+page's own `fetch` of the bundle returns the injected text, yet `window.__gn` is
+still unset. So the bundle the browser holds contains the probe and the probe never
+runs, which rules out every caching explanation and leaves the conclusion that the
+code path itself is not reached on this route.
+
+That is as far as instrumentation went. Two things to try next, in order:
+
+  1. check whether the bundle defines the tab-strip component more than once --
+     `instance-segmented` appears four times in the file, and the group actually
+     rendered is exactly `[负载, Ping]`, which is also what `vn()` builds. If a
+     second component builds the same pair without the IP gate, that is the one in
+     use and the IP panel is dead code in this theme version.
+  2. if so, the honest conclusion is that "the IP 信息 tab does not appear" is not a
+     Nekomari defect at all: the installed theme version does not render it. Confirm
+     against a different theme before spending more time on the server side.
+
+The withdrawn step below is kept only to show what was tried.
+
+The next step was therefore to find the component that actually renders the instance
 view's tab strip — most likely in `InstancePanel-CXy4mw2c.js`, which is also loaded
 on that route — and instrument it, rather than continuing with
 `Instance-B37568w_.js`.
