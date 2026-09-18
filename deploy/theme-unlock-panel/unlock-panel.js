@@ -89,8 +89,13 @@
     return { uuid: decodeURIComponent(match[1]), ip };
   }
 
-  function sectionOf(panel) {
-    return panel.querySelector('.' + BLOCK_CLASS);
+  // 必须取全部，不能只取第一个。
+  //
+  // 之前用 querySelector 只拿到第一个，判断和清理都只作用于它，于是切换 IPv4/IPv6 时
+  // React 重建面板、旧区块留在原处，每切一次就多一个 —— 实测切一下能攒出三个一模一样的
+  // 「流媒体 / AI 解锁」。这里的规则改成：任何一次渲染都先把全部清掉，再放回恰好一个。
+  function sectionsOf(panel) {
+    return Array.from(panel.querySelectorAll('.' + BLOCK_CLASS));
   }
 
   function buildSection(unlock) {
@@ -176,10 +181,10 @@
     const target = currentTarget();
     if (!target) return;
 
-    // 已经画过且还是同一个地址就不重画 —— 这个函数由 MutationObserver 驱动，
-    // 不设这道闸会自己触发自己。
-    const existing = sectionOf(panel);
-    if (existing && existing.dataset.target === target.ip) return;
+    // 已经画过、而且画的就是当前地址、而且只有一份 —— 三个条件都满足才跳过。
+    // 只要多出来一份就重画，这样重复区块能自愈。
+    const existing = sectionsOf(panel);
+    if (existing.length === 1 && existing[0].dataset.target === target.ip) return;
 
     let payload;
     try {
@@ -201,9 +206,11 @@
     const unlock = payload && payload.data && payload.data.unlock;
     const anchor = panel.querySelector('.ip-info-detail-grid');
 
+    // 先清干净再放一个。重复区块就是这么来的，也让它在下一帧自己消失。
+    for (const node of sectionsOf(panel)) node.remove();
+
     if (!unlock || !unlock.results || !unlock.results.length) {
       // 还没有探测记录：说清楚是「等待探测」，不要留空让人以为没有这个功能。
-      if (existing) existing.remove();
       const placeholder = document.createElement('section');
       placeholder.className = 'ip-info-section ' + BLOCK_CLASS;
       placeholder.dataset.target = target.ip;
@@ -223,7 +230,6 @@
 
     const section = buildSection(unlock);
     section.dataset.target = target.ip;
-    if (existing) existing.remove();
     if (anchor) anchor.after(section); else panel.appendChild(section);
   }
 
