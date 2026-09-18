@@ -6,6 +6,41 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.6] — 2026-09-18
+
+### Fixed
+
+- **The admin panel handed out upstream's agent installer.** All three platform
+  commands pointed at `komari-monitor/komari-agent`, so anyone copying the command
+  out of the panel installed the upstream agent — from an archived project, without
+  the flags this fork added. The panel's own `--disable-web-ssh` checkbox did not
+  even exist upstream.
+- **`logged_in` was missing from `/api/public`.** Third-party themes read account
+  state from the public settings rather than from `/api/me`, so a theme that gates
+  a panel on `logged_in === true` never showed it — while every API call it depends
+  on returned 200 with correct data. Necessary but not sufficient for the LuminaPlus
+  IP panel; see [docs/IP-INFO-API.md](./docs/IP-INFO-API.md).
+
+### Added
+
+- **One-line agent installer** (`deploy/install-node-agent.sh`) that accepts the
+  agent flags the panel generates, so the panel's command works verbatim. Consumes
+  the installer-only options, passes the rest through to the agent and into the
+  unit, resolves the latest release instead of a hardcoded version, verifies
+  `SHA256SUMS.txt`, and handles macOS as well as Linux.
+- **Windows installer** (`deploy/install-node-agent.ps1`). PowerShell cannot name a
+  parameter `--disable-web-ssh`, so unrecognised arguments are collected and
+  translated — that is what lets the same panel command work there too.
+- **macOS agent builds.** The panel has always offered a macOS option and there was
+  never an asset to install. The agent is pure Go, so it cross-compiles from the
+  existing Linux runner at no extra cost.
+
+### Documentation
+
+- `docs/IP-INFO-API.md` now records the IP-panel investigation: what was ruled out
+  (the mainland-China region gate, WebSocket authentication noise, three separate
+  caching layers) and the two hypotheses that remain, so none of it is redone.
+
 ## [v0.1.5] — 2026-09-17
 
 ### Added
@@ -137,6 +172,7 @@ First Nekomari release, forked from Komari `1.5.0-fix1`.
 - Monorepo layout (server + `frontend/` + `agent/`), a bundled theme packer that
   needs no `zstd` binary, and `build.sh`.
 
+[v0.1.6]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.6
 [v0.1.5]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.5
 [v0.1.4]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.4
 [v0.1.3]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.3
