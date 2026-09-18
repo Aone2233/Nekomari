@@ -184,20 +184,21 @@ lookups only fire when `d` is true — so the gate passed at least once.
 the obvious explanation. It is not the cause. Probed with
 `deploy/ip_panel_probe.js` against a US node (`🇺🇸`) and a Hong Kong node (`🇭🇰`):
 both render no IP tab, and both see `status.available: true` and a `200` lookup
-with `excluded: false`. The gate that hides the panel is therefore not the region
-check, or not only it.
+with `excluded: false`.
 
-**Observed while probing, not yet explained:** the browser logs repeated
-`WebSocket connection to 'wss://…/api/rpc2' failed: HTTP Authentication failed` —
-19 of them on one page load. The REST calls in the same session succeed. This may
-be an artefact of logging in through `fetch` rather than the real form (the probe
-does that to skip the login UI), in which case it is a harness problem and not a
-product one — but it has not been checked against a real login, so it is recorded
-rather than dismissed. If the frontend really does open an unauthenticated
-WebSocket on the instance page, that would be worth fixing on its own.
+**Ruled out: the WebSocket authentication failures.** A page load logs several
+`WebSocket connection to 'wss://…/api/rpc2' failed: HTTP Authentication failed`
+along with `401 POST /api/rpc2`, which looked like it could starve whatever the
+theme uses to decide the panel is available. It does not: `deploy/ws_timeline.js`
+shows every failure happens *before* login, when there is no session at all. After
+a real login the socket opens and stays open, and a reload while authenticated
+produces no failures at all. The theme's RPC client is WebSocket-first with an
+HTTP fallback and connects on construction, so on the login page it necessarily
+fails and retries; that is the theme's design, not a server fault.
+`deploy/ws_upgrade_probe.js` confirms the server side directly — an authenticated
+upgrade returns a real JSON-RPC reply over the socket.
 
 So the server side is confirmed correct and the remaining cause is inside the
 theme's own gating. Anyone picking this up should instrument `gn` (or the
-`['ip-info','status']` query cache) rather than re-check the API — and should
-check the WebSocket errors above before assuming the gate is the only thing
-involved.
+`['ip-info','status']` query cache) rather than re-check the API — the two
+plausible server-side explanations have both been tested and eliminated.
