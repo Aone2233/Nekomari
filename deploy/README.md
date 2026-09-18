@@ -146,6 +146,29 @@ panel host, others only from a workstation, one only over IPv6, and two need a
 sudo password. That variation is why the ad-hoc push scripts were removed once
 used — keeping them implied a single supported path that does not exist.
 
+## Script authentication, and what 2FA changes
+
+Every script here that talks to the panel logs in through `nekomari_auth.py`, which
+handles TOTP. **Enabling 2FA on the account breaks any script that logs in with just
+a username and password** — they start returning `401 2FA code is required`. That is
+not a bug in the scripts; it is 2FA working.
+
+```bash
+export NEKOMARI_PASSWORD='<panel password>'
+export NEKOMARI_2FA_SECRET='<base32 secret from enrolment>'
+sudo -n env NEKOMARI_PASSWORD="$NEKOMARI_PASSWORD" \
+            NEKOMARI_2FA_SECRET="$NEKOMARI_2FA_SECRET" \
+            python3 deploy/<script>.py
+```
+
+`nekomari_auth.py` implements RFC 6238 directly rather than depending on a TOTP
+library, so the scripts stay runnable on a host with nothing installed. If the
+variable is missing while 2FA is on, login fails with a message naming the variable
+instead of a bare 401.
+
+`enable-2fa.py` enrols the account and prints the secret and `otpauth://` URI; that
+secret is the only way back in short of the `disable-2fa` CLI.
+
 ## hosts/
 
 Per-host configuration that does not fit the generic installer.
