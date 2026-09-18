@@ -76,6 +76,24 @@ func publicGetPublicSettings(ctx context.Context, _ *rpc.JsonRpcRequest) (any, *
 	if meta := rpc.MetaFromContext(ctx); meta != nil && meta.TempShareValid {
 		p["private_site"] = false
 	}
+
+	// logged_in 必须出现在公开设置里，不能只放在 /api/me。
+	//
+	// 第三方主题（LuminaPlus）用它决定是否显示"IP 信息"标签页：
+	//
+	//	b = !r && n?.logged_in === true
+	//	x = gn(e, s?.ipv4, s?.ipv6, s?.region, b)   // b 作为第 5 个参数
+	//
+	// 其中 n 是公开设置。缺少该字段时 n?.logged_in 是 undefined，`undefined === true`
+	// 恒为 false，于是标签页永远不渲染 —— 而服务端接口本身完全正常，所以从网络面板
+	// 查不出任何问题。这是"IP 信息"面板长期不显示的真正原因。
+	//
+	// 它不泄露任何信息：只表示"发起这次请求的人是否已登录"，与 /api/me 的口径一致。
+	p["logged_in"] = false
+	if meta := rpc.MetaFromContext(ctx); meta != nil && meta.User != nil {
+		p["logged_in"] = true
+	}
+
 	return p, nil
 }
 

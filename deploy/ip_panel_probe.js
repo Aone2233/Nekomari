@@ -33,17 +33,11 @@ const out = process.argv[6] || '/tmp';
     if (m.type() === 'error' || m.type() === 'warning') errors.push(m.text().slice(0, 160));
   });
 
-  await page.goto(base + '/admin', { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(2500);
-  await page.evaluate(async ([u, p]) => {
-    await fetch('/api/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: u, password: p }),
-    });
-  }, [user, pass]);
+  const { login } = require('./pw_login');
+  await login(page, base, user, pass);
 
-  await page.goto(`${base}/instance/${uuid}`, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(6000);
+  await page.goto(`${base}/instance/${uuid}`, { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(9000);
 
   const info = await page.evaluate(() => {
     const btns = Array.from(document.querySelectorAll('button')).map((b) => b.textContent.trim());
