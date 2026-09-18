@@ -21,7 +21,7 @@ already has the answer.
 
 ## Open
 
-### 1. A scheduled job with no next run time never runs, and only logs
+### 1. A scheduled job with no next run time never runs, and only logs — **fixed**
 
 `internal/scheduler/scheduler.go`
 
@@ -38,8 +38,17 @@ freshness, notification dispatch — simply stops, with no surfaced error. A sch
 expression the parser cannot advance is a configuration mistake that presents as
 "that feature does nothing".
 
-**Worth checking:** whether any configured job can produce a zero next-run, and
-whether the admin UI has anywhere to show scheduler state.
+**Fixed.** `AddContextFunc` now rejects a spec whose next run is the zero time, so
+the mistake is reported to whoever registers it instead of being accepted and then
+silently dropped. The reachable case is real, not theoretical: `cronSchedule.Next`
+scans a year of seconds and gives up, so `0 0 0 30 2 *` parses cleanly and never
+comes due. The runtime guard stays as a safety net and now logs at error level.
+
+Worth knowing about `Next`: the scan is second-by-second, so an impossible spec
+costs about 3 seconds of CPU before it gives up. That is why the guard belongs at
+registration -- a valid spec finds its match immediately, and an invalid one is
+about to be rejected anyway -- but it does mean `Next` is O(31.6M) in the worst
+case and should not be called in a loop.
 
 ### 2. ip-info degradation is logged, never surfaced
 

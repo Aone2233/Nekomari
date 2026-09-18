@@ -116,6 +116,21 @@ func (m *Manager) AddContextFunc(name string, spec string, runImmediately bool, 
 		return fmt.Errorf("corn job %q func is nil", name)
 	}
 
+	// Reject a spec that parses but never comes due.
+	//
+	// Parse accepting a spec is not the same as the spec ever firing: a valid
+	// expression can still have no future occurrence. That case used to be caught
+	// only inside run(), which logged a warning and returned -- so the job was
+	// accepted, reported success to its caller, and then silently never executed.
+	// Whatever it drove (metric rollups, notification dispatch, retention) simply
+	// stopped, with nothing surfaced anywhere the operator would look.
+	//
+	// Failing here instead means the mistake is reported to whoever registered it,
+	// at the moment they register it.
+	if s.Next(time.Now()).IsZero() {
+		return fmt.Errorf("corn job %q never comes due (spec %q); it would be accepted and then never run", name, spec)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	m.replace(name, cancel)
 
@@ -172,7 +187,10 @@ func (m *Manager) run(ctx context.Context, name string, s schedule, runImmediate
 
 	nextTick := s.Next(time.Now())
 	if nextTick.IsZero() {
-		logger.Warnf("scheduler", "corn job %s has no next run time", name)
+		// Registration now rejects this, so reaching here means the schedule stopped
+		// producing a next time after it was accepted. Logged at error level: the job
+		// is about to stop for good and nothing else will say so.
+		logger.Errorf("scheduler", "corn job %s has no next run time; it will not run again", name)
 		return
 	}
 	timer := time.NewTimer(time.Until(nextTick))
