@@ -219,6 +219,19 @@ What is established about that second condition, so it does not have to be redon
   * note only ONE lookup fires for a node without IPv6, so `p.data` is undefined and
     the whole result rests on `f.data`
 
+**The gn() analysis was about the wrong component.** Patching the served bundle to
+publish `gn`'s return value produced nothing: the chunk holding that code
+(`Instance-B37568w_.js`) is loaded on the instance route and the served file does
+contain the injection, yet none of the injected globals is ever set — the component
+never executes there. So the gate logic above, however it is read, is not what
+decides this page; `deploy/chunk_list.js` and `deploy/ip_gate_dump.js` are the tools
+that established that.
+
+The next step is therefore to find the component that actually renders the instance
+view's tab strip — most likely in `InstancePanel-CXy4mw2c.js`, which is also loaded
+on that route — and instrument it, rather than continuing with
+`Instance-B37568w_.js`.
+
 So the server side is confirmed correct and the remaining cause is inside the
 theme's own gating. Anyone picking this up should instrument `gn` (or the
 `['ip-info','status']` query cache) rather than re-check the API — the two
