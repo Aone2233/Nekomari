@@ -84,7 +84,7 @@ jobs:
         # TestIpInfo[A-Z] 只匹配 Nekomari 新增的 IP 信息接口用例（上游全部用
         # httptest 伪造，不联网）。这里刻意不用裸 TestIpInfo 前缀：上游
         # utils/geoip 里有一个同名用例，它会真的请求 ipinfo.io。
-        run: go test ./... -run 'TestIpInfo[A-Z]|TestDecide|TestRun|TestWritePing|TestPercentile|TestComputeBaseline|TestCheckMetric|TestLoadNotification|TestReportMetric|TestSplitPublic|TestGetPingRecords|TestDefaultRollup|TestBuildMetric|TestCreateMetric|TestPingTarget|TestClientCanReach|TestFilterClients'
+        run: go test ./... -run 'TestIpInfo[A-Z]|TestDecide|TestRun|TestWritePing|TestPercentile|TestComputeBaseline|TestCheckMetric|TestLoadNotification|TestReportMetric|TestSplitPublic|TestGetPingRecords|TestDefaultRollup|TestBuildMetric|TestCreateMetric|TestPingTarget|TestClientCanReach|TestFilterClients|TestAddContextFunc|TestCronSpecCanParse'
 
       - name: Test agent
         working-directory: agent
