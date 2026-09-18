@@ -11,39 +11,48 @@ without re-deriving anything.
 | `logged_in` missing from `/api/public` | **Done and released** in v0.1.6 |
 | macOS agent builds | **Done and released** in v0.1.6 |
 | Scheduler accepting a job that never runs | **Fixed and released** in v0.1.7 |
-| Silent-failure catalogue | **Done** — 4 entries, 2 real, 2 latent |
-| LuminaPlus IP panel | **Fixed** — root cause found and proven; `classification.source` was missing |
+| Silent-failure catalogue | **Done** — 5 entries, 3 real, 2 latent |
+| LuminaPlus IP panel | **Fixed and released** in v0.1.8 — `classification.source` was missing |
 | Family mixing within one ping task | **Fixed** — tasks split per family, verified single-family |
 
-Production runs `ghcr.io/aone2233/nekomari:v0.1.7`.
+Production runs `ghcr.io/aone2233/nekomari:v0.1.8`.
 
 ## Released
 
 Everything in this batch is now in a release; nothing is waiting on `main`.
 
+- v0.1.8 — the ip-info contract fix (`classification.source`)
 - v0.1.7 — the scheduler guard, and the per-family task split
 - v0.1.6 — the one-line installers, macOS agent builds, and `logged_in`
 
 ## Decisions waiting
 
-### 1. A ping task can measure two different network paths
+### 1. A ping task can still measure two different network paths
 
-**The only open item that affects live monitoring.** Tasks 11 and 12 target
-dual-stack hostnames. HK04 has both families and dials IPv6; the two v4-only probes
-dial IPv4. One task, two paths, plotted as comparable series — HK04 reads 12.6% loss
-and the others read 0.0%, because those numbers describe different routes to the
-same hostname.
+**Mitigated, not fixed.** Tasks 11 and 12 targeted dual-stack hostnames. HK04 has both
+families and dials IPv6; the two v4-only probes dial IPv4. One task, two paths, plotted
+as comparable series — HK04 read 12.6% loss and the others 0.0%, because those numbers
+describe different routes to the same hostname.
 
-Options:
+**Done:** option A below — those tasks were split per family and verified single-family
+(13 tasks, `混族任务数: 0`). The two v4-only tasks now have v4-only probes, and the two
+new IPv6 tasks use the dual-stack probes.
+
+**Still open:** the underlying gap. The scheduler decides per node, but a task is still
+reported as if every node measured the same thing, so a mixed task can be created again
+by anyone who does not know to avoid it.
+
+Options for the durable fix:
 
 - **A** — split each dual-stack task into one per family, with probes that can only
-  reach that family. No code, immediate.
+  reach that family. *Done for the existing tasks; no code, so nothing prevents a new
+  mixed one.*
 - **B** — keep one task and restrict it to probes of a single family.
 - **C** — have the agent report the address it actually used, and let the panel split
   the series per family. This is the real fix and also closes entry 4 of
   `SILENT-FAILURES.md`; it needs protocol and frontend work.
 
-A is recommended as the immediate step, C as the durable one.
+C is the durable answer.
 
 ### 2. The IP panel — resolved
 
@@ -68,6 +77,27 @@ Two things from this worth carrying forward, because both will recur:
 spike minutes, and it spikes on every task it runs (max 635/576/349 ms against
 p50 3/9/13 ms). So it is local to that host, not the target. MAC-WAN is both the
 probe host and the backup host, which may be relevant. Not investigated.
+
+### 4. Nomao's agent is still running after its node was deleted
+
+Found while reading the post-deploy logs: the panel logs a `401` on
+`/api/clients/v2/rpc` from `2604:abc0:50::11:601e` roughly every 25 seconds, forever.
+That address is **Nomao** (`deploy/verify-cf-probe-retired.sh` carries it, and
+`DEPLOY-OC424.md` lists it as the IPv6-only host). The node was deleted from the panel,
+so its token no longer resolves and the agent retries with a credential that can never
+work.
+
+Confirmed on the host (reachable from OC424 over IPv6): `nekomari-agent.service` is
+`active (running)` with `-t JOrbiMyxnxU5mRituvBmzl`, started Sep 17. There is also an
+older, **not loaded** `komari-agent.service` unit file pointing at `/opt/komari-agent`
+with an upstream `--auto-discovery` flag; it is not the source of the traffic.
+
+Deleting a node in the panel does not tell the host to stop reporting. Anything that
+removes a node should be paired with stopping its agent, or the panel logs a permanent
+401 stream that looks like an authentication problem rather than a leftover.
+
+**Waiting on a decision:** stop and remove the agent on Nomao, or leave it in case the
+node comes back.
 
 ## Tooling added
 
