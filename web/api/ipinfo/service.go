@@ -537,6 +537,9 @@ func buildProvider(securityDataAvailable bool) LookupProvider {
 //   - 两者都拿到且相同 -> native / 原生 IP
 //   - 两者都拿到但不同   -> broadcast / 广播 IP
 //   - 任一缺失           -> unknown / 未知
+//
+// Source 恒为非空字符串：主题把 classification.source 定义成必填 string，缺了整条
+// 响应都会被判为无效（HTTP 仍 200，面板静默不渲染）。取值沿用参考实现的约定。
 func deriveClassification(geolocatedCode, registeredCode string) Classification {
 	geolocated := strings.ToUpper(strings.TrimSpace(geolocatedCode))
 	registered := strings.ToUpper(strings.TrimSpace(registeredCode))
@@ -548,10 +551,13 @@ func deriveClassification(geolocatedCode, registeredCode string) Classification 
 	switch {
 	case geolocated == "" || registered == "":
 		result.Type, result.Label = ClassificationUnknown, LabelUnknown
+		result.Source = ClassificationSourceUnavailable
 	case geolocated == registered:
 		result.Type, result.Label = ClassificationNative, LabelNative
+		result.Source = ClassificationSourceCountryComparison
 	default:
 		result.Type, result.Label = ClassificationBroadcast, LabelBroadcast
+		result.Source = ClassificationSourceCountryComparison
 	}
 	return result
 }

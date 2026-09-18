@@ -40,9 +40,21 @@ for the incident that rule came from.
 | `unhide-node.py` | Unhides a node once it is genuinely contributing data. Dry run by default, and refuses while nothing is fresh — a hidden node with no data is usually hidden for a reason. |
 | `webhook_receiver.py` | A throwaway HTTP endpoint that records every request it receives, used to prove the notifier really dispatched an alert rather than trusting the UI's "sent" state. |
 | `traffic_explain.py` | Prints, per node, the counters the panel divides by the limit and the resulting percentage — so a traffic figure can be checked against the provider's dashboard instead of guessed at. |
-| `validate_contract.py` | Field-level validation of the `/api/*/ip-info/v1` responses against the shape the theme requires. |
+| `theme-contract-check.mjs` | Runs the **installed theme's own zod schemas** against the live ip-info responses and exits non-zero on any rejection. It pulls the schema block out of whatever theme build is on disk, so the contract is re-derived rather than transcribed. Run it before shipping any change to `web/api/ipinfo`. |
 | `inventory-monitoring.sh` | Lists every monitoring agent on a host. Kept because two systems coexisted here and are easy to confuse. |
 | `inspect-node-traffic.sh`, `inspect-netstatic.sh` | Per-interface kernel counters and the agent's netstatic coverage. |
+
+### Why there is no hand-written contract validator
+
+There was one: `validate_contract.py`, a Python mirror of the theme's zod schemas. It was
+deleted. It required `classification` to have `type` and `label` and nothing else, because
+that is what the server sent — so it validated the implementation against itself and passed
+while the real theme rejected the same payload for a missing `classification.source`. The
+IP 信息 tab stayed invisible and this script said everything was fine.
+
+A transcription of a contract you cannot see is not a check. `theme-contract-check.mjs`
+extracts the schema from the installed bundle and runs it with the theme's own bundled zod,
+so it cannot agree with a bug in the server.
 
 ## Browser checks
 

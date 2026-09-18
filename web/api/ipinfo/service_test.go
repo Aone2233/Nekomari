@@ -15,14 +15,15 @@ func TestIpInfoDeriveClassification(t *testing.T) {
 		registered string
 		wantType   string
 		wantLabel  string
+		wantSource string
 	}{
-		{"matching-lowercase", "us", "us", ClassificationNative, LabelNative},
-		{"matching-uppercase", "US", "US", ClassificationNative, LabelNative},
-		{"differing", "DE", "US", ClassificationBroadcast, LabelBroadcast},
-		{"registered-missing", "US", "", ClassificationUnknown, LabelUnknown},
-		{"geolocated-missing", "", "US", ClassificationUnknown, LabelUnknown},
-		{"both-missing", "", "", ClassificationUnknown, LabelUnknown},
-		{"whitespace-tolerant", " jp ", "JP", ClassificationNative, LabelNative},
+		{"matching-lowercase", "us", "us", ClassificationNative, LabelNative, ClassificationSourceCountryComparison},
+		{"matching-uppercase", "US", "US", ClassificationNative, LabelNative, ClassificationSourceCountryComparison},
+		{"differing", "DE", "US", ClassificationBroadcast, LabelBroadcast, ClassificationSourceCountryComparison},
+		{"registered-missing", "US", "", ClassificationUnknown, LabelUnknown, ClassificationSourceUnavailable},
+		{"geolocated-missing", "", "US", ClassificationUnknown, LabelUnknown, ClassificationSourceUnavailable},
+		{"both-missing", "", "", ClassificationUnknown, LabelUnknown, ClassificationSourceUnavailable},
+		{"whitespace-tolerant", " jp ", "JP", ClassificationNative, LabelNative, ClassificationSourceCountryComparison},
 	}
 
 	for _, testCase := range cases {
@@ -38,6 +39,11 @@ func TestIpInfoDeriveClassification(t *testing.T) {
 			}
 			if got.RegisteredCountryCode != upperTrim(testCase.registered) {
 				t.Errorf("registered_country_code = %q", got.RegisteredCountryCode)
+			}
+			// source 是主题 schema 的必填字段，任何分支都不能为空 —— 空字符串会被
+			// 主题的 z.string() 判为「类型正确但内容为空」，仍然渲染不出面板。
+			if got.Source != testCase.wantSource {
+				t.Errorf("source = %q, want %q", got.Source, testCase.wantSource)
 			}
 		})
 	}

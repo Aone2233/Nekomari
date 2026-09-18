@@ -18,6 +18,47 @@ already has the answer.
 | `AdminPanelBar` version banner | Compared against upstream's releases, so it always offered an "update" to a version this fork is ahead of. |
 | `utils/pingSchedule` | Skipped address-family mismatches silently; now annotated in the task list. |
 | `dbcore.warnIfDataNotPersistent` | Added: says so at startup when the data directory will not survive a container update. |
+| `web/api/ipinfo` classification | Omitted a field the theme's schema requires. HTTP 200 throughout; the panel just never appeared. See below. |
+
+## Fixed: the case that took four rounds
+
+### 0. A strict client schema rejected a valid-looking response, and only the client knew
+
+`web/api/ipinfo/types.go` — `Classification` was missing `source`.
+
+This is the same defect class as everything else here, in its purest form: **the
+server had no way to know it was wrong.** The response was well-formed, every field
+it did send was correct, the HTTP status was 200, and all four of the server's own
+contract tests passed. The rejection happened entirely inside the browser.
+
+The theme parses each ip-info response with a strict zod schema. One field was
+declared required:
+
+```js
+// Instance-*.js
+Xt = h({ type: g(['native','broadcast','anycast','unknown']),
+         label: J, geolocated_country_code: J, registered_country_code: J,
+         confidence: Y,
+         source: d() })          // z.string() — no optional, no default
+```
+
+`classification` was present but had no `source`, so the whole `/lookup` and
+`/latency` payload failed to parse. React Query does not log query errors by
+default, the theme renders the tab only when the parsed result is non-empty, and
+the result was therefore never non-empty. Nothing in the server log, the network
+panel, or the JavaScript console said anything at all.
+
+Four earlier rounds went into this, and three of them produced confident wrong
+answers (a mainland-China region gate, WebSocket authentication, and a misread
+minified bundle). Every one of those was reached by *reasoning about* the client.
+The answer only appeared when the client's own schema was extracted and run against
+the real response — see `deploy/theme-contract-check.mjs`, which now does exactly
+that and exits non-zero on rejection.
+
+**The general lesson:** when a client validates with a strict schema, that schema is
+part of the server's contract, and it lives in code the server cannot see. Reasoning
+about it does not work and guessing at it produces plausible wrong answers. Extract
+it, run it, and wire it into the release check.
 
 ## Open — none of these is currently firing
 

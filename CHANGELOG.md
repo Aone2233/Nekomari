@@ -6,6 +6,36 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.8] — 2026-09-18
+
+### Fixed
+
+- **The IP 信息 panel in LuminaPlus never appeared, and every server-side check said it
+  should.** The theme parses each ip-info response with a strict zod schema in which
+  `classification.source` is a required string; the server did not send it, so `/lookup`
+  and `/latency` were rejected inside the browser. The endpoints answered `200` with
+  correct data, the server's own contract tests passed, and React Query does not log
+  query errors by default — so the failure was invisible from every direction except the
+  one place nobody could see. `classification.source` is now set to `country_comparison`
+  or `unavailable`, matching the reference implementation's values.
+
+### Changed
+
+- `deploy/validate_contract.py` is **removed**. It was a hand-written Python mirror of
+  the theme's schemas and it required `classification` to contain only `type` and
+  `label` — exactly what the server sent — so it validated the implementation against
+  itself and reported success while the theme rejected the same payload. Replaced by
+  `deploy/theme-contract-check.mjs`, which extracts the schema block from the installed
+  theme bundle and runs it with the theme's own bundled zod.
+
+### Documentation
+
+- `docs/IP-INFO-API.md` — the IP panel investigation is closed with the proven root
+  cause, and the four hypotheses that were tested and eliminated are recorded so they
+  are not retried.
+- `docs/SILENT-FAILURES.md` — new entry for this case, which is the purest example of
+  the class: the server had no way to know it was wrong.
+
 ## [v0.1.7] — 2026-09-18
 
 ### Fixed

@@ -448,10 +448,15 @@ func assertAddress(t *testing.T, data map[string]any, wantValue string, wantFami
 	}
 }
 
-// assertClassification 校验 classification 的四个字段与取值约束。
+// assertClassification 校验 classification 的五个字段与取值约束。
+//
+// source 不是可选的装饰字段：主题的 zod schema 把它写成 source: z.string()，
+// 没有 optional、没有 default。少一个字段整条响应就会被判无效，HTTP 却仍是 200，
+// 表现是 IP 信息页签静默不出现 —— 所以这里必须断言它存在、是字符串、且非空。
 func assertClassification(t *testing.T, classification map[string]any, wantType, wantLabel string) {
 	t.Helper()
-	requireKeys(t, classification, "type", "label", "geolocated_country_code", "registered_country_code")
+	requireKeys(t, classification, "type", "label", "geolocated_country_code",
+		"registered_country_code", "source")
 
 	if got := asString(t, classification, "type"); got != wantType {
 		t.Errorf("classification.type = %q, want %q", got, wantType)
@@ -461,6 +466,13 @@ func assertClassification(t *testing.T, classification map[string]any, wantType,
 	}
 	asString(t, classification, "geolocated_country_code")
 	asString(t, classification, "registered_country_code")
+
+	switch got := asString(t, classification, "source"); got {
+	case ClassificationSourceCountryComparison, ClassificationSourceUnavailable:
+	default:
+		t.Errorf("classification.source = %q, want one of %q / %q",
+			got, ClassificationSourceCountryComparison, ClassificationSourceUnavailable)
+	}
 }
 
 // upstreamPathsOf 便于断言「请求确实打到了假上游、且目标地址正确」。

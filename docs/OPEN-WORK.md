@@ -12,7 +12,7 @@ without re-deriving anything.
 | macOS agent builds | **Done and released** in v0.1.6 |
 | Scheduler accepting a job that never runs | **Fixed and released** in v0.1.7 |
 | Silent-failure catalogue | **Done** — 4 entries, 2 real, 2 latent |
-| LuminaPlus IP panel | **Open** — one real bug fixed, remaining cause unexplained |
+| LuminaPlus IP panel | **Fixed** — root cause found and proven; `classification.source` was missing |
 | Family mixing within one ping task | **Fixed** — tasks split per family, verified single-family |
 
 Production runs `ghcr.io/aone2233/nekomari:v0.1.7`.
@@ -45,23 +45,22 @@ Options:
 
 A is recommended as the immediate step, C as the durable one.
 
-### 2. Whether to keep chasing the IP panel
+### 2. The IP panel — resolved
 
-Four rounds of investigation are recorded in `IP-INFO-API.md`, including three of my
-own wrong conclusions. What is established:
+Closed. The theme parses every ip-info response with a strict zod schema, and
+`classification.source` was missing from ours, so the payload was rejected inside the
+browser while every server-side check passed. Full account in `IP-INFO-API.md`; the
+durable check is `deploy/theme-contract-check.mjs`.
 
-- every server-side endpoint the panel depends on returns 200 with correct data
-- the mainland-China region gate is not the cause (tested a US and a HK node)
-- the WebSocket authentication noise is not the cause (it is pre-login only)
-- `logged_in` **was** genuinely missing from `/api/public` and is now fixed — this
-  was necessary, and not sufficient
-- instrumenting the theme bundle did not work: the page's own fetch returns the
-  patched text, with Cloudflare, browser cache and the service worker all ruled out,
-  and the injected global is still never set
+Two things from this worth carrying forward, because both will recur:
 
-Recommended next step is a **theme swap**: if another theme shows its IP panel, the
-remaining cause is inside LuminaPlus and the server should be left alone. Continuing
-to instrument the bundle has poor return — that is where the four rounds went.
+- **A client's strict schema is part of the server's contract even though the server
+  cannot see it.** Four rounds were spent reasoning about minified code and three of
+  them produced confident wrong answers. Extract the schema and run it instead.
+- **`common:getNodes` is the only path that returns real node addresses.** The theme
+  falls back to REST `/api/nodes` when the RPC response fails its schema, and that
+  endpoint blanks `ipv4`/`ipv6` unconditionally — a silent, panel-disappearing fallback
+  that is worth remembering the next time an admin-only field looks empty.
 
 ### 3. MAC-WAN stalls
 
@@ -83,6 +82,7 @@ All in `deploy/`, all indexed in `deploy/README.md`:
 | `pw_login.js` | The same for the Playwright probes |
 | `install-node-agent.sh` / `.ps1` | The one-line installers |
 | `verify-image.sh` | Pulls a published image and proves it starts |
+| `theme-contract-check.mjs` | Runs the installed theme's own zod schemas against the live ip-info API; non-zero exit on rejection |
 
 ## Things that will bite again
 
@@ -96,8 +96,10 @@ script rather than a rejected login.
 and dead code are indistinguishable — that mistake cost a round.
 
 **Do not reason about minified bundles.** Two readings both predicted the gate should
-pass while the tab stayed hidden. Instrument, or leave it.
+pass while the tab stayed hidden. Run `deploy/theme-contract-check.mjs` instead: it
+pulls the schema out of the installed theme and reports the exact rejected field path.
 
 **The theme bundle on the panel host has been patched and reverted twice.** Both
-times it was confirmed byte-identical to its backup afterwards; `/tmp/Instance.orig.js`
-holds the original if it is needed again.
+times it was confirmed byte-identical to its backup afterwards. Nothing is left in
+place now; if a bundle ever needs patching again, back it up outside the container —
+`/tmp` does not survive a container recreate.

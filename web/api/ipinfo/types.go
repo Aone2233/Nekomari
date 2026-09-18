@@ -30,6 +30,20 @@ const (
 	LabelUnknown   = "未知"
 )
 
+// classification.source 的取值：说明本次判定是「怎么来的」，不是「用了哪个数据源」。
+//
+// 这两个字符串来自参考实现（shanyang242/Komari-IP-Info 的
+// normalizeNativeClassification），主题的 zod schema 把 source 定义成**必填**字符串：
+//
+//	source: d()   // z.string()，无 optional、无 default
+//
+// 缺了它整条 /lookup 响应会被主题判为无效 —— HTTP 仍然是 200，只是查询报错、
+// 面板不渲染。所以这两个常量不能删，也不能留空。
+const (
+	ClassificationSourceCountryComparison = "country_comparison"
+	ClassificationSourceUnavailable       = "unavailable"
+)
+
 // 延迟节点状态，只能是这三个值之一。
 const (
 	LatencyStatusOK          = "ok"
@@ -113,11 +127,16 @@ type Network struct {
 }
 
 // Classification 是原生/广播判定结果。
+//
+// Source 是主题 schema 的**必填**字段（见 ClassificationSource* 的注释）。它描述判定
+// 依据，取值 "country_comparison"（比较地理定位国家与 ASN 注册国家）或 "unavailable"
+// （任一国家未知，无法比较）。
 type Classification struct {
 	Type                  string `json:"type"`
 	Label                 string `json:"label"`
 	GeolocatedCountryCode string `json:"geolocated_country_code"`
 	RegisteredCountryCode string `json:"registered_country_code"`
+	Source                string `json:"source"`
 }
 
 // ReputationSignals 是逐项风险信号。
