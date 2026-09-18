@@ -8,6 +8,25 @@ Nekomari's own.
 
 ## [v0.1.9] — 2026-09-18
 
+### Added
+
+- **流媒体 / AI 解锁, shown in the IP information panel.** Unlock depends on the IP that
+  makes the request, so it is measured by the agent on the node (every 6 h), stored in
+  `unlock_reports`, and returned with `/api/public/ip-info/v1/lookup`. The panel block is
+  a companion script — see `deploy/theme-unlock-panel/README.md` for why the theme cannot
+  render it and why patching the bundle was rejected.
+
+  What is reported, and what is not, was decided by probing the endpoints rather than
+  assuming: `chatgpt.com` and `claude.ai` answer 403 to a datacenter IP regardless of
+  country, and the Disney+/Prime Video pages contain "unavailable" in their own bundle, so
+  status codes and substring tests both lie. Each result therefore carries its basis
+  (`probe` or `region`), and anything undetermined is reported as `unknown` rather than
+  guessed. Netflix and YouTube Premium are probe-based, calibrated against a real blocked
+  and a real unblocked sample; ChatGPT and Claude are region-based and say so.
+
+  The measured egress address travels with the results, because it is not always the
+  node's own: one host in this fleet reaches the internet through another node.
+
 ### Fixed
 
 - **The agent reported a completed TCP handshake as packet loss.** When the first
