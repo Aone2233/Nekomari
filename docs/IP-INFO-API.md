@@ -219,6 +219,20 @@ What is established about that second condition, so it does not have to be redon
   * note only ONE lookup fires for a node without IPv6, so `p.data` is undefined and
     the whole result rests on `f.data`
 
+**Correction: the null result below was a caching artifact, not evidence about the
+component.** The bundle was patched on the host, but the browser loads it through
+Cloudflare, which had cached the pre-patch copy for up to its 4h TTL — so the page
+never received the injection. `Instance-B37568w_.js` does in fact contain all of the
+tab code (IP 信息, 负载, Ping, instance-segmented), while
+`InstancePanel-CXy4mw2c.js` contains none of it, so the earlier reading of `gn()`
+was about the right file after all. **Test theme changes against the origin on the
+host (`http://127.0.0.1:25774` from OC424), never through Cloudflare** — otherwise
+a cache hit is indistinguishable from dead code, which is exactly the mistake
+recorded here.
+
+The paragraph below is kept because the tools it names are still the right ones,
+but its conclusion is withdrawn.
+
 **The gn() analysis was about the wrong component.** Patching the served bundle to
 publish `gn`'s return value produced nothing: the chunk holding that code
 (`Instance-B37568w_.js`) is loaded on the instance route and the served file does
