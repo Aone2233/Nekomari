@@ -6,6 +6,29 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.9] — 2026-09-18
+
+### Fixed
+
+- **The agent reported a completed TCP handshake as packet loss.** When the first
+  handshake took longer than 1 s, the agent retried and, if the retry came back more
+  than 800 ms faster, concluded the first SYN had been retransmitted and reported the
+  whole measurement as lost. But by then the handshake had already completed and the
+  retry had measured the real RTT. The effect on the panel was large: every retransmit
+  became a full minute of 100% loss, because each 60 s bucket holds exactly one ping.
+  On OC424 the 天津电信 task read 12% loss while a direct 30-connection test to the same
+  target lost nothing — and 14 of the agent's 15 failures in four hours were this
+  branch, the fifteenth being a genuine timeout.
+
+  Measured on OC424, replaying the agent's own constants over 40 connections: 0 real
+  timeouts, 5 flagged as loss, 12.5% reported — matching the 12% on the panel. The
+  retransmit is still logged, but the retry's latency is now what gets reported, so
+  loss means what it says.
+
+  Only high-latency probes were affected. Probes with a single-digit RTT to the target
+  never reached the 1 s threshold, which is why the same task read 0% from China and
+  11–18% from Hong Kong, the US and Singapore.
+
 ## [v0.1.8] — 2026-09-18
 
 ### Fixed

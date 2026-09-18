@@ -432,13 +432,8 @@ func runPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget string) {
 		log.Printf("ping task %d: auto resolved target=%s -> type=%s target=%s", taskID, pingTarget, resolvedKind, resolvedTarget)
 		pingType, pingTarget = resolvedKind, resolvedTarget
 	}
-	var err error = nil
-	var latency int64
-	pingResult := -1
-	timeout := 3 * time.Second           // 默认超时时间
-	const highLatencyThreshold = 1000    // ms 阈值
-	const retryDropThresholdTcping = 800 // ms 重试中延迟降低超过此值则基本认为发生重传
-	// 800ms = SYN/SYN-ACK 首次超时重传 1000ms - 防误判容许 200ms 延迟抖动
+
+	timeout := 3 * time.Second // 默认超时时间
 
 	measure := func() (int64, error) {
 		switch pingType {
@@ -452,37 +447,9 @@ func runPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget string) {
 			return -1, errors.New("unsupported ping type")
 		}
 	}
-	PingHighLatencyRetries := 3
-	// 首次测量
-	if latency, err = measure(); err == nil {
-		firstLatency := latency
-		if latency > int64(highLatencyThreshold) && PingHighLatencyRetries > 0 {
-			attempts := PingHighLatencyRetries
-			for i := 0; i < attempts; i++ {
-				if second, err2 := measure(); err2 == nil {
-					if second <= int64(highLatencyThreshold) {
-						if pingType == "tcp" && firstLatency-second > int64(retryDropThresholdTcping) {
-							err = errors.New("suspicious retransmission detected in tcp handshake")
-							break
-						}
-						latency = second
-						break
-					}
-					if i == attempts-1 { // 最后一次仍高
-						err = errors.New("latency remains high after retries")
-					}
-				} else {
-					err = err2
-					break
-				}
-			}
-		}
-	}
 
-	if err != nil {
-		log.Printf("Ping task %d failed: %v", taskID, err)
-		pingResult = -1 // 如果有错误，设置结果为 -1
-	} else {
+	pingResult := -1
+	if latency, ok := measureWithRetries(taskID, pingType, measure); ok {
 		pingResult = int(latency)
 	}
 	finishedAt := time.Now()
@@ -493,6 +460,63 @@ func runPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget string) {
 	//	return
 	//}
 	uploadPingResult(conn, pingType, wsPayload)
+}
+
+// 首次测量超过这个延迟就重试：Linux 的初始 RTO 是 1s，一次 SYN 重传会把
+// 握手时间推到 1s 以上，这个值正好把「被重传撑大的测量」和「真的慢」分开。
+const highLatencyThreshold = 1000
+
+// 重试比首次快这么多，基本可以认定首次被 SYN 重传撑大了。
+// 800ms = SYN/SYN-ACK 首次超时重传 1000ms - 防误判容许 200ms 延迟抖动。
+const retryDropThresholdTcping = 800
+
+// pingHighLatencyRetries 首次偏慢时的重试次数。
+const pingHighLatencyRetries = 3
+
+// tcpRetransmitSuspected 判断「首次偏慢、重试正常」是否属于 TCP 握手重传。
+// 它只影响日志措辞 —— 无论结论如何，这次测量都是成功的。
+func tcpRetransmitSuspected(pingType string, firstLatency, second int64) bool {
+	return pingType == "tcp" && firstLatency-second > retryDropThresholdTcping
+}
+
+// measureWithRetries 执行一次测量，首次偏慢时按 highLatencyThreshold 重试，
+// 返回最终应当上报的延迟以及本次是否成功。
+//
+// 这里曾经把「判定为 SYN 重传」当成失败（上报 -1 = 丢包）。那是错的：走到那个
+// 分支时握手【已经完成】，重试还测到了真实 RTT。后果是成功的握手在面板上变成
+// 整分钟 100% 丢包 —— 实测 OC424 对天津电信显示的 12% 丢包全部来自这一支，
+// 而同一目标直连 30 次一次没丢。丢包只应表示「真的没连上」。
+func measureWithRetries(taskID uint, pingType string, measure func() (int64, error)) (int64, bool) {
+	latency, err := measure()
+	if err != nil {
+		log.Printf("Ping task %d failed: %v", taskID, err)
+		return -1, false
+	}
+	if latency <= highLatencyThreshold {
+		return latency, true
+	}
+
+	firstLatency := latency
+	for i := 0; i < pingHighLatencyRetries; i++ {
+		second, retryErr := measure()
+		if retryErr != nil {
+			log.Printf("Ping task %d failed: %v", taskID, retryErr)
+			return -1, false
+		}
+		if second <= highLatencyThreshold {
+			if tcpRetransmitSuspected(pingType, firstLatency, second) {
+				// 第一次的延迟被重传撑大了，不能采信；重试这次是真实的。
+				log.Printf("Ping task %d: tcp handshake retransmitted (first=%dms retry=%dms), reporting the retry",
+					taskID, firstLatency, second)
+			}
+			return second, true
+		}
+		if i == pingHighLatencyRetries-1 { // 最后一次仍然高
+			log.Printf("Ping task %d failed: latency remains high after retries", taskID)
+			return -1, false
+		}
+	}
+	return -1, false
 }
 
 // uploadPingResult 统一上报一条 ping 结果（WebSocket 优先，否则退回 POST）。
