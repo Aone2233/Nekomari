@@ -78,6 +78,36 @@ dependency — silently degrades geo lookups to returning nothing. Callers get a
 empty result, not an error, so nothing downstream can distinguish "no data for this
 IP" from "the provider never started".
 
+### 4. A probe knows which address it measured, and never says
+
+Found while investigating reported jitter on a dual-stack target. Task 11/12 point at
+`tj-cm-dualstack.ip.zstaticcdn.com` and `tj-ct-dualstack.ip.zstaticcdn.com`, which
+resolve to both families. The fleet is mixed:
+
+| probe | families | what it actually measured |
+|---|---|---|
+| HK04 | v4 + v6 | **IPv6** `2409:8c02:…` — 12.6% loss, p50 200 ms |
+| 并行智算云 | v4 only | IPv4 `211.103.90.101` — 0.0% loss, p50 25 ms |
+| MAC Server | v4 only | IPv4 — 0.0% loss, p50 9 ms |
+
+One task, two different network paths, plotted as comparable series. The apparent
+jitter is the difference between the IPv4 and IPv6 routes to the same hostname, not
+instability in either.
+
+The address-family filter added in v0.1.4 does not cover this. It skips a node that
+*cannot reach* the target's family; it does nothing about a node that *picks a
+different family than its peers*. Both are the same underlying gap: the scheduler
+decides per node, but the task is reported as if every node measured the same thing.
+
+**The information exists and is discarded.** The agent resolves the target, connects
+to a specific address, and reports only a latency. Nothing carries which address or
+family that number came from, so no chart, alert or API consumer can separate them.
+Reporting it would let the panel split the series per family and make the comparison
+honest — and would make the mixed case visible instead of merely puzzling.
+
+Immediate mitigation, no code required: split such a task into one per family, each
+with probes that can only reach that family.
+
 ## How to look for more
 
 `logger.Warn` is the index. For each hit, ask:
