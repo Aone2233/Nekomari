@@ -6,6 +6,37 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.5] — 2026-09-17
+
+### Added
+
+- **The task list now shows which nodes are being skipped and why.** The
+  address-family filter stopped dispatching to a node that cannot reach a target,
+  which was correct but invisible — the only symptom was a node with no curve, which
+  reads as a broken target. The skip set is computed server-side and returned as
+  `skipped_clients`; the public nodes API deliberately does not expose node
+  addresses, and recomputing the rule in the browser would let the display drift
+  from what the scheduler actually does.
+
+### Fixed
+
+- **The 2FA issuer said `Komari Monitor`.** That string is stored permanently in the
+  user's authenticator app, so every user who enabled 2FA saw the upstream project's
+  name rather than this fork's.
+- **The PWA manifest said `Komari Monitor`**, in both `public/manifest.json` and the
+  `VitePWA` block — the name shown when the panel is installed as an app.
+
+### Documentation
+
+- `CHANGELOG.md` and `CONTRIBUTING.md` added; the repository had seven docs and no
+  changelog and no contributing guide, so the release history was only readable on
+  GitHub.
+- `docs/TESTING.md` names the two `pkg/jsruntime` tests that fail when the test
+  process cannot write its own temp directory, and how to confirm it is the
+  environment rather than the change under test.
+- `deploy/README.md` documents that enabling 2FA breaks any script that logs in with
+  only a password, and points at `nekomari_auth.py` as the single login path.
+
 ## [v0.1.4] — 2026-09-17
 
 ### Added
@@ -106,6 +137,7 @@ First Nekomari release, forked from Komari `1.5.0-fix1`.
 - Monorepo layout (server + `frontend/` + `agent/`), a bundled theme packer that
   needs no `zstd` binary, and `build.sh`.
 
+[v0.1.5]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.5
 [v0.1.4]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.4
 [v0.1.3]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.3
 [v0.1.2]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.2
