@@ -142,6 +142,7 @@ Komari，也就是 Nekomari 的基座；两者不一致之处，以本仓库的 
 | [FORK.md](./FORK.md) | 来源、基座 commit、完整改动清单 |
 | [CHANGELOG.md](./CHANGELOG.md) | 每个版本改了什么，以及为什么 |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | 如何构建、测试与提交改动 |
+| [docs/SILENT-FAILURES.md](./docs/SILENT-FAILURES.md) | 系统已知有问题、却没告诉用户的地方 |
 | [docs/RELEASING.md](./docs/RELEASING.md) | 如何发版，以及两个容易踩的坑 |
 | [docs/TESTING.md](./docs/TESTING.md) | 哪些测试是密闭的，哪些需要 root 或 IPv6 |
 | [docs/DEPLOY-OC424.md](./docs/DEPLOY-OC424.md) | 参考部署：拓扑、数据恢复、节点接入 |
