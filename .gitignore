@@ -39,8 +39,13 @@ komari
 
 /web/filemanager/data
 # --- Nekomari monorepo additions ---
+# Any node_modules, at any depth. This started as /frontend/node_modules/ only, which
+# is exactly how 183 files and 17.7 MB of deploy/node_modules got committed: the
+# deploy/ browser checks have their own package.json, and a `git add -A` walked
+# straight past a rule that named one directory.
+node_modules/
+
 # frontend (was komari-web, vendored into frontend/)
-/frontend/node_modules/
 /frontend/dist/
 /frontend/.vite/
 

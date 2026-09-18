@@ -196,6 +196,24 @@ $ node deploy/theme-contract-check.mjs --assets <theme>/dist/assets --base http:
 That script re-derives the contract from whatever theme build is installed, so it stays
 correct across theme upgrades. Run it before shipping any change to `web/api/ipinfo`.
 
+### Verified in a browser, on the deployed release
+
+Schema acceptance is necessary but not sufficient — the original mistake was trusting a
+check instead of looking. So the tab itself was confirmed, in Chromium, against production
+after deploying the fix (`deploy/ip_panel_probe.js`, which clicks the tab and screenshots
+the panel):
+
+| node | region | tab | panel |
+|---|---|---|---|
+| HK04 | 🇭🇰 | present | renders — location, ASN AS202662, route, 10/10 latency nodes |
+| AkkoCloud SJ | 🇺🇸 | present | renders |
+| BandwagonHost MegaBox | 🇺🇸 | present | renders, IPv4/IPv6 switch |
+| 甲骨文 OC424 (hidden) | 🇸🇬 | present | renders |
+| MAC Server | 🇨🇳 | *absent* | **correct** — the theme hides the tab for mainland-China nodes |
+
+The probe skips CN nodes rather than failing on them, because a missing tab there is the
+theme working as designed.
+
 ### Hypotheses that were tested and eliminated
 
 Recorded so they are not re-tried. All four were reached by reasoning about the minified

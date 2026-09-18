@@ -1,14 +1,25 @@
 #!/usr/bin/env node
-// Does the theme's IP panel appear on a node that is definitely not CN?
+// Regression check: the theme's "IP 信息" tab must exist and render its panel.
 //
-// The theme gates it as `x.available && <button>IP 信息</button>`, and inside its
-// status hook it computes `l = T(region) === 'CN'` and hides the panel when true.
-// A run against a Hong Kong node still showed no tab, so the question is whether
-// that gate is the cause or something else is.
+// Why this is a browser check and not an API check
+// -----------------------------------------------
+// The tab was missing for four rounds of investigation while every endpoint answered
+// 200 with correct-looking data. The theme parses each response with a strict zod
+// schema and renders the tab only when at least one address survives it, so a single
+// missing field (`classification.source`) hid the whole panel without producing any
+// error a server-side check could see. The only honest test is the one a user performs:
+// open the page and look.
 //
-// Usage: node ip_panel_probe.js <base> <user> <pass> <instance-uuid> [outdir]
+// Companion: deploy/theme-contract-check.mjs checks the same contract from the API side
+// and names the offending field. This one proves the UI consequence.
+//
+// Usage:
+//   node ip_panel_probe.js <base> <user> <pass> <instance-uuid> [outdir]
+//
+// Needs an instance whose region is not CN: the theme deliberately hides the tab for
+// mainland-China nodes, so those will report a missing tab even when everything works.
+// Set NEKOMARI_2FA_SECRET when the account has 2FA enabled.
 const { chromium } = require('playwright');
-const fs = require('fs');
 
 const base = (process.argv[2] || '').replace(/\/$/, '');
 const user = process.argv[3];
@@ -19,44 +30,80 @@ const out = process.argv[6] || '/tmp';
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
-  const seen = [];
+  const calls = [];
   page.on('response', async (r) => {
-    const u = r.url();
-    if (u.includes('/ip-info/')) {
-      let body = '';
-      try { body = (await r.text()).slice(0, 400); } catch (_) {}
-      seen.push({ url: u.replace(base, ''), code: r.status(), body });
+    if (r.url().includes('/ip-info/')) {
+      calls.push(`${r.status()} ${r.url().replace(base, '')}`);
     }
-  });
-  const errors = [];
-  page.on('console', (m) => {
-    if (m.type() === 'error' || m.type() === 'warning') errors.push(m.text().slice(0, 160));
   });
 
   const { login } = require('./pw_login');
   await login(page, base, user, pass);
 
   await page.goto(`${base}/instance/${uuid}`, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(9000);
+  await page.waitForTimeout(6000);
 
-  const info = await page.evaluate(() => {
-    const btns = Array.from(document.querySelectorAll('button')).map((b) => b.textContent.trim());
-    return {
-      ipTab: btns.filter((t) => t.includes('IP')),
-      allTabs: btns.filter((t) => t.length > 0 && t.length < 12).slice(0, 14),
-      panel: !!document.querySelector('.ip-info-panel'),
-    };
-  });
+  const tabs = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('button')).map((b) => b.textContent.trim()));
+  const hasTab = tabs.some((t) => t.includes('IP'));
 
-  console.log('  instance     :', uuid);
-  console.log('  IP-ish tabs  :', JSON.stringify(info.ipTab));
-  console.log('  all buttons  :', JSON.stringify(info.allTabs));
-  console.log('  ip-info panel:', info.panel);
-  console.log('  ip-info calls:', seen.length);
-  for (const s of seen) console.log(`    ${s.code} ${s.url}`);
-  const st = seen.find((s) => s.url.includes('/status'));
-  if (st) console.log('  status body  :', st.body.replace(/\s+/g, ' ').slice(0, 220));
-  console.log('  console errs :', errors.length, errors.slice(0, 2).join(' | '));
-  await page.screenshot({ path: `${out}/ip-probe.png`, fullPage: false });
+  // The theme hides the tab for mainland-China nodes on purpose, so a missing tab there
+  // is correct behaviour rather than a regression. Read the node's region to tell the
+  // two apart -- otherwise this check cries wolf on exactly the nodes it should ignore.
+  const region = await page.evaluate(async (id) => {
+    try {
+      const r = await fetch('/api/rpc2', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'common:getNodes', params: {} }),
+      });
+      const body = await r.json();
+      const nodes = body.result || {};
+      const node = Array.isArray(nodes) ? nodes.find((n) => n.uuid === id) : nodes[id];
+      return (node && node.region) || '';
+    } catch (_) { return ''; }
+  }, uuid);
+  const isCN = /🇨🇳/.test(region);
+
+  // The panel only mounts once the tab is selected, so "panel: false" on the default
+  // 负载 tab is expected and says nothing. Click it before judging.
+  let panel = null;
+  let content = '';
+  if (hasTab) {
+    await page.evaluate(() => {
+      const button = Array.from(document.querySelectorAll('button'))
+        .find((b) => b.textContent.trim().includes('IP'));
+      if (button) button.click();
+    });
+    await page.waitForTimeout(4000);
+    panel = await page.evaluate(() => !!document.querySelector('.ip-info-panel'));
+    content = await page.evaluate(() => {
+      const el = document.querySelector('.ip-info-panel');
+      return el ? el.innerText.replace(/\s+/g, ' ').slice(0, 300) : '';
+    });
+    await page.screenshot({ path: `${out}/ip-panel.png`, fullPage: false });
+  }
+
+  console.log('  instance      :', uuid);
+  console.log('  region        :', region || '(unknown)');
+  console.log('  tabs          :', JSON.stringify(tabs.filter((t) => t && t.length < 12)));
+  console.log('  "IP 信息" tab :', hasTab ? 'present' : 'MISSING');
+  console.log('  panel renders :', panel === null ? 'n/a' : String(panel));
+  if (content) console.log('  panel text    :', content);
+  console.log('  ip-info calls :', calls.length);
+  for (const c of calls) console.log('    ' + c);
+  if (panel) console.log('  screenshot    :', `${out}/ip-panel.png`);
+
   await browser.close();
+
+  if (!hasTab && isCN) {
+    console.log('\n  SKIP: this node is in mainland China, where the theme hides the tab by design.');
+    process.exit(0);
+  }
+  if (!hasTab || !panel) {
+    console.error('\n  FAIL: the IP 信息 tab is not rendering.');
+    console.error('  Run deploy/theme-contract-check.mjs to see which field the theme rejects.');
+    process.exit(1);
+  }
+  console.log('\n  PASS');
 })();
