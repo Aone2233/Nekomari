@@ -374,10 +374,14 @@ const Row = ({
         <Flex gap="2" align="center">
           {task.clients && task.clients.length > 0
             ? (() => {
+                const skipped = new Set(task.skipped_clients ?? []);
                 const names = task.clients.map((uuid) => {
                   const name =
                     nodeDetail.find((node) => node.uuid === uuid)?.name || uuid;
-                  return name;
+                  // Mark the ones the scheduler will skip. Without this the only
+                  // symptom is a node that never produces a curve, which reads as a
+                  // broken target rather than a structural mismatch.
+                  return skipped.has(uuid) ? `${name} (${t("ping.skipped_family", "地址族不匹配，已跳过")})` : name;
                 });
                 const joined = names.join(", ");
                 return joined.length > 40

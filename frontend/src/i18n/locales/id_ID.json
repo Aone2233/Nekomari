@@ -778,6 +778,7 @@
     "default_on": "Aktif default untuk server baru",
     "default_on_description": "Jika diaktifkan, server yang baru ditambahkan akan otomatis menjalankan pemantauan ini. Server yang sudah ada tidak terpengaruh.",
     "default_on_short": "Aktif default",
+    "skipped_family": "Keluarga alamat tidak cocok, dilewati",
     "interval": "Interval",
     "server_view": "Tampilan Server",
     "target": "Target",

@@ -778,6 +778,7 @@
     "default_on": "新規サーバーで既定有効",
     "default_on_description": "有効にすると、新しく追加されるサーバーで自動的にこの監視が開始されます。既存のサーバーには影響しません。",
     "default_on_short": "既定有効",
+    "skipped_family": "アドレスファミリ不一致のためスキップ",
     "interval": "間隔",
     "server_view": "サーバービュー",
     "target": "ターゲット",

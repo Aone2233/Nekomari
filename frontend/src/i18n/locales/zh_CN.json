@@ -778,6 +778,7 @@
     "default_on": "默认开启",
     "default_on_description": "开启后，新加入的服务器会自动启用此监测；已存在的服务器不受影响。",
     "default_on_short": "默认开启",
+    "skipped_family": "地址族不匹配，已跳过",
     "interval": "间隔",
     "server_view": "服务器视图",
     "target": "目标",

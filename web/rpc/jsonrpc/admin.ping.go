@@ -6,6 +6,8 @@ import (
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/database/tasks"
 	"github.com/Aone2233/nekomari/pkg/rpc"
+	"github.com/Aone2233/nekomari/utils"
+	logger "github.com/Aone2233/nekomari/utils/log"
 )
 
 // admin.ping.go
@@ -101,7 +103,31 @@ func adminGetAllPingTasks(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.J
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
 	}
-	return list, nil
+
+	// 附带"哪些节点会被地址族过滤掉"，供管理界面标注。
+	//
+	// 为什么由服务端算：/api/nodes 是公开接口，刻意不暴露节点的 ipv4/ipv6 —— 那属于
+	// 基础设施信息。而"这个节点探不到这个目标"是调度器的既有判断，放在这里算可以保证
+	// 界面显示的和实际下发的一致；如果在浏览器里重算一份，两边迟早会漂移。
+	skipped, err := utils.PingTasksFamilySkips(list)
+	if err != nil {
+		// 标注失败不该让整个任务列表请求失败，返回不带标注的结果即可。
+		logger.Errorf("jsonrpc", "failed to compute address-family skips: %v", err)
+		return list, nil
+	}
+
+	type taskWithSkips struct {
+		models.PingTask
+		SkippedClients []string `json:"skipped_clients"`
+	}
+	out := make([]taskWithSkips, 0, len(list))
+	for _, t := range list {
+		out = append(out, taskWithSkips{
+			PingTask:       t,
+			SkippedClients: skipped[t.Id],
+		})
+	}
+	return out, nil
 }
 
 func adminOrderPingTask(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {

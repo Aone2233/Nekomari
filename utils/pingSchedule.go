@@ -10,8 +10,8 @@ import (
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/internal/scheduler"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
-	agent_runtime "github.com/Aone2233/nekomari/web/agent"
 	logger "github.com/Aone2233/nekomari/utils/log"
+	agent_runtime "github.com/Aone2233/nekomari/web/agent"
 )
 
 // PingTaskManager 管理定时器和任务
@@ -106,10 +106,11 @@ func targetPingClientUUIDs(task models.PingTask) []string {
 // 放在 Reload 而不是每次调度里：调度是秒级的，逐次打印会把日志刷满；而"哪些节点
 // 因为地址族被跳过"是配置属性，配置不变就不会变。
 func describeFamilySkips(pingTasks []models.PingTask) []string {
-	byUUID, err := loadClientAddresses()
+	byTask, err := PingTasksFamilySkips(pingTasks)
 	if err != nil {
 		return nil
 	}
+	byUUID, _ := loadClientAddresses()
 	nameOf := make(map[string]string, len(byUUID))
 	for uuid, c := range byUUID {
 		nameOf[uuid] = c.Name
@@ -117,11 +118,7 @@ func describeFamilySkips(pingTasks []models.PingTask) []string {
 
 	var notes []string
 	for _, task := range pingTasks {
-		family := pingTargetFamily(task.Target)
-		if family == familyAny {
-			continue
-		}
-		_, skipped := filterClientsByTargetFamily(task.Clients, byUUID, family)
+		skipped := byTask[task.Id]
 		if len(skipped) == 0 {
 			continue
 		}
@@ -134,13 +131,37 @@ func describeFamilySkips(pingTasks []models.PingTask) []string {
 			}
 		}
 		fam := "IPv4"
-		if family == familyIPv6 {
+		if pingTargetFamily(task.Target) == familyIPv6 {
 			fam = "IPv6"
 		}
 		notes = append(notes, fmt.Sprintf("task %d (%s, %s target %s): skipping %s",
 			task.Id, task.Name, fam, task.Target, strings.Join(names, ", ")))
 	}
 	return notes
+}
+
+// PingTasksFamilySkips 返回每个任务里会因地址族不匹配而被跳过的节点 UUID。
+//
+// 供管理界面标注：让用户看到"这个节点被跳过了"，而不是只发现某条曲线没有数据。
+// 与实际调度共用 filterClientsByTargetFamily，所以界面显示的和真正下发的不会分叉。
+func PingTasksFamilySkips(pingTasks []models.PingTask) (map[uint][]string, error) {
+	byUUID, err := loadClientAddresses()
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[uint][]string)
+	for _, task := range pingTasks {
+		family := pingTargetFamily(task.Target)
+		if family == familyAny {
+			continue // 域名目标不筛选
+		}
+		_, skipped := filterClientsByTargetFamily(task.Clients, byUUID, family)
+		if len(skipped) > 0 {
+			out[task.Id] = skipped
+		}
+	}
+	return out, nil
 }
 
 // ReloadPingSchedule 加载或重载时间表

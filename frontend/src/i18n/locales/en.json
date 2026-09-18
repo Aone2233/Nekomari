@@ -773,6 +773,7 @@
     "default_on": "Default on for new servers",
     "default_on_description": "When enabled, newly added servers will automatically start running this monitor. Existing servers are unaffected.",
     "default_on_short": "Default on",
+    "skipped_family": "Address family mismatch, skipped",
     "interval": "Interval",
     "server_view": "Server View",
     "target": "Target",

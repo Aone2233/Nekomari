@@ -778,6 +778,7 @@
     "default_on": "預設啟用",
     "default_on_description": "開啟後，新加入的伺服器會自動啟用此監測；已存在的伺服器不受影響。",
     "default_on_short": "預設啟用",
+    "skipped_family": "位址族不相符，已略過",
     "interval": "間隔",
     "server_view": "伺服器檢視",
     "target": "目標",

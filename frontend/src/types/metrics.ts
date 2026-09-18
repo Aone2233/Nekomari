@@ -40,6 +40,13 @@ export type PublicPingTask = {
   interval?: number;
   clients?: string[];
   default_on?: boolean;
+  /**
+   * Nodes the scheduler will skip on this task because their address family cannot
+   * reach the target — an IPv6-only node on an IPv4-literal target, say. Computed
+   * server-side so the UI and the scheduler cannot disagree; the public nodes API
+   * deliberately does not expose node addresses.
+   */
+  skipped_clients?: string[];
 };
 
 export type PingMetricStat = {
