@@ -430,6 +430,15 @@ func GetDBInstance() *gorm.DB {
 	return instance
 }
 
+// ReadyDBInstance 返回已经初始化好的数据库句柄；尚未初始化时返回 nil。
+//
+// 与 GetDBInstance 的区别是它【不会触发初始化】，因此也不会在初始化失败时 Fatalf。
+// 给「数据库不可用也不该让功能失败」的可选数据用 —— 解锁探测结果就是这类：它由节点
+// 单独上报，ip-info 的单元测试不建库，用 GetDBInstance 会让整个测试进程直接退出。
+func ReadyDBInstance() *gorm.DB {
+	return instance
+}
+
 // Close 关闭底层数据库连接，供关闭流程调用。
 func Close() error {
 	if instance == nil {

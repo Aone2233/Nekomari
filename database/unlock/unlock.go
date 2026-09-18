@@ -17,7 +17,7 @@ import (
 
 // Save 覆盖写入一个节点的最近一次探测结果。
 func Save(uuid string, params v2.UnlockParams) error {
-	db := dbcore.GetDBInstance()
+	db := dbcore.ReadyDBInstance()
 	if db == nil {
 		// 数据库还没起来。解锁是附加信息，不值得让上报流程炸掉。
 		return errors.New("database is not initialized")
@@ -48,7 +48,7 @@ func Save(uuid string, params v2.UnlockParams) error {
 // 数据库不可用时同样返回 (nil, nil)：ip-info 的单元测试不建库，而解锁只是这个接口
 // 的附加字段，不能因为它把地理与延迟数据一起拖垮。
 func Load(uuid string) (*v2.UnlockParams, error) {
-	db := dbcore.GetDBInstance()
+	db := dbcore.ReadyDBInstance()
 	if db == nil {
 		return nil, nil
 	}
