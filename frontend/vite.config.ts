@@ -68,9 +68,9 @@ export default defineConfig(({ mode }) => {
         registerType: "autoUpdate",
         includeAssets: ["favicon.ico", "assets/pwa-icon.webp"],
         manifest: {
-          name: "Komari Monitor",
-          short_name: "Komari Monitor",
-          description: "A simple server monitor tool",
+          name: "Nekomari",
+          short_name: "Nekomari",
+          description: "Self-hosted server monitoring",
           theme_color: "#2563eb",
           background_color: "#ffffff",
           display: "standalone",

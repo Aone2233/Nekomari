@@ -1,7 +1,7 @@
 {
-  "name": "Komari Monitor",
-  "short_name": "Komari Monitor",
-  "description": "A simple server monitor tool",
+  "name": "Nekomari",
+  "short_name": "Nekomari",
+  "description": "Self-hosted server monitoring",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

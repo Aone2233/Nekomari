@@ -9,7 +9,10 @@ import (
 )
 
 var (
-	TwoFactorIssuer = "Komari Monitor"
+	// TwoFactorIssuer 是认证器 App 里显示的发行方名称。
+	// 必须是 Nekomari 而不是上游的 Komari Monitor：这个字符串会被用户永久保存在
+	// 认证器里，写错品牌等于让每个用户都看到上游的名字。
+	TwoFactorIssuer = "Nekomari"
 )
 
 func Generate2Fa() (string, image.Image, error) {
