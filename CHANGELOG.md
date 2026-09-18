@@ -6,6 +6,33 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.7] — 2026-09-18
+
+### Fixed
+
+- **A scheduled job could be accepted and then never run.** A cron spec can parse
+  cleanly and still have no future occurrence — `Next` scans a year of seconds and
+  gives up, so `0 0 0 30 2 *` (30 February) is valid to the parser and never comes
+  due. That was caught only inside the runner, which logged a warning and returned:
+  `AddContextFunc` reported success to its caller, and the job then silently never
+  executed. Whatever it drove — metric rollups, notification dispatch, retention —
+  simply stopped, with nothing surfaced anywhere an operator would look. It is now
+  rejected at registration. The runtime guard remains as a safety net and logs at
+  error level.
+- **A ping task could measure two different network paths and plot them as one.**
+  A dual-stack hostname in a mixed fleet is resolved per probe: the dual-stack probes
+  dial IPv6 and the v4-only probes dial IPv4. One task therefore reported HK04 at
+  12.6% loss against 0.0% from its peers — the difference between the IPv6 and IPv4
+  routes to the same hostname, not instability in either.
+
+### Documentation
+
+- `docs/SILENT-FAILURES.md` — a catalogue of places where the system knows something
+  is wrong and does not say so, with each entry checked against the running instance
+  so observed problems are distinguishable from latent ones.
+- `docs/OPEN-WORK.md` — unfinished work, decisions waiting, and the traps that cost
+  time, so a later session does not re-derive them.
+
 ## [v0.1.6] — 2026-09-18
 
 ### Fixed
@@ -172,6 +199,7 @@ First Nekomari release, forked from Komari `1.5.0-fix1`.
 - Monorepo layout (server + `frontend/` + `agent/`), a bundled theme packer that
   needs no `zstd` binary, and `build.sh`.
 
+[v0.1.7]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.7
 [v0.1.6]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.6
 [v0.1.5]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.5
 [v0.1.4]: https://github.com/Aone2233/Nekomari/releases/tag/v0.1.4
