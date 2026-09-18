@@ -69,6 +69,7 @@ const out = process.argv[6] || '/tmp';
   // 负载 tab is expected and says nothing. Click it before judging.
   let panel = null;
   let content = '';
+  let unlock = null;
   if (hasTab) {
     await page.evaluate(() => {
       const button = Array.from(document.querySelectorAll('button'))
@@ -81,6 +82,12 @@ const out = process.argv[6] || '/tmp';
       const el = document.querySelector('.ip-info-panel');
       return el ? el.innerText.replace(/\s+/g, ' ').slice(0, 300) : '';
     });
+    // 解锁区块是附加脚本挂上去的（主题自己没有渲染它的代码），所以单独断言一次：
+    // 它没出现时要能分清是「主题结构变了」还是「探针还没上报」。
+    unlock = await page.evaluate(() => {
+      const el = document.querySelector('.nk-unlock');
+      return el ? el.innerText.replace(/\s+/g, ' ').trim().slice(0, 400) : null;
+    });
     await page.screenshot({ path: `${out}/ip-panel.png`, fullPage: false });
   }
 
@@ -90,6 +97,7 @@ const out = process.argv[6] || '/tmp';
   console.log('  "IP 信息" tab :', hasTab ? 'present' : 'MISSING');
   console.log('  panel renders :', panel === null ? 'n/a' : String(panel));
   if (content) console.log('  panel text    :', content);
+  console.log('  unlock block  :', unlock === null ? 'ABSENT' : unlock);
   console.log('  ip-info calls :', calls.length);
   for (const c of calls) console.log('    ' + c);
   if (panel) console.log('  screenshot    :', `${out}/ip-panel.png`);

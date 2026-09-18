@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# 把节点上的探针升到指定版本。默认 v0.1.9。
+#
+# 为什么必须升级探针：v0.1.9 修掉了「已完成的 TCP 握手被报成丢包」，并加入了流媒体/AI
+# 解锁探测。两者都只在探针里，服务端升级不解决。
+#
+# 幂等：已经是目标版本就直接跳过。会先备份旧二进制（*.bak-pre-<version>）。
+#
+# 用法（在目标机上以 root 执行）：
+#   VERSION=v0.1.9 ./upgrade-agent.sh
+set -euo pipefail
+
+VERSION="${VERSION:-v0.1.9}"
+REPO="${REPO:-Aone2233/Nekomari}"
+BASE="https://github.com/${REPO}/releases/download/${VERSION}"
+
+case "$(uname -s)" in
+  Linux)  OS=linux ;;
+  Darwin) OS=darwin ;;
+  *) echo "不支持的系统：$(uname -s)" >&2; exit 1 ;;
+esac
+case "$(uname -m)" in
+  x86_64|amd64) ARCH=amd64 ;;
+  aarch64|arm64) ARCH=arm64 ;;
+  *) echo "不支持的架构：$(uname -m)" >&2; exit 1 ;;
+esac
+
+ASSET="komari-agent-${OS}-${ARCH}"
+echo "目标：${ASSET}  ${VERSION}"
+
+# 从正在跑的进程取二进制路径，而不是猜目录 —— 各节点的安装位置并不统一。
+BIN="$(ps -eo args | grep '[k]omari-agent' | head -1 | awk '{print $1}')"
+if [[ -z "$BIN" || ! -x "$BIN" ]]; then
+  echo "找不到正在运行的探针二进制" >&2
+  exit 1
+fi
+echo "当前二进制：$BIN"
+
+CURRENT="$("$BIN" --version 2>/dev/null | tr -d '\r' | head -1 || true)"
+echo "当前版本：${CURRENT:-未知}"
+if [[ "$CURRENT" == *"$VERSION"* ]]; then
+  echo "已经是 $VERSION，跳过"
+  exit 0
+fi
+
+cd /tmp
+curl -fsSL -o agent-new "$BASE/$ASSET"
+curl -fsSL -o sums "$BASE/SHA256SUMS.txt"
+grep " ${ASSET}\$" sums | sed "s#${ASSET}#agent-new#" | sha256sum -c -
+chmod +x agent-new
+
+cp -p "$BIN" "${BIN}.bak-pre-${VERSION}"
+install -m 0755 agent-new "$BIN"
+echo "已替换，备份在 ${BIN}.bak-pre-${VERSION}"
+
+if [[ "$OS" == "linux" ]]; then
+  UNIT="$(systemctl list-units --type=service --all --no-legend 2>/dev/null | awk '{print $1}' | grep -i komari | head -1)"
+  [[ -n "$UNIT" ]] || { echo "找不到 komari 相关的 systemd 单元" >&2; exit 1; }
+  systemctl restart "$UNIT"
+  sleep 6
+  echo "单元 $UNIT : $(systemctl is-active "$UNIT")"
+  journalctl -u "$UNIT" --since "1 min ago" --no-pager 2>/dev/null | grep -iE "unlock probe|Basic info uploaded" | tail -3 || true
+else
+  echo "macOS：请手动重启探针（launchctl），脚本不猜测它的标签名"
+fi
