@@ -133,6 +133,9 @@ var RootCmd = &cobra.Command{
 			go update.DoUpdateWorks()
 		}
 		go server.DoUploadBasicInfoWorks()
+		// 解锁探测要真的出网打 Netflix / YouTube / Cloudflare，所以单独一条慢循环，
+		// 不跟着 basicInfo 的间隔走。
+		go server.DoUploadUnlockWorks()
 		for {
 			server.UpdateBasicInfo()
 			server.EstablishWebSocketConnection()

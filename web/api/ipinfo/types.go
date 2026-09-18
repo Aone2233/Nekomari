@@ -8,6 +8,10 @@
 // 所以本包单独维护一套 DTO，刻意不复用 web/api 的 Respond* 外壳。
 package ipinfo
 
+import (
+	v2 "github.com/Aone2233/nekomari/protocol/v2"
+)
+
 const (
 	// APIVersion 是接口的语义版本，经 /status 暴露给主题。
 	APIVersion = "1.0.0"
@@ -193,6 +197,21 @@ type LookupProvider struct {
 	SecurityDataAvailable bool     `json:"security_data_available"`
 }
 
+// UnlockData 是「流媒体 / AI 解锁」面板数据。
+//
+// 它由节点上的探针测量并上报，服务端只负责存与转发：解锁取决于发起请求的那个 IP，
+// 服务端在别的机房，只能测到它自己的出口。没有探测记录时整个字段为 null，面板据此
+// 显示「等待探测」而不是「未解锁」—— 这两件事必须分得开。
+//
+// EgressIP 是探测实际用的出口地址，不一定等于节点地址：本机群里有主机经由另一台
+// 节点出网，不带上它就会把结论算到错误的节点上。
+type UnlockData struct {
+	EgressIP     string          `json:"egress_ip,omitempty"`
+	EgressRegion string          `json:"egress_region,omitempty"`
+	ProbedAt     string          `json:"probed_at"`
+	Results      []v2.UnlockItem `json:"results"`
+}
+
 // LookupData 是 /lookup 与 /refresh 的 data。
 type LookupData struct {
 	UUID           string             `json:"uuid"`
@@ -205,7 +224,10 @@ type LookupData struct {
 	Classification Classification     `json:"classification"`
 	Reputation     Reputation         `json:"reputation"`
 	Capabilities   LookupCapabilities `json:"capabilities"`
-	Provider       LookupProvider     `json:"provider"`
+	// Unlock 是节点探针上报的解锁快照。主题的 zod 对象会丢弃未知键，所以老主题
+	// 拿到它不会报错，只是不显示。
+	Unlock   *UnlockData    `json:"unlock,omitempty"`
+	Provider LookupProvider `json:"provider"`
 }
 
 // Meta 是所有 data 的元信息。warning 的 schema 是 string | null，

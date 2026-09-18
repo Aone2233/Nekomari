@@ -19,7 +19,32 @@ const (
 	MethodAgentPull       = "agent.pull"
 	MethodAgentFile       = "agent.file"
 	MethodAgentFileResult = "agent.file.result"
+	MethodAgentUnlock     = "agent.unlock"
 )
+
+// UnlockParams 是 agent.unlock 的负载：探针从自己的出口测得的解锁结论。
+//
+// 为什么由探针测而不是服务端测：解锁取决于【发起请求的那个 IP】，服务端在别的机房，
+// 只能测到它自己。出口地址随结果一起上来，因为它不总是节点自己的地址 —— 本机群里
+// 有主机是经由另一台节点出网的。
+type UnlockParams struct {
+	EgressIP     string       `json:"egress_ip,omitempty"`
+	EgressRegion string       `json:"egress_region,omitempty"`
+	ProbedAt     time.Time    `json:"probed_at"`
+	Results      []UnlockItem `json:"results"`
+}
+
+// UnlockItem 是单个服务的结论。字段与 agent/unlock.Result 一一对应；服务端与探针是
+// 两个独立模块，所以这里重新声明而不是共享类型 —— 线上形状就是这个结构体。
+type UnlockItem struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Kind   string `json:"kind"`
+	Status string `json:"status"`
+	Region string `json:"region,omitempty"`
+	Basis  string `json:"basis"`
+	Detail string `json:"detail,omitempty"`
+}
 
 type Request struct {
 	JSONRPC string `json:"jsonrpc"`

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/database/tasks"
+	"github.com/Aone2233/nekomari/database/unlock"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 	"github.com/Aone2233/nekomari/utils/notifier"
 	agent_runtime "github.com/Aone2233/nekomari/web/agent"
@@ -67,6 +68,15 @@ func handleV2RPC(uuid string, req v2.Request, allowWait bool) v2.Response {
 		}
 		if err := ingestBasicInfo(uuid, params.Info, ""); err != nil {
 			return v2.Error(req.ID, -32000, "failed to save basic info", err.Error())
+		}
+		return v2.Success(req.ID, gin.H{"status": "success"})
+	case v2.MethodAgentUnlock:
+		var params v2.UnlockParams
+		if err := bindV2Params(req.Params, &params); err != nil {
+			return v2.Error(req.ID, -32602, "invalid unlock params", err.Error())
+		}
+		if err := unlock.Save(uuid, params); err != nil {
+			return v2.Error(req.ID, -32000, "failed to save unlock report", err.Error())
 		}
 		return v2.Success(req.ID, gin.H{"status": "success"})
 	case v2.MethodAgentPingResult:

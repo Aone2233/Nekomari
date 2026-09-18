@@ -566,6 +566,7 @@ func doInitialize() error {
 		&models.MessageSenderProvider{},
 		&models.ThemeConfiguration{},
 		&models.PluginConfiguration{},
+		&models.UnlockReport{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create tables: %w", err)

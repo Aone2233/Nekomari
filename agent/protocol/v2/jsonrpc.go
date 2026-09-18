@@ -19,6 +19,7 @@ const (
 	MethodAgentPull       = "agent.pull"
 	MethodAgentFile       = "agent.file"
 	MethodAgentFileResult = "agent.file.result"
+	MethodAgentUnlock     = "agent.unlock"
 )
 
 type Request struct {
@@ -98,6 +99,12 @@ func BuildReportRequest(id interface{}, report []byte, ackEventIDs []string) []b
 
 func BuildBasicInfoPayload(info map[string]interface{}) []byte {
 	return NewNotification(MethodAgentBasicInfo, map[string]interface{}{"info": info})
+}
+
+// BuildUnlockPayload 把一次解锁探测的结果包成通知。
+// report 由 agent/unlock 构造；协议层只负责包外壳，不关心它的字段。
+func BuildUnlockPayload(report interface{}) Request {
+	return Request{JSONRPC: Version, Method: MethodAgentUnlock, Params: report}
 }
 
 type reportParams struct {

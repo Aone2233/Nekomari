@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Aone2233/nekomari/database/unlock"
 	logger "github.com/Aone2233/nekomari/utils/log"
 	"github.com/gin-gonic/gin"
 )
@@ -129,7 +130,11 @@ func (h *Handler) Refresh(c *gin.Context) {
 
 // buildLookupData 组装 /lookup 与 /refresh 的 data。
 // excluded 恒为 false：本后端不做大陆 IP 排除，也没有排除理由。
+//
+// 解锁数据不参与上游缓存：它由节点上的探针单独上报，和地理/ASN 数据的生命周期不同，
+// 所以每次请求现读一次（一条主键查询），探针一更新面板就能看到。
 func buildLookupData(uuid string, ip net.IP, family int, snapshot lookupSnapshot) LookupData {
+	unlockData := loadUnlock(uuid)
 	return LookupData{
 		UUID:           uuid,
 		SchemaVersion:  SchemaVersion,
@@ -140,8 +145,35 @@ func buildLookupData(uuid string, ip net.IP, family int, snapshot lookupSnapshot
 		Network:        snapshot.Network,
 		Classification: snapshot.Classification,
 		Reputation:     snapshot.Reputation,
-		Capabilities:   LookupCapabilities{MediaUnlock: false, AIUnlock: false},
-		Provider:       snapshot.Provider,
+		// 能力位跟着「有没有探测记录」走，主题据此决定要不要显示解锁区块。
+		Capabilities: LookupCapabilities{
+			MediaUnlock: unlockData != nil,
+			AIUnlock:    unlockData != nil,
+		},
+		Unlock:   unlockData,
+		Provider: snapshot.Provider,
+	}
+}
+
+// loadUnlock 读取该节点的解锁快照。读失败只记一条日志：解锁是附加信息，
+// 不该因为一次数据库抖动就让整个 IP 信息接口失败。
+func loadUnlock(uuid string) *UnlockData {
+	if uuid == "" {
+		return nil
+	}
+	report, err := unlock.Load(uuid)
+	if err != nil {
+		logger.Warnf("ipinfo", "failed to load unlock report for %s: %v", uuid, err)
+		return nil
+	}
+	if report == nil || len(report.Results) == 0 {
+		return nil
+	}
+	return &UnlockData{
+		EgressIP:     report.EgressIP,
+		EgressRegion: report.EgressRegion,
+		ProbedAt:     report.ProbedAt.UTC().Format(time.RFC3339),
+		Results:      report.Results,
 	}
 }
 
