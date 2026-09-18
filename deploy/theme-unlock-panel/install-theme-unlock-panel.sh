@@ -15,7 +15,6 @@ set -euo pipefail
 THEME_DIR="${THEME_DIR:-/opt/nekomari/data/theme/LuminaPlus/dist}"
 SRC="$(cd "$(dirname "$0")" && pwd)/unlock-panel.js"
 ASSET_NAME="unlock-panel.js"
-TAG='<script defer src="/assets/unlock-panel.js"></script>'
 
 if [[ ! -f "$SRC" ]]; then
   echo "找不到 $SRC" >&2
@@ -31,38 +30,53 @@ echo "主题目录 : $THEME_DIR"
 install -m 0644 "$SRC" "$THEME_DIR/assets/$ASSET_NAME"
 echo "已写入   : assets/$ASSET_NAME"
 
-if grep -qF "$ASSET_NAME" "$THEME_DIR/index.html"; then
-  echo "index.html 已经引用过它，未改动"
-else
-  # 备份一次就够：第二次执行不会走到这里。
-  if [[ ! -f "$THEME_DIR/index.html.bak-pre-unlock" ]]; then
-    cp -p "$THEME_DIR/index.html" "$THEME_DIR/index.html.bak-pre-unlock"
-    echo "已备份   : index.html.bak-pre-unlock"
-  fi
-  # 插到 </body> 之前。用 python 而不是 sed，避免斜杠和引号在替换串里被解释。
-  python3 - "$THEME_DIR/index.html" "$TAG" <<'PY'
+# 标签必须带内容指纹。
+#
+# 这个文件名是固定的（不像主题自己的资源带哈希），浏览器会一直用缓存里那份，改完脚本
+# 刷新页面看到的还是旧的 —— 第一次改渲染逻辑时就撞上了这个，页面照旧显示旧文案。
+# 所以把脚本内容的前 8 位 sha256 拼进查询串：内容一变 URL 就变，缓存自然失效。
+HASH="$(sha256sum "$SRC" | cut -c1-8)"
+TAG="<script defer src=\"/assets/$ASSET_NAME?v=$HASH\"></script>"
+echo "指纹     : v=$HASH"
+
+if [[ ! -f "$THEME_DIR/index.html.bak-pre-unlock" ]]; then
+  cp -p "$THEME_DIR/index.html" "$THEME_DIR/index.html.bak-pre-unlock"
+  echo "已备份   : index.html.bak-pre-unlock"
+fi
+
+# 用 python 而不是 sed：要替换的是「同一个脚本、任意旧指纹」的整行，斜杠和引号在
+# 替换串里容易被解释。幂等：同一份内容重复执行不会改动文件。
+python3 - "$THEME_DIR/index.html" "$TAG" "$ASSET_NAME" <<'PY'
+import re
 import sys
-path, tag = sys.argv[1], sys.argv[2]
+
+path, tag, asset = sys.argv[1], sys.argv[2], sys.argv[3]
 with open(path, encoding='utf-8') as handle:
     html = handle.read()
-if tag in html:
-    sys.exit(0)
-marker = '</body>'
-if marker not in html:
-    sys.exit('index.html 里没有 </body>，拒绝盲插')
-html = html.replace(marker, '    ' + tag + '\n  ' + marker, 1)
-with open(path, 'w', encoding='utf-8') as handle:
-    handle.write(html)
+
+pattern = re.compile(r'[ \t]*<script defer src="/assets/' + re.escape(asset) + r'(\?v=[0-9a-f]+)?"></script>\n?')
+if pattern.search(html):
+    updated = pattern.sub('    ' + tag + '\n', html, count=1)
+    action = '已更新'
+else:
+    marker = '</body>'
+    if marker not in html:
+        sys.exit('index.html 里没有 </body>，拒绝盲插')
+    updated = html.replace(marker, '    ' + tag + '\n  ' + marker, 1)
+    action = '已插入'
+
+if updated != html:
+    with open(path, 'w', encoding='utf-8') as handle:
+        handle.write(updated)
+print(f'{action}   : {tag}')
 PY
-  echo "已插入   : <script defer src=\"/assets/$ASSET_NAME\">"
-fi
 
 echo
 echo "验证："
-grep -o "<script defer src=\"/assets/$ASSET_NAME\"></script>" "$THEME_DIR/index.html" || {
-  echo "  ✗ index.html 里没找到标签" >&2
+grep -o "<script defer src=\"/assets/$ASSET_NAME?v=[0-9a-f]*\"></script>" "$THEME_DIR/index.html" || {
+  echo "  ✗ index.html 里没找到带指纹的标签" >&2
   exit 1
 }
 ls -l "$THEME_DIR/assets/$ASSET_NAME"
 echo
-echo "浏览器强制刷新一次即可看到「流媒体 / AI 解锁」区块（主题资源带哈希，index.html 不带）。"
+echo "index.html 不带哈希，浏览器可能缓存它本身；强制刷新一次即可。脚本 URL 带指纹，之后改脚本不需要再强刷。"

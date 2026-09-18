@@ -53,9 +53,25 @@ cp -p "$BIN" "${BIN}.bak-pre-${VERSION}"
 install -m 0755 agent-new "$BIN"
 echo "已替换，备份在 ${BIN}.bak-pre-${VERSION}"
 
-if [[ "$OS" == "linux" ]]; then
+# 重启方式。
+#
+# 默认自己找 system 级单元。但有的节点跑的是【用户级】单元（MAC Server 就是），
+# `systemctl --user` 以 root 执行会报 "Failed to connect to bus"，必须带上正确的
+# XDG_RUNTIME_DIR 和目标用户。这里不猜这些参数，要求显式给出：
+#
+#   RESTART_CMD='sudo -n -u macos env XDG_RUNTIME_DIR=/run/user/1000 systemctl --user restart nekomari-agent' \
+#     VERSION=v0.1.9 ./upgrade-agent.sh
+if [[ -n "${RESTART_CMD:-}" ]]; then
+  echo "重启：$RESTART_CMD"
+  eval "$RESTART_CMD"
+  sleep 6
+  echo "重启命令已执行"
+elif [[ "$OS" == "linux" ]]; then
   UNIT="$(systemctl list-units --type=service --all --no-legend 2>/dev/null | awk '{print $1}' | grep -i komari | head -1)"
-  [[ -n "$UNIT" ]] || { echo "找不到 komari 相关的 systemd 单元" >&2; exit 1; }
+  if [[ -z "$UNIT" ]]; then
+    echo "找不到 system 级的 komari 单元。若该节点跑的是用户级单元，请用 RESTART_CMD 指定重启方式。" >&2
+    exit 1
+  fi
   systemctl restart "$UNIT"
   sleep 6
   echo "单元 $UNIT : $(systemctl is-active "$UNIT")"

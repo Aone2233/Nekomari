@@ -33,6 +33,23 @@
     unknown: '未知',
   };
 
+  // 只判断了出口地区的服务（ChatGPT / Claude）不能显示成「已解锁」。
+  //
+  // 一开始就是那么显示的，实测立刻暴露了问题：并行智算云出口地区是 CN，ChatGPT 却
+  // 写着「已解锁」—— 而中国大陆根本不在 OpenAI 的支持范围内。结论只到「地区是 X」
+  // 这一步，就不该用「解锁」这个词。这里按 basis 改写显示，不改数据。
+  function statusLabel(result) {
+    if (result.basis === 'region') {
+      return result.region ? `地区 ${result.region}` : '仅地区';
+    }
+    return STATUS_LABEL[result.status] || result.status;
+  }
+
+  function statusClass(result) {
+    if (result.basis === 'region') return 'is-region';
+    return 'is-' + (result.status || 'unknown');
+  }
+
   const KIND_LABEL = { media: '流媒体', ai: 'AI' };
 
   const STYLE = `
@@ -46,6 +63,7 @@
 .nk-unlock-item.is-partial  .nk-unlock-status { color: #d97706; }
 .nk-unlock-item.is-blocked  .nk-unlock-status { color: #dc2626; }
 .nk-unlock-item.is-unknown  .nk-unlock-status { color: #6b7280; }
+.nk-unlock-item.is-region   .nk-unlock-status { color: #6b7280; font-weight: 500; }
 .nk-unlock-meta { font-size: 11.5px; opacity: .6; line-height: 1.5; }
 .nk-unlock-note { font-size: 11.5px; opacity: .75; margin-top: 8px; line-height: 1.5; }
 `;
@@ -115,7 +133,7 @@
 
   function buildItem(result) {
     const item = document.createElement('div');
-    item.className = 'nk-unlock-item is-' + (result.status || 'unknown');
+    item.className = 'nk-unlock-item ' + statusClass(result);
 
     const head = document.createElement('div');
     head.className = 'nk-unlock-head';
@@ -124,7 +142,7 @@
     name.textContent = result.name || result.id;
     const status = document.createElement('span');
     status.className = 'nk-unlock-status';
-    status.textContent = STATUS_LABEL[result.status] || result.status;
+    status.textContent = statusLabel(result);
     head.appendChild(name);
     head.appendChild(status);
     item.appendChild(head);
@@ -133,7 +151,8 @@
     detail.className = 'nk-unlock-detail';
     const bits = [];
     if (KIND_LABEL[result.kind]) bits.push(KIND_LABEL[result.kind]);
-    if (result.region) bits.push(result.region);
+    // 地区已经在状态里显示过了，就不再重复。
+    if (result.region && result.basis !== 'region') bits.push(result.region);
     if (result.detail) bits.push(result.detail);
     detail.textContent = bits.join(' · ');
     item.appendChild(detail);
