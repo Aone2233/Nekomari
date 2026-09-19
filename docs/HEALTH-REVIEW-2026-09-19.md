@@ -113,16 +113,25 @@ restores the `cap_net_raw` file capability).
 
 ## Found by the widened CI (fixed in v0.1.11)
 
-Widening the suite from 79 tests to the whole hermetic set immediately turned two
-`pkg/jsruntime` tests red on Linux (`TestNodeCoreModulesAndECMAScriptBuiltins`,
-`TestStorageDirIsConfinedAdditionalRoot`). They are hermetic, so this was not the
-environment: `fs.writeFileSync(path, data, "utf8")` was creating a file with mode
-**0000**. `fsMode` treated the encoding string `"utf8"` as an octal mode, failed to
-parse it, and fell through to `ToInteger()` = 0. Windows ignores Unix mode bits, so the
-Windows job stayed green and the old CI never ran the tests on Linux anyway. Fixed by
-falling back to the default mode when a string is not a valid octal mode; a focused
-regression test (`TestWriteFileWithEncodingStringUsesDefaultMode`) was added. This is the
-bug the CI change existed to find, found on its first run.
+Widening the suite from 79 tests to the whole hermetic set exposed three latent bugs in
+`pkg/jsruntime`, each on a different platform:
+
+1. **Linux — `fs.writeFileSync(path, data, "utf8")` created a mode-0000 file.** `fsMode`
+   treated the encoding string as an octal mode, failed to parse it, and fell through to
+   `ToInteger()` = 0, so the file was unreadable even by its owner. Windows ignores Unix
+   mode bits, so only the Linux job caught it.
+2. **Windows — the `BaseDir` confinement check rejected 8.3 short paths.** The runner's
+   temp dir is `RUNNER~1` while `resolveRoot` canonicalises `BaseDir` to `runneradmin`;
+   `filepath.Rel` then saw two different directories. Both `WithinBase` and
+   `RelativeToBase` now re-check with both paths resolved, on the mismatch path only.
+3. **Linux runner — `child_process.spawn` could drop output.** The stdout/stderr readers
+   ran concurrently with `cmd.Wait()`, which closes the pipes; Go requires the reads to
+   finish first. The process is now waited for only after both readers reach EOF.
+
+Each is fixed with a focused change; the first two have regression tests
+(`TestWriteFileWithEncodingStringUsesDefaultMode`, and the require test now runs with a
+short `TEMP`). All three pass on Windows (including a short-path `TEMP`), on Ubuntu
+(MAC), and in CI on both `ubuntu-latest` and `windows-latest`.
 
 ## Deliberately not done (recorded in `docs/OPEN-WORK.md`)
 
