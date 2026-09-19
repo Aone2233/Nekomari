@@ -6,6 +6,46 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.10] — 2026-09-19
+
+### Fixed
+
+- **The unlock probe reported a region block as "unknown".** `agent/unlock` treated a
+  non-200 title page as a transient failure: it retried and, when the retries failed,
+  returned an error, so `probeNetflix` mapped a definitive 404 to `unknown` instead of
+  `blocked` / `partial`. A 404 is a definitive answer, not a network failure. The two
+  hermetic tests that covered this (`TestProbeNetflixOriginalsOnly`, `TestProbeNetflixBlocked`)
+  had been failing since the commit that added the feature — because CI's `-run` allowlist
+  never ran them.
+
+### Security
+
+- **Forwarded headers are honoured only from trusted peers.** Gin's default is to trust
+  every proxy, so anyone able to reach the panel directly could forge `ClientIP` with an
+  `X-Forwarded-For` header — and `ClientIP` feeds session records, audit logs and the
+  visitor-audit rate limiter. The engine now trusts only loopback and private ranges
+  (`127.0.0.0/8`, `::1/128`, `10/8`, `172.16/12`, `192.168/16`, `fc00::/7`), which covers
+  the reference nginx-on-loopback deployment and Docker/LAN proxies while ignoring a
+  public client's forged header.
+- The main and guide HTTP servers now set `ReadHeaderTimeout` (10s), so a half-open
+  connection cannot pin a worker. WebSocket upgrades are unaffected.
+- `/api/login` request bodies are capped at 1 MiB instead of being read unbounded.
+
+### Changed
+
+- **CI runs the whole test suite again.** The `-run` allowlist matched 79 of 552 root
+  tests (and 6 of 81 agent tests, in two packages only), so every test not named in it
+  silently did not run. It is replaced by `-skip`, which excludes only the tests that
+  genuinely need network, root or IPv6. `docs/TESTING.md` documents the exact commands.
+- Server builds carry `VersionHash` again. It was read in six places but never injected,
+  so every build — including official releases — logged at `Debug` level and reported
+  `hash: unknown` through `/api/version`, `/api/public`, RPC and the DB version marker.
+  `release.yml` and `build.sh` now inject it.
+- The frontend no longer declares itself as a dependency (`"komari-web": "file:"`).
+  npm installed it as a junction pointing back at `frontend/`, which made any recursive
+  tool that follows junctions (git, find, backups, editor indexers) loop on
+  `node_modules/komari-web/node_modules/komari-web/...`.
+
 ## [v0.1.9] — 2026-09-18
 
 ### Added

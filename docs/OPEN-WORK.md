@@ -15,7 +15,8 @@ without re-deriving anything.
 | LuminaPlus IP panel | **Fixed and released** in v0.1.8 — `classification.source` was missing |
 | Family mixing within one ping task | **Fixed** — tasks split per family, verified single-family |
 
-Production runs `ghcr.io/aone2233/nekomari:v0.1.8`.
+Production runs `ghcr.io/aone2233/nekomari:v0.1.9`; v0.1.10 carries the health-review
+fixes below.
 
 ## Released
 
@@ -98,6 +99,24 @@ removes a node should be paired with stopping its agent, or the panel logs a per
 
 **Waiting on a decision:** stop and remove the agent on Nomao, or leave it in case the
 node comes back.
+
+### 5. Password hashing is a single SHA-256 with a constant salt
+
+`database/accounts/accounts.go` hashes passwords as
+`base64(sha256(password + "06Wm4Jv1Hkxx"))` — no per-user salt and no key stretching
+(bcrypt / scrypt / argon2). Inherited from upstream, and the weakest link in the auth
+path: a database leak is offline-crackable at GPU speed. Changing it needs a migration,
+because existing rows are in the old format — verify the old format on login, then
+rewrite the row in the new format on success. Not done in v0.1.10 because it is a
+behaviour change that needs its own tests.
+
+### 6. Login has no rate limit
+
+`web/api/public/login.go` calls `accounts.CheckPassword` with no attempt counter,
+backoff or lockout, so passwords and 2FA codes can be brute-forced online. v0.1.10 only
+bounded the request body (1 MiB). A limiter needs a decision on the key (account, IP,
+or both), the storage (in-memory vs the panel DB) and whether it is configurable, so it
+was left as its own change.
 
 ## Tooling added
 
