@@ -30,6 +30,13 @@ Nekomari's own.
   path only, and the `require` loader shares the same check. Windows-only; the lexical
   fast path is unchanged. Also found by the widened CI, on the `windows-latest` runner.
 
+- **`child_process.spawn` could drop a child's output.** The stdout/stderr readers ran
+  in goroutines while `cmd.Wait()` closed the pipes concurrently. Go documents that
+  reads from a `StdoutPipe` must finish before `Wait`; doing them concurrently can lose
+  the last chunk, so a `close` handler could observe an empty buffer. The process is now
+  waited for only after both readers reach EOF. Found by the widened CI on the
+  `ubuntu-latest` runner, where it failed and on a quiet machine it passes by timing.
+
 ## [v0.1.10] — 2026-09-19
 
 ### Fixed

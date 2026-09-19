@@ -299,9 +299,16 @@ func (m *Module) spawnChild(vm *goja.Runtime, command string, arguments []string
 		return vm.ToValue(false)
 	})
 
-	m.pipeChildOutput(vm, stdoutReader, stdout, options.encoding)
-	m.pipeChildOutput(vm, stderrReader, stderr, options.encoding)
+	var readers sync.WaitGroup
+	readers.Add(2)
+	m.pipeChildOutput(vm, stdoutReader, stdout, options.encoding, &readers)
+	m.pipeChildOutput(vm, stderrReader, stderr, options.encoding, &readers)
 	go func() {
+		// StdoutPipe/StderrPipe must be fully drained before Wait, which closes
+		// them: calling Wait first can drop output that the process already
+		// wrote. Waiting for both readers to hit EOF is what makes the
+		// subsequent "close" event mean "all output has been delivered".
+		readers.Wait()
 		err := cmd.Wait()
 		cancel()
 		m.runtime.RemoveResource(resourceID)
@@ -414,13 +421,16 @@ func childCallback(call goja.FunctionCall) goja.Callable {
 	return nil
 }
 
-func (m *Module) pipeChildOutput(vm *goja.Runtime, reader io.Reader, stream *goja.Object, encoding string) {
+func (m *Module) pipeChildOutput(vm *goja.Runtime, reader io.Reader, stream *goja.Object, encoding string, done *sync.WaitGroup) {
 	push, _ := goja.AssertFunction(stream.Get("push"))
 	setEncoding, _ := goja.AssertFunction(stream.Get("setEncoding"))
 	if encoding != "" && setEncoding != nil {
 		_, _ = setEncoding(stream, vm.ToValue(encoding))
 	}
 	go func() {
+		if done != nil {
+			defer done.Done()
+		}
 		data := make([]byte, 32*1024)
 		for {
 			count, err := reader.Read(data)
