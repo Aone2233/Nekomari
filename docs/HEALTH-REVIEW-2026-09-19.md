@@ -191,6 +191,19 @@ password. Verified: **8/8 report v0.1.11** in the panel.
    on a quiet machine by timing luck and failed on the runner; the `StdoutPipe`/`Wait`
    ordering it exposed is documented Go behaviour.
 
+## Follow-up (v0.1.12)
+
+- **The panel container was updated to v0.1.12** on OC424 (compose pin bumped from
+  v0.1.9, backup taken, `upgrade-*.zip` written on startup). Its log now runs at INFO
+  with `hash: <sha>` — the VersionHash fix working — and all eight agents reconnected
+  over WebSocket after the restart (the brief `502` was nginx while the container
+  started).
+- **Login throttling shipped** (section 2 of `docs/AUTH-HARDENING.md`): per-IP and
+  per-account token buckets, `429 + Retry-After`, account bucket cleared on success.
+  Verified live against the panel — five wrong passwords returned `401`, the sixth
+  returned `429` with `Retry-After: 300`.
+- The password-hash migration remains the one open item.
+
 ## Releasing
 
 `CHANGELOG.md` carries the `v0.1.11` entry. To release, tag `v0.1.11` and push;
