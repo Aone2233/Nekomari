@@ -41,6 +41,8 @@ func Login(c *gin.Context) {
 		return
 	}
 
+	// 登录请求体只有几个字段；设上限，避免无界读取被用来打内存。
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		api.RespondError(c, http.StatusBadRequest, "Invalid request body: "+err.Error())

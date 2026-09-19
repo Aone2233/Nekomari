@@ -39,6 +39,10 @@ var ErrRestartRequested = errors.New("server restart requested")
 const (
 	// Give in-flight HTTP requests time to finish before the listener closes.
 	httpShutdownTimeout = 10 * time.Second
+	// Cap how long a client may take to send request headers, so a half-open
+	// connection cannot pin a worker indefinitely. WebSocket connections are not
+	// affected: this bounds only the initial header read.
+	httpReadHeaderTimeout = 10 * time.Second
 	// Keep an independent budget for report flushing and store teardown. Reusing
 	// the HTTP deadline here can skip queued metric writes after a slow request.
 	resourceCleanupTimeout = 30 * time.Second
@@ -84,9 +88,27 @@ func (a *App) registerReloadHandlers(cors *security.CorsController) {
 	a.reload.Register("cors", func(event config.ConfigEvent) { cors.Update(event) })
 }
 
+// trustedProxyCIDRs 是允许其转发头（X-Forwarded-For / X-Real-IP）被采信的直连来源。
+//
+// Gin 默认信任【所有】代理，于是任何能直连面板的人都能用 X-Forwarded-For 伪造
+// ClientIP —— 而它被用于会话记录、审计日志与访客限流。这里只信任回环与私有网段：
+// 参考部署里 nginx 在同机回环上，Docker / 局域网代理也落在私有网段，而公网直连
+// 的来源不被采信，伪造头会被忽略。
+//
+// 参考部署（nginx 反代）无需额外配置；若代理来自这些网段之外，需要把它加进来。
+var trustedProxyCIDRs = []string{
+	"127.0.0.0/8", "::1/128",
+	"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7",
+}
+
+func configureTrustedProxies(engine *gin.Engine) {
+	_ = engine.SetTrustedProxies(trustedProxyCIDRs)
+}
+
 // BuildRouter constructs the normal application router and starts reloads.
 func (a *App) BuildRouter() error {
 	r := gin.New()
+	configureTrustedProxies(r)
 	r.Use(logger.GinLogger(), logger.GinRecovery())
 	cors := security.NewCorsController(a.settings.CorsOriginCheckEnabled, a.settings.CorsAllowedOrigins)
 	r.Use(cors.Middleware(), api.IdentityMiddleware(), api.PrivateSiteMiddleware(), noStoreAPIResponses())
@@ -116,7 +138,11 @@ func (a *App) Run() error {
 	// The HTML injector runs outside the hook chain so it sees the final
 	// response: plugin hooks can still rewrite the body, then the registered
 	// head/body fragments are embedded into every text/html page.
-	a.server = &http.Server{Addr: a.listenAddr, Handler: plugin.HTMLInjectHandler(plugin.WrapHandler(a.engine))}
+	a.server = &http.Server{
+		Addr:              a.listenAddr,
+		Handler:           plugin.HTMLInjectHandler(plugin.WrapHandler(a.engine)),
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+	}
 	serverErr := make(chan error, 1)
 	logger.Infof("server", "Starting server on %s ...", a.listenAddr)
 	go func() {
