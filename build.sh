@@ -56,7 +56,13 @@ for f in preview.png perview.png preview.webp; do
 done
 
 echo "==> [4/5] 构建服务端"
-$GO_BIN build -o nekomari$EXT .
+# 注入版本与 hash：main.go 用「hash == unknown」判断这是不是开发构建，并据此决定
+# 日志级别；不注入就会让本地/发布构建都跑在 Debug，且面板一直报 hash: unknown。
+VERSION="$(git -C "$ROOT" describe --tags --always 2>/dev/null || echo unknown)"
+VERSION_HASH="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+$GO_BIN build -trimpath \
+  -ldflags="-X github.com/Aone2233/nekomari/utils.CurrentVersion=$VERSION -X github.com/Aone2233/nekomari/utils.VersionHash=$VERSION_HASH" \
+  -o nekomari$EXT .
 
 echo "==> [5/5] 构建探针（agent/）"
 (cd agent && $GO_BIN build -o nekomari-agent$EXT .)

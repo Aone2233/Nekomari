@@ -115,8 +115,11 @@ jobs:
           CGO_ENABLED: '1'
           CC: ${{ matrix.cc }}
         run: |
+          # VersionHash 必须注入：main.go 用「hash == unknown」判断是不是开发构建，
+          # 决定日志级别。此前只有 CurrentVersion 被注入，于是每个正式版都跑在
+          # Debug 级别，且 /api/version 一直报 hash: unknown。
           go build -trimpath \
-            -ldflags="-s -w -X github.com/Aone2233/nekomari/utils.CurrentVersion=${{ github.ref_name }}" \
+            -ldflags="-s -w -X github.com/Aone2233/nekomari/utils.CurrentVersion=${{ github.ref_name }} -X github.com/Aone2233/nekomari/utils.VersionHash=${GITHUB_SHA:0:7}" \
             -o nekomari-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} .
 
       - name: Build agent

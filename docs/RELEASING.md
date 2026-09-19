@@ -114,7 +114,7 @@ Both workflow build commands can be reproduced without CI:
 ```bash
 # server (add GOOS/GOARCH for a non-native target)
 go build -trimpath \
-  -ldflags="-s -w -X github.com/Aone2233/nekomari/utils.CurrentVersion=v0.1.2" \
+  -ldflags="-s -w -X github.com/Aone2233/nekomari/utils.CurrentVersion=v0.1.2 -X github.com/Aone2233/nekomari/utils.VersionHash=$(git rev-parse --short HEAD)" \
   -o nekomari-$(go env GOOS)-$(go env GOARCH) .
 
 # agent
