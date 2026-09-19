@@ -75,6 +75,42 @@ Not run: the three agent network tests (`TestICMPPing`, `TestTCPPing`, `TestHTTP
 need root/IPv6/target reachability, and the release workflow itself only runs in CI.
 `nekomari.exe` in the repo root is a stale local artifact and was left untouched.
 
+## Deployment verification (2026-09-19, on MAC)
+
+`MAC` (192.168.100.168) is the Ubuntu x86_64 host that runs the "MAC-WAN" agent. The
+release artifacts were reproduced there and the canonical verifier was run against them:
+
+- agent: cross-compiled for `linux/amd64`, `linux/arm64` and `darwin/amd64`
+  (`CGO_ENABLED=0`), matching the release names.
+- server: built **natively on MAC** with Go 1.27.1 and gcc 13.3 (`CGO_ENABLED=1`), so it
+  is dynamically linked against glibc exactly like the CI artifact — not a cross-build.
+- `deploy/deploy-verify.sh` run with `BASE=file:///tmp/nkrel` (a local artifact dir plus a
+  local `SHA256SUMS.txt`), so it exercised the same steps against pre-release binaries:
+
+```
+===== 13 passed, 0 failed =====
+```
+
+That covers: artifact checksums, the version banner showing `v0.1.10`, the first-run
+install guide, install through the API, the public API, issuing an agent token, the agent
+connecting over WebSocket, and the node reporting metrics.
+
+The agent-side unlock fix was then exercised against the real network, which the hermetic
+unit tests cannot do. Running the new binary's probe on MAC printed:
+
+```
+egress=192.220.32.17/US
+  Netflix          unlocked  basis=probe   region=    自制剧与片库均可访问
+  YouTube Premium  blocked   basis=probe   region=    该地区不提供 Premium
+  ChatGPT          unlocked  basis=region  region=US  出口地区 US（按地区判断，未验证该 IP 是否真的可用）
+  Claude           unlocked  basis=region  region=US  出口地区 US（按地区判断，未验证该 IP 是否真的可用）
+```
+
+The production agent on MAC (`~/nekomari-agent/`, v0.1.9) was **not** replaced: the
+verification used a throwaway server on its own port and a standalone probe. Upgrading it
+is a separate, reversible step (`deploy/upgrade-agent.sh`, which backs up the binary and
+restores the `cap_net_raw` file capability).
+
 ## Deliberately not done (recorded in `docs/OPEN-WORK.md`)
 
 - **Password hashing** is still `sha256(password + constant salt)`. Replacing it needs a
