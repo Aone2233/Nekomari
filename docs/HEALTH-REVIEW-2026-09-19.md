@@ -133,14 +133,15 @@ Each is fixed with a focused change; the first two have regression tests
 short `TEMP`). All three pass on Windows (including a short-path `TEMP`), on Ubuntu
 (MAC), and in CI on both `ubuntu-latest` and `windows-latest`.
 
-## Deliberately not done (recorded in `docs/OPEN-WORK.md`)
+## Deliberately not done (planned in `docs/AUTH-HARDENING.md`)
 
-- **Password hashing** is still `sha256(password + constant salt)`. Replacing it needs a
-  migration (verify the old format on login, rewrite on success) and its own tests.
-- **Login rate limiting** is still absent. A limiter needs a decision on key, storage and
-  configurability.
+- **Password hashing** is still `sha256(password + constant salt)`.
+- **Login rate limiting** is still absent.
 
-Both are bigger than a razor change and are recorded as open items rather than guessed at.
+Both are migrations rather than patches, so they were left as their own change. The full
+plan — argon2id/bcrypt, a self-describing stored format, transparent re-hash on next
+login, the exact call sites, the throttling policy and storage choice, and the tests — is
+in **[AUTH-HARDENING.md](./AUTH-HARDENING.md)**.
 
 ## Pre-existing, left alone
 
@@ -150,8 +151,51 @@ Both are bigger than a razor change and are recorded as open items rather than g
 - `install-komari.sh` (45 KB, no references) and `agent/.github/workflows/*` (inert,
   reference the old `komari-monitor/komari-agent` module path) are still present.
 
+## Fleet upgrade (2026-09-19)
+
+All eight nodes in the live panel were moved from agent v0.1.9 to v0.1.11. The binary
+was fetched once, verified against the published `SHA256SUMS.txt`, and copied to each host
+rather than letting each node download it (PZYC cannot fetch release assets, and a per-node
+download adds one failure mode per node). Each replacement backed up the old binary as
+`*.bak-pre-v0.1.11`.
+
+| Node | Binary | Unit | How |
+|---|---|---|---|
+| AkkoCloud, BandwagonHost, CloudLeadInno, HK04, 华纳云 | `/opt/nekomari-agent/komari-agent-linux-amd64` | `nekomari-agent.service` | root, from OC424 |
+| 并行智算云 (PZYC) | `/opt/nekomari-agent/komari-agent-linux-amd64` | `nekomari-agent.service` | passwordless sudo |
+| 甲骨文 OC424 | `/home/ubuntu/nekomari-agent/komari-agent-linux-arm64` | `komari-agent-oc424-original-node.service` | arm64, panel host |
+| MAC Server | `~/nekomari-agent/komari-agent-linux-amd64` | `nekomari-agent.service` (user) | needs `cap_net_raw` |
+
+MAC has no passwordless sudo, so its `cap_net_raw` file capability cannot be re-applied
+with `setcap` directly. It was restored through a `--privileged` Alpine container that
+bind-mounts the binary — the `macos` user is in the `docker` group, so this needs no
+password. Verified: **8/8 report v0.1.11** in the panel.
+
+## Lessons
+
+1. **An allowlist test filter is worse than no filter.** The old CI `-run` allowlist ran
+   79 of 552 tests and silently skipped every test not named in it, so a new test defaulted
+   to *not running*. A denylist (`-skip`) is the safe default: new tests run unless they are
+   explicitly excluded.
+2. **Widening coverage finds real bugs on the first run — budget for it.** The first
+   full-suite run exposed three latent `pkg/jsruntime` bugs on three different platforms.
+   Several iterations to green is the coverage working, not a regression.
+3. **Platform-specific behaviour needs every platform in CI.** Unix file modes are
+   invisible on Windows; Windows 8.3 short paths are invisible on Linux; the pipe race only
+   appeared under the runner's scheduling.
+4. **Do not tag while CI is red.** v0.1.10 was tagged while the CI run for that commit was
+   failing — the widened suite had just exposed the three bugs. The code was fine, but the
+   release should have waited for the exact commit's green run. v0.1.11 followed that rule.
+   See `docs/RELEASING.md`.
+5. **"Passes locally" is not "correct".** `TestChildProcessPermissionAndExecution` passed
+   on a quiet machine by timing luck and failed on the runner; the `StdoutPipe`/`Wait`
+   ordering it exposed is documented Go behaviour.
+
 ## Releasing
 
-`CHANGELOG.md` already carries the `v0.1.10` entry. To release, tag `v0.1.10` and push;
-`release.yml` builds the artifacts and `docker.yml` publishes the image. The `verify`
-job then downloads the published assets and runs `deploy/deploy-verify.sh`.
+`CHANGELOG.md` carries the `v0.1.11` entry. To release, tag `v0.1.11` and push;
+`release.yml` builds the artifacts, `docker.yml` publishes the image, and the `verify`
+job downloads the published assets and runs `deploy/deploy-verify.sh`.
+
+Before tagging, confirm the `ci` workflow for the exact commit is green (see the rule in
+`docs/RELEASING.md`).

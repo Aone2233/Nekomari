@@ -11,6 +11,17 @@ Pushing a `v*` tag triggers `.github/workflows/release.yml`, which builds every
 platform, creates the GitHub Release and attaches the artifacts plus
 `SHA256SUMS.txt`.
 
+> **Wait for CI green on the exact commit before tagging.** The tag starts the
+> release pipeline immediately. v0.1.10 was tagged while the `ci` run for that commit
+> was failing — the widened suite had just exposed three latent `pkg/jsruntime` bugs —
+> so the release shipped ahead of its own green run. Check first:
+>
+> ```bash
+> gh run list --workflow ci.yml --limit 1   # must be `completed success` for your commit
+> ```
+>
+> Only then tag. If CI is red, fix the cause and tag the fix.
+
 You can also run it manually from the Actions tab (`workflow_dispatch`) by
 supplying a tag name.
 

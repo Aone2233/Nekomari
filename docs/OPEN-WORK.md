@@ -103,20 +103,19 @@ node comes back.
 ### 5. Password hashing is a single SHA-256 with a constant salt
 
 `database/accounts/accounts.go` hashes passwords as
-`base64(sha256(password + "06Wm4Jv1Hkxx"))` — no per-user salt and no key stretching
-(bcrypt / scrypt / argon2). Inherited from upstream, and the weakest link in the auth
-path: a database leak is offline-crackable at GPU speed. Changing it needs a migration,
-because existing rows are in the old format — verify the old format on login, then
-rewrite the row in the new format on success. Not done in v0.1.10 because it is a
-behaviour change that needs its own tests.
+`base64(sha256(password + "06Wm4Jv1Hkxx"))` — no per-user salt and no key stretching.
+Inherited from upstream, and the weakest link in the auth path: a database leak is
+offline-crackable at GPU speed. The full migration plan (argon2id/bcrypt, a
+self-describing stored format, transparent re-hash on next login, the exact call sites,
+and the tests) is in **[AUTH-HARDENING.md](./AUTH-HARDENING.md)**.
 
 ### 6. Login has no rate limit
 
 `web/api/public/login.go` calls `accounts.CheckPassword` with no attempt counter,
 backoff or lockout, so passwords and 2FA codes can be brute-forced online. v0.1.10 only
-bounded the request body (1 MiB). A limiter needs a decision on the key (account, IP,
-or both), the storage (in-memory vs the panel DB) and whether it is configurable, so it
-was left as its own change.
+bounded the request body (1 MiB). The proposed policy (per-IP token bucket plus a soft
+per-account backoff), storage choice and tests are in
+**[AUTH-HARDENING.md](./AUTH-HARDENING.md)**.
 
 ## Tooling added
 
