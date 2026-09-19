@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,6 +30,7 @@ import (
 	"github.com/Aone2233/nekomari/pkg/jsruntime/fs"
 	httpmodule "github.com/Aone2233/nekomari/pkg/jsruntime/http"
 	"github.com/Aone2233/nekomari/pkg/jsruntime/internal/bridge"
+	"github.com/Aone2233/nekomari/pkg/jsruntime/internal/filepathutil"
 	netmodule "github.com/Aone2233/nekomari/pkg/jsruntime/net"
 	pathmodule "github.com/Aone2233/nekomari/pkg/jsruntime/path"
 	processmodule "github.com/Aone2233/nekomari/pkg/jsruntime/process"
@@ -401,12 +401,11 @@ func confinedSourceLoader(baseDir string, loader require.SourceLoader) require.S
 	}
 }
 
+// pathWithinBaseDir delegates to filepathutil so the require source loader and
+// the fs module share one confinement check, including the Windows short-name
+// case.
 func pathWithinBaseDir(baseDir, path string) bool {
-	relative, err := filepath.Rel(baseDir, path)
-	if err != nil || filepath.IsAbs(relative) {
-		return false
-	}
-	return relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+	return filepathutil.WithinBase(baseDir, path)
 }
 
 // Close stops the event loop and cancels its pending timers. A closed runtime

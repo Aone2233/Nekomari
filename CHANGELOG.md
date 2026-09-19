@@ -21,6 +21,15 @@ Nekomari's own.
   Found by the v0.1.10 CI change itself: widening the suite from 79 tests to the whole
   hermetic set turned these two red on Linux, and they had been failing there all along.
 
+- **The `BaseDir` confinement check rejected Windows 8.3 short paths.** A temp directory
+  can be named `RUNNER~1` while its long form is `runneradmin`. `resolveRoot`
+  canonicalises `BaseDir` with `EvalSymlinks`, which expands the short name, but an
+  absolute path passed to `require`/`fs` was compared lexically — so `filepath.Rel` saw
+  two different directories and rejected a path that was inside `BaseDir`. Both
+  `WithinBase` and `RelativeToBase` now re-check with both paths resolved, on the mismatch
+  path only, and the `require` loader shares the same check. Windows-only; the lexical
+  fast path is unchanged. Also found by the widened CI, on the `windows-latest` runner.
+
 ## [v0.1.10] — 2026-09-19
 
 ### Fixed
