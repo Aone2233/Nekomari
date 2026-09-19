@@ -218,6 +218,12 @@ func netflixTitleVisible(ctx context.Context, client *http.Client, titleID strin
 		if status == http.StatusOK {
 			return strings.Contains(body, titleID), nil
 		}
+		// 404 是明确答复：该标题在这个出口不可用，不是网络失败。把 404 当失败去重试，
+		// 会把「被封锁」误报成「无法判断」—— 这正是本函数此前的行为，也是这两个用例
+		// 一直失败、而 CI 从不运行它们所掩盖的问题。
+		if status == http.StatusNotFound {
+			return false, nil
+		}
 		lastErr = fmt.Errorf("status %d", status)
 	}
 	return false, lastErr
