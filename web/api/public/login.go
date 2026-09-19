@@ -3,7 +3,11 @@ package public
 import (
 	"encoding/json"
 	"io"
+	"math"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/Aone2233/nekomari/database/accounts"
 	"github.com/Aone2233/nekomari/database/auditlog"
@@ -34,6 +38,15 @@ func setSessionCookie(c *gin.Context, value string, maxAge int) {
 	})
 }
 
+// retryAfterSeconds rounds a throttle delay up to whole seconds for Retry-After.
+func retryAfterSeconds(delay time.Duration) int {
+	seconds := int(math.Ceil(delay.Seconds()))
+	if seconds < 1 {
+		return 1
+	}
+	return seconds
+}
+
 func Login(c *gin.Context) {
 	DisablePasswordLogin, _ := config.GetAs[bool](config.DisablePasswordLoginKey, false)
 	if DisablePasswordLogin {
@@ -59,8 +72,17 @@ func Login(c *gin.Context) {
 		return
 	}
 
+	ip := c.ClientIP()
+	account := strings.ToLower(strings.TrimSpace(data.Username))
+	if allowed, retryAfter := defaultLoginLimiter.Allow(ip, account, time.Now()); !allowed {
+		c.Header("Retry-After", strconv.Itoa(retryAfterSeconds(retryAfter)))
+		api.RespondError(c, http.StatusTooManyRequests, "Too many login attempts. Try again later.")
+		return
+	}
+
 	uuid, success := accounts.CheckPassword(data.Username, data.Password)
 	if !success {
+		defaultLoginLimiter.RecordFailure(ip, account, time.Now())
 		api.RespondError(c, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
@@ -68,14 +90,17 @@ func Login(c *gin.Context) {
 	user, _ := accounts.GetUserByUUID(uuid)
 	if user.TwoFactor != "" { // 开启了2FA
 		if data.TwoFa == "" {
+			defaultLoginLimiter.RecordFailure(ip, account, time.Now())
 			api.RespondError(c, http.StatusUnauthorized, "2FA code is required")
 			return
 		}
 		if ok, err := accounts.Verify2Fa(uuid, data.TwoFa); err != nil || !ok {
+			defaultLoginLimiter.RecordFailure(ip, account, time.Now())
 			api.RespondError(c, http.StatusUnauthorized, "Invalid 2FA code")
 			return
 		}
 	}
+	defaultLoginLimiter.Reset(account)
 	// Create session
 	session, err := accounts.CreateSession(uuid, sessionCookieMaxAge, c.Request.UserAgent(), c.ClientIP(), "password")
 	if err != nil {

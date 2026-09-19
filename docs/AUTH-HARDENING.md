@@ -7,6 +7,13 @@ a later session does not have to re-derive it.
 Neither is a one-line fix, and neither can be validated by the current test suite
 until its own tests are added.
 
+## Status
+
+| Change | State |
+|---|---|
+| Password hashing | **Open** — plan in section 1 |
+| Login throttling | **Implemented in v0.1.12** — `web/api/public/login_limiter.go`; section 2 records the design that shipped |
+
 ## 1. Password hashing
 
 ### Current state
@@ -95,7 +102,11 @@ There is no way to re-hash a password without its plaintext, so the migration is
 2FA secrets (`users.two_factor`) are stored as-is, and session tokens are stored
 in plaintext in `sessions`. Encrypting either at rest is a separate change.
 
-## 2. Login throttling
+## 2. Login throttling (implemented in v0.1.12)
+
+> Shipped as `web/api/public/login_limiter.go`, wired into `Login` before
+> `CheckPassword` and before `Verify2Fa`. The policy below is what was implemented;
+> the tests are in `web/api/public/login_limiter_test.go`.
 
 ### Current state
 

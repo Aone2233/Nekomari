@@ -109,13 +109,13 @@ offline-crackable at GPU speed. The full migration plan (argon2id/bcrypt, a
 self-describing stored format, transparent re-hash on next login, the exact call sites,
 and the tests) is in **[AUTH-HARDENING.md](./AUTH-HARDENING.md)**.
 
-### 6. Login has no rate limit
+### 6. Login rate limit — done in v0.1.12
 
-`web/api/public/login.go` calls `accounts.CheckPassword` with no attempt counter,
-backoff or lockout, so passwords and 2FA codes can be brute-forced online. v0.1.10 only
-bounded the request body (1 MiB). The proposed policy (per-IP token bucket plus a soft
-per-account backoff), storage choice and tests are in
-**[AUTH-HARDENING.md](./AUTH-HARDENING.md)**.
+Implemented in `web/api/public/login_limiter.go`: a per-IP token bucket (burst 10,
+refill 1/90s) and a per-account bucket (burst 5, refill 1/5min), checked before the
+password and before the 2FA step, `429 + Retry-After` when exhausted, account bucket
+cleared on success. Design and tests are in **[AUTH-HARDENING.md](./AUTH-HARDENING.md)**
+and `web/api/public/login_limiter_test.go`.
 
 ## Tooling added
 

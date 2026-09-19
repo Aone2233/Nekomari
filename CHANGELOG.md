@@ -6,6 +6,25 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.12] — 2026-09-19
+
+### Added
+
+- **Login throttling.** `/api/login` had no attempt limit at all, so passwords and
+  6-digit 2FA codes could be tried as fast as the network allowed. Two token buckets
+  now gate each attempt — per source IP (burst 10, one token per 90s) and per account
+  (burst 5, one token per 5 min) — and a failed password or 2FA step consumes from
+  both. Exceeding a bucket answers `429` with `Retry-After`. It is a bucket, not a
+  lock, so a legitimate user recovers without an operator, and a successful login
+  clears the account's failures. The IP bucket is deliberately not cleared on
+  success, and an unknown username is throttled exactly like a real one, so the
+  response cannot be used to probe which accounts exist.
+
+### Documentation
+
+- `docs/AUTH-HARDENING.md` — login throttling is implemented; the password-hash
+  migration remains open, with its plan unchanged.
+
 ## [v0.1.11] — 2026-09-19
 
 ### Fixed
