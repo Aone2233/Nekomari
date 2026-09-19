@@ -111,6 +111,19 @@ verification used a throwaway server on its own port and a standalone probe. Upg
 is a separate, reversible step (`deploy/upgrade-agent.sh`, which backs up the binary and
 restores the `cap_net_raw` file capability).
 
+## Found by the widened CI (fixed in v0.1.11)
+
+Widening the suite from 79 tests to the whole hermetic set immediately turned two
+`pkg/jsruntime` tests red on Linux (`TestNodeCoreModulesAndECMAScriptBuiltins`,
+`TestStorageDirIsConfinedAdditionalRoot`). They are hermetic, so this was not the
+environment: `fs.writeFileSync(path, data, "utf8")` was creating a file with mode
+**0000**. `fsMode` treated the encoding string `"utf8"` as an octal mode, failed to
+parse it, and fell through to `ToInteger()` = 0. Windows ignores Unix mode bits, so the
+Windows job stayed green and the old CI never ran the tests on Linux anyway. Fixed by
+falling back to the default mode when a string is not a valid octal mode; a focused
+regression test (`TestWriteFileWithEncodingStringUsesDefaultMode`) was added. This is the
+bug the CI change existed to find, found on its first run.
+
 ## Deliberately not done (recorded in `docs/OPEN-WORK.md`)
 
 - **Password hashing** is still `sha256(password + constant salt)`. Replacing it needs a

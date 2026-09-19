@@ -6,6 +6,21 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.11] — 2026-09-19
+
+### Fixed
+
+- **`fs.writeFileSync(path, data, "utf8")` created an unreadable file on Unix.** The
+  third argument is an encoding, but `fsMode` treated any string as an octal mode: it
+  parsed `"utf8"`, failed, and fell through to `ToInteger()`, which is `0`. The file
+  was created with mode **0000** — even its owner could not read it back. Windows
+  ignores Unix mode bits, so only the Linux run caught it, and the two `pkg/jsruntime`
+  tests that cover it had been excluded from CI by the old `-run` allowlist. A string
+  that is not a valid octal mode now falls back to the caller's default mode.
+
+  Found by the v0.1.10 CI change itself: widening the suite from 79 tests to the whole
+  hermetic set turned these two red on Linux, and they had been failing there all along.
+
 ## [v0.1.10] — 2026-09-19
 
 ### Fixed

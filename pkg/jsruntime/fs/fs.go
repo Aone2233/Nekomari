@@ -706,6 +706,11 @@ func fsMode(value goja.Value, fallback os.FileMode) os.FileMode {
 		if err == nil {
 			return os.FileMode(mode)
 		}
+		// A string that is not an octal mode is an encoding option --
+		// fs.writeFileSync(path, data, "utf8") is the common form. Falling
+		// through to ToInteger() coerced it to 0, so the file was created with
+		// mode 0000 on Unix and even its owner could not read it back.
+		return fallback
 	}
 	return os.FileMode(value.ToInteger())
 }

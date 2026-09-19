@@ -51,6 +51,34 @@ func TestNodeCoreModulesAndECMAScriptBuiltins(t *testing.T) {
 	}
 }
 
+// TestWriteFileWithEncodingStringUsesDefaultMode pins a real Unix-only defect:
+// fs.writeFileSync(path, data, "utf8") passes an *encoding* as the third
+// argument, but fsMode coerced the non-octal string to integer 0 and created the
+// file with mode 0000 -- unreadable even by its owner. Windows ignores Unix mode
+// bits, so only the Linux run caught it.
+func TestWriteFileWithEncodingStringUsesDefaultMode(t *testing.T) {
+	baseDir := t.TempDir()
+	runtime, err := New(`
+		function verify() {
+			const fs = require("fs");
+			fs.writeFileSync("encoded.txt", "hello", "utf8");
+			const text = fs.readFileSync("encoded.txt", "utf8");
+			if (text !== "hello") {
+				throw new Error("content mismatch: " + text);
+			}
+			return true;
+		}
+	`, Options{NodeJS: true, BaseDir: baseDir, Console: io.Discard, Timeout: 3 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Close()
+
+	if err := runtime.Call("verify"); err != nil {
+		t.Fatalf("writeFileSync with an encoding string: %v", err)
+	}
+}
+
 func TestNodeFileAccessConfinementAndAllowAll(t *testing.T) {
 	root := t.TempDir()
 	baseDir := filepath.Join(root, "base")
