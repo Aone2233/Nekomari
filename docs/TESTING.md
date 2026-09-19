@@ -10,6 +10,20 @@ go test ./...
 (cd agent && go test ./...)
 ```
 
+CI runs the whole suite and excludes only the tests that genuinely need the
+network, root or IPv6 — a denylist, not an allowlist:
+
+```bash
+go test ./... -count=1 -skip '^TestIpInfo$'
+(cd agent && go test ./... -count=1 -skip 'TestICMPPing|TestTCPPing|TestHTTPPing')
+```
+
+The anchors matter: `^TestIpInfo$` skips only the upstream `utils/geoip` test that
+requests ipinfo.io, while Nekomari's `TestIpInfo*` cases still run. This used to be
+a `-run` allowlist, which silently excluded every test not named in it — 552 root
+tests down to 79 — and it hid two `agent/unlock` tests that had been failing since
+the commit that added them.
+
 ## Environment-dependent tests
 
 Some upstream tests exercise the real network and therefore depend on the host
@@ -40,6 +54,9 @@ These are hermetic (no network) unless noted:
 | `agent/server` — `TestDecideAuto` | all 8 branches of the `auto` protocol decision |
 | `agent/server` — `TestIsPermissionErr` | separating "no local ICMP permission" from "target unreachable" |
 | `agent/server` — `TestResolveAutoCaches` | resolution cache behaviour |
+| `agent/server` — `TestMeasureWithRetriesReportsSuccessAfterRetransmit` / `TestTcpRetransmitSuspected` | a completed TCP handshake is reported with the retry's RTT, not as packet loss |
+| `agent/unlock` — `TestProbe*` | Netflix (full / originals-only / blocked / transient), YouTube Premium marker, and region-only services. All transports are faked, so the package is hermetic |
+| `internal/server` — `TestClientIPIgnoresForwardedHeaderFromUntrustedPeer` | `X-Forwarded-For` is honoured only from loopback/private peers, not from a public client |
 | `agent/server` — `TestProbeAutoProtocolLive` | **opt-in**, real network: `NEKOMARI_LIVE_PROBE=1` (run as root) |
 | `internal/metricstore` — `TestWritePingRecordsKeepsProtocolsDistinct` | dual-probe results stay two distinguishable series |
 | `internal/metricstore` — `TestWritePingRecordsOmitsEmptyProtocol` | old probes without a protocol keep the historical tag shape |
@@ -61,14 +78,10 @@ TestStorageDirIsConfinedAdditionalRoot
 ```
 
 They exercise a Node child process that needs to create its own temp directory. The
-package is not otherwise touched by this fork, and neither test is in the CI filter
-above. If you see exactly these two and nothing else, it is the environment rather
-than the change under test — confirm by running the same command as root, where both
-pass.
-
-> The CI `-run` filter uses `TestIpInfo[A-Z]` instead of a bare `TestIpInfo`
-> prefix: the upstream `utils/geoip` package already has a test literally named
-> `TestIpInfo`, and it makes real requests to ipinfo.io.
+package is not otherwise touched by this fork. If you see exactly these two and
+nothing else, it is the environment rather than the change under test — confirm by
+running the same command as root, where both pass. GitHub-hosted runners have a
+normal `/tmp`, so CI runs them.
 
 ```bash
 # live protocol-resolution check (needs root for real ICMP)

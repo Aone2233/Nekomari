@@ -77,18 +77,19 @@ jobs:
           done
 
       - name: Test server
-        # 只跑密封用例。上游自带的 TestICMPPing / TestTCPPing / TestHTTPPing
-        # 依赖真实网络、root 权限与 IPv6，在 CI 上不稳定（在未改动的上游代码上
-        # 同样失败），详见 docs/TESTING.md。
+        # 跑全部用例，只排除已知不密封的那一个：上游 utils/geoip 的 TestIpInfo 会真的
+        # 请求 ipinfo.io（Nekomari 新增的 TestIpInfo* 不匹配这个锚定正则，仍会运行）。
         #
-        # TestIpInfo[A-Z] 只匹配 Nekomari 新增的 IP 信息接口用例（上游全部用
-        # httptest 伪造，不联网）。这里刻意不用裸 TestIpInfo 前缀：上游
-        # utils/geoip 里有一个同名用例，它会真的请求 ipinfo.io。
-        run: go test ./... -run 'TestIpInfo[A-Z]|TestDecide|TestRun|TestWritePing|TestPercentile|TestComputeBaseline|TestCheckMetric|TestLoadNotification|TestReportMetric|TestSplitPublic|TestGetPingRecords|TestDefaultRollup|TestBuildMetric|TestCreateMetric|TestPingTarget|TestClientCanReach|TestFilterClients|TestAddContextFunc|TestCronSpecCanParse'
+        # 从「白名单 -run」改成「黑名单 -skip」是有意的：白名单让新测试默认不跑，
+        # 实测只覆盖了 552 个用例中的 79 个，连 v0.1.9 新增的解锁与 ping 重传用例
+        # 都没跑 —— 其中两个解锁用例从提交起就是失败的。详见 docs/TESTING.md。
+        run: go test ./... -count=1 -skip '^TestIpInfo$'
 
       - name: Test agent
+        # 全部用例，只排除三个真实网络/权限用例（需要 root、IPv6 与目标可达），
+        # 它们在未改动的上游代码上同样失败，详见 docs/TESTING.md。
         working-directory: agent
-        run: go test ./monitoring/ ./server/ -run 'TestEvaluate|TestCollect|TestBackup|TestDecideAuto|TestIsPermission|TestResolveAuto'
+        run: go test ./... -count=1 -skip 'TestICMPPing|TestTCPPing|TestHTTPPing'
 
       - name: Build server
         run: go build -o /dev/null .
