@@ -4,7 +4,8 @@
 # 为什么必须升级探针：v0.1.9 修掉了「已完成的 TCP 握手被报成丢包」，并加入了流媒体/AI
 # 解锁探测。两者都只在探针里，服务端升级不解决。
 #
-# 幂等：已经是目标版本就直接跳过。会先备份旧二进制（*.bak-pre-<version>）。
+# 幂等：二进制哈希与已发布的一致就直接跳过（agent 没有 --version，见下方说明）。会先
+# 备份旧二进制（*.bak-pre-<version>）。
 #
 # 用法（在目标机上以 root 执行）：
 #   VERSION=v0.1.9 ./upgrade-agent.sh
@@ -49,16 +50,28 @@ else
   echo "文件能力：无"
 fi
 
-CURRENT="$("$BIN" --version 2>/dev/null | tr -d '\r' | head -1 || true)"
-echo "当前版本：${CURRENT:-未知}"
-if [[ "$CURRENT" == *"$VERSION"* ]]; then
+# 期望哈希来自已发布的 SHA256SUMS.txt。
+#
+# 旧版本这里读的是 `"$BIN" --version`，而 agent 根本没有这个 flag（实测报
+# `unknown flag: --version`），所以版本检测永远拿到空字符串：注释里写的「已经是目标
+# 版本就跳过」从未生效，每次运行都会重新下载一遍。二进制哈希是唯一能从本地判断的
+# 依据 —— agent 的版本号只在启动日志和面板的 basic-info 上报里出现。
+curl -fsSL -o sums "$BASE/SHA256SUMS.txt"
+WANT="$(grep " ${ASSET}\$" sums | awk '{print $1}')"
+if [[ -z "$WANT" ]]; then
+  echo "SHA256SUMS.txt 里没有 ${ASSET}" >&2
+  exit 1
+fi
+HAVE="$(sha256sum "$BIN" | awk '{print $1}')"
+echo "当前哈希：$HAVE"
+echo "目标哈希：$WANT（${VERSION}）"
+if [[ "$HAVE" == "$WANT" ]]; then
   echo "已经是 $VERSION，跳过"
   exit 0
 fi
 
 cd /tmp
 curl -fsSL -o agent-new "$BASE/$ASSET"
-curl -fsSL -o sums "$BASE/SHA256SUMS.txt"
 grep " ${ASSET}\$" sums | sed "s#${ASSET}#agent-new#" | sha256sum -c -
 chmod +x agent-new
 
