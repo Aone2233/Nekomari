@@ -177,6 +177,12 @@ func extractClientToken(c *gin.Context) string {
 
 	// Only legacy agent JSON reports carry body tokens. Never buffer uploads
 	// or anonymous requests to unrelated routes during identity detection.
+	//
+	// This stays at the control-body limit even though the Agent channel itself
+	// allows more (see MaxAgentControlBody): the sniff runs before authentication, so
+	// widening it would let an unauthenticated body grow the panel's memory by the
+	// same amount. It does not need the room — the only messages that carry a body
+	// token are reports, and every filesystem result authenticates with ?token=.
 	if c.Request.Method == http.MethodPost && c.Request.URL.Path == "/api/clients/v2/rpc" && c.GetHeader("Content-Encoding") == "" {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, MaxControlBody)
 		bodyBytes, err := io.ReadAll(c.Request.Body)

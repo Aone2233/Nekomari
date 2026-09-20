@@ -29,6 +29,11 @@ const (
 	defaultTransferChunkSize = int64(25 * 1024 * 1024)
 	maxTransferChunkSize     = int64(128 * 1024 * 1024)
 	searchResultLimit        = 500
+	// maxFileListBytes keeps one listing inside the panel's Agent control-body
+	// bound (8 MiB) with headroom for the JSON-RPC envelope. Beyond it the panel
+	// rejects the result at the transport layer, which reaches the operator as a
+	// file-operation timeout instead of an error about the directory.
+	maxFileListBytes = 7 << 20
 )
 
 type fileInfo struct {
@@ -159,7 +164,22 @@ func listFiles(root string) (json.RawMessage, error) {
 		}
 		return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name)
 	})
-	return json.Marshal(files)
+	return marshalFileList(files)
+}
+
+// marshalFileList encodes one directory listing, refusing a payload the panel's
+// Agent control-body bound would reject. Refusing here turns "the transport dropped
+// the result and the operator saw a timeout" into an error naming the directory.
+func marshalFileList(files []fileInfo) (json.RawMessage, error) {
+	payload, err := json.Marshal(files)
+	if err != nil {
+		return nil, err
+	}
+	if len(payload) > maxFileListBytes {
+		return nil, fmt.Errorf("directory listing is too large to return: %d entries, %d bytes (limit %d); narrow the path",
+			len(files), len(payload), maxFileListBytes)
+	}
+	return payload, nil
 }
 
 func statFile(path string) (json.RawMessage, error) {

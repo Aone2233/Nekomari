@@ -24,7 +24,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func readMaybeCompressedBody(r *http.Request) ([]byte, error) {
+func readMaybeCompressedBody(r *http.Request, limit int64) ([]byte, error) {
 	defer r.Body.Close()
 	if strings.EqualFold(r.Header.Get("Content-Encoding"), "gzip") {
 		zr, err := gzip.NewReader(r.Body)
@@ -32,17 +32,27 @@ func readMaybeCompressedBody(r *http.Request) ([]byte, error) {
 			return nil, err
 		}
 		defer zr.Close()
-		return readLimitedReport(zr)
+		return readLimitedReport(zr, limit)
 	}
-	return readLimitedReport(r.Body)
+	return readLimitedReport(r.Body, limit)
 }
 
-func readLimitedReport(r io.Reader) ([]byte, error) {
-	body, err := io.ReadAll(io.LimitReader(r, api.MaxControlBody+1))
-	if int64(len(body)) > api.MaxControlBody {
+func readLimitedReport(r io.Reader, limit int64) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if int64(len(body)) > limit {
 		return nil, fmt.Errorf("report exceeds body limit")
 	}
 	return body, err
+}
+
+// agentMessageWithinControlLimit classifies a decoded Agent message by size. Only
+// filesystem metadata (a directory listing) may use the wider Agent bound; every
+// other message, reports included, is held to the browser control-body limit.
+func agentMessageWithinControlLimit(method string, size int64) bool {
+	if method == v2.MethodAgentFileResult {
+		return true
+	}
+	return size <= api.MaxControlBody
 }
 
 func bindV2Params[T any](raw any, target *T) error {
@@ -140,7 +150,7 @@ func handleV2RPC(uuid string, req v2.Request, allowWait bool) v2.Response {
 }
 
 func UploadV2RPC(c *gin.Context) {
-	bytesBody, err := readMaybeCompressedBody(c.Request)
+	bytesBody, err := readMaybeCompressedBody(c.Request, api.MaxAgentControlBody)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, v2.Error(nil, -32700, "invalid compressed body", err.Error()))
 		return
@@ -148,6 +158,13 @@ func UploadV2RPC(c *gin.Context) {
 	var req v2.Request
 	if err := json.Unmarshal(bytesBody, &req); err != nil {
 		c.JSON(http.StatusBadRequest, v2.Error(nil, -32700, "parse error", err.Error()))
+		return
+	}
+	// Only filesystem metadata may use the wider Agent bound. Everything else —
+	// reports above all — keeps the 1 MiB control-body limit, so widening the
+	// channel for directory listings does not widen it for decoded reports.
+	if !agentMessageWithinControlLimit(req.Method, int64(len(bytesBody))) {
+		c.JSON(http.StatusRequestEntityTooLarge, v2.Error(req.ID, -32600, "control message exceeds body limit", nil))
 		return
 	}
 	uuid, ok := clientUUIDFromContext(c)
@@ -174,7 +191,9 @@ func WebSocketV2RPC(c *gin.Context) {
 		return
 	}
 	defer conn.Close()
-	conn.SetReadLimit(api.MaxControlBody)
+	// The Agent's own channel: it carries filesystem metadata as well as reports,
+	// so it uses the Agent bound rather than the browser control-body limit.
+	conn.SetReadLimit(api.MaxAgentControlBody)
 
 	uuid, ok := clientUUIDFromContext(c)
 	if !ok {
@@ -208,6 +227,13 @@ func WebSocketV2RPC(c *gin.Context) {
 		var req v2.Request
 		if err := json.Unmarshal(message, &req); err != nil {
 			conn.WriteJSON(v2.Error(nil, -32700, "parse error", err.Error()))
+			continue
+		}
+		// The same rule as the POST path: only filesystem metadata may use the wider
+		// Agent bound. The read limit above is per connection, so without this check
+		// the socket would accept an 8 MiB report that POST refuses.
+		if !agentMessageWithinControlLimit(req.Method, int64(len(message))) {
+			conn.WriteJSON(v2.Error(req.ID, -32600, "control message exceeds body limit", nil))
 			continue
 		}
 		resp := handleV2RPC(uuid, req, false)

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	pkg_flags "github.com/Aone2233/nekomari/agent/cmd/flags"
@@ -40,6 +41,28 @@ func TestFileOperationsRoundTrip(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].Name != "hello.txt" {
 		t.Fatalf("unexpected list result: %+v", items)
+	}
+}
+
+// A listing the panel would reject at the transport layer is refused here, with an
+// error naming the directory, instead of being sent and surfacing as a timeout.
+func TestMarshalFileListRefusesAnOversizedDirectory(t *testing.T) {
+	longName := strings.Repeat("n", 1024)
+	oversized := make([]fileInfo, 0, 8192)
+	for i := 0; i < 8192; i++ {
+		oversized = append(oversized, fileInfo{Name: longName, Path: longName})
+	}
+	if _, err := marshalFileList(oversized); err == nil {
+		t.Fatal("a listing larger than the Agent bound was returned")
+	}
+
+	payload, err := marshalFileList([]fileInfo{{Name: "a.txt", Path: "/a.txt"}})
+	if err != nil {
+		t.Fatalf("small listing refused: %v", err)
+	}
+	var decoded []fileInfo
+	if err := json.Unmarshal(payload, &decoded); err != nil || len(decoded) != 1 || decoded[0].Name != "a.txt" {
+		t.Fatalf("listing did not round-trip: %v %+v", err, decoded)
 	}
 }
 
