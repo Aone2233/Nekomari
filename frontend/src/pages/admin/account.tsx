@@ -453,6 +453,132 @@ const TwoFactorEnabled = () => {
   const [saving, setSaving] = React.useState(false);
   const [code, setCode] = React.useState("");
   const { refresh } = useAccount();
+  // Re-enrollment is the recovery path for a lost authenticator: /disable needs a
+  // code from the device that is gone, so the account password is the step-up.
+  const [rebindOpen, setRebindOpen] = React.useState(false);
+  const [password, setPassword] = React.useState("");
+  // The OTP field is separate from the disable dialog's: sharing one state meant a
+  // code typed for Disable was pre-filled into the re-enrollment field, and
+  // cancelling one dialog cleared the other.
+  const [rebindCode, setRebindCode] = React.useState("");
+  const [qrcode, setQRCode] = React.useState<string | null>(null);
+  const [isLoadingQR, setIsLoadingQR] = React.useState(false);
+  // Which enrollment attempt this dialog is showing. Closing the dialog bumps it so
+  // a response arriving after the user cancelled cannot reopen the QR step.
+  const rebindAttempt = React.useRef(0);
+  const rebindPending = React.useRef(false);
+  const qrcodeRef = React.useRef<string | null>(null);
+
+  const clearQRCode = () => {
+    if (qrcodeRef.current) {
+      URL.revokeObjectURL(qrcodeRef.current);
+      qrcodeRef.current = null;
+    }
+    setQRCode(null);
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (qrcodeRef.current) {
+        URL.revokeObjectURL(qrcodeRef.current);
+      }
+    };
+  }, []);
+
+  const closeRebind = () => {
+    rebindAttempt.current += 1;
+    setRebindOpen(false);
+    setPassword("");
+    setRebindCode("");
+    clearQRCode();
+  };
+
+  const startRebind = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    // A second in-flight request would delete the first one's pending enrollment
+    // server-side and replace the cookie, so the QR shown could not be completed.
+    if (rebindPending.current) {
+      return;
+    }
+    if (!password) {
+      toast.error(t("account.password_empty_error"));
+      return;
+    }
+    const attempt = rebindAttempt.current + 1;
+    rebindAttempt.current = attempt;
+    rebindPending.current = true;
+    setIsLoadingQR(true);
+    fetch("/api/admin/2fa/rebind", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(
+            data.message ||
+              `Failed to start re-enrollment (${response.status})`
+          );
+        }
+        return response.blob();
+      })
+      .then((blob) => {
+        if (rebindAttempt.current !== attempt) {
+          return;
+        }
+        clearQRCode();
+        const url = URL.createObjectURL(blob);
+        qrcodeRef.current = url;
+        setQRCode(url);
+      })
+      .catch((error) => {
+        if (rebindAttempt.current === attempt) {
+          toast.error(error.message);
+        }
+      })
+      .finally(() => {
+        rebindPending.current = false;
+        setIsLoadingQR(false);
+      });
+  };
+
+  const finishRebind = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!rebindCode) {
+      toast.error(t("account.otp_empty_error"));
+      return;
+    }
+    setSaving(true);
+    fetch(`/api/admin/2fa/enable?code=${encodeURIComponent(rebindCode)}`, {
+      method: "POST",
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(
+            data.message || `Failed to replace 2FA (${response.status})`
+          );
+        }
+        return response.json();
+      })
+      .then(() => {
+        toast.success(t("common.updated_successfully"));
+        closeRebind();
+        refresh();
+      })
+      .catch((error) => {
+        // An expired enrollment, a used-up attempt budget or a factor that changed
+        // underneath all leave this enrollment dead. Go back to the password step so
+        // the operator can start a fresh one instead of retrying a token that cannot
+        // succeed.
+        toast.error(error.message);
+        clearQRCode();
+        setRebindCode("");
+      })
+      .finally(() => setSaving(false));
+  };
+
   const disable2fa = () => {
     if (!code) {
       toast.error(t("account.otp_empty_error"));
@@ -485,12 +611,14 @@ const TwoFactorEnabled = () => {
   return (
     <Flex direction="column" gap="2" className="km-account-2fa-disable">
       <label>{t("account.2fa_enabled")}</label>
-      <div>
+      <div className="flex gap-2">
         <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
           <Dialog.Trigger>
-            <Button className="ml-2" color="red">
-              {t("account.disable_2fa")}
-            </Button>
+            {/* Dialog.Trigger renders a <button>; wrapping the Button keeps the DOM
+                from nesting one button inside another. */}
+            <div>
+              <Button color="red">{t("account.disable_2fa")}</Button>
+            </div>
           </Dialog.Trigger>
           <Dialog.Content>
             <Dialog.Title>{t("account.disable_2fa")}</Dialog.Title>
@@ -517,6 +645,80 @@ const TwoFactorEnabled = () => {
                 {t("common.confirm")}
               </Button>
             </Flex>
+          </Dialog.Content>
+        </Dialog.Root>
+        <Dialog.Root
+          open={rebindOpen}
+          onOpenChange={(open) => (open ? setRebindOpen(true) : closeRebind())}
+        >
+          <Dialog.Trigger>
+            <div>
+              <Button variant="soft">{t("account.2fa_rebind")}</Button>
+            </div>
+          </Dialog.Trigger>
+          <Dialog.Content>
+            <Dialog.Title>{t("account.2fa_rebind")}</Dialog.Title>
+            <Dialog.Description>
+              {t("account.2fa_rebind_hint")}
+            </Dialog.Description>
+            {qrcode ? (
+              <form
+                className="km-account-2fa-form flex flex-col gap-2 mt-4"
+                onSubmit={finishRebind}
+              >
+                <label>{t("account.2fa_qr_code_hint")}</label>
+                <div className="flex justify-center">
+                  <img src={qrcode} alt="2FA QR Code" width={200} height={200} />
+                </div>
+                <label htmlFor="rebind_2fa_code">
+                  {t("account.2fa_otp_input_prompt")}
+                </label>
+                <TextField.Root
+                  id="rebind_2fa_code"
+                  type="number"
+                  name="code"
+                  placeholder="000000"
+                  value={rebindCode}
+                  onChange={(e) =>
+                    setRebindCode((e.target as HTMLInputElement).value)
+                  }
+                />
+                <Flex gap="2" justify="end" className="mt-4">
+                  <Button variant="soft" type="button" onClick={closeRebind}>
+                    {t("common.cancel")}
+                  </Button>
+                  <Button disabled={saving} type="submit">
+                    {t("common.confirm")}
+                  </Button>
+                </Flex>
+              </form>
+            ) : (
+              <form
+                className="km-account-2fa-form flex flex-col gap-2 mt-4"
+                onSubmit={startRebind}
+              >
+                <label htmlFor="rebind_2fa_password">
+                  {t("account.2fa_rebind_password")}
+                </label>
+                <TextField.Root
+                  id="rebind_2fa_password"
+                  type="password"
+                  name="password"
+                  value={password}
+                  onChange={(e) =>
+                    setPassword((e.target as HTMLInputElement).value)
+                  }
+                />
+                <Flex gap="2" justify="end" className="mt-4">
+                  <Button variant="soft" type="button" onClick={closeRebind}>
+                    {t("common.cancel")}
+                  </Button>
+                  <Button disabled={isLoadingQR} type="submit">
+                    {t("account.2fa_rebind_button")}
+                  </Button>
+                </Flex>
+              </form>
+            )}
           </Dialog.Content>
         </Dialog.Root>
       </div>

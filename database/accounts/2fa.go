@@ -43,6 +43,28 @@ func Enable2Fa(uuid, secret string) error {
 	return nil
 }
 
+// Replace2Fa overwrites an existing factor. It is only reachable from the
+// password-authorised re-enrollment path (see Rebind2FA in web/api/admin): a lost
+// authenticator cannot produce the code that /2fa/disable requires, so without a
+// replacement path the only recovery was the disable2FA CLI command on the host.
+// Callers must have established the account's identity first; this function
+// deliberately performs no verification of its own.
+//
+// The update is conditional on the factor still being the one the re-enrollment
+// started against, so a pending token cannot clobber a factor that changed while it
+// was outstanding.
+func Replace2Fa(uuid, secret, expected string) error {
+	db := dbcore.GetDBInstance()
+	result := db.Model(&models.User{}).Where("uuid = ? AND two_factor = ?", uuid, expected).Update("two_factor", secret)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return fmt.Errorf("the factor changed while re-enrollment was pending; start again")
+	}
+	return nil
+}
+
 func Verify2Fa(uuid, code string) (bool, error) {
 	db := dbcore.GetDBInstance()
 	var user models.User

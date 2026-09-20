@@ -190,3 +190,24 @@ func (l *loginLimiter) cleanupLocked(now time.Time) {
 	}
 	l.lastCleanup = now
 }
+
+// Step-up password checks share the login buckets.
+//
+// The 2FA re-enrollment endpoint asks the same question as login ("is this the
+// account password?") for the same account, so it must spend the same budget: a
+// stolen session must not turn re-enrollment into an unlimited password oracle
+// that the login limiter cannot see.
+func AllowSensitivePasswordCheck(ip, account string) (bool, time.Duration) {
+	return defaultLoginLimiter.Allow(ip, account, time.Now())
+}
+
+// RecordSensitivePasswordFailure consumes one token from both step-up buckets.
+func RecordSensitivePasswordFailure(ip, account string) {
+	defaultLoginLimiter.RecordFailure(ip, account, time.Now())
+}
+
+// ResetSensitivePasswordFailures clears the account bucket after a correct
+// password, exactly as a successful login does.
+func ResetSensitivePasswordFailures(account string) {
+	defaultLoginLimiter.Reset(account)
+}

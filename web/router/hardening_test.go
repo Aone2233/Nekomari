@@ -83,6 +83,31 @@ func TestSecurityAndResourceRegressions(t *testing.T) {
 			t.Fatal("forged enrollment replaced factor")
 		}
 	})
+	t.Run("RebindRouteIsRegisteredAndNeedsNoFactorCode", func(t *testing.T) {
+		// No session: 401 rather than 404 proves the route exists and is gated as an
+		// admin route.
+		req := httptest.NewRequest("POST", "/api/admin/2fa/rebind", strings.NewReader(`{"password":"test-only-password"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("unauthenticated rebind status %d, want 401", w.Code)
+		}
+		// With a session but no password the handler answers. A 2FA-code complaint
+		// would mean the route sits behind RequireSensitive2FA, which is exactly the
+		// dead end re-enrollment exists to remove.
+		req = httptest.NewRequest("POST", "/api/admin/2fa/rebind", strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: "session_token", Value: session})
+		w = httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("rebind without a password returned %d, want 400: %s", w.Code, w.Body.String())
+		}
+		if strings.Contains(w.Body.String(), "2FA code is required") {
+			t.Fatal("rebind is behind RequireSensitive2FA")
+		}
+	})
 	t.Run("AnonymousBodyNotBuffered", func(t *testing.T) {
 		body := &countingBody{Reader: bytes.NewReader(bytes.Repeat([]byte("x"), 2<<20))}
 		req := httptest.NewRequest("POST", "/api/admin/settings/", body)

@@ -133,6 +133,8 @@ func registerAdminRoutes(r *gin.Engine) {
 	{
 		twoFactor.GET("/generate", admin.Generate2FA)
 		twoFactor.POST("/enable", admin.Enable2FA)
+		// 验证器丢失时的自救入口：密码作为二次验证，而不是当前的 TOTP。
+		twoFactor.POST("/rebind", admin.Rebind2FA)
 		twoFactor.POST("/disable", api.RequireSensitive2FA(), admin.Disable2FA)
 	}
 

@@ -194,3 +194,21 @@ func TestLoginLimiterExpiresIdleEntries(t *testing.T) {
 		t.Fatal("an idle IP bucket should have been cleaned up")
 	}
 }
+
+// TestSensitivePasswordCheckSharesLoginBuckets: the 2FA re-enrollment step-up asks
+// the same question as login for the same account, so it must spend the same
+// budget. A separate bucket would have made re-enrollment a password oracle the
+// login limiter cannot see.
+func TestSensitivePasswordCheckSharesLoginBuckets(t *testing.T) {
+	ip, account := "203.0.113.9", "admin"
+	for i := 0; i < int(loginAccountBurst); i++ {
+		RecordSensitivePasswordFailure(ip, account)
+	}
+	if allowed, _ := AllowSensitivePasswordCheck(ip, account); allowed {
+		t.Fatal("step-up check ignored the account bucket that login shares")
+	}
+	ResetSensitivePasswordFailures(account)
+	if allowed, _ := AllowSensitivePasswordCheck(ip, account); !allowed {
+		t.Fatal("a correct password should clear the shared account bucket")
+	}
+}
