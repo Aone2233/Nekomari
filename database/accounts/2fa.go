@@ -1,6 +1,7 @@
 package accounts
 
 import (
+	"fmt"
 	"image"
 
 	"github.com/Aone2233/nekomari/database/dbcore"
@@ -32,7 +33,14 @@ func Generate2Fa() (string, image.Image, error) {
 
 func Enable2Fa(uuid, secret string) error {
 	db := dbcore.GetDBInstance()
-	return db.Model(&models.User{}).Where("uuid = ?", uuid).Update("two_factor", secret).Error
+	result := db.Model(&models.User{}).Where("uuid = ? AND (two_factor = '' OR two_factor IS NULL)", uuid).Update("two_factor", secret)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return fmt.Errorf("2FA is already enabled; verify and disable the existing factor before replacing it")
+	}
+	return nil
 }
 
 func Verify2Fa(uuid, code string) (bool, error) {

@@ -36,6 +36,7 @@ const (
 	reportBatchQueueSize    = 4096
 	pingBatchMaxRecords     = 512
 	reportBatchWriteTimeout = 10 * time.Second
+	reportBatchMaxRecords   = 256
 )
 
 var (
@@ -62,6 +63,9 @@ type reportBatchWorker struct {
 	requests  chan reportBatchRequest
 	done      chan struct{}
 	stopping  bool
+	// Includes queued AND retrying records, so failed flushes cannot grow RAM.
+	reportCount int
+	pingCount   int
 }
 
 // StartReportBatcher starts the shared report writer. Exact samples are kept in
@@ -151,6 +155,9 @@ func FlushReportBatch(ctx context.Context) error {
 // summaries using the same server receive time. Traffic deltas remain summable
 // after rollup.
 func WriteReport(ctx context.Context, report v2.Report) (v2.Report, error) {
+	if !report.BoundedPayload() {
+		return v2.Report{}, fmt.Errorf("report payload exceeds retained data limits")
+	}
 	if report.UUID == "" {
 		return v2.Report{}, fmt.Errorf("report UUID is required")
 	}
@@ -188,8 +195,12 @@ func (w *reportBatchWorker) enqueue(ctx context.Context, report v2.Report) error
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if w.reportCount >= reportBatchQueueSize {
+		return ErrReportBatchQueueFull
+	}
 	select {
 	case w.queue <- report:
+		w.reportCount++
 		return nil
 	default:
 		return ErrReportBatchQueueFull
@@ -202,15 +213,23 @@ func (w *reportBatchWorker) run() {
 
 	var pending []v2.Report
 	var pendingPings []models.PingRecord
+	var retryAt time.Time
+	retryDelay := reportBatchInterval
+	flush := func(ctx context.Context) error {
+		reportsBefore, pingsBefore := len(pending), len(pendingPings)
+		err := errors.Join(writePendingReports(ctx, &pending), writePendingPingRecords(ctx, &pendingPings))
+		w.mu.Lock()
+		w.reportCount -= reportsBefore - len(pending)
+		w.pingCount -= pingsBefore - len(pendingPings)
+		w.mu.Unlock()
+		return err
+	}
 	for {
 		select {
 		case request := <-w.requests:
 			pending = append(pending, drainReportQueue(w.queue, reportBatchQueueSize)...)
 			pendingPings = append(pendingPings, drainPingQueue(w.pingQueue, reportBatchQueueSize)...)
-			err := errors.Join(
-				writePendingReports(request.ctx, &pending),
-				writePendingPingRecords(request.ctx, &pendingPings),
-			)
+			err := flush(request.ctx)
 			if request.stop {
 				if err != nil {
 					logger.Errorf("metricstore", "failed to flush metric report batch during shutdown: %v", err)
@@ -221,13 +240,18 @@ func (w *reportBatchWorker) run() {
 			}
 			request.done <- err
 		case <-ticker.C:
-			pendingPings = append(pendingPings, drainPingQueue(w.pingQueue, reportBatchQueueSize)...)
-			if err := writePendingPingRecords(context.Background(), &pendingPings); err != nil {
-				logger.Errorf("metricstore", "failed to flush ping batch: %v", err)
+			if time.Now().Before(retryAt) {
+				continue
 			}
+			pendingPings = append(pendingPings, drainPingQueue(w.pingQueue, reportBatchQueueSize)...)
 			pending = append(pending, drainReportQueue(w.queue, reportBatchQueueSize)...)
-			if err := writePendingReports(context.Background(), &pending); err != nil {
+			if err := flush(context.Background()); err != nil {
+				retryAt = time.Now().Add(retryDelay)
+				retryDelay = min(retryDelay*2, time.Minute)
 				logger.Errorf("metricstore", "failed to flush metric report batch: %v", err)
+			} else {
+				retryAt = time.Time{}
+				retryDelay = reportBatchInterval
 			}
 		}
 	}
@@ -242,8 +266,12 @@ func (w *reportBatchWorker) enqueuePing(ctx context.Context, record models.PingR
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if w.pingCount >= reportBatchQueueSize {
+		return ErrPingBatchQueueFull
+	}
 	select {
 	case w.pingQueue <- record:
+		w.pingCount++
 		return nil
 	default:
 		return ErrPingBatchQueueFull
@@ -300,7 +328,7 @@ func writePendingReports(ctx context.Context, pending *[]v2.Report) error {
 	if len(*pending) == 0 {
 		return nil
 	}
-	batchSize := len(*pending)
+	batchSize := reportBatchMaxRecords
 	for len(*pending) > 0 {
 		if batchSize > len(*pending) {
 			batchSize = len(*pending)
@@ -311,6 +339,7 @@ func writePendingReports(ctx context.Context, pending *[]v2.Report) error {
 		if err != nil {
 			return err
 		}
+		clear((*pending)[:batchSize])
 		*pending = (*pending)[batchSize:]
 	}
 	return nil
@@ -328,6 +357,7 @@ func writePendingPingRecords(ctx context.Context, pending *[]models.PingRecord) 
 		if err != nil {
 			return err
 		}
+		clear((*pending)[:batchSize])
 		*pending = (*pending)[batchSize:]
 	}
 	return nil
@@ -376,6 +406,11 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 				values.hasDown = hasDown
 			}
 			values.initialized = true
+			// Cache only the restored baseline before persistence. Advancing
+			// counters on a failed write corrupts deltas when the batch retries.
+			state.mu.Lock()
+			state.reportTrafficValues = values
+			state.mu.Unlock()
 		}
 
 		if !values.timestamp.IsZero() && !report.UpdatedAt.After(values.timestamp) {
@@ -399,17 +434,14 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 		prepared[i] = report
 	}
 
-	// Persist the restored per-report traffic state even if the write below
-	// fails, so a slow or failing database does not re-issue the previous-
-	// counter queries on every batch.
+	if err := s.WriteBatch(ctx, points); err != nil {
+		return nil, err
+	}
 	for state, values := range pendingStates {
 		state.mu.Lock()
 		state.reportTrafficValues = values
 		state.mu.Unlock()
 	}
 
-	if err := s.WriteBatch(ctx, points); err != nil {
-		return nil, err
-	}
 	return prepared, nil
 }

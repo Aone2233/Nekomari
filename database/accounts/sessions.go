@@ -66,9 +66,7 @@ func CreateSession(uuid string, expires int, userAgent, ip, login_method string)
 
 // GetSession 根据会话 ID 获取 UUID
 func GetSession(session string) (uuid string, err error) {
-	db := dbcore.GetDBInstance()
-	var sessionRecord models.Session
-	err = db.Where("session = ?", session).First(&sessionRecord).Error
+	sessionRecord, err := loadSession(session)
 	if err != nil {
 		return "", err
 	}
@@ -83,13 +81,11 @@ func GetSession(session string) (uuid string, err error) {
 }
 
 func GetUserBySession(session string) (models.User, error) {
-	db := dbcore.GetDBInstance()
-	var sessionRecord models.Session
-	err := db.Where("session = ?", session).First(&sessionRecord).Error
+	uuid, err := GetSession(session)
 	if err != nil {
 		return models.User{}, err
 	}
-	return GetUserByUUID(sessionRecord.UUID)
+	return GetUserByUUID(uuid)
 }
 
 // DeleteSession 删除指定会话
@@ -112,12 +108,7 @@ func DeleteAllSessions() error {
 }
 
 func UpdateLatest(session, useragent, ip string) error {
-	db := dbcore.GetDBInstance()
-	return db.Model(&models.Session{}).Where("session = ?", session).Updates(map[string]interface{}{
-		"latest_online":     time.Now().UTC(),
-		"latest_user_agent": useragent,
-		"latest_ip":         ip,
-	}).Error
+	return touchSession(session, useragent, ip)
 }
 
 func RemoveExpiredSessions() error {

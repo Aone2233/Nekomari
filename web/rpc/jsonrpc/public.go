@@ -9,8 +9,8 @@ import (
 	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
-	"github.com/Aone2233/nekomari/database/records"
 	"github.com/Aone2233/nekomari/database/tasks"
+	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 	"github.com/Aone2233/nekomari/utils"
 	agent_runtime "github.com/Aone2233/nekomari/web/agent"
@@ -168,7 +168,7 @@ func publicGetRecordsByUUID(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 		hours = "4"
 	}
 	hoursInt, err := strconv.Atoi(hours)
-	if err != nil {
+	if err != nil || hoursInt <= 0 || hoursInt > 366*24 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid hours parameter", nil)
 	}
 	validLoadTypes := map[string]bool{
@@ -180,7 +180,7 @@ func publicGetRecordsByUUID(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid load_type parameter", nil)
 	}
 	now := time.Now().UTC()
-	clientRecords, err := records.GetRecordsByClientAndTime(params.UUID, now.Add(-time.Duration(hoursInt)*time.Hour), now)
+	clientRecords, err := metricstore.GetRecordsByClientAndTime(ctx, params.UUID, now.Add(-time.Duration(hoursInt)*time.Hour), now)
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to fetch records: "+err.Error(), nil)
 	}
@@ -197,7 +197,7 @@ func publicGetRecordsByUUID(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 		}
 	}
 	if params.LoadType == "" || params.LoadType == "all" || params.LoadType == "gpu" {
-		gpuRecords, err := records.GetGPURecordsByClientAndTime(params.UUID, now.Add(-time.Duration(hoursInt)*time.Hour), now)
+		gpuRecords, err := metricstore.GetGPURecordsByClientAndTime(ctx, params.UUID, now.Add(-time.Duration(hoursInt)*time.Hour), now)
 		if err == nil && len(gpuRecords) > 0 {
 			gpuDevices := make(map[string]any)
 			for _, record := range gpuRecords {
@@ -358,8 +358,8 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		hours = "4"
 	}
 	hoursInt, err := strconv.Atoi(hours)
-	if err != nil {
-		hoursInt = 4
+	if err != nil || hoursInt <= 0 || hoursInt > 366*24 {
+		return nil, rpc.MakeError(rpc.InvalidParams, "hours must be between 1 and 8784", nil)
 	}
 	endTime := time.Now().UTC()
 	startTime := endTime.Add(-time.Duration(hoursInt) * time.Hour)
@@ -372,7 +372,7 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		}
 	}
 
-	recs, err := tasks.GetPingRecords(params.UUID, taskId, startTime, endTime)
+	recs, err := metricstore.GetPingRecords(ctx, params.UUID, taskId, startTime, endTime)
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to fetch ping records: "+err.Error(), nil)
 	}

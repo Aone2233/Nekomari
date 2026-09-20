@@ -1,18 +1,14 @@
 package accounts
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
-
-const constantSalt = "06Wm4Jv1Hkxx"
 
 // CheckPassword 检查密码是否正确
 //
@@ -25,8 +21,18 @@ func CheckPassword(username, passwd string) (uuid string, success bool) {
 		// 静默处理错误，不显示日志
 		return "", false
 	}
-	if hashPasswd(passwd) != user.Passwd {
+	ok, legacy := verifyPassword(user.Passwd, passwd)
+	if !ok {
 		return "", false
+	}
+	if legacy {
+		if hashed, err := hashPassword(passwd); err == nil {
+			// Compare-and-swap cannot overwrite a concurrent password reset.
+			result := db.Model(&models.User{}).Where("uuid = ? AND passwd = ?", user.UUID, user.Passwd).Update("passwd", hashed)
+			if result.Error == nil && result.RowsAffected == 0 {
+				return "", false
+			}
+		}
 	}
 	return user.UUID, true
 }
@@ -34,23 +40,18 @@ func CheckPassword(username, passwd string) (uuid string, success bool) {
 // ForceResetPassword 强制重置用户密码
 func ForceResetPassword(username, passwd string) (err error) {
 	db := dbcore.GetDBInstance()
-	result := db.Model(&models.User{}).Where("username = ?", username).Update("passwd", hashPasswd(passwd))
+	hashed, err := hashPassword(passwd)
+	if err != nil {
+		return err
+	}
+	result := db.Model(&models.User{}).Where("username = ?", username).Update("passwd", hashed)
 	if result.Error != nil {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("无法找到用户名")
 	}
-	return nil
-}
-
-// hashPasswd 对密码进行加盐哈希
-func hashPasswd(passwd string) string {
-	saltedPassword := passwd + constantSalt
-	hash := sha256.New()
-	hash.Write([]byte(saltedPassword))
-	hashedPassword := base64.StdEncoding.EncodeToString(hash.Sum(nil))
-	return hashedPassword
+	return DeleteAllSessions()
 }
 
 func CreateAccount(username, passwd string) (user models.User, err error) {
@@ -58,7 +59,10 @@ func CreateAccount(username, passwd string) (user models.User, err error) {
 }
 
 func CreateAccountWithDB(db *gorm.DB, username, passwd string) (user models.User, err error) {
-	hashedPassword := hashPasswd(passwd)
+	hashedPassword, err := hashPassword(passwd)
+	if err != nil {
+		return models.User{}, err
+	}
 	user = models.User{
 		UUID:     uuid.New().String(),
 		Username: username,
@@ -137,7 +141,11 @@ func UpdateUser(uuid string, name, password, sso_type *string) error {
 		updates["username"] = *name
 	}
 	if password != nil {
-		updates["passwd"] = hashPasswd(*password)
+		hashed, err := hashPassword(*password)
+		if err != nil {
+			return err
+		}
+		updates["passwd"] = hashed
 	}
 	if sso_type != nil {
 		updates["sso_type"] = *sso_type

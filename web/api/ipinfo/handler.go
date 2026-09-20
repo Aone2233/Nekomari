@@ -2,6 +2,7 @@ package ipinfo
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 	"sync"
@@ -59,6 +60,11 @@ func (h *Handler) Lookup(c *gin.Context) {
 
 	snapshot, meta, err := h.svc.Lookup(ctx, ip, false)
 	if err != nil {
+		if errors.Is(err, ErrBusy) {
+			c.Header("Retry-After", "5")
+			respondError(c, http.StatusTooManyRequests, err.Error())
+			return
+		}
 		respondError(c, http.StatusBadGateway, "ip info lookup failed: "+err.Error())
 		return
 	}

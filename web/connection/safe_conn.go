@@ -75,6 +75,13 @@ func NewSafeConn(conn *websocket.Conn) *SafeConn {
 	}
 }
 
+func (sc *SafeConn) SetReadLimit(limit int64) { sc.conn.SetReadLimit(limit) }
+func (sc *SafeConn) SetWriteDeadline(t time.Time) error {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	return sc.conn.SetWriteDeadline(t)
+}
+
 // SetInterceptor attaches the hook provider and the connection identity. It
 // must be called before any frame is read or written.
 func (sc *SafeConn) SetInterceptor(info *ConnInfo, interceptor FrameInterceptor) {

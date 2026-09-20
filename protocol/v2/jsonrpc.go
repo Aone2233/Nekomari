@@ -111,6 +111,23 @@ type Report struct {
 	UpdatedAt time.Time     `json:"updated_at"`
 }
 
+// BoundedPayload limits retained strings and GPU cardinality before queueing.
+func (r Report) BoundedPayload() bool {
+	size := len(r.UUID) + len(r.CPU.Name) + len(r.CPU.Arch) + len(r.Message) + len(r.Method)
+	if r.Backup != nil {
+		size += len(r.Backup.Message)
+	}
+	if r.GPU != nil {
+		if len(r.GPU.DetailedInfo) > 32 {
+			return false
+		}
+		for _, gpu := range r.GPU.DetailedInfo {
+			size += len(gpu.Name)
+		}
+	}
+	return size <= 4096
+}
+
 // BackupReport 是备份新鲜度上报。
 //
 // 动机：备份「有没有在跑」和「最后一次成功是什么时候」往往没有人看，

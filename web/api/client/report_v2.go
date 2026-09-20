@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	logger "github.com/Aone2233/nekomari/utils/log"
 	"io"
 	"net/http"
@@ -31,9 +32,17 @@ func readMaybeCompressedBody(r *http.Request) ([]byte, error) {
 			return nil, err
 		}
 		defer zr.Close()
-		return io.ReadAll(zr)
+		return readLimitedReport(zr)
 	}
-	return io.ReadAll(r.Body)
+	return readLimitedReport(r.Body)
+}
+
+func readLimitedReport(r io.Reader) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r, api.MaxControlBody+1))
+	if int64(len(body)) > api.MaxControlBody {
+		return nil, fmt.Errorf("report exceeds body limit")
+	}
+	return body, err
 }
 
 func bindV2Params[T any](raw any, target *T) error {
@@ -165,6 +174,7 @@ func WebSocketV2RPC(c *gin.Context) {
 		return
 	}
 	defer conn.Close()
+	conn.SetReadLimit(api.MaxControlBody)
 
 	uuid, ok := clientUUIDFromContext(c)
 	if !ok {

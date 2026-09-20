@@ -1,6 +1,8 @@
 package update
 
 import (
+	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,11 +13,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Aone2233/nekomari/agent/dnsresolver"
 	"github.com/blang/semver"
-	"github.com/rhysd/go-github-selfupdate/selfupdate"
+	binaryupdate "github.com/inconshreveable/go-update"
 )
 
 var (
@@ -27,7 +30,9 @@ var (
 	// 若这里沿用上游的 slug，fork 出来的 agent 会在一次自动更新后把自己
 	// 替换成上游二进制，从而静默丢掉本 fork 的全部新功能。
 	// 可通过 --update-repo / AGENT_UPDATE_REPO 覆盖。
-	Repo string = "Aone2233/Nekomari"
+	Repo         string = "Aone2233/Nekomari"
+	updateClient        = dnsresolver.GetHTTPClient(60 * time.Second)
+	updateMu     sync.Mutex
 )
 
 const (
@@ -68,6 +73,7 @@ type snapshotReleaseCandidate struct {
 	HTMLURL     string
 	PublishedAt time.Time
 	Asset       githubReleaseAsset
+	Checksum    githubReleaseAsset
 }
 
 // parseVersion 解析可能带有 v/V 前缀，以及预发布或构建元数据的版本字符串
@@ -129,6 +135,7 @@ func selectLatestSnapshotRelease(releases []githubRelease, assetName string) (sn
 			PublishedAt: release.PublishedAt,
 			Asset:       asset,
 		}
+		candidate.Checksum, _ = findReleaseAsset(release, "SHA256SUMS.txt")
 
 		if !found ||
 			candidate.PublishedAt.After(latest.PublishedAt) ||
@@ -161,7 +168,7 @@ func splitRepoSlug(slug string) (string, string, error) {
 func listGitHubReleases(owner, repo string) ([]githubRelease, error) {
 	var releases []githubRelease
 
-	for page := 1; ; page++ {
+	for page := 1; page <= 3; page++ {
 		endpoint := fmt.Sprintf(
 			"%s/repos/%s/%s/releases?per_page=100&page=%d",
 			githubAPIBaseURL,
@@ -180,7 +187,7 @@ func listGitHubReleases(owner, repo string) ([]githubRelease, error) {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
 
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := updateClient.Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list GitHub releases: %w", err)
 		}
@@ -192,7 +199,7 @@ func listGitHubReleases(owner, repo string) ([]githubRelease, error) {
 		}
 
 		var pageReleases []githubRelease
-		if err := json.NewDecoder(resp.Body).Decode(&pageReleases); err != nil {
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 8<<20)).Decode(&pageReleases); err != nil {
 			_ = resp.Body.Close()
 			return nil, fmt.Errorf("failed to decode GitHub releases response: %w", err)
 		}
@@ -203,6 +210,7 @@ func listGitHubReleases(owner, repo string) ([]githubRelease, error) {
 			return releases, nil
 		}
 	}
+	return releases, nil
 }
 
 func currentExecutablePath() (string, error) {
@@ -229,23 +237,6 @@ func currentExecutablePath() (string, error) {
 	return cmdPath, nil
 }
 
-func selfUpdateReleaseFromSnapshot(owner, repo string, candidate snapshotReleaseCandidate) *selfupdate.Release {
-	publishedAt := candidate.PublishedAt
-	return &selfupdate.Release{
-		Version:           semver.Version{},
-		AssetURL:          candidate.Asset.BrowserDownloadURL,
-		AssetByteSize:     candidate.Asset.Size,
-		AssetID:           candidate.Asset.ID,
-		ValidationAssetID: -1,
-		URL:               candidate.HTMLURL,
-		ReleaseNotes:      candidate.Body,
-		Name:              candidate.Name,
-		PublishedAt:       &publishedAt,
-		RepoOwner:         owner,
-		RepoName:          repo,
-	}
-}
-
 func DoUpdateWorks() {
 	ticker_ := time.NewTicker(time.Duration(6) * time.Hour)
 	for range ticker_.C {
@@ -253,36 +244,9 @@ func DoUpdateWorks() {
 	}
 }
 
-func checkAndUpdateStable(currentSemVer semver.Version, updater *selfupdate.Updater) error {
-	latest, err := updater.UpdateSelf(currentSemVer, Repo)
-	if err != nil {
-		return fmt.Errorf("failed to check for updates: %v", err)
-	}
-
-	if latest.Version.Equals(currentSemVer) {
-		log.Println("Current version is the latest:", CurrentVersion)
-		return nil
-	}
-	// Default is installed as a service, so don't automatically restart
-	//execPath, err := os.Executable()
-	//if err != nil {
-	//	return fmt.Errorf("failed to get current executable path: %v", err)
-	//}
-
-	// _, err = os.StartProcess(execPath, os.Args, &os.ProcAttr{
-	// 	Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
-	// })
-	// if err != nil {
-	// 	return fmt.Errorf("failed to restart program: %v", err)
-	// }
-	log.Printf("Successfully updated to version %s\n", latest.Version)
-	os.Exit(42)
-	return nil
-}
-
-func checkAndUpdateSnapshot(updater *selfupdate.Updater) error {
+func checkAndUpdate() error {
 	if isContainerAgent() {
-		log.Println("Snapshot agent is running in a container; skip binary self-update. Refresh the ghcr.io image tagged 'snapshot' instead.")
+		log.Println("Agent is running in a container; refresh its image to update.")
 		return nil
 	}
 
@@ -298,8 +262,15 @@ func checkAndUpdateSnapshot(updater *selfupdate.Updater) error {
 
 	assetName := expectedAssetName(runtime.GOOS, runtime.GOARCH)
 	latest, found := selectLatestSnapshotRelease(releases, assetName)
+	if detectBuildTrack(CurrentVersion) == stableTrack {
+		current, err := parseVersion(CurrentVersion)
+		if err != nil {
+			return fmt.Errorf("invalid current version: %w", err)
+		}
+		latest, found = selectStableRelease(releases, assetName, current)
+	}
 	if !found {
-		log.Printf("No suitable snapshot release asset was found for %s. Current snapshot is considered up-to-date.", assetName)
+		log.Printf("No newer release asset was found for %s.", assetName)
 		return nil
 	}
 
@@ -313,34 +284,117 @@ func checkAndUpdateSnapshot(updater *selfupdate.Updater) error {
 		return fmt.Errorf("failed to resolve current executable path: %w", err)
 	}
 
-	log.Printf("Will update %s from snapshot %s to %s\n", cmdPath, CurrentVersion, latest.TagName)
-	if err := updater.UpdateTo(selfUpdateReleaseFromSnapshot(owner, repo, latest), cmdPath); err != nil {
-		return fmt.Errorf("failed to update to snapshot %s: %w", latest.TagName, err)
+	log.Printf("Will update %s from %s to %s\n", cmdPath, CurrentVersion, latest.TagName)
+	if err := applyRelease(latest, cmdPath); err != nil {
+		return fmt.Errorf("failed to update to %s: %w", latest.TagName, err)
 	}
 
-	log.Printf("Successfully updated to snapshot version %s\n", latest.TagName)
+	log.Printf("Successfully updated to version %s\n", latest.TagName)
 	os.Exit(42)
 	return nil
 }
 
 // 检查更新并执行自动更新
 func CheckAndUpdate() error {
+	if !updateMu.TryLock() {
+		return fmt.Errorf("update already in progress")
+	}
+	defer updateMu.Unlock()
 	log.Println("Checking update...")
+	return checkAndUpdate()
+}
 
-	http.DefaultClient = dnsresolver.GetHTTPClient(60 * time.Second)
-	updater, err := selfupdate.NewUpdater(selfupdate.Config{})
+func selectStableRelease(releases []githubRelease, name string, current semver.Version) (snapshotReleaseCandidate, bool) {
+	var latest snapshotReleaseCandidate
+	best := current
+	for _, release := range releases {
+		version, err := parseVersion(release.TagName)
+		if err != nil || release.Draft || release.Prerelease || !needUpdate(best, version) {
+			continue
+		}
+		asset, ok := findReleaseAsset(release, name)
+		if !ok {
+			continue
+		}
+		checksum, _ := findReleaseAsset(release, "SHA256SUMS.txt")
+		latest = snapshotReleaseCandidate{TagName: release.TagName, Asset: asset, Checksum: checksum}
+		best = version
+	}
+	return latest, latest.TagName != ""
+}
+
+func downloadAsset(asset githubReleaseAsset, limit int64) ([]byte, error) {
+	parsed, err := url.Parse(asset.BrowserDownloadURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Host != "github.com" {
+		return nil, fmt.Errorf("invalid release asset URL")
+	}
+	if asset.Size < 0 || int64(asset.Size) > limit {
+		return nil, fmt.Errorf("release asset exceeds size limit")
+	}
+	req, err := http.NewRequest(http.MethodGet, asset.BrowserDownloadURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create updater: %v", err)
+		return nil, err
 	}
-
-	if detectBuildTrack(CurrentVersion) == snapshotTrack {
-		return checkAndUpdateSnapshot(updater)
+	// Authenticated API downloads support private repositories without sending
+	// the GitHub token to an arbitrary release download host.
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" && asset.ID > 0 {
+		owner, repo, err := splitRepoSlug(Repo)
+		if err != nil {
+			return nil, err
+		}
+		req.URL, _ = url.Parse(fmt.Sprintf("%s/repos/%s/%s/releases/assets/%d", githubAPIBaseURL, url.PathEscape(owner), url.PathEscape(repo), asset.ID))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/octet-stream")
 	}
-
-	currentSemVer, err := parseVersion(CurrentVersion)
+	resp, err := updateClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to parse current version: %v", err)
+		return nil, err
 	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("asset download returned status %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("release asset exceeds size limit")
+	}
+	return data, nil
+}
 
-	return checkAndUpdateStable(currentSemVer, updater)
+func releaseChecksum(manifest []byte, name string) ([]byte, error) {
+	var checksum []byte
+	for _, line := range strings.Split(string(manifest), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 || strings.TrimPrefix(fields[1], "*") != name {
+			continue
+		}
+		value, err := hex.DecodeString(fields[0])
+		if err != nil || len(value) != 32 || checksum != nil {
+			return nil, fmt.Errorf("invalid or duplicate SHA256 checksum")
+		}
+		checksum = value
+	}
+	if checksum == nil {
+		return nil, fmt.Errorf("release checksum missing for %s", name)
+	}
+	return checksum, nil
+}
+
+func applyRelease(release snapshotReleaseCandidate, target string) error {
+	manifest, err := downloadAsset(release.Checksum, 1<<20)
+	if err != nil {
+		return err
+	}
+	checksum, err := releaseChecksum(manifest, release.Asset.Name)
+	if err != nil {
+		return err
+	}
+	body, err := downloadAsset(release.Asset, 64<<20)
+	if err != nil {
+		return err
+	}
+	return binaryupdate.Apply(bytes.NewReader(body), binaryupdate.Options{TargetPath: target, Checksum: checksum})
 }

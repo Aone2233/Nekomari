@@ -54,6 +54,7 @@ jobs:
         working-directory: frontend
         run: |
           npm ci --no-audit --no-fund
+          npm test
           npm run build
 
       - name: Build theme packer

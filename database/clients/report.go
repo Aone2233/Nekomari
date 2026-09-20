@@ -21,6 +21,9 @@ func GetClientUUIDByToken(token string) (clientUUID string, err error) {
 
 // 检查数据防止异常数据导致数据库损坏
 func ReportVerify(report v2.Report) error {
+	if !report.BoundedPayload() {
+		return fmt.Errorf("report payload exceeds retained data limits")
+	}
 	// 防止输入不合理范围
 	if report.CPU.Usage < 0 || report.CPU.Usage > 100 {
 		return fmt.Errorf("CPU.Usage must be between 0 and 100")
@@ -31,7 +34,7 @@ func ReportVerify(report v2.Report) error {
 	}
 
 	checkFloat64 := func(name string, val float64) error {
-		if val > math.MaxFloat64-1 || val < -math.MaxFloat64+1 {
+		if math.IsNaN(val) || math.IsInf(val, 0) {
 			return fmt.Errorf("%s value exceeds float64 range: %g", name, val)
 		}
 		return nil
@@ -43,6 +46,16 @@ func ReportVerify(report v2.Report) error {
 	}
 	if err := checkFloat64("Load.Load1", report.Load.Load1); err != nil {
 		return err
+	}
+	if report.GPU != nil {
+		if err := checkFloat64("GPU.AverageUsage", report.GPU.AverageUsage); err != nil {
+			return err
+		}
+		for _, gpu := range report.GPU.DetailedInfo {
+			if err := checkFloat64("GPU.Utilization", gpu.Utilization); err != nil {
+				return err
+			}
+		}
 	}
 
 	checkInt64 := func(name string, val int64) error {

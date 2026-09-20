@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/sync/singleflight"
 	"net"
 	"net/http"
 	"os"
@@ -174,11 +175,15 @@ type negativeEntry struct {
 
 // Service 聚合各上游并对外提供带缓存的查询。
 type Service struct {
-	cfg        Config
-	geo        *ipWhoIsProvider
-	ripe       *ripeStatProvider
-	ipapi      *ipAPIProvider
-	globalping *globalpingProvider
+	lookupFlight  singleflight.Group
+	latencyFlight singleflight.Group
+	lookupSlots   chan struct{}
+	latencySlots  chan struct{}
+	cfg           Config
+	geo           *ipWhoIsProvider
+	ripe          *ripeStatProvider
+	ipapi         *ipAPIProvider
+	globalping    *globalpingProvider
 
 	lookups   *ttlCache[lookupSnapshot]
 	latency   *ttlCache[latencySnapshot]
@@ -190,14 +195,16 @@ type Service struct {
 func NewService(cfg Config) *Service {
 	cfg = cfg.normalized()
 	return &Service{
-		cfg:        cfg,
-		geo:        newIPWhoIsProvider(cfg.IPWhoIsBaseURL, cfg.HTTPClient),
-		ripe:       newRIPEstatProvider(cfg.RIPEstatBaseURL, cfg.HTTPClient),
-		ipapi:      newIPAPIProvider(cfg.IPAPIBaseURL, cfg.HTTPClient, cfg.Now),
-		globalping: newGlobalpingProvider(cfg.GlobalpingBaseURL, cfg.HTTPClient, cfg.GlobalpingToken, cfg.GlobalpingPollInterval, cfg.GlobalpingMaxWait),
-		lookups:    newTTLCache[lookupSnapshot](cfg.LookupCacheSize, cfg.Now),
-		latency:    newTTLCache[latencySnapshot](cfg.LatencyCacheSize, cfg.Now),
-		negatives:  newTTLCache[negativeEntry](cfg.LookupCacheSize, cfg.Now),
+		lookupSlots:  make(chan struct{}, 8),
+		latencySlots: make(chan struct{}, 2),
+		cfg:          cfg,
+		geo:          newIPWhoIsProvider(cfg.IPWhoIsBaseURL, cfg.HTTPClient),
+		ripe:         newRIPEstatProvider(cfg.RIPEstatBaseURL, cfg.HTTPClient),
+		ipapi:        newIPAPIProvider(cfg.IPAPIBaseURL, cfg.HTTPClient, cfg.Now),
+		globalping:   newGlobalpingProvider(cfg.GlobalpingBaseURL, cfg.HTTPClient, cfg.GlobalpingToken, cfg.GlobalpingPollInterval, cfg.GlobalpingMaxWait),
+		lookups:      newTTLCache[lookupSnapshot](cfg.LookupCacheSize, cfg.Now),
+		latency:      newTTLCache[latencySnapshot](cfg.LatencyCacheSize, cfg.Now),
+		negatives:    newTTLCache[negativeEntry](cfg.LookupCacheSize, cfg.Now),
 	}
 }
 
@@ -231,6 +238,50 @@ func (s *Service) Status() StatusData {
 //   - 上游全挂时，若还有「过期但保留」的条目就兜底返回（meta.stale=true），
 //     否则写入短暂负缓存并返回错误。
 func (s *Service) Lookup(ctx context.Context, ip net.IP, force bool) (lookupSnapshot, Meta, error) {
+	if !force {
+		if hit, ok := s.lookups.get(ip.String()); ok && hit.Fresh {
+			return hit.Value, metaFromCache(hit, CacheHit, hit.Value.Warning), nil
+		}
+		if hit, ok := s.negatives.get(ip.String()); ok && hit.Fresh {
+			return lookupSnapshot{}, Meta{}, errors.New(hit.Value.message)
+		}
+	}
+	result := s.lookupFlight.DoChan(ip.String(), func() (any, error) {
+		select {
+		case s.lookupSlots <- struct{}{}:
+		default:
+			return nil, ErrBusy
+		}
+		defer func() { <-s.lookupSlots }()
+		workCtx, cancel := context.WithTimeout(context.Background(), lookupBudget)
+		defer cancel()
+		value, meta, err := s.lookup(workCtx, ip, force)
+		return lookupResult{value, meta}, err
+	})
+	select {
+	case <-ctx.Done():
+		return lookupSnapshot{}, Meta{}, ctx.Err()
+	case result := <-result:
+		if result.Err != nil {
+			return lookupSnapshot{}, Meta{}, result.Err
+		}
+		value := result.Val.(lookupResult)
+		return value.snapshot, value.meta, nil
+	}
+}
+
+var ErrBusy = errors.New("IP query capacity reached; retry later")
+
+type lookupResult struct {
+	snapshot lookupSnapshot
+	meta     Meta
+}
+type latencyResult struct {
+	snapshot latencySnapshot
+	meta     Meta
+}
+
+func (s *Service) lookup(ctx context.Context, ip net.IP, force bool) (lookupSnapshot, Meta, error) {
 	key := ip.String()
 
 	if !force {
@@ -381,6 +432,40 @@ func (s *Service) query(ctx context.Context, ip net.IP) (lookupSnapshot, error) 
 // Latency 返回全球延迟快照。任何上游失败都只降级成「节点为空 + warning」，
 // 不返回错误 —— 契约要求这个接口不能硬失败。
 func (s *Service) Latency(ctx context.Context, ip net.IP, force bool) (latencySnapshot, Meta) {
+	if !force {
+		if hit, ok := s.latency.get(ip.String()); ok && hit.Fresh {
+			return hit.Value, metaFromCache(hit, CacheHit, hit.Value.Warning)
+		}
+	}
+	result := s.latencyFlight.DoChan(ip.String(), func() (any, error) {
+		select {
+		case s.latencySlots <- struct{}{}:
+		default:
+			return nil, ErrBusy
+		}
+		defer func() { <-s.latencySlots }()
+		workCtx, cancel := context.WithTimeout(context.Background(), latencyBudget)
+		defer cancel()
+		value, meta := s.latencyLookup(workCtx, ip, force)
+		return latencyResult{value, meta}, nil
+	})
+	var err error
+	select {
+	case <-ctx.Done():
+		err = ctx.Err()
+	case result := <-result:
+		err = result.Err
+		if err == nil {
+			value := result.Val.(latencyResult)
+			return value.snapshot, value.meta
+		}
+	}
+	warning := err.Error()
+	classification := deriveClassification("", "")
+	return latencySnapshot{Warning: warning, Classification: classification, Nodes: []LatencyNode{}, Provider: s.latencyProvider(classification, false)}, Meta{Warning: &warning}
+}
+
+func (s *Service) latencyLookup(ctx context.Context, ip net.IP, force bool) (latencySnapshot, Meta) {
 	key := ip.String()
 
 	if !force {

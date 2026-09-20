@@ -10,6 +10,7 @@ import (
 
 	"github.com/Aone2233/nekomari/database/auditlog"
 	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/Aone2233/nekomari/internal/dbcache"
 	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/pkg/metric"
 	"github.com/Aone2233/nekomari/pkg/rpc"
@@ -227,6 +228,7 @@ func executeDatabase(ctx context.Context, target, statement string, args []any) 
 			return nil, "", err
 		}
 		result, err := db.ExecContext(ctx, statement, args...)
+		dbcache.InvalidateAll()
 		return result, metric.DriverSQLite, err
 	case databaseTargetMetrics:
 		return metricstore.ExecContext(ctx, statement, args...)
@@ -285,7 +287,7 @@ func openDatabaseRows(ctx context.Context, target, statement string, args ...any
 			return nil, "", nil, err
 		}
 		rows, err := db.QueryContext(ctx, statement, args...)
-		return rows, metric.DriverSQLite, func() {}, err
+		return rows, metric.DriverSQLite, dbcache.InvalidateAll, err
 	case databaseTargetMetrics:
 		return metricstore.QueryContext(ctx, statement, args...)
 	default:

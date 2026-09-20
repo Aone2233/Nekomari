@@ -392,16 +392,10 @@ export class RPC2Client {
       this.autoConnect();
     }
 
-    // 策略：
-    // 1) WS 已连接 → 尝试 WS；失败则回退一次 HTTP
-    // 2) 其他状态（未连/连接中/重连中/错误）→ 直接 HTTP
+    // Once sent, failure does not prove the server did not execute the call.
+    // Never replay an in-flight operation on another transport.
     if (this.connectionState === RPC2ConnectionState.CONNECTED) {
-      try {
-        return await this.callViaWebSocket(method, params, options);
-      } catch {
-        // 回退一次 HTTP
-        return this.callViaHTTP(method, params, options);
-      }
+      return this.callViaWebSocket(method, params, options);
     }
 
     // 未连或重连等情况下，直接使用 HTTP
