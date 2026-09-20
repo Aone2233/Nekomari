@@ -12,29 +12,35 @@ import (
 
 // CheckPassword 检查密码是否正确
 //
-// 如果密码正确，返回用户的 UUID 和 true；否则返回空字符串和 false
-func CheckPassword(username, passwd string) (uuid string, success bool) {
+// 密码正确返回用户 UUID 和 true；密码错误返回空字符串和 false。
+// KDF 并发槽位排队超时返回 ErrPasswordBusy，调用方必须把它当作「稍后重试」，
+// 不能当作密码错误 —— 否则并发登录时所有人（含管理员）都会看到「密码错误」。
+func CheckPassword(username, passwd string) (uuid string, success bool, err error) {
 	db := dbcore.GetDBInstance()
 	var user models.User
 	result := db.Where("username = ?", username).First(&user)
 	if result.Error != nil {
 		// 静默处理错误，不显示日志
-		return "", false
+		return "", false, nil
 	}
-	ok, legacy := verifyPassword(user.Passwd, passwd)
+	ok, legacy, err := verifyPassword(user.Passwd, passwd)
+	if err != nil {
+		return "", false, err
+	}
 	if !ok {
-		return "", false
+		return "", false, nil
 	}
 	if legacy {
-		if hashed, err := hashPassword(passwd); err == nil {
+		// Best effort: a saturated KDF must not fail an otherwise valid login.
+		if hashed, hashErr := hashPassword(passwd); hashErr == nil {
 			// Compare-and-swap cannot overwrite a concurrent password reset.
 			result := db.Model(&models.User{}).Where("uuid = ? AND passwd = ?", user.UUID, user.Passwd).Update("passwd", hashed)
 			if result.Error == nil && result.RowsAffected == 0 {
-				return "", false
+				return "", false, nil
 			}
 		}
 	}
-	return user.UUID, true
+	return user.UUID, true, nil
 }
 
 // ForceResetPassword 强制重置用户密码

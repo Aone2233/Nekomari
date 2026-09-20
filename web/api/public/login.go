@@ -80,7 +80,16 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	uuid, success := accounts.CheckPassword(data.Username, data.Password)
+	uuid, success, err := accounts.CheckPassword(data.Username, data.Password)
+	if err != nil {
+		// Saturation is not a credential answer. Reporting it as one both lied to
+		// the caller and consumed a login attempt, so a burst of concurrent logins
+		// drove every account — the administrator's included — toward lockout with
+		// a correct password.
+		c.Header("Retry-After", strconv.Itoa(retryAfterSeconds(accounts.PasswordRetryAfter())))
+		api.RespondError(c, http.StatusServiceUnavailable, "Password verification is temporarily busy. Try again.")
+		return
+	}
 	if !success {
 		defaultLoginLimiter.RecordFailure(ip, account, time.Now())
 		api.RespondError(c, http.StatusUnauthorized, "Invalid credentials")

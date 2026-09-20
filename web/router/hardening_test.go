@@ -44,8 +44,8 @@ func TestSecurityAndResourceRegressions(t *testing.T) {
 	if err := db.Model(&models.User{}).Where("uuid = ?", user.UUID).Update("passwd", base64.StdEncoding.EncodeToString(sum[:])).Error; err != nil {
 		t.Fatal(err)
 	}
-	if id, ok := accounts.CheckPassword(user.Username, "test-only-password"); !ok || id != user.UUID {
-		t.Fatal("legacy login failed")
+	if id, ok, err := accounts.CheckPassword(user.Username, "test-only-password"); err != nil || !ok || id != user.UUID {
+		t.Fatalf("legacy login failed: ok=%v err=%v", ok, err)
 	}
 	migrated, err := accounts.GetUserByUUID(user.UUID)
 	if err != nil || !strings.HasPrefix(migrated.Passwd, "$argon2id$") {
