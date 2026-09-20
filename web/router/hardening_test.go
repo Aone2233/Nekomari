@@ -99,6 +99,10 @@ func TestSecurityAndResourceRegressions(t *testing.T) {
 		}
 	})
 	t.Run("SessionActivityCoalesced", func(t *testing.T) {
+		activityToken := session + "-activity"
+		if err := db.Create(&models.Session{UUID: user.UUID, Session: activityToken, Expires: time.Now().Add(time.Hour)}).Error; err != nil {
+			t.Fatal(err)
+		}
 		var mu sync.Mutex
 		updates := 0
 		name := "hardening:session-count"
@@ -114,7 +118,7 @@ func TestSecurityAndResourceRegressions(t *testing.T) {
 		defer db.Callback().Update().Remove(name)
 		for i := 0; i < 20; i++ {
 			req := httptest.NewRequest("GET", "/asset.js", nil)
-			req.AddCookie(&http.Cookie{Name: "session_token", Value: session})
+			req.AddCookie(&http.Cookie{Name: "session_token", Value: activityToken})
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, req)
 			if w.Code != 200 {
@@ -123,7 +127,7 @@ func TestSecurityAndResourceRegressions(t *testing.T) {
 		}
 		mu.Lock()
 		defer mu.Unlock()
-		if updates > 1 {
+		if updates != 1 {
 			t.Fatalf("20 static requests caused %d writes", updates)
 		}
 		t.Logf("20 authenticated static requests: %d session writes", updates)
