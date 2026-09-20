@@ -112,7 +112,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           mkdir -p ctx
+          # 两个 Dockerfile 都必须在这个 tag 里：它们属于该次发布，从 tag 取才能保证
+          # 「镜像定义」与「它打包的二进制」同代。早于 Dockerfile.agent 的 tag
+          # （例如 v0.1.14）做不出探针镜像 —— 这里直接说清楚，而不是让 cp 报一句
+          # "No such file or directory"。
+          for f in Dockerfile Dockerfile.agent; do
+            if [ ! -f "$f" ]; then
+              echo "::error::$f is not in ${{ steps.tag.outputs.tag }}: that tag predates it, so it cannot build these images. Cut a release that contains it."
+              exit 1
+            fi
+          done
           cp Dockerfile Dockerfile.agent ctx/
           # 服务端产物：nekomari-*；探针产物只取 linux（镜像跑在 linux 上，
           # darwin/windows 的探针不可能是容器）。

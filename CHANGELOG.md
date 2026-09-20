@@ -6,6 +6,39 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.15] — 2026-09-20
+
+### Added
+
+- **A container image for the agent**, `ghcr.io/aone2233/nekomari-agent`, built for
+  `linux/amd64` and `linux/arm64` by the same workflow that builds the panel image
+  and from the same release assets. The panel's install dialog offers a Docker
+  option, and it used to run `ghcr.io/komari-monitor/komari-agent:latest` — another
+  project's agent, without this fork's flags, and depending on `--auto-discovery` for
+  the node's identity. It now runs this repository's image, and a release publishes
+  both images under the same tag scheme. The generated command is re-runnable
+  (`docker rm -f` + `--pull always`), which is the update path for a container, and
+  it mounts `/data` as a named volume so `net_static.json` (the `--month-rotate`
+  traffic ledger) and `auto-discovery.json` survive the container replacement.
+  `--disable-auto-update` is forced, because the agent cannot replace its own binary
+  inside a container.
+
+### Fixed
+
+- **The panel handed out upstream's agent installer.** Two of the three
+  install-command generators still pointed at `komari-monitor/komari-agent`, which
+  installs `/opt/komari` + a `komari-agent` unit + `--auto-discovery` from an
+  archived project, without the flags this fork added — the shape the NOSLA node was
+  first installed with. Both now point at `deploy/install-node-agent.sh` (and
+  `.ps1`). Related fixes in the same path: the version option emitted
+  `--install-version`, which neither installer accepts (they use `--version`), so it
+  would have been passed to the agent and failed the unit; and the PowerShell
+  installer only understood the `--flag=value` spelling, silently dropping the
+  panel's space-separated `--install-dir`, `--install-service-name`,
+  `--install-ghproxy` and `--version`. `deploy/install-node-agent.sh` also accepts
+  `--auto-discovery` now, because the "add node" dialog has no token yet and the
+  installer required `-t`.
+
 ## [v0.1.14] — 2026-09-20
 
 ### Security
@@ -62,34 +95,9 @@ Nekomari's own.
 - **A corrupt rollup row was reported as a budget error.** `SeriesBatch` checked the
   read budget before the scan error, so a failing scan surfaced as "narrow the
   query". The scan error is now authoritative.
-- **The panel handed out upstream's agent installer.** Two of the three
-  install-command generators still pointed at `komari-monitor/komari-agent`, which
-  installs `/opt/komari` + a `komari-agent` unit + `--auto-discovery` from an
-  archived project, without the flags this fork added — the shape the NOSLA node was
-  first installed with. Both now point at `deploy/install-node-agent.sh` (and
-  `.ps1`). Related fixes in the same path: the version option emitted
-  `--install-version`, which neither installer accepts (they use `--version`), so it
-  would have been passed to the agent and failed the unit; and the PowerShell
-  installer only understood the `--flag=value` spelling, silently dropping the
-  panel's space-separated `--install-dir`, `--install-service-name`,
-  `--install-ghproxy` and `--version`. `deploy/install-node-agent.sh` also accepts
-  `--auto-discovery` now, because the "add node" dialog has no token yet and the
-  installer required `-t`.
 
 ### Added
 
-- **A container image for the agent**, `ghcr.io/aone2233/nekomari-agent`, built for
-  `linux/amd64` and `linux/arm64` by the same workflow that builds the panel image
-  and from the same release assets. The panel's install dialog offers a Docker
-  option, and it used to run `ghcr.io/komari-monitor/komari-agent:latest` — another
-  project's agent, without this fork's flags, and depending on `--auto-discovery` for
-  the node's identity. It now runs this repository's image, and a release publishes
-  both images under the same tag scheme. The generated command is re-runnable
-  (`docker rm -f` + `--pull always`), which is the update path for a container, and
-  it mounts `/data` as a named volume so `net_static.json` (the `--month-rotate`
-  traffic ledger) and `auto-discovery.json` survive the container replacement.
-  `--disable-auto-update` is forced, because the agent cannot replace its own binary
-  inside a container.
 - **2FA re-enrollment from the panel.** With the authenticator lost, `/2fa/disable`
   is unusable — it needs a code from the device that is gone — so recovery meant the
   `disable2FA` CLI command on the host. `POST /api/admin/2fa/rebind` takes the
