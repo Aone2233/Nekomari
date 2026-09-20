@@ -9,7 +9,7 @@ restored, and the two hostname/TLS traps that cost the most time.
 |---|---|
 | Panel URL | **https://komari.orderly2233.org** |
 | Host | OC424 (`ubuntu@213.35.99.48`, Oracle Cloud, **arm64**, Ubuntu 22.04) |
-| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.2`, bound to `127.0.0.1:25774` |
+| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.14`, bound to `127.0.0.1:25774` |
 | Compose dir | `/opt/nekomari` (bind mount `./data` → `/app/data`) |
 | Reverse proxy | host **nginx** `/etc/nginx/sites-available/nekomari` |
 | TLS at origin | `/etc/nginx/ssl/{fullchain,privkey}.pem` (Cloudflare Origin cert, shared with the other vhosts) |
@@ -154,6 +154,7 @@ process reports per host, and starts a `nekomari-agent.service`.
 | MAC Server (MAC-WAN) | **user** unit — that host has no passwordless sudo |
 | Nomao v6_1 | IPv6 only; reachable from OC424 |
 | CloudLeadInno | root SSH from OC424 (the key is not present on every machine) |
+| NOSLA 东京-26秋-M (`TG`) | added 2026-09-20; root SSH from the workstation, enrolled with `--auto-discovery` |
 
 ### Two things worth knowing
 
@@ -170,3 +171,58 @@ there with `operation not permitted` while succeeding from the root agents. The
 fork's `auto` task type does not help for those specific targets: they are bare
 IPs, and `auto` falls back to TCP 443/80, which these hosts do not answer. Either
 grant the binary `cap_net_raw` or leave those three tasks to the root nodes.
+
+## Fleet upgrade (2026-09-20) — v0.1.14
+
+The panel moved from v0.1.12 to v0.1.14 (compose pin in `/opt/nekomari`, previous
+file kept as `docker-compose.yml.bak-pre-v0.1.14`; the server wrote
+`data/backup/upgrade-20260920-130005.zip` on first boot and logged
+`from "v0.1.12-9d11cfa" to "v0.1.14-6ed979b"`), and every node's agent moved with
+it. All nine nodes report `v0.1.14` in the panel afterwards.
+
+The agent binaries were fetched **once**, verified against the published
+`SHA256SUMS.txt`, and copied to each host rather than downloaded per node: PZYC
+cannot reach `objects.githubusercontent.com` at all, and a per-node download adds one
+failure mode per node. On each host the copy was verified again, the old binary kept
+as `<bin>.bak-pre-v0.1.14`, the new one installed with the previous owner and mode,
+the file capability restored where there was one, and the unit restarted.
+
+| Node | Reached as | Arch | Binary | Unit |
+|---|---|---|---|---|
+| 甲骨文 OC424 | local | arm64 | `/home/ubuntu/nekomari-agent/komari-agent-linux-arm64` | `komari-agent-oc424-original-node.service` |
+| 华纳云 HN-JP1 | `HNJP01` from OC424 | amd64 | `/opt/nekomari-agent/komari-agent-linux-amd64` | `nekomari-agent.service` |
+| HK04 | `HK04` from OC424 | amd64 | same | `nekomari-agent.service` |
+| AkkoCloud SJ | `AKKO06` from OC424 | amd64 | same | `nekomari-agent.service` |
+| BandwagonHost MegaBox | `megabox`, direct or from OC424 | amd64 | same | `nekomari-agent.service` |
+| CloudLeadInno | `CLISP` from OC424 | amd64 | same | `nekomari-agent.service` |
+| 并行智算云 PZYC | direct | amd64 | same | `nekomari-agent.service` |
+| MAC Server | direct | amd64 | `/home/macos/nekomari-agent/komari-agent-linux-amd64` | user `nekomari-agent.service` |
+| NOSLA 东京-26秋-M | `TG` | amd64 | `/opt/komari/agent` | `komari-agent.service` |
+
+Three things the fleet is not uniform about, each of which the upgrade had to handle:
+
+- **The binary path differs.** `/opt/nekomari-agent/...` on six nodes, the user's home
+  on two, and `/opt/komari/agent` on NOSLA. The path is taken from the running
+  process, never guessed — the same reason `upgrade-agent.sh` does it that way.
+- **MAC Server cannot run `setcap`.** It has no passwordless sudo, and replacing the
+  binary drops the file capability it needs for raw ICMP. It was restored with a
+  privileged container that chroots into the host rootfs and runs the host's own
+  `setcap`: `docker run --rm --privileged -v /:/host alpine chroot /host setcap
+  cap_net_raw+ep <bin>`. `getcap` was checked before and after.
+- **NOSLA uses `--auto-discovery`.** The agent stores the uuid/token it is given in
+  `/opt/komari/auto-discovery.json`, next to the binary, and reuses it on every later
+  start — the journal confirms `Using existing auto-discovery token for UUID: ...`,
+  so the restart did not register a duplicate. That file is the node's identity:
+  losing it makes the next start create a new node. The unit is kept as
+  `deploy/hosts/tender-guard.service` with the key replaced by a placeholder.
+
+`deploy/upgrade-agent.sh` was fixed while doing this. It decided "already at the
+target version" by running `"$BIN" --version`, and the agent has no such flag (it
+answers `unknown flag: --version`), so that branch never ran and every invocation
+re-downloaded and reinstalled the binary. It now compares the installed binary's
+SHA-256 against the published `SHA256SUMS.txt`.
+
+The fleet-wide check needs no panel login: each agent reports its version in its
+basic-info upload, so `select name, version from clients` on `data/komari.db` is the
+answer. It read `v0.1.11` for eight nodes and `v0.1.13` for NOSLA before, and
+`v0.1.14` for all nine after.

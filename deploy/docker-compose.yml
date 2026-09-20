@@ -1,6 +1,6 @@
 services:
   nekomari:
-    image: ghcr.io/aone2233/nekomari:v0.1.2
+    image: ghcr.io/aone2233/nekomari:v0.1.14
     container_name: nekomari
     restart: unless-stopped
     # 与旧 Komari 实例一致：只监听回环，公网入口一律走宿主机 nginx。

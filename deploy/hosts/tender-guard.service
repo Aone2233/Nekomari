@@ -1,0 +1,55 @@
+[Unit]
+Description=Komari Agent (Nekomari)
+Documentation=https://github.com/Aone2233/Nekomari
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=komari
+Group=komari
+WorkingDirectory=/opt/komari
+
+# The NOSLA Tokyo node, added 2026-09-20. Unlike the restored nodes this one did not
+# exist in the recovered database, so it was enrolled with --auto-discovery and the
+# panel named it "NOSLA | 东京-26秋-M" afterwards.
+#
+# The discovery key is a credential: it is replaced by a placeholder here, the same
+# rule as the other units (see docs/SECRETS.md). The agent persists the uuid/token it
+# receives in /opt/komari/auto-discovery.json, next to the binary, and reuses it on
+# every later start -- confirmed in the journal as
+#   Using existing auto-discovery token for UUID: 72a64984-...
+# so a restart does not re-register. That file is the node's identity: if it is lost
+# the next start registers a *new* node and the panel gains a duplicate.
+#
+# The binary path is /opt/komari/agent, not the /opt/nekomari-agent/... the other
+# nodes use; the installer script must not assume a single layout.
+#
+# The hardening block below is what the installed unit carries. Note that
+# NoNewPrivileges=yes and PrivateTmp=yes each defeat a *file* capability, which is
+# why this unit grants CAP_NET_RAW through AmbientCapabilities instead -- the same
+# trap documented in deploy/README.md for MAC-WAN.
+ExecStart=/opt/komari/agent \
+  -e https://komari.orderly2233.org \
+  --auto-discovery <AUTO_DISCOVERY_KEY>
+
+Restart=always
+RestartSec=5
+
+# ---- 安全加固（最小权限）----
+NoNewPrivileges=yes
+AmbientCapabilities=CAP_NET_RAW
+CapabilityBoundingSet=CAP_NET_RAW
+ProtectSystem=strict
+ReadWritePaths=/opt/komari
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+
+[Install]
+WantedBy=multi-user.target

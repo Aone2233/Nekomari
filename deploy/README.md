@@ -189,6 +189,7 @@ Per-host configuration that does not fit the generic installer.
 |---|---|
 | `oc424.service` | The reference panel host. Uses the restored node's own token rather than `--auto-discovery`, so the panel keeps that node's group, tags and history. |
 | `macwan.service` | Runs as a **user** unit: that host has no passwordless sudo. Also documents that `PrivateTmp` and `NoNewPrivileges` must stay unset or a file capability stops working. |
+| `tender-guard.service` | The NOSLA Tokyo node. Runs as a non-root `komari` user with `AmbientCapabilities=CAP_NET_RAW` (a *file* capability would be defeated by `NoNewPrivileges`/`PrivateTmp`), and keeps its identity in `/opt/komari/auto-discovery.json`. |
 | `pzyc.sh` | Cannot fetch release assets (the CDN resets TLS), so it installs a separately fetched, checksum-verified binary. Takes its token from `NEKOMARI_AGENT_TOKEN`. |
 | `macwan-webhook-sink.service` | An artificial notification channel used to prove alerts are really dispatched. |
 
