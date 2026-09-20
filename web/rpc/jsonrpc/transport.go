@@ -10,6 +10,7 @@ import (
 
 	"github.com/Aone2233/nekomari/database/accounts"
 	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/dbcache"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 	"github.com/Aone2233/nekomari/web/api"
 	"github.com/gin-gonic/gin"
@@ -105,6 +106,7 @@ func serveWebSocket(c *gin.Context) {
 	conn.SetReadLimit(api.MaxControlBody)
 
 	meta := buildContextMeta(c)
+	userRevision := dbcache.Revision("users")
 	for {
 		_ = conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 		var req rpc.JsonRpcRequest
@@ -129,6 +131,16 @@ func serveWebSocket(c *gin.Context) {
 			return
 		}
 		meta.TempShareValid = hasTempShareAccess(c)
+		if revision := dbcache.Revision("users"); revision != userRevision {
+			if meta.Principal.Type == rpc.PrincipalUser {
+				user, err := accounts.GetUserByUUID(meta.Principal.UserUUID)
+				if err != nil {
+					return
+				}
+				meta.User = &user
+			}
+			userRevision = revision
+		}
 		// 同步写：SafeConn 内部有锁，串行写避免响应乱序与并发竞态。
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 		response := dispatchWithSensitive(ctx, c, meta, &req)

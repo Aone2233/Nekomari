@@ -235,6 +235,21 @@ func TestSecurityAndResourceRegressions(t *testing.T) {
 			t.Fatalf("private IP lookup status %d", w.Code)
 		}
 	})
+	t.Run("DeletedAccountInvalidatesCachedSession", func(t *testing.T) {
+		token := session + "-deleted"
+		if err := db.Create(&models.Session{UUID: user.UUID, Session: token, Expires: time.Now().Add(time.Hour)}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if _, err := accounts.GetSession(token); err != nil {
+			t.Fatal(err)
+		}
+		if err := accounts.DeleteAccountByUsername(user.Username); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := accounts.GetSession(token); err == nil {
+			t.Fatal("deleted account retained cached access")
+		}
+	})
 }
 
 type countingBody struct {

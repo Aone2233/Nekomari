@@ -15,8 +15,9 @@ type cachedSession struct {
 
 var sessionCache = struct {
 	sync.Mutex
-	revision uint64
-	entries  map[string]cachedSession
+	revision     uint64
+	userRevision uint64
+	entries      map[string]cachedSession
 }{}
 var sessionActivity = struct {
 	sync.Mutex
@@ -28,16 +29,18 @@ func loadSession(token string) (models.Session, error) {
 	sessionCache.Lock()
 	defer sessionCache.Unlock()
 	revision := dbcache.Revision("sessions")
-	if sessionCache.entries == nil || sessionCache.revision != revision {
+	userRevision := dbcache.Revision("users")
+	if sessionCache.entries == nil || sessionCache.revision != revision || sessionCache.userRevision != userRevision {
 		sessionCache.entries = make(map[string]cachedSession)
 		sessionCache.revision = revision
+		sessionCache.userRevision = userRevision
 	}
 	now := time.Now()
 	if entry, ok := sessionCache.entries[token]; ok && now.Before(entry.until) {
 		return entry.record, nil
 	}
 	var record models.Session
-	err := db.Where("session = ?", token).First(&record).Error
+	err := db.Select("sessions.*").Joins("JOIN users ON users.uuid = sessions.uuid").Where("sessions.session = ?", token).First(&record).Error
 	if err == nil {
 		if len(sessionCache.entries) >= 4096 {
 			clear(sessionCache.entries)
