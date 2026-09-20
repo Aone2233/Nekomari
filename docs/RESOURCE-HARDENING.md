@@ -4,16 +4,22 @@ These limits protect normal monitoring work from duplicate calls, expensive
 public queries and persistent downstream failures. They are process-wide;
 deployments sharing one database should use a single server process. Direct
 out-of-process database edits require a restart to refresh config/visibility
-caches. In-process GORM writes and the administrator SQL endpoint invalidate
-the caches. New explicit transactions affecting cached tables must invalidate
-after commit as well as after their individual statements.
+caches. In-process GORM writes invalidate the config and visibility caches, and
+the administrator SQL endpoint invalidates all of them. The session cache is
+invalidated by the revocation calls in the `accounts` package rather than by a
+revision counter (see below); a session row deleted by another process is served
+from the cache until its entry expires, at most 30 seconds. New explicit
+transactions affecting cached tables must invalidate after commit as well as
+after their individual statements.
 
 | Work | Limit / behavior |
 |---|---|
 | Control HTTP / RPC WebSocket / decoded Agent report | 1 MiB |
+| Agent v2 control channel (metadata listings, filesystem results) | 8 MiB, with non-metadata messages still held to 1 MiB |
 | File transfer | Separate streaming routes retain their own chunk limits |
 | RPC HTTP batch | 32 calls |
-| Public historical queries | 4 concurrent, 15-second context deadline |
+| Public historical queries | 4 concurrent; a request that arrives while all four are busy waits up to 10 s for a slot, then has a 15-second context deadline |
+| Administrator SQL console (`admin:dbQuery`) | 2 concurrent, separate from public chart queries, 20-second context deadline, no metric read budget |
 | Metric query input | 32 metrics, 256 entities, 4096 requested points per series, 366 days |
 | Metric work | 250000 samples/rollup rows/dictionary entries across one query |
 | Metric response | 250000 total points, including tag series and gap markers |
@@ -25,11 +31,25 @@ after commit as well as after their individual statements.
 | Session activity | At most one timestamp write per minute per cached token |
 | Factor enrollment | 10-minute token, 5 attempts, 128 pending enrollments |
 
-Exceeding a query budget returns an error instead of silently truncating a
-chart. Narrow the time window, metric list or node list. The raw-window read
-budget conservatively charges an overlapping compressed series before decoding
-it. The returned point count can therefore be smaller than the charged work.
-Internal metric maintenance does not inherit public read limits.
+Exceeding a query budget returns an error instead of silently truncating a chart.
+Narrow the time window, metric list or node list. A saturated query pool is a wait
+before it is an error: the built-in UI does not replay a failed call over HTTP, so
+an immediate rejection would be a chart that never loads. The raw-window read
+budget conservatively charges an overlapping compressed series before decoding it.
+The returned point count can therefore be smaller than the charged work. Internal
+metric maintenance does not inherit public read limits.
+
+The session caches evict rather than clear when they fill. Clearing dropped every
+live entry at once, so one full cache became a full miss for every logged-in user
+(SELECT burst) and one full activity map lost the once-per-minute coalescing for
+every token (UPDATE burst). Expired entries go first; only a map that is full of
+live entries drops the ones closest to expiry.
+
+The session cache is keyed on the `users` revision, not the `sessions` revision: the
+coalesced activity UPDATE bumps the latter, so keying on it emptied all 4096 entries
+about once a minute. Revocations invalidate explicitly (`DeleteSession`,
+`DeleteAllSessions`, `DeleteOtherSessions`, `RemoveExpiredSessions`), and account
+changes still empty the cache because the cached record is a JOIN against `users`.
 
 When the writer is full, new admissions return an error; already queued records
 remain available for retry. Failed writes do not advance traffic baselines.
@@ -65,7 +85,14 @@ files. They do not load-test a deployed server:
   retains **4096 reports**, rejects additional admission, and accepts again after
   recovery, compared with 20480 retained reports in the original reproduction.
 - `pkg/metric/read_budget_test.go`: raw and rollup reads reject excess work before
-  further materialization and honor cancellation.
+  further materialization, honor cancellation, and report a corrupt row as a scan
+  failure rather than as an exhausted budget.
+- `database/accounts/session_cache_test.go`: an activity UPDATE moves the sessions
+  revision without forcing a single session SELECT, a revocation still takes effect
+  immediately, and a full cache evicts instead of emptying.
+- `web/rpc/jsonrpc/public_history_test.go`: an unknown or deleted client UUID is
+  refused by metric entity admission and by the record endpoints, a known node is
+  admitted, and a hidden node answers exactly like an unknown one.
 - `frontend/script/rpc2.test.mjs`: business errors, timeouts and connection errors
   never replay a sent operation over HTTP.
 - `agent/update/security_test.go`: a checksum mismatch leaves the old executable

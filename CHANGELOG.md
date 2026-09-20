@@ -6,6 +6,87 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [Unreleased]
+
+### Security
+
+- **An unknown or deleted node's retained history was readable by anyone.** The
+  public history endpoints checked only the node's hidden flag. The visibility map is
+  keyed by the client rows that exist, so "absent from the map" was read as "exists
+  and is not hidden": an anonymous caller could name a deleted node's UUID and
+  receive the metric and ping history the metric store still holds for it. A UUID
+  must now exist in the client table, and a hidden node still answers exactly like an
+  unknown one, so the response cannot be used to probe which UUIDs exist.
+  `public:queryMetrics`, `public:getPingMetricStats`, `public:getRecordsByUUID`,
+  `public:getPingRecords` and `public:getClientRecentRecords` all go through the same
+  rule. Found by the Copilot review on #1 and still present in the merged code.
+
+### Fixed
+
+- **A saturated password-hashing pool reported a correct password as wrong.** At
+  most two Argon2id evaluations run at once, and the third concurrent check was
+  refused outright — through the same path as a failed comparison. With two logins
+  in flight, every further caller, the administrator with the correct password
+  included, was told `Invalid credentials`. A check now waits up to five seconds for
+  a slot and a saturated pool answers `503` with `Retry-After`, without consuming a
+  login attempt. See [docs/AUTH-HARDENING.md](./docs/AUTH-HARDENING.md).
+- **A full chart-query pool rejected the fifth request instead of queueing.** The
+  built-in UI no longer replays a failed call over HTTP, so "query capacity reached"
+  was a chart that simply did not load. A request now waits up to 10 seconds for a
+  slot, and the queue wait plus the 15-second work deadline stay inside the
+  transport's 30-second request context. `admin:dbQuery` moved to its own pool
+  entirely: an admin query during an incident no longer queues behind four public
+  charts (or blocks them), it has no metric read budget, and its 20-second deadline
+  fits under the transport's.
+- **A large directory listing could not be returned.** The Agent's v2 control
+  channel reused the 1 MiB browser control-body limit, so a listing above it was
+  answered `413`, the Agent treated the 4xx as final, and the operator saw a
+  file-operation timeout. The Agent channel now has its own 8 MiB bound, enforced on
+  both the POST and the WebSocket path; reports and every other non-metadata message
+  keep the 1 MiB limit on both. The Agent refuses a listing that would exceed the
+  bound with an explicit error instead of letting the transport drop it.
+- **Filling the session caches cleared them.** One full cache became a full miss for
+  every logged-in user at once (a SELECT burst), and one full activity map lost the
+  once-per-minute coalescing for every token (an UPDATE burst). Both now drop
+  expired entries first and evict only the entries closest to expiry. The session
+  cache also stopped keying itself on the sessions revision: the coalesced activity
+  UPDATE bumps that revision, so every activity write wiped all 4096 entries and
+  made each logged-in user's next request run its own SELECT. Revocations
+  invalidate explicitly instead, and account changes still invalidate the cache.
+- **`dbcache.Revision` panicked on an unregistered table.** It indexed the map
+  directly, so any caller reaching a table nobody had registered took the process
+  down. An unwatched table now reports 0.
+- **`HiddenClients` returned the cached map itself.** The "immutable snapshot" was a
+  convention, not a property: one caller's write changed what every later caller saw.
+  Callers now own the map they get.
+- **A corrupt rollup row was reported as a budget error.** `SeriesBatch` checked the
+  read budget before the scan error, so a failing scan surfaced as "narrow the
+  query". The scan error is now authoritative.
+
+### Added
+
+- **2FA re-enrollment from the panel.** With the authenticator lost, `/2fa/disable`
+  is unusable — it needs a code from the device that is gone — so recovery meant the
+  `disable2FA` CLI command on the host. `POST /api/admin/2fa/rebind` takes the
+  account password as the step-up, checks it against the same buckets as login so a
+  stolen session cannot grind passwords for free, and replaces the factor only after
+  a code from the new authenticator verifies. The current factor keeps working until
+  then, other sessions are revoked, and the change is audited. The account page
+  offers it next to Disable.
+
+  This is a deliberate reduction: a session plus the account password is now enough
+  to replace the factor, where before neither alone was. An account whose session has
+  also expired still needs the CLI command. The tradeoff and its mitigations are
+  recorded in [docs/AUTH-HARDENING.md](./docs/AUTH-HARDENING.md).
+
+### Documentation
+
+- [docs/AUTH-HARDENING.md](./docs/AUTH-HARDENING.md) now separates what is
+  implemented from what is only proposed, and cites a file and a test for every
+  implemented claim. The previous revision presented the throttling policy as a
+  proposal under an "implemented" heading, and the code did not match it — that
+  mismatch is what hid the login-lockout defect (H1).
+
 ## [v0.1.13] — 2026-09-20
 
 ### Security

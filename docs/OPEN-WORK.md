@@ -100,14 +100,14 @@ removes a node should be paired with stopping its agent, or the panel logs a per
 **Waiting on a decision:** stop and remove the agent on Nomao, or leave it in case the
 node comes back.
 
-### 5. Password hashing is a single SHA-256 with a constant salt
+### 5. Password hashing — done in v0.1.13
 
-`database/accounts/accounts.go` hashes passwords as
-`base64(sha256(password + "06Wm4Jv1Hkxx"))` — no per-user salt and no key stretching.
-Inherited from upstream, and the weakest link in the auth path: a database leak is
-offline-crackable at GPU speed. The full migration plan (argon2id/bcrypt, a
-self-describing stored format, transparent re-hash on next login, the exact call sites,
-and the tests) is in **[AUTH-HARDENING.md](./AUTH-HARDENING.md)**.
+Shipped: Argon2id (`m=19456 KiB, t=2, p=1`) with a random per-password salt, legacy
+SHA-256 hashes verified and migrated on successful login, and bounded KDF
+admission. `docs/AUTH-HARDENING.md` records the shipped format, the migration, the
+rollback, and what is still only a proposal. The former plan in this entry — the
+constant-salt SHA-256 description and the migration steps — is history; the code
+moved on and the entry had not.
 
 ### 6. Login rate limit — done in v0.1.12
 
