@@ -219,6 +219,16 @@ Three things the fleet is not uniform about, each of which the upgrade had to ha
   the rest of the fleet, with the file left in place but unused. Its unit is kept as
   `deploy/hosts/tender-guard.service`.
 
+  Its flags were aligned with the fleet in the same pass, with one node-specific
+  value: `--month-rotate 20`. That is the node's billing day, not a fleet constant —
+  the live fleet runs HNJP01=18, HK04=11, AKKO06=12, megabox=7, CLISP=11, each
+  matching its own `expired_at` day (see `deploy/set-month-rotate.sh`). Measured
+  effect, from the metric store: before the flag the node reported 40.6 GiB up /
+  18.8 GiB down, the raw kernel counter since boot; after the restart it reports the
+  cycle-to-date deltas netstatic records — 0.0 at first, growing — which is the
+  figure the provider's dashboard is comparable to. netstatic only runs when the flag
+  is set, so this node had no `net_static.json` until then.
+
 `deploy/upgrade-agent.sh` was fixed while doing this. It decided "already at the
 target version" by running `"$BIN" --version`, and the agent has no such flag (it
 answers `unknown flag: --version`), so that branch never ran and every invocation

@@ -27,11 +27,14 @@ WorkingDirectory=/opt/komari
 # The binary path is /opt/komari/agent, not the /opt/nekomari-agent/... the other
 # nodes use; the installer script must not assume a single layout.
 #
-# Unlike the other nodes this unit passes only -e/-t. The fleet standard is
-# -i 5 --info-report-interval 10 --exclude-nics lo,docker0 --month-rotate 1
-# --disable-auto-update, and --month-rotate is the one that changes a reported
-# number: without it the panel divides a since-boot counter by the plan limit (see
-# the MAC-WAN note in docs/DEPLOY-OC424.md).
+# --month-rotate is the node's billing day, not a fleet constant: the live fleet runs
+# HNJP01=18, HK04=11, AKKO06=12, megabox=7, CLISP=11, each matching its own
+# expired_at day (see deploy/set-month-rotate.sh). NOSLA renews on the 20th, so 20.
+# Without the flag the agent reports the raw kernel counter since boot and the panel
+# divides it by the plan limit; with it, the agent sums the per-interval deltas that
+# netstatic records inside the cycle window. netstatic only runs when the flag is set
+# (agent/cmd/root.go), which is why this node had no net_static.json until the flag
+# was added.
 #
 # The hardening block below is what the installed unit carries. Note that
 # NoNewPrivileges=yes and PrivateTmp=yes each defeat a *file* capability, which is
@@ -39,7 +42,12 @@ WorkingDirectory=/opt/komari
 # trap documented in deploy/README.md for MAC-WAN.
 ExecStart=/opt/komari/agent \
   -e https://komari.orderly2233.org \
-  -t <AGENT_TOKEN>
+  -t <AGENT_TOKEN> \
+  -i 5 \
+  --info-report-interval 10 \
+  --exclude-nics lo,docker0 \
+  --month-rotate 20 \
+  --disable-auto-update
 
 Restart=always
 RestartSec=5
@@ -58,6 +66,8 @@ ProtectControlGroups=yes
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 RestrictNamespaces=yes
 RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
 
 [Install]
 WantedBy=multi-user.target
