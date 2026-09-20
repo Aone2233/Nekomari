@@ -15,7 +15,11 @@ import (
 //     grinding passwords.
 //   - per account: burst 5, one token per 5 min. Slows a distributed attack on
 //     one account. It is a bucket, not a lock — it refills — so the admin can
-//     never be permanently locked out by someone else's guesses.
+//     never be permanently locked out by someone else's guesses. That property
+//     depends on two details that were both wrong at first: Allow must not create
+//     buckets (or a denied flood fills the map), and a full map must evict rather
+//     than hand out a bucket that is never stored and so never refills. See Allow
+//     and bucketLocked.
 //
 // A failed password or 2FA step consumes one token from both. A fully successful
 // login clears the account bucket; the IP bucket is deliberately left alone, so a
@@ -72,15 +76,28 @@ func newLoginLimiter() *loginLimiter {
 	return &loginLimiter{ips: map[string]*loginBucket{}, accounts: map[string]*loginBucket{}}
 }
 
-// Allow reports whether an attempt may proceed. It does not consume a token;
-// RecordFailure does, so a successful login is never penalised.
+// Allow reports whether an attempt may proceed. It does not consume a token and
+// it does not create a bucket: RecordFailure does both. Two consequences, both
+// deliberate:
+//
+//   - a successful login is never penalised, and
+//   - a request that will be denied does not get to add an entry to the maps.
+//
+// The second one used to be false. Allow looked up both keys through the
+// creating accessor, so every denied request still inserted an account bucket —
+// and the account map is bounded, so ~4096 requests carrying distinct usernames
+// filled it. The full-map branch then handed out a zero-token bucket that was
+// never stored, which therefore never refilled: every account not already in the
+// map, the admin's included, got 429 with a full Retry-After for as long as the
+// attacker kept the map topped up. That is the hard-lockout-as-DoS this limiter
+// exists to avoid.
 func (l *loginLimiter) Allow(ip, account string, now time.Time) (bool, time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.cleanupLocked(now)
 
-	ipRetry := l.bucketLocked(l.ips, ip, now, loginIPBurst, loginIPRefillSeconds).retryAfter(loginIPRefillSeconds)
-	accountRetry := l.bucketLocked(l.accounts, account, now, loginAccountBurst, loginAccountRefillSecs).retryAfter(loginAccountRefillSecs)
+	ipRetry := l.peekLocked(l.ips, ip, now, loginIPBurst, loginIPRefillSeconds).retryAfter(loginIPRefillSeconds)
+	accountRetry := l.peekLocked(l.accounts, account, now, loginAccountBurst, loginAccountRefillSecs).retryAfter(loginAccountRefillSecs)
 
 	if ipRetry <= 0 && accountRetry <= 0 {
 		return true, 0
@@ -107,20 +124,49 @@ func (l *loginLimiter) Reset(account string) {
 	delete(l.accounts, account)
 }
 
-// bucketLocked returns the bucket for key, creating a full one when needed. When
-// a map is full it returns an empty bucket instead of growing without bound: a
-// flood of distinct keys then gets throttled rather than consuming memory.
+// peekLocked returns an existing bucket without creating one. An unknown key means
+// "no failures recorded", so it reports a full bucket — which is what makes Allow
+// safe to call on a request it is about to deny.
+func (l *loginLimiter) peekLocked(buckets map[string]*loginBucket, key string, now time.Time, burst, refillSeconds float64) *loginBucket {
+	if bucket, ok := buckets[key]; ok {
+		bucket.refill(now, burst, refillSeconds)
+		return bucket
+	}
+	return &loginBucket{tokens: burst, lastRefill: now, lastSeen: now}
+}
+
+// bucketLocked returns the bucket for key, creating a full one when needed.
+//
+// When a map is full it evicts the least recently seen entry rather than refusing.
+// Failing closed here is what turned a bounded map into a lockout: the throwaway
+// bucket held zero tokens, was never stored, and so could never refill. Eviction
+// means a flood of distinct keys costs the attacker its own entries, and a real
+// account always gets a bucket of its own.
 func (l *loginLimiter) bucketLocked(buckets map[string]*loginBucket, key string, now time.Time, burst, refillSeconds float64) *loginBucket {
 	if bucket, ok := buckets[key]; ok {
 		bucket.refill(now, burst, refillSeconds)
 		return bucket
 	}
 	if len(buckets) >= loginLimiterMaxEntries {
-		return &loginBucket{lastRefill: now, lastSeen: now}
+		l.evictOldestLocked(buckets)
 	}
 	bucket := &loginBucket{tokens: burst, lastRefill: now, lastSeen: now}
 	buckets[key] = bucket
 	return bucket
+}
+
+// evictOldestLocked drops the entry seen longest ago to make room for a new key.
+func (l *loginLimiter) evictOldestLocked(buckets map[string]*loginBucket) {
+	var oldestKey string
+	var oldestSeen time.Time
+	for key, bucket := range buckets {
+		if oldestKey == "" || bucket.lastSeen.Before(oldestSeen) {
+			oldestKey, oldestSeen = key, bucket.lastSeen
+		}
+	}
+	if oldestKey != "" {
+		delete(buckets, oldestKey)
+	}
 }
 
 func (l *loginLimiter) consumeLocked(buckets map[string]*loginBucket, key string, now time.Time, burst, refillSeconds float64) {
