@@ -95,6 +95,7 @@ func DeleteSession(session string) (err error) {
 	if result.Error != nil {
 		return result.Error
 	}
+	forgetSession(session)
 	return nil
 }
 
@@ -104,6 +105,21 @@ func DeleteAllSessions() error {
 	if result.Error != nil {
 		return result.Error
 	}
+	forgetAllSessions()
+	return nil
+}
+
+// DeleteOtherSessions revokes every session of one account except keep. Replacing
+// a second factor is an account-security change, so anyone else holding a session
+// for that account must re-authenticate; the caller's own session survives so the
+// change does not log the operator out of the page that made it.
+func DeleteOtherSessions(uuid, keep string) error {
+	db := dbcore.GetDBInstance()
+	result := db.Where("uuid = ? AND session != ?", uuid, keep).Delete(&models.Session{})
+	if result.Error != nil {
+		return result.Error
+	}
+	forgetAllSessions()
 	return nil
 }
 
@@ -117,5 +133,6 @@ func RemoveExpiredSessions() error {
 	if result.Error != nil {
 		return result.Error
 	}
+	forgetAllSessions()
 	return nil
 }
