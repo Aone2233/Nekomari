@@ -668,14 +668,15 @@ func publicMetricEntityIDs(ctx context.Context, requested []string) ([]string, *
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to retrieve client information: "+err.Error(), nil)
 	}
 	isLogin := isLoginFromCtx(ctx)
-	visible := make(map[string]bool, len(hidden))
-	var allVisible []string
-	for uuid, isHidden := range hidden {
-		if isHidden && !isLogin {
-			continue
+	// Existence is the map key, not "the value is false": the metric store keeps a
+	// node's retained history after its client row is deleted, so an absent UUID is
+	// a deleted node, not a visible one. Rejecting it here is what stops an
+	// anonymous caller from reading the history of a node the panel no longer lists.
+	allVisible := make([]string, 0, len(hidden))
+	for uuid := range hidden {
+		if clientHistoryReadable(hidden, isLogin, uuid) {
+			allVisible = append(allVisible, uuid)
 		}
-		visible[uuid] = true
-		allVisible = append(allVisible, uuid)
 	}
 	sort.Strings(allVisible)
 	if len(requested) == 0 {
@@ -686,10 +687,7 @@ func publicMetricEntityIDs(ctx context.Context, requested []string) ([]string, *
 	}
 	out := make([]string, 0, len(requested))
 	for _, entityID := range requested {
-		if hidden[entityID] && !isLogin {
-			continue
-		}
-		if visible[entityID] || !hidden[entityID] {
+		if clientHistoryReadable(hidden, isLogin, entityID) {
 			out = append(out, entityID)
 		}
 	}

@@ -7,7 +7,6 @@ import (
 
 	"github.com/Aone2233/nekomari/database"
 	"github.com/Aone2233/nekomari/database/clients"
-	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/database/tasks"
 	"github.com/Aone2233/nekomari/internal/metricstore"
@@ -42,6 +41,28 @@ func isLoginFromCtx(ctx context.Context) bool {
 		return meta.Principal != nil && meta.Principal.HasRole(rpc.RoleAdmin)
 	}
 	return false
+}
+
+// clientHistoryReadable reports whether stored history for uuid may be returned to
+// a caller with this login state.
+//
+// Existence is part of the answer. The metric store keeps a node's retained history
+// after its client row is deleted, so a UUID that is absent from the client table
+// must not be read as "exists and is not hidden" — that is what let an anonymous
+// caller request an unknown or deleted UUID and receive history the panel no longer
+// lists. A hidden node's history stays readable to a logged-in user.
+//
+// It is pure so the rule can be tested directly; callers load `hidden` once per
+// request rather than once per record.
+func clientHistoryReadable(hidden map[string]bool, loggedIn bool, uuid string) bool {
+	isHidden, known := hidden[uuid]
+	return known && (!isHidden || loggedIn)
+}
+
+// clientVisibility loads the uuid -> hidden map for every client row. The key set
+// is the existence check used by clientHistoryReadable.
+func clientVisibility() (map[string]bool, error) {
+	return clients.HiddenClients()
 }
 
 func publicGetNodesInformation(ctx context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
@@ -130,23 +151,16 @@ func publicGetClientRecentRecords(ctx context.Context, req *rpc.JsonRpcRequest) 
 	if params.UUID == "" {
 		return nil, rpc.MakeError(rpc.InvalidParams, "UUID is required", nil)
 	}
-	if !isLoginFromCtx(ctx) && isHiddenClient(params.UUID) {
-		return nil, rpc.MakeError(rpc.InvalidParams, "UUID is required", nil) // 防止未登录获取隐藏客户端
+	hidden, err := clientVisibility()
+	if err != nil {
+		return nil, rpc.MakeError(rpc.InternalError, "Failed to retrieve client information: "+err.Error(), nil)
+	}
+	// Same answer for a hidden node and an unknown one, so the response cannot be
+	// used to probe which UUIDs exist.
+	if !clientHistoryReadable(hidden, isLoginFromCtx(ctx), params.UUID) {
+		return nil, rpc.MakeError(rpc.InvalidParams, "UUID is required", nil)
 	}
 	return agent_runtime.GetRecentReports(params.UUID), nil
-}
-
-// isHiddenClient 查询指定 uuid 是否为隐藏节点。
-func isHiddenClient(uuid string) bool {
-	var hiddenClients []models.Client
-	db := dbcore.GetDBInstance()
-	_ = db.Select("uuid").Where("hidden = ?", true).Find(&hiddenClients).Error
-	for _, cli := range hiddenClients {
-		if cli.UUID == uuid {
-			return true
-		}
-	}
-	return false
 }
 
 func publicGetRecordsByUUID(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
@@ -156,11 +170,14 @@ func publicGetRecordsByUUID(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 		Hours    string `json:"hours"`
 	}
 	req.BindParams(&params)
-	isLogin := isLoginFromCtx(ctx)
-	if !isLogin && params.UUID != "" && isHiddenClient(params.UUID) {
+	if params.UUID == "" {
 		return nil, rpc.MakeError(rpc.InvalidParams, "UUID is required", nil)
 	}
-	if params.UUID == "" {
+	hidden, err := clientVisibility()
+	if err != nil {
+		return nil, rpc.MakeError(rpc.InternalError, "Failed to retrieve client information: "+err.Error(), nil)
+	}
+	if !clientHistoryReadable(hidden, isLoginFromCtx(ctx), params.UUID) {
 		return nil, rpc.MakeError(rpc.InvalidParams, "UUID is required", nil)
 	}
 	hours := params.Hours
@@ -338,19 +355,16 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		Tasks     []map[string]any  `json:"tasks,omitempty"`
 	}
 
-	hiddenMap := map[string]bool{}
+	hidden, err := clientVisibility()
+	if err != nil {
+		return nil, rpc.MakeError(rpc.InternalError, "Failed to retrieve client information: "+err.Error(), nil)
+	}
 	response := &resp{Count: 0, Records: []recordsResp{}}
 
-	if !isLogin {
-		var hiddenClients []models.Client
-		db := dbcore.GetDBInstance()
-		_ = db.Select("uuid").Where("hidden = ?", true).Find(&hiddenClients).Error
-		for _, cli := range hiddenClients {
-			hiddenMap[cli.UUID] = true
-		}
-		if params.UUID != "" && hiddenMap[params.UUID] {
-			return response, nil // 对尝试获取隐藏 uuid 返回空
-		}
+	// A hidden node for a guest, or a UUID that no longer exists: the same empty
+	// shape either way, so the response cannot be used to probe which UUIDs exist.
+	if params.UUID != "" && !clientHistoryReadable(hidden, isLogin, params.UUID) {
+		return response, nil
 	}
 
 	hours := params.Hours
@@ -381,7 +395,9 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		total, loss, min, max int
 	})
 	for _, r := range recs {
-		if r.Client != "" && !isLogin && hiddenMap[r.Client] {
+		// History of a hidden node (for a guest) or of a node whose client row is gone
+		// is not public, including when the request named only a task.
+		if r.Client != "" && !clientHistoryReadable(hidden, isLogin, r.Client) {
 			continue
 		}
 		rec := recordsResp{Time: r.Time.UTC(), Value: r.Value, Client: r.Client, TaskId: r.TaskId, PingType: r.PingType, Role: r.Role}
@@ -404,9 +420,6 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 	if len(clientStats) > 0 {
 		response.BasicInfo = make([]clientBasicInfo, 0, len(clientStats))
 		for client, stats := range clientStats {
-			if client != "" && !isLogin && hiddenMap[client] {
-				continue
-			}
 			loss := float64(0)
 			if stats.total > 0 {
 				loss = float64(stats.loss) / float64(stats.total) * 100
