@@ -1,22 +1,40 @@
-# Authentication hardening — migration plan
+# Authentication hardening
 
-Two changes were deliberately left out of v0.1.11 because both are migrations
-rather than patches: the password hash, and login throttling. This is the plan so
-a later session does not have to re-derive it.
-
-Neither is a one-line fix, and neither can be validated by the current test suite
-until its own tests are added.
+Password migration and login throttling are implemented. The original design
+below remains as historical context; the shipped password settings differ from
+the initial tuning proposal.
 
 ## Status
 
 | Change | State |
 |---|---|
-| Password hashing | **Open** — plan in section 1 |
+| Password hashing | **Implemented in v0.1.13** — `database/accounts/password.go` |
 | Login throttling | **Implemented in v0.1.12** — `web/api/public/login_limiter.go`; section 2 records the design that shipped |
 
 ## 1. Password hashing
 
-### Current state
+### Shipped behavior (v0.1.13)
+
+New and changed passwords use Argon2id (`m=19456 KiB, t=2, p=1`), a random
+16-byte salt and a 32-byte result. At most two KDF operations run concurrently;
+oversized passwords (over 4096 bytes) and excess concurrent work are rejected.
+The low-memory profile is intentional for small monitoring servers. It is not
+a claim about production login latency; no production benchmark was taken.
+
+Legacy passwords still verify, and successful login attempts a compare-and-swap
+migration so it cannot overwrite a concurrent reset. The verifier accepts only
+the shipped Argon2id parameter set; future tuning must preserve older readers.
+Password changes invalidate sessions. CLI password reset writes the new format.
+
+**Rollback:** releases before v0.1.13 cannot verify migrated Argon2id hashes.
+Keep a pre-upgrade database backup, or use the older binary's password reset
+command after rollback. Do not restore a database backup over newer monitoring
+data without accounting for that loss.
+
+Tests cover random salts, legacy migration, wrong passwords, malformed hashes,
+bounded KDF admission, factor enrollment and session revocation.
+
+### Previous state (through v0.1.12)
 
 `database/accounts/accounts.go`:
 

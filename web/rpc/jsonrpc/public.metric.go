@@ -156,6 +156,9 @@ func publicQueryMetrics(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 	}
 
 	metricKeys := normalizeStringList(params.MetricKeys, params.Metrics, []string{params.MetricKey})
+	if len(metricKeys) > maxMetricKeys {
+		return nil, rpc.MakeError(rpc.InvalidParams, "too many metric keys", nil)
+	}
 	if len(metricKeys) == 0 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "metric_keys is required", nil)
 	}
@@ -164,6 +167,9 @@ func publicQueryMetrics(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 	end := metricQueryTimeOrDefault(firstMetricQueryTime(params.End, params.EndTime), queryNow)
 	startFallback := end.Add(-metricQueryHours(params.Hours))
 	start := metricQueryTimeOrDefault(firstMetricQueryTime(params.Start, params.StartTime), startFallback)
+	if err := validateMetricWindow(start, end); err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
+	}
 	if !end.After(start) {
 		return nil, rpc.MakeError(rpc.InvalidParams, "end must be after start", nil)
 	}
@@ -186,10 +192,15 @@ func publicQueryMetrics(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 		interval  time.Duration
 	}
 	loadSpecs := make([]metricLoadSpec, 0, len(metricKeys))
+	pointBudget := 0
 	for _, metricKey := range metricKeys {
 		maxPoints, err := resolveMetricMaxPoints(metricKey, params)
 		if err != nil {
 			return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
+		}
+		pointBudget += maxPoints * maxInt(1, len(entityIDs))
+		if pointBudget > maxMetricTotalPoints {
+			return nil, rpc.MakeError(rpc.InvalidParams, "query point budget exceeded; request fewer nodes, metrics or points", nil)
 		}
 		loadSpecs = append(loadSpecs, metricLoadSpec{
 			metricKey: metricKey,
@@ -269,6 +280,7 @@ func publicQueryMetrics(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 	}
 
 	series := make([]publicMetricSeries, 0, len(metricKeys)*maxInt(1, len(entityIDs)))
+	responsePoints := 0
 	for _, spec := range loadSpecs {
 		def := definitions[spec.metricKey]
 		item := publicMetricSeries{
@@ -328,6 +340,10 @@ func publicQueryMetrics(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 			for _, split := range entitySeries {
 				if metricFillEmpty {
 					split = adaptiveFillPublicMetricSeries(split, start, end)
+				}
+				responsePoints += len(split.Points)
+				if responsePoints > maxMetricTotalPoints {
+					return nil, rpc.MakeError(rpc.InvalidParams, "response point budget exceeded; narrow the query", nil)
 				}
 				series = append(series, split)
 			}
@@ -420,6 +436,12 @@ func publicGetPingMetricStats(ctx context.Context, req *rpc.JsonRpcRequest) (any
 	end := metricQueryTimeOrDefault(firstMetricQueryTime(params.End, params.EndTime), time.Now().UTC())
 	startFallback := end.Add(-metricQueryHours(params.Hours))
 	start := metricQueryTimeOrDefault(firstMetricQueryTime(params.Start, params.StartTime), startFallback)
+	if err := validateMetricWindow(start, end); err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
+	}
+	if params.MaxPoints > maxMetricPoints || params.MaxPoints < 0 {
+		return nil, rpc.MakeError(rpc.InvalidParams, "max_points must be between 1 and 4096", nil)
+	}
 	if !end.After(start) {
 		return nil, rpc.MakeError(rpc.InvalidParams, "end must be after start", nil)
 	}
@@ -638,25 +660,28 @@ func clonePublicMetricTags(tags map[string]string) map[string]string {
 }
 
 func publicMetricEntityIDs(ctx context.Context, requested []string) ([]string, *rpc.JsonRpcError) {
-	allClients, err := clients.GetAllClientBasicInfo()
+	if len(requested) > maxMetricEntities {
+		return nil, rpc.MakeError(rpc.InvalidParams, "too many entities", nil)
+	}
+	hidden, err := clients.HiddenClients()
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to retrieve client information: "+err.Error(), nil)
 	}
 	isLogin := isLoginFromCtx(ctx)
-	hidden := make(map[string]bool, len(allClients))
-	visible := make(map[string]bool, len(allClients))
+	visible := make(map[string]bool, len(hidden))
 	var allVisible []string
-	for _, client := range allClients {
-		if client.Hidden {
-			hidden[client.UUID] = true
-		}
-		if client.Hidden && !isLogin {
+	for uuid, isHidden := range hidden {
+		if isHidden && !isLogin {
 			continue
 		}
-		visible[client.UUID] = true
-		allVisible = append(allVisible, client.UUID)
+		visible[uuid] = true
+		allVisible = append(allVisible, uuid)
 	}
+	sort.Strings(allVisible)
 	if len(requested) == 0 {
+		if len(allVisible) > maxMetricEntities {
+			return nil, rpc.MakeError(rpc.InvalidParams, "too many entities; select a subset", nil)
+		}
 		return allVisible, nil
 	}
 	out := make([]string, 0, len(requested))
@@ -710,6 +735,9 @@ func metricQueryHours(hours float64) time.Duration {
 	if hours <= 0 {
 		return 4 * time.Hour
 	}
+	if math.IsNaN(hours) || math.IsInf(hours, 0) || hours > 366*24 {
+		return 367 * 24 * time.Hour
+	}
 	return time.Duration(hours * float64(time.Hour))
 }
 
@@ -724,8 +752,8 @@ func resolveMetricMaxPoints(metricKey string, params publicMetricQueryParams) (i
 	if v, ok := params.MaxPointsByMetric[metricKey]; ok {
 		maxPoints = v
 	}
-	if maxPoints <= 0 {
-		return 0, fmt.Errorf("max points for %s must be a positive integer", metricKey)
+	if maxPoints <= 0 || maxPoints > maxMetricPoints {
+		return 0, fmt.Errorf("max points for %s must be between 1 and %d", metricKey, maxMetricPoints)
 	}
 	return maxPoints, nil
 }

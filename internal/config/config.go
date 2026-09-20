@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Aone2233/nekomari/internal/dbcache"
 	logger "github.com/Aone2233/nekomari/utils/log"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -25,6 +26,7 @@ var (
 	db    *gorm.DB
 	SetDb = func(gdb *gorm.DB) {
 		db = gdb
+		dbcache.Watch(db)
 		if err := db.AutoMigrate(&ConfigItem{}); err != nil {
 			panic("failed to migrate config item table: " + err.Error())
 		}
@@ -36,7 +38,7 @@ func GetAs[T any](key string, defaul ...any) (T, error) {
 	var t T
 	var item ConfigItem
 
-	err := db.First(&item, "key = ?", key).Error
+	item, err := cachedItem(key)
 	if err != nil {
 		if len(defaul) > 0 {
 			// 尝试直接类型断言

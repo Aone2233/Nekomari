@@ -122,10 +122,19 @@ func GetAllOnlineUUIDs() []string {
 	}
 	return res
 }
-func GetLatestReport() map[string]*v2.Report {
+func GetLatestReport(ids ...string) map[string]*v2.Report {
 	mu.RLock()
 	defer mu.RUnlock()
 	reportCopy := make(map[string]*v2.Report)
+	if len(ids) > 0 {
+		for _, id := range ids {
+			if v := latestReport[id]; v != nil {
+				item := *v
+				reportCopy[id] = &item
+			}
+		}
+		return reportCopy
+	}
 	for k, v := range latestReport {
 		if v == nil {
 			continue
@@ -185,9 +194,12 @@ func reportsAfter(reports []v2.Report, cutoff time.Time) []v2.Report {
 	for first < len(reports) && reports[first].UpdatedAt.Before(cutoff) {
 		first++
 	}
-	out := make([]v2.Report, len(reports)-first)
-	copy(out, reports[first:])
-	return out
+	if first == 0 {
+		return reports
+	}
+	remaining := copy(reports, reports[first:])
+	clear(reports[remaining:])
+	return reports[:remaining]
 }
 
 func DeleteLatestReport(uuid string) {

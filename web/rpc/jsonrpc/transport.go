@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/database/accounts"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 	"github.com/Aone2233/nekomari/web/api"
+	"github.com/gin-gonic/gin"
 )
 
 // OnRpcRequest 是 /api/rpc2 的统一入口：GET 升级为 WebSocket，POST 处理单条/批量 JSON-RPC。
@@ -89,17 +89,27 @@ func headerOrQueryTwoFACode(c *gin.Context) string {
 }
 
 func serveWebSocket(c *gin.Context) {
+	select {
+	case rpcConnections <- struct{}{}:
+	default:
+		c.AbortWithStatus(http.StatusTooManyRequests)
+		return
+	}
+	defer func() { <-rpcConnections }()
 	conn, err := api.UpgradeSafeConn(c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "error": "Failed to upgrade to WebSocket." + err.Error()})
 		return
 	}
 	defer conn.Close()
+	conn.SetReadLimit(api.MaxControlBody)
 
 	meta := buildContextMeta(c)
 	for {
+		_ = conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 		var req rpc.JsonRpcRequest
 		if err := conn.ReadJSON(&req); err != nil {
+			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			var se *json.SyntaxError
 			var ute *json.UnmarshalTypeError
 			if errors.As(err, &se) || errors.As(err, &ute) {
@@ -110,15 +120,28 @@ func serveWebSocket(c *gin.Context) {
 			break
 		}
 		if jerr := req.Validate(); jerr != nil {
+			_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			conn.WriteJSON(jerr.ResponseWithID(req.ID))
 			continue
 		}
+		principal := api.IdentifyPrincipal(c)
+		if principal.Type != meta.Principal.Type || principal.UserUUID != meta.Principal.UserUUID || principal.ClientUUID != meta.Principal.ClientUUID {
+			return
+		}
+		meta.TempShareValid = hasTempShareAccess(c)
 		// 同步写：SafeConn 内部有锁，串行写避免响应乱序与并发竞态。
-		conn.WriteJSON(dispatchWithSensitive(context.Background(), c, meta, &req))
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		response := dispatchWithSensitive(ctx, c, meta, &req)
+		cancel()
+		_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		if err := conn.WriteJSON(response); err != nil {
+			return
+		}
 	}
 }
 
 func servePost(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, api.MaxControlBody)
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, rpc.ErrorResponse(nil, rpc.ParseError, "read body error", err.Error()))
@@ -127,6 +150,10 @@ func servePost(c *gin.Context) {
 	requests, jerr := rpc.ParseRequests(body)
 	if jerr != nil {
 		c.JSON(http.StatusBadRequest, jerr.Response())
+		return
+	}
+	if len(requests) > 32 {
+		c.JSON(http.StatusBadRequest, rpc.ErrorResponse(nil, rpc.InvalidRequest, "batch exceeds 32 calls", nil))
 		return
 	}
 	meta := buildContextMeta(c)

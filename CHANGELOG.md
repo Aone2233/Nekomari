@@ -6,6 +6,38 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.13] — 2026-09-20
+
+### Security
+
+- Bind 2FA enrollment to an expiring, single-use server-side token and prevent
+  overwriting an existing factor. Revalidate session identity on every RPC
+  WebSocket request and refresh node visibility for existing guest connections.
+- Use Argon2id with random salts for new passwords; migrate legacy SHA-256 hashes
+  on successful login. Password hashing has a two-worker memory budget.
+- Bound HTTP control bodies, decompressed Agent reports, WebSocket frames,
+  RPC batches and historical metric query work. Private sites now protect IP
+  information endpoints as well.
+- Remove the Agent updater's deprecated OpenPGP dependency. Retain the existing
+  cross-platform binary replacement library, verify SHA256SUMS.txt before
+  replacement, bound downloads and release pagination, and avoid modifying
+  http.DefaultClient. Custom release repositories must publish checksums.
+
+### Performance
+
+- The built-in live view skips unused ping statistics; configuration and compact
+  node-visibility caches invalidate on database writes. Session activity writes
+  coalesce to once per minute while revocation remains immediate.
+- Report and ping queues count retrying records against their 4096-entry limits;
+  writes use fixed-size batches and rejected admissions are reported to callers.
+- Coalesce simultaneous IP lookups and cap in-flight upstream work. Do not replay
+  failed or timed-out WebSocket operations over HTTP.
+- Avoid copying every node report for a subset request, and reuse the recent
+  report slice when trimming its window. Correct PWA icon URL interpolation.
+
+See [resource boundaries and verification](docs/RESOURCE-HARDENING.md) and
+[password migration/rollback](docs/AUTH-HARDENING.md).
+
 ## [v0.1.12] — 2026-09-19
 
 ### Added

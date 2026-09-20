@@ -78,13 +78,13 @@ export default defineConfig(({ mode }) => {
           start_url: base,
           icons: [
             {
-              src: "${base}assets/pwa-icon.webp",
+              src: `${base}assets/pwa-icon.webp`,
               sizes: "192x192",
               type: "image/webp",
               purpose: "maskable any",
             },
             {
-              src: "${base}assets/pwa-icon.webp",
+              src: `${base}assets/pwa-icon.webp`,
               sizes: "512x512",
               type: "image/webp",
               purpose: "maskable any",

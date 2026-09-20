@@ -172,6 +172,7 @@ export const LiveDataProvider: React.FC<{ children: React.ReactNode }> = ({
         // 策略由 RPC2Client 内部实现
         const result: Record<string, any> = await call(
           "common:getNodesLatestStatus",
+          { include_ping: false },
         );
         if (stopped) return;
         const live = mergeLiveData(result, liveDataRef.current);

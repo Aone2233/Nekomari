@@ -166,7 +166,7 @@ func (s *Store) seriesBatchAt(ctx context.Context, query BatchSeriesQuery, now t
 		if err := s.scanPersistedRollupGroup(ctx, query, group, seriesByID, accumulators); err != nil {
 			return BatchSeriesResult{}, err
 		}
-		if err := s.scanMemoryRollupGroup(query, group, seriesByIdentity, accumulators); err != nil {
+		if err := s.scanMemoryRollupGroup(ctx, query, group, seriesByIdentity, accumulators); err != nil {
 			return BatchSeriesResult{}, err
 		}
 	}
@@ -217,6 +217,9 @@ func (s *Store) loadSeriesDictionary(ctx context.Context, plan seriesDictionaryP
 	byID := make(map[int64]*seriesReadMeta)
 	byIdentity := make(map[seriesIdentity]*seriesReadMeta)
 	for rows.Next() {
+		if err := spendReadBudget(ctx, 1); err != nil {
+			return nil, nil, err
+		}
 		var meta seriesReadMeta
 		var rawTags any
 		if err := rows.Scan(&meta.id, &meta.metricName, &meta.entityID, &meta.tagsHash, &rawTags); err != nil {
@@ -290,6 +293,9 @@ func (s *Store) scanPersistedRollupGroup(ctx context.Context, query BatchSeriesQ
 	}
 	for rows.Next() {
 		err = rows.Scan(destinations...)
+		if budgetErr := spendReadBudget(ctx, 1); budgetErr != nil {
+			return budgetErr
+		}
 		if err != nil {
 			return err
 		}
@@ -342,20 +348,23 @@ func (s *Store) resolveResolutionID(ctx context.Context, resolution time.Duratio
 	return resolutionID, err == nil, err
 }
 
-func (s *Store) scanMemoryRollupGroup(query BatchSeriesQuery, group *batchSeriesGroup, seriesByIdentity map[seriesIdentity]*seriesReadMeta, accumulators map[string]*metricSeriesAccumulator) error {
+func (s *Store) scanMemoryRollupGroup(ctx context.Context, query BatchSeriesQuery, group *batchSeriesGroup, seriesByIdentity map[seriesIdentity]*seriesReadMeta, accumulators map[string]*metricSeriesAccumulator) error {
 	if group.key.resolution == time.Minute {
-		return s.scanHotRollupGroup(query, group, seriesByIdentity, accumulators)
+		return s.scanHotRollupGroup(ctx, query, group, seriesByIdentity, accumulators)
 	}
-	return s.scanCoarseRollupGroup(query, group, seriesByIdentity, accumulators)
+	return s.scanCoarseRollupGroup(ctx, query, group, seriesByIdentity, accumulators)
 }
 
-func (s *Store) scanHotRollupGroup(query BatchSeriesQuery, group *batchSeriesGroup, seriesByIdentity map[seriesIdentity]*seriesReadMeta, accumulators map[string]*metricSeriesAccumulator) error {
+func (s *Store) scanHotRollupGroup(ctx context.Context, query BatchSeriesQuery, group *batchSeriesGroup, seriesByIdentity map[seriesIdentity]*seriesReadMeta, accumulators map[string]*metricSeriesAccumulator) error {
 	start := bucketStartMillis(query.Start.UnixMilli(), time.Minute.Milliseconds())
 	end := query.End.UnixMilli()
 	entityIDs := stringSet(query.EntityIDs)
 	s.hotMu.RLock()
 	defer s.hotMu.RUnlock()
 	for key, bucket := range s.hot {
+		if err := spendReadBudget(ctx, 0); err != nil {
+			return err
+		}
 		if _, ok := group.metricNames[key.metricName]; !ok || key.bucket < start || key.bucket > end || bucket.count == 0 {
 			continue
 		}
@@ -371,18 +380,24 @@ func (s *Store) scanHotRollupGroup(query BatchSeriesQuery, group *batchSeriesGro
 		if !matched {
 			continue
 		}
+		if err := spendReadBudget(ctx, 1); err != nil {
+			return err
+		}
 		accumulators[key.metricName].consume(meta, key.bucket, bucket.count, bucket.sum, bucket.sumSq, bucket.min, bucket.max, bucket.firstVal, bucket.firstTS, bucket.lastVal, bucket.lastTS, bucket.digest)
 	}
 	return nil
 }
 
-func (s *Store) scanCoarseRollupGroup(query BatchSeriesQuery, group *batchSeriesGroup, seriesByIdentity map[seriesIdentity]*seriesReadMeta, accumulators map[string]*metricSeriesAccumulator) error {
+func (s *Store) scanCoarseRollupGroup(ctx context.Context, query BatchSeriesQuery, group *batchSeriesGroup, seriesByIdentity map[seriesIdentity]*seriesReadMeta, accumulators map[string]*metricSeriesAccumulator) error {
 	start := bucketStartMillis(query.Start.UnixMilli(), group.key.resolution.Milliseconds())
 	end := query.End.UnixMilli()
 	entityIDs := stringSet(query.EntityIDs)
 	s.coarseMu.RLock()
 	defer s.coarseMu.RUnlock()
 	for key, parent := range s.coarse {
+		if err := spendReadBudget(ctx, 0); err != nil {
+			return err
+		}
 		if key.interval != group.key.resolution || key.bucket < start || key.bucket > end {
 			continue
 		}
@@ -395,6 +410,9 @@ func (s *Store) scanCoarseRollupGroup(query BatchSeriesQuery, group *batchSeries
 			}
 		}
 		childKeys := make([]rollupKey, 0, len(parent.children))
+		if err := spendReadBudget(ctx, len(parent.children)); err != nil {
+			return err
+		}
 		for childKey := range parent.children {
 			childKeys = append(childKeys, childKey)
 		}

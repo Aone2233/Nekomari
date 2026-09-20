@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/database"
 	"github.com/Aone2233/nekomari/database/accounts"
 	"github.com/Aone2233/nekomari/database/auditlog"
@@ -30,6 +29,7 @@ import (
 	recoveryweb "github.com/Aone2233/nekomari/web/recovery"
 	"github.com/Aone2233/nekomari/web/router"
 	"github.com/Aone2233/nekomari/web/security"
+	"github.com/gin-gonic/gin"
 )
 
 // ErrRestartRequested is returned after a clean shutdown when a configuration
@@ -111,7 +111,7 @@ func (a *App) BuildRouter() error {
 	configureTrustedProxies(r)
 	r.Use(logger.GinLogger(), logger.GinRecovery())
 	cors := security.NewCorsController(a.settings.CorsOriginCheckEnabled, a.settings.CorsAllowedOrigins)
-	r.Use(cors.Middleware(), api.IdentityMiddleware(), api.PrivateSiteMiddleware(), noStoreAPIResponses())
+	r.Use(cors.Middleware(), api.ControlBodyLimit(), api.IdentityMiddleware(), api.PrivateSiteMiddleware(), noStoreAPIResponses())
 
 	// The recovery UI belongs only to its temporary restricted listener.
 	r.GET(recoveryweb.PagePath, func(c *gin.Context) {

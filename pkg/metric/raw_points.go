@@ -309,6 +309,9 @@ func (s *Store) queryRawPointsBatch(ctx context.Context, query BatchQuery) (map[
 	s.rawMu.RLock()
 	defer s.rawMu.RUnlock()
 	for key, series := range s.raw {
+		if err := spendReadBudget(ctx, 0); err != nil {
+			return nil, err
+		}
 		if _, ok := metricNames[key.metricName]; !ok {
 			continue
 		}
@@ -328,6 +331,14 @@ func (s *Store) queryRawPointsBatch(ctx context.Context, query BatchQuery) (map[
 		directStart := sort.Search(len(series.samples), func(i int) bool { return series.samples[i].timestamp >= start })
 		directEnd := sort.Search(len(series.samples), func(i int) bool { return series.samples[i].timestamp > end })
 		additional := directEnd - directStart
+		// Reserve before growing result slices or decoding compressed samples.
+		readCount := additional
+		if series.compressed.count > 0 && start <= series.compressed.lastStamp && end >= series.compressed.firstStamp() {
+			readCount += series.compressed.count
+		}
+		if err := spendReadBudget(ctx, readCount); err != nil {
+			return nil, err
+		}
 		if series.compressed.count > 0 && start <= series.compressed.firstStamp() && end >= series.compressed.lastStamp {
 			additional += series.compressed.count
 		}

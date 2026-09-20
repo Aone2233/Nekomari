@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/database/accounts"
 	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/pkg/rpc"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -111,7 +111,7 @@ func PrivateSiteMiddleware() gin.HandlerFunc {
 
 		// 公开路径直接放行
 		for _, p := range publicPaths {
-			if strings.HasPrefix(path, p) {
+			if strings.HasPrefix(path, p) && !strings.HasPrefix(path, "/api/public/ip-info/") {
 				c.Next()
 				return
 			}
@@ -175,7 +175,10 @@ func extractClientToken(c *gin.Context) string {
 		return token
 	}
 
-	if c.Request.Method != http.MethodGet {
+	// Only legacy agent JSON reports carry body tokens. Never buffer uploads
+	// or anonymous requests to unrelated routes during identity detection.
+	if c.Request.Method == http.MethodPost && c.Request.URL.Path == "/api/clients/v2/rpc" && c.GetHeader("Content-Encoding") == "" {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, MaxControlBody)
 		bodyBytes, err := io.ReadAll(c.Request.Body)
 		if err != nil {
 			return ""
@@ -213,6 +216,9 @@ func checkTokenAndGetUUID(token string) (string, error) {
 }
 
 func isApiKeyValid(apiKey string) bool {
+	if !strings.HasPrefix(apiKey, "Bearer ") {
+		return false
+	}
 	apiKeyConfig, err := config.GetAs[string](config.ApiKeyKey, "")
 	if err != nil {
 		return false

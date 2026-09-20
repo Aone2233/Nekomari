@@ -286,13 +286,18 @@ func getPublicInfo(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcE
 
 func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {
-		UUID  string   `json:"uuid"`
-		UUIDs []string `json:"uuids"`
+		UUID        string   `json:"uuid"`
+		UUIDs       []string `json:"uuids"`
+		IncludePing *bool    `json:"include_ping"`
 	}
 	req.BindParams(&params)
 
 	meta := rpc.MetaFromContext(ctx)
-	latest := agent_runtime.GetLatestReport()
+	ids := params.UUIDs
+	if params.UUID != "" {
+		ids = []string{params.UUID}
+	}
+	latest := agent_runtime.GetLatestReport(ids...)
 	onlineUUIDs := agent_runtime.GetAllOnlineUUIDs()
 	onlineSet := make(map[string]bool, len(onlineUUIDs))
 	for _, uuid := range onlineUUIDs {
@@ -301,15 +306,9 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 
 	// Hidden 过滤
 	if meta.Principal == nil || !meta.Principal.HasRole(rpc.RoleAdmin) {
-		cinfo, err := clients.GetAllClientBasicInfo()
+		hidden, err := clients.HiddenClients()
 		if err != nil {
 			return nil, rpc.MakeError(rpc.InternalError, "Failed to get client info", err.Error())
-		}
-		hidden := make(map[string]bool, len(cinfo))
-		for _, c := range cinfo {
-			if c.Hidden {
-				hidden[c.UUID] = true
-			}
 		}
 		for uuid := range latest {
 			if hidden[uuid] {
@@ -358,13 +357,20 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 	respMap := make(map[string]recordLike, len(latest))
 
 	// 预取所有 ping 任务
-	pingTasks, _ := tasks.GetAllPingTasks()
+	includePing := params.IncludePing == nil || *params.IncludePing
+	var pingTasks []models.PingTask
+	if includePing {
+		pingTasks, _ = tasks.GetAllPingTasks()
+	}
 
 	appendOne := func(uuid string, rep *v2.Report) {
 		if rep == nil {
 			return
 		}
-		stats := getPingStatsForNode(uuid, pingTasks)
+		var stats map[string]pingStat
+		if includePing {
+			stats = getPingStatsForNode(uuid, pingTasks)
+		}
 		rl := recordLike{
 			Client:         uuid,
 			Time:           rep.UpdatedAt,

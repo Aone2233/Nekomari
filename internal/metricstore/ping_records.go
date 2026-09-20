@@ -12,6 +12,9 @@ import (
 
 // WritePingRecord 将 ping 记录写入 metric store
 func WritePingRecord(ctx context.Context, rec models.PingRecord) error {
+	if len(rec.Client) > 128 || len(rec.PingType) > 12 || len(rec.Role) > 12 {
+		return fmt.Errorf("ping record exceeds field limits")
+	}
 	s := GetStore()
 	if s == nil {
 		return fmt.Errorf("metric store not enabled")

@@ -54,6 +54,11 @@ func Dispatch(ctx context.Context, meta *rpc.ContextMeta, req *rpc.JsonRpcReques
 		return rpc.ErrorResponse(req.ID, rpc.PermissionDenied, "Permission denied", nil)
 	}
 
+	ctx, release, budgetErr := queryBudget(ctx, req.Method)
+	if budgetErr != nil {
+		return budgetErr.ResponseWithID(req.ID)
+	}
+	defer release()
 	return rpc.CallWithContext(rpc.NewContextWithMeta(ctx, meta), req.ID, req.Method, req.Params)
 }
 
