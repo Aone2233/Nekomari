@@ -6,7 +6,7 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
-## [Unreleased]
+## [v0.1.14] — 2026-09-20
 
 ### Security
 
