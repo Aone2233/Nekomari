@@ -44,16 +44,30 @@ $ErrorActionPreference = "Stop"
 $Repo = "Aone2233/Nekomari"
 
 # Translate the GNU-style agent flags into the switches above.
-foreach ($f in @($AgentFlags)) {
+#
+# Both spellings are handled: --flag=value and the space-separated --flag value the
+# admin panel emits. The space-separated form used to fall through to the
+# "ignoring unrecognised argument" branch, so a custom install directory, service
+# name, ghproxy or pinned version was silently dropped on Windows while the same
+# command worked on Linux.
+$flags = @($AgentFlags)
+for ($i = 0; $i -lt $flags.Count; $i++) {
+  $f = $flags[$i]
+  $next = $null
+  if ($i + 1 -lt $flags.Count) { $next = $flags[$i + 1] }
   switch -Regex ($f) {
     '^--disable-web-ssh$'     { $DisableWebSsh = $true }
     '^--disable-auto-update$' { $DisableAutoUpdate = $true }
     '^--ignore-unsafe-cert$'  { $IgnoreUnsafeCert = $true }
-    '^--install-dir=(.+)$'    { $InstallDir = $Matches[1] }
-    '^--install-service-name=(.+)$' { $InstallServiceName = $Matches[1] }
-    '^--install-ghproxy=(.*)$'      { $InstallGhproxy = $Matches[1] }
-    '^--version=(.+)$'        { $Version = $Matches[1] }
     '^--force$'               { $Force = $true }
+    '^--install-dir=(.+)$'    { $InstallDir = $Matches[1] }
+    '^--install-dir$'         { if ($next) { $InstallDir = $next; $i++ } }
+    '^--install-service-name=(.+)$' { $InstallServiceName = $Matches[1] }
+    '^--install-service-name$'      { if ($next) { $InstallServiceName = $next; $i++ } }
+    '^--install-ghproxy=(.*)$'      { $InstallGhproxy = $Matches[1] }
+    '^--install-ghproxy$'           { if ($next) { $InstallGhproxy = $next; $i++ } }
+    '^--version=(.+)$'        { $Version = $Matches[1] }
+    '^--version$'             { if ($next) { $Version = $next; $i++ } }
     default {
       if ($f) { Write-Host "  !! ignoring unrecognised argument '$f'" -ForegroundColor Yellow }
     }

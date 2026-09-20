@@ -326,7 +326,7 @@ const AutoDiscoverySection = ({
     }
     const installVersion = installOptions.installVersion.trim();
     if (enableInstallVersion && installVersion) {
-      args.push(`--install-version`);
+      args.push(`--version`);
       args.push(installVersion);
     }
     const includeNics = installOptions.includeNics.trim();
@@ -361,11 +361,20 @@ const AutoDiscoverySection = ({
       args.push(rotateVal);
     }
 
-    let scriptFile = "install.sh";
-    if (selectedPlatform === "windows") {
-      scriptFile = "install.ps1";
-    }
-    let scriptUrl = `https://raw.githubusercontent.com/komari-monitor/komari-agent/refs/heads/main/${scriptFile}`;
+    // These point at THIS repository's installers, not upstream's.
+    //
+    // They used to reference komari-monitor/komari-agent, which installs the
+    // upstream agent from an archived project -- without the flags this fork added
+    // (--month-rotate, --disable-web-ssh, and the rest). Anyone copying the command
+    // out of the panel got a differently-shaped node: upstream's installer uses
+    // /opt/komari, a komari-agent unit and --auto-discovery, while this repository's
+    // installs /opt/nekomari-agent with the node's own token.
+    // components/admin/NodeTable/NodeFunction.tsx was migrated; these two
+    // generators in this file were missed.
+    let scriptUrl =
+      selectedPlatform === "windows"
+        ? "https://raw.githubusercontent.com/Aone2233/Nekomari/main/deploy/install-node-agent.ps1"
+        : "https://raw.githubusercontent.com/Aone2233/Nekomari/main/deploy/install-node-agent.sh";
     if (enableGhproxy && ghproxy) {
       scriptUrl = scriptUrl.slice(8); // 去掉 https://
       if (ghproxy.endsWith("/")) {
@@ -398,7 +407,7 @@ const AutoDiscoverySection = ({
         break;
       case "macos":
         finalCommand =
-          `zsh <(curl -sL ${quoteShellArg(scriptUrl)}) ` +
+          `curl -fsSL ${quoteShellArg(scriptUrl)} | sudo bash -s -- ` +
           quoteShellArgs(args);
         break;
       case "docker": {
@@ -407,7 +416,7 @@ const AutoDiscoverySection = ({
           "--install-ghproxy",
           "--install-dir",
           "--install-service-name",
-          "--install-version",
+          "--version",
         ];
         const dockerArgs: string[] = [];
         for (let i = 0; i < args.length; i++) {
@@ -1631,7 +1640,7 @@ function GenerateCommandButton({
     }
     const installVersion = installOptions.installVersion.trim();
     if (enableInstallVersion && installVersion) {
-      args.push(`--install-version`);
+      args.push(`--version`);
       args.push(installVersion);
     }
     const includeNics = installOptions.includeNics.trim();
@@ -1659,12 +1668,11 @@ function GenerateCommandButton({
       args.push(`--month-rotate`);
       args.push(rotateVal);
     }
-    let scriptFile = "install.sh";
-    if (selectedPlatform === "windows") {
-      scriptFile = "install.ps1";
-    }
+    // Same two installers as the generator above: this repository's, not upstream's.
     let scriptUrl =
-      `https://raw.githubusercontent.com/komari-monitor/komari-agent/refs/heads/main/${scriptFile}`;
+      selectedPlatform === "windows"
+        ? "https://raw.githubusercontent.com/Aone2233/Nekomari/main/deploy/install-node-agent.ps1"
+        : "https://raw.githubusercontent.com/Aone2233/Nekomari/main/deploy/install-node-agent.sh";
     if (enableGhproxy) {
       if (enableGhproxy && ghproxy) {
         scriptUrl = scriptUrl.slice(8); // 去掉 https://
@@ -1698,7 +1706,7 @@ function GenerateCommandButton({
         break;
       case "macos":
         finalCommand =
-          `zsh <(curl -sL ${quoteShellArg(scriptUrl)}) ` + quoteShellArgs(args);
+          `curl -fsSL ${quoteShellArg(scriptUrl)} | sudo bash -s -- ` + quoteShellArgs(args);
         break;
       case "docker": {
         // Docker 运行时不支持安装脚本专用参数，剔除它们及其取值
@@ -1706,7 +1714,7 @@ function GenerateCommandButton({
           "--install-ghproxy",
           "--install-dir",
           "--install-service-name",
-          "--install-version",
+          "--version",
         ];
         const dockerArgs: string[] = [];
         for (let i = 0; i < args.length; i++) {
