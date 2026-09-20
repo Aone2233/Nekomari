@@ -10,20 +10,28 @@ User=komari
 Group=komari
 WorkingDirectory=/opt/komari
 
-# The NOSLA Tokyo node, added 2026-09-20. Unlike the restored nodes this one did not
-# exist in the recovered database, so it was enrolled with --auto-discovery and the
-# panel named it "NOSLA | 东京-26秋-M" afterwards.
+# The NOSLA Tokyo node, added 2026-09-20. It was first enrolled with
+# --auto-discovery, because the panel's install dialog was still handing out
+# upstream's installer (see the note in frontend/src/pages/admin/index.tsx); it now
+# carries its own node token like every other node.
 #
-# The discovery key is a credential: it is replaced by a placeholder here, the same
-# rule as the other units (see docs/SECRETS.md). The agent persists the uuid/token it
-# receives in /opt/komari/auto-discovery.json, next to the binary, and reuses it on
-# every later start -- confirmed in the journal as
-#   Using existing auto-discovery token for UUID: 72a64984-...
-# so a restart does not re-register. That file is the node's identity: if it is lost
-# the next start registers a *new* node and the panel gains a duplicate.
+# Why that switch matters: auto-discovery registers a *new* client every time it
+# starts without a saved token -- web/api/client/autoDiscovery.go calls
+# CreateClientWithName unconditionally -- so the node's identity depended on
+# /opt/komari/auto-discovery.json surviving. The file is left in place, but it is
+# ignored without the flag.
+#
+# The token is a credential: it is replaced by a placeholder here, the same rule as
+# the other units (see docs/SECRETS.md).
 #
 # The binary path is /opt/komari/agent, not the /opt/nekomari-agent/... the other
 # nodes use; the installer script must not assume a single layout.
+#
+# Unlike the other nodes this unit passes only -e/-t. The fleet standard is
+# -i 5 --info-report-interval 10 --exclude-nics lo,docker0 --month-rotate 1
+# --disable-auto-update, and --month-rotate is the one that changes a reported
+# number: without it the panel divides a since-boot counter by the plan limit (see
+# the MAC-WAN note in docs/DEPLOY-OC424.md).
 #
 # The hardening block below is what the installed unit carries. Note that
 # NoNewPrivileges=yes and PrivateTmp=yes each defeat a *file* capability, which is
@@ -31,7 +39,7 @@ WorkingDirectory=/opt/komari
 # trap documented in deploy/README.md for MAC-WAN.
 ExecStart=/opt/komari/agent \
   -e https://komari.orderly2233.org \
-  --auto-discovery <AUTO_DISCOVERY_KEY>
+  -t <AGENT_TOKEN>
 
 Restart=always
 RestartSec=5

@@ -154,7 +154,7 @@ process reports per host, and starts a `nekomari-agent.service`.
 | MAC Server (MAC-WAN) | **user** unit — that host has no passwordless sudo |
 | Nomao v6_1 | IPv6 only; reachable from OC424 |
 | CloudLeadInno | root SSH from OC424 (the key is not present on every machine) |
-| NOSLA 东京-26秋-M (`TG`) | added 2026-09-20; root SSH from the workstation, enrolled with `--auto-discovery` |
+| NOSLA 东京-26秋-M (`TG`) | added 2026-09-20; root SSH from the workstation. First enrolled with `--auto-discovery`, then switched to its own node token |
 
 ### Two things worth knowing
 
@@ -209,12 +209,15 @@ Three things the fleet is not uniform about, each of which the upgrade had to ha
   privileged container that chroots into the host rootfs and runs the host's own
   `setcap`: `docker run --rm --privileged -v /:/host alpine chroot /host setcap
   cap_net_raw+ep <bin>`. `getcap` was checked before and after.
-- **NOSLA uses `--auto-discovery`.** The agent stores the uuid/token it is given in
-  `/opt/komari/auto-discovery.json`, next to the binary, and reuses it on every later
-  start — the journal confirms `Using existing auto-discovery token for UUID: ...`,
-  so the restart did not register a duplicate. That file is the node's identity:
-  losing it makes the next start create a new node. The unit is kept as
-  `deploy/hosts/tender-guard.service` with the key replaced by a placeholder.
+- **NOSLA used `--auto-discovery`, and no longer does.** Its first install followed
+  the panel's install dialog, which was still handing out upstream's installer — see
+  the open item in `docs/OPEN-WORK.md`. Auto-discovery registers a *new* client on
+  every start that does not find a saved token
+  (`web/api/client/autoDiscovery.go` calls `CreateClientWithName` unconditionally),
+  so the node's identity depended on `/opt/komari/auto-discovery.json` surviving; a
+  lost file would have produced a duplicate node. It now carries its own token like
+  the rest of the fleet, with the file left in place but unused. Its unit is kept as
+  `deploy/hosts/tender-guard.service`.
 
 `deploy/upgrade-agent.sh` was fixed while doing this. It decided "already at the
 target version" by running `"$BIN" --version`, and the agent has no such flag (it

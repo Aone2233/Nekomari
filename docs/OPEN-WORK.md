@@ -117,6 +117,35 @@ password and before the 2FA step, `429 + Retry-After` when exhausted, account bu
 cleared on success. Design and tests are in **[AUTH-HARDENING.md](./AUTH-HARDENING.md)**
 and `web/api/public/login_limiter_test.go`.
 
+### 7. The panel's Docker install option still points at upstream's agent image
+
+Found on 2026-09-20 while adding the NOSLA node. Two of the panel's three
+install-command generators were still handing out upstream's installer
+(`komari-monitor/komari-agent`), which installs a differently-shaped node —
+`/opt/komari`, a `komari-agent` unit, `--auto-discovery` — from an archived project
+and without the flags this fork added. Those two were migrated to this repository's
+installers; `components/admin/NodeTable/NodeFunction.tsx` had been migrated earlier.
+
+What is left is the **docker** branch of the same dialog. It runs
+`ghcr.io/komari-monitor/komari-agent:latest` with `--auto-discovery`, and this fork
+publishes no agent image of its own (`docker.yml` builds only the panel, and the
+panel image contains `/app/nekomari` alone). So the option works, but it installs
+upstream's agent and depends on auto-discovery for the node's identity — the same
+two problems the script generators had.
+
+Two ways out, both needing a product decision:
+
+- **Publish an agent image** from `docker.yml` (`ghcr.io/aone2233/nekomari-agent`)
+  and point the dialog at it. Most work, cleanest result.
+- **Run the release binary in a generic container**: download
+  `komari-agent-linux-<arch>` from this repository's release inside the command and
+  run it under a small base image with the node's token. No new CI job, but the
+  command gets longer and loses the "one image tag" simplicity.
+
+Until then the docker option should be treated as "runs upstream's agent", and the
+node it creates should be re-installed with `deploy/install-node-agent.sh` if the
+fork's flags matter.
+
 ## Tooling added
 
 All in `deploy/`, all indexed in `deploy/README.md`:
