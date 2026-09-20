@@ -217,12 +217,9 @@ func (s *Store) loadSeriesDictionary(ctx context.Context, plan seriesDictionaryP
 	byID := make(map[int64]*seriesReadMeta)
 	byIdentity := make(map[seriesIdentity]*seriesReadMeta)
 	for rows.Next() {
-		if err := spendReadBudget(ctx, 1); err != nil {
-			return nil, nil, err
-		}
 		var meta seriesReadMeta
 		var rawTags any
-		if err := rows.Scan(&meta.id, &meta.metricName, &meta.entityID, &meta.tagsHash, &rawTags); err != nil {
+		if err := readBudgetAfterScan(ctx, rows.Scan(&meta.id, &meta.metricName, &meta.entityID, &meta.tagsHash, &rawTags)); err != nil {
 			return nil, nil, err
 		}
 		meta.tagsJSON, err = rawJSONToString(rawTags)
@@ -292,11 +289,9 @@ func (s *Store) scanPersistedRollupGroup(ctx context.Context, query BatchSeriesQ
 		destinations = append(destinations, &digestBlob)
 	}
 	for rows.Next() {
-		err = rows.Scan(destinations...)
-		if budgetErr := spendReadBudget(ctx, 1); budgetErr != nil {
-			return budgetErr
-		}
-		if err != nil {
+		// Scan first: a failing scan is a data problem, and the budget error would
+		// answer for it with "narrow the query".
+		if err := readBudgetAfterScan(ctx, rows.Scan(destinations...)); err != nil {
 			return err
 		}
 		meta := seriesByID[seriesID]
@@ -309,6 +304,20 @@ func (s *Store) scanPersistedRollupGroup(ctx context.Context, query BatchSeriesQ
 		}
 	}
 	return rows.Err()
+}
+
+// readBudgetAfterScan charges one scanned row and reports a scan failure first.
+//
+// A failed scan is a data problem; a budget error is a capacity statement telling
+// the caller to narrow the query. Letting the budget win hides a corrupt or
+// truncated row behind advice that cannot fix it. Passing the scan error in as an
+// argument makes the order structural rather than a convention each loop has to
+// remember.
+func readBudgetAfterScan(ctx context.Context, scanErr error) error {
+	if scanErr != nil {
+		return scanErr
+	}
+	return spendReadBudget(ctx, 1)
 }
 
 func rollupFieldsForAggregations(aggregations []Aggregation) rollupReadFields {

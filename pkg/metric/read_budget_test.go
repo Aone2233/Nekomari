@@ -35,3 +35,19 @@ func TestReadBudgetAppliesBeforeRawAndRollupMaterialization(t *testing.T) {
 		t.Fatalf("cancelled query: %v", err)
 	}
 }
+
+// A corrupt row must be reported as a scan failure, not as an exhausted read
+// budget: "narrow the query" is the wrong instruction for data that cannot be
+// decoded, and the budget error used to win because it was checked first.
+func TestScanFailureOutranksTheReadBudget(t *testing.T) {
+	corrupt := errors.New("corrupt rollup row")
+	if err := readBudgetAfterScan(WithReadBudget(context.Background(), 1), corrupt); !errors.Is(err, corrupt) {
+		t.Fatalf("scan failure reported as %v", err)
+	}
+	if err := readBudgetAfterScan(WithReadBudget(context.Background(), 0), nil); !errors.Is(err, ErrReadBudget) {
+		t.Fatalf("exhausted budget not reported: %v", err)
+	}
+	if err := readBudgetAfterScan(WithReadBudget(context.Background(), 1), nil); err != nil {
+		t.Fatalf("healthy row rejected: %v", err)
+	}
+}
