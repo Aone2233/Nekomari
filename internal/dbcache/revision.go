@@ -11,7 +11,17 @@ var revisions = map[string]*atomic.Uint64{
 	"configs": {}, "clients": {}, "sessions": {}, "users": {},
 }
 
-func Revision(table string) uint64 { return revisions[table].Load() }
+// Revision returns the current revision of a watched table. A table that is not
+// watched reports 0 instead of panicking: callers derive the name from the data
+// they cache, and a nil map entry used to dereference nil. 0 is stable for an
+// unwatched table, so a caller comparing two readings still sees "unchanged".
+func Revision(table string) uint64 {
+	revision, ok := revisions[table]
+	if !ok {
+		return 0
+	}
+	return revision.Load()
+}
 
 func InvalidateAll() {
 	for _, revision := range revisions {
