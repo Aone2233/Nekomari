@@ -9,11 +9,17 @@ name: docker
 #    需要额外工具链）。这里直接取用那些产物，既不必重复构建，也保证了
 #    「镜像里的二进制」与「Release 里的二进制」是同一份。
 #
-# 2) Dockerfile 依赖产物位于构建上下文根目录且命名为 nekomari-<os>-<arch>，
-#    这正是 release.yml 的命名，也是本工作流 --pattern 抓取的命名。
-#    改任意一边都必须同步改另一边。
+# 2) Dockerfile 依赖产物位于构建上下文根目录且命名为 nekomari-<os>-<arch> /
+#    komari-agent-linux-<arch>，这正是 release.yml 的命名，也是本工作流
+#    --pattern 抓取的命名。改任意一边都必须同步改另一边。
 #
-# 3) 只推 GHCR（用内置 GITHUB_TOKEN，无需额外密钥）。
+# 3) 两个镜像由同一个矩阵构建，共用 tag 方案与全部检查：服务端
+#    ghcr.io/<owner>/nekomari，探针 ghcr.io/<owner>/nekomari-agent。
+#    探针镜像存在的原因：面板的「安装命令」对话框有 Docker 选项，此前它指向
+#    上游的 komari-monitor/komari-agent 镜像 —— 那是另一个项目、没有本 fork 的
+#    flag，且节点身份依赖 --auto-discovery。既然要装就装自己的版本。
+#
+# 4) 只推 GHCR（用内置 GITHUB_TOKEN，无需额外密钥）。
 #    要同时推 Docker Hub 的话，需要 DOCKERHUB_USERNAME / DOCKERHUB_TOKEN 两个
 #    secret，这里刻意不默认开启，避免缺密钥时整个流程失败。
 
@@ -51,6 +57,26 @@ jobs:
     # workflow_run 时不关心成功与否就白跑，先判断结论。
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: nekomari
+            package: nekomari
+            # 服务端镜像名就是仓库名；探针加 -agent 后缀（ghcr.io/<owner>/nekomari-agent）。
+            image_suffix: ""
+            dockerfile: Dockerfile
+            entrypoint: /app/nekomari
+            smoke_expect: Monitor
+            smoke_args: --help
+          - name: nekomari-agent
+            package: nekomari-agent
+            image_suffix: "-agent"
+            dockerfile: Dockerfile.agent
+            entrypoint: /usr/local/bin/komari-agent
+            # 探针没有 --version（实测报 unknown flag），--help 才是稳定入口。
+            smoke_expect: komari agent
+            smoke_args: --help
     steps:
       - name: Resolve tag
         id: tag
@@ -68,7 +94,11 @@ jobs:
             *) echo "::error::resolved tag '$TAG' does not look like a release tag; nothing to build"; exit 1 ;;
           esac
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "Building image for $TAG"
+          # GHCR 的仓库名必须小写，而 github.repository 是 Aone2233/Nekomari。
+          # 自己转一次，不依赖 metadata-action 的行为。
+          IMAGE=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "Building ${{ matrix.name }} image for $TAG as $IMAGE"
 
       - name: Checkout
         uses: actions/checkout@v7
@@ -83,11 +113,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p ctx
-          cp Dockerfile ctx/
-          # 只要服务端产物：探针不进镜像（它跑在被监控的机器上）。
+          cp Dockerfile Dockerfile.agent ctx/
+          # 服务端产物：nekomari-*；探针产物只取 linux（镜像跑在 linux 上，
+          # darwin/windows 的探针不可能是容器）。
           gh release download "${{ steps.tag.outputs.tag }}" \
             --repo "${{ github.repository }}" \
             --pattern 'nekomari-*' \
+            --pattern 'komari-agent-linux-*' \
             --dir ctx
           ls -la ctx
 
@@ -108,7 +140,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ steps.tag.outputs.image }}
           tags: |
             type=raw,value=${{ steps.tag.outputs.tag }}
             type=raw,value=latest,enable=${{ !contains(steps.tag.outputs.tag, '-') }}
@@ -134,20 +166,20 @@ jobs:
             --build-arg TARGETARCH=amd64 \
             --platform linux/amd64 \
             --load \
-            -t nekomari-smoke:local \
-            -f ctx/Dockerfile ctx
+            -t ${{ matrix.name }}-smoke:local \
+            -f ctx/${{ matrix.dockerfile }} ctx
           echo "--- 入口路径是否存在且可执行 ---"
-          docker run --rm --entrypoint /app/nekomari nekomari-smoke:local --help > /tmp/smoke.txt 2>&1
+          docker run --rm --entrypoint ${{ matrix.entrypoint }} ${{ matrix.name }}-smoke:local ${{ matrix.smoke_args }} > /tmp/smoke.txt 2>&1
           head -3 /tmp/smoke.txt
-          echo "--- 二进制是否报告了版本 ---"
-          grep -q "Monitor" /tmp/smoke.txt
+          echo "--- 入口是否报告了预期的自述 ---"
+          grep -q "${{ matrix.smoke_expect }}" /tmp/smoke.txt
           echo "smoke test passed"
 
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
           context: ctx
-          file: Dockerfile
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -163,16 +195,16 @@ jobs:
         if: always()
         run: |
           set +e
-          REPO_LOWER=$(echo "${{ github.repository_owner }}/nekomari" | tr '[:upper:]' '[:lower:]')
+          REPO_LOWER=$(echo "${{ github.repository_owner }}/${{ matrix.package }}" | tr '[:upper:]' '[:lower:]')
           TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:${REPO_LOWER}:pull&service=ghcr.io"             | python3 -c 'import sys,json; print(json.load(sys.stdin).get("token",""))')
           if [ -z "$TOKEN" ]; then
             echo "::warning::could not obtain an anonymous token; cannot verify pullability"
             exit 0
           fi
           CODE=$(curl -s -o /dev/null -w '%{http_code}'             -H "Authorization: Bearer $TOKEN"             -H "Accept: application/vnd.oci.image.index.v1+json"             "https://ghcr.io/v2/${REPO_LOWER}/manifests/${{ steps.tag.outputs.tag }}")
-          echo "anonymous manifest fetch: HTTP $CODE"
+          echo "anonymous manifest fetch for ${REPO_LOWER}: HTTP $CODE"
           if [ "$CODE" != "200" ]; then
-            echo "::warning::the image is not anonymously pullable (HTTP $CODE)."
+            echo "::warning::${REPO_LOWER} is not anonymously pullable (HTTP $CODE)."
             echo "::warning::Set it public under Package settings -> Change visibility,"
             echo "::warning::otherwise users must 'docker login ghcr.io' before pulling."
           fi

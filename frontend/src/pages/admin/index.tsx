@@ -426,14 +426,27 @@ const AutoDiscoverySection = ({
           }
           dockerArgs.push(args[i]);
         }
-        // 自动发现会在 /app/auto-discovery.json 写入注册得到的 uuid/token，
-        // 通过 bind mount 持久化该文件，容器更新重建后复用同一身份，避免重复注册。
-        // 注意：文件挂载要求宿主机上文件已存在，否则 Docker 会将其创建为目录。
+        // 镜像指向本仓库发布的探针镜像（docker.yml 从 Release 附件构建），不再是
+        // 上游的 komari-monitor/komari-agent —— 那是另一个项目、没有本 fork 的 flag。
+        //
+        // 命令可重复执行：先删掉同名容器，再用 --pull always 取最新镜像，所以
+        // 「更新探针」就是再跑一次这条命令。
+        //
+        // /data 是探针的工作目录：net_static.json（--month-rotate 的流量账本）和
+        // auto-discovery.json（自动发现注册下来的身份）都写在这里，必须挂卷持久化。
+        // 少了它，容器重建后流量窗口为空（面板少算）、身份丢失（会注册出重复节点）。
+        // 上游那条命令用 bind mount 单文件来保身份，要求宿主机上文件已存在，
+        // 否则 Docker 会把它建成目录；命名卷没有这个坑。
+        if (!dockerArgs.includes("--disable-auto-update")) {
+          // 容器不能自我更新：agent 的自更新会去替换自己的二进制，而容器的更新
+          // 方式是换镜像。这里强制关闭，更新走重跑命令。
+          dockerArgs.push("--disable-auto-update");
+        }
         finalCommand =
-          `touch .komari-auto-discovery.json && ` +
-          `docker run -d --name komari-agent --restart=always ` +
-          `-v .komari-auto-discovery.json:/app/auto-discovery.json ` +
-          `ghcr.io/komari-monitor/komari-agent:latest ` +
+          `docker rm -f komari-agent >/dev/null 2>&1; ` +
+          `docker run -d --name komari-agent --restart=always --pull always ` +
+          `-v komari-agent-data:/data ` +
+          `ghcr.io/aone2233/nekomari-agent:latest ` +
           quoteShellArgs(dockerArgs);
         break;
       }
@@ -1724,9 +1737,17 @@ function GenerateCommandButton({
           }
           dockerArgs.push(args[i]);
         }
+        // 同上面的生成器：用本仓库发布的探针镜像，不用上游的。命令可重复执行，
+        // --pull always 就是更新路径；/data 卷保存 net_static.json 与
+        // auto-discovery.json，容器重建后不丢。
+        if (!dockerArgs.includes("--disable-auto-update")) {
+          dockerArgs.push("--disable-auto-update");
+        }
         finalCommand =
-          `docker run -d --name komari-agent --restart=always ` +
-          `ghcr.io/komari-monitor/komari-agent:latest ` +
+          `docker rm -f komari-agent >/dev/null 2>&1; ` +
+          `docker run -d --name komari-agent --restart=always --pull always ` +
+          `-v komari-agent-data:/data ` +
+          `ghcr.io/aone2233/nekomari-agent:latest ` +
           quoteShellArgs(dockerArgs);
         break;
       }

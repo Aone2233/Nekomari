@@ -1,0 +1,35 @@
+# 探针镜像。与 ./Dockerfile（服务端）分开，原因有两条：
+#
+#   1) 探针跑在被监控的机器上，服务端跑在面板机上，两者的生命周期、挂载和
+#      端口都不同，塞进一个镜像只会让两边都别扭。
+#   2) 服务端必须用 glibc 基础镜像（CGO + 原生构建，见 ./Dockerfile 的说明），
+#      而探针是纯 Go（CGO_ENABLED=0）静态二进制，alpine 完全可以。
+#
+# 镜像里的二进制来自 Release 附件，与用户手动下载的是同一份：docker.yml 从
+# Release 取 komari-agent-linux-<arch>，不在镜像构建里重新编译。
+FROM alpine:3.21
+
+# ca-certificates：探针用 HTTPS 连面板；tzdata：--month-rotate 与上报时间戳
+# 都按本地时区计算。
+RUN apk add --no-cache ca-certificates tzdata
+
+# Docker buildx 会在构建时自动填充这两个变量（TARGETOS=linux, TARGETARCH=amd64/arm64）。
+ARG TARGETOS
+ARG TARGETARCH
+
+# 依赖发布产物已放在构建上下文根目录，命名形如 komari-agent-linux-amd64。
+# 刻意不用 `COPY --chmod=755`：那个选项要求 BuildKit，与 ./Dockerfile 同样的理由。
+COPY komari-agent-${TARGETOS}-${TARGETARCH} /usr/local/bin/komari-agent
+RUN chmod 755 /usr/local/bin/komari-agent
+
+# 探针把状态写在【工作目录】里，两种文件都靠它：
+#   * net_static.json    —— 开了 --month-rotate 时的流量增量账本；
+#   * auto-discovery.json —— 用 --auto-discovery 注册后保存的 uuid/token。
+# 因此工作目录必须是调用方持久化的卷：容器更新 = 重建容器，卷一丢，流量窗口就空了
+# （面板会少算），自动发现的节点身份也会丢（下次启动会注册出一个重复节点）。
+WORKDIR /data
+VOLUME ["/data"]
+
+# 不切 USER：探针要读 /proc、/sys 才能拿到 CPU/内存/磁盘/网络数据，上游镜像同样
+# 以 root 运行。需要更严格的隔离时由调用方加 --read-only / --cap-drop 等参数。
+ENTRYPOINT ["/usr/local/bin/komari-agent"]

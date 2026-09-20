@@ -10,6 +10,11 @@
 # installer option is passed through to the agent and written into the service, so
 # the command the panel shows works verbatim.
 #
+# Identity is -t <token> for a node that already exists, or --auto-discovery <key>
+# for the panel's "add node" dialog, which has no token yet because the node does not
+# exist until the agent registers. Both are accepted; requiring -t unconditionally
+# made the add-node command fail with "no token".
+#
 # Installer-only options (consumed here, never passed to the agent):
 #   --install-dir DIR            where to put the binary   (default /opt/nekomari-agent)
 #   --install-service-name NAME  systemd/launchd unit name (default nekomari-agent)
@@ -58,16 +63,34 @@ done
 
 # The endpoint and token are what make the node useful; check them here so a typo
 # fails now rather than as a silently offline node.
+#
+# Identity comes one of two ways, and the installer must accept both because the
+# panel emits both:
+#   -t <token>            the per-node command, for a node that already exists;
+#   --auto-discovery <key>  the "add node" dialog, which has no token yet -- the node
+#                           does not exist until the agent registers.
+# Requiring -t unconditionally made the add-node command die with "no token: pass -t".
 ENDPOINT=""
 TOKEN=""
+AUTO_DISCOVERY=""
 for i in "${!AGENT_ARGS[@]}"; do
   case "${AGENT_ARGS[$i]}" in
     -e) ENDPOINT="${AGENT_ARGS[$((i+1))]:-}" ;;
+    -e=*) ENDPOINT="${AGENT_ARGS[$i]#*=}" ;;
     -t) TOKEN="${AGENT_ARGS[$((i+1))]:-}" ;;
+    -t=*) TOKEN="${AGENT_ARGS[$i]#*=}" ;;
+    --auto-discovery) AUTO_DISCOVERY="${AGENT_ARGS[$((i+1))]:-}" ;;
+    --auto-discovery=*) AUTO_DISCOVERY="${AGENT_ARGS[$i]#*=}" ;;
   esac
 done
 [ -n "$ENDPOINT" ] || die "no endpoint: pass -e https://your-panel"
-[ -n "$TOKEN" ]    || die "no token: pass -t <token from the panel>"
+if [ -n "$AUTO_DISCOVERY" ]; then
+  log "identity: --auto-discovery (the agent registers and saves the token in"
+  log "          ${INSTALL_DIR}/auto-discovery.json; that file must survive, or the"
+  log "          next start registers a second node)"
+else
+  [ -n "$TOKEN" ] || die "no token: pass -t <token from the panel> (or --auto-discovery <key> to enrol a new node)"
+fi
 
 # --- platform ---------------------------------------------------------------
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
