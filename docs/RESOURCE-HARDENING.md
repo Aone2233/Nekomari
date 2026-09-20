@@ -69,7 +69,10 @@ The Agent updater consumes the existing GitHub release format, keeps the
 pages of releases, caps API pages at 8 MiB and binaries at 64 MiB, verifies the
 checksum, then uses the previously transitive `go-update` replacement/rollback
 implementation. Checksums protect download integrity; they are not a separate
-publisher signature. Containers update by replacing their image.
+publisher signature. Containers update by replacing their image: the panel's Docker
+install command passes `--disable-auto-update` and uses `--pull always`, so re-running
+it is the update path, and its `/data` volume keeps the traffic ledger and the
+auto-discovery identity across the container replacement.
 
 ## Reproducible evidence
 

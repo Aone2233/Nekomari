@@ -117,7 +117,7 @@ password and before the 2FA step, `429 + Retry-After` when exhausted, account bu
 cleared on success. Design and tests are in **[AUTH-HARDENING.md](./AUTH-HARDENING.md)**
 and `web/api/public/login_limiter_test.go`.
 
-### 7. The panel's Docker install option still points at upstream's agent image
+### 7. The panel's Docker install option — done in the same pass
 
 Found on 2026-09-20 while adding the NOSLA node. Two of the panel's three
 install-command generators were still handing out upstream's installer
@@ -125,26 +125,21 @@ install-command generators were still handing out upstream's installer
 `/opt/komari`, a `komari-agent` unit, `--auto-discovery` — from an archived project
 and without the flags this fork added. Those two were migrated to this repository's
 installers; `components/admin/NodeTable/NodeFunction.tsx` had been migrated earlier.
+`deploy/install-node-agent.sh` also had to start accepting `--auto-discovery`: the
+"add node" dialog has no token yet, and requiring `-t` made its command die.
 
-What is left is the **docker** branch of the same dialog. It runs
-`ghcr.io/komari-monitor/komari-agent:latest` with `--auto-discovery`, and this fork
-publishes no agent image of its own (`docker.yml` builds only the panel, and the
-panel image contains `/app/nekomari` alone). So the option works, but it installs
-upstream's agent and depends on auto-discovery for the node's identity — the same
-two problems the script generators had.
+The **docker** branch had the same problem in a different shape: it ran
+`ghcr.io/komari-monitor/komari-agent:latest`, because this fork published no agent
+image. It now runs `ghcr.io/aone2233/nekomari-agent`, built by `docker.yml` from the
+release's `komari-agent-linux-*` assets alongside the panel image — so the binary in
+the image is the binary on the release page, and a release publishes both.
 
-Two ways out, both needing a product decision:
-
-- **Publish an agent image** from `docker.yml` (`ghcr.io/aone2233/nekomari-agent`)
-  and point the dialog at it. Most work, cleanest result.
-- **Run the release binary in a generic container**: download
-  `komari-agent-linux-<arch>` from this repository's release inside the command and
-  run it under a small base image with the node's token. No new CI job, but the
-  command gets longer and loses the "one image tag" simplicity.
-
-Until then the docker option should be treated as "runs upstream's agent", and the
-node it creates should be re-installed with `deploy/install-node-agent.sh` if the
-fork's flags matter.
+Updating a container is replacing its image, so the generated command is
+re-runnable: it removes the container, pulls with `--pull always`, and mounts
+`/data` as a named volume for `net_static.json` (the `--month-rotate` traffic ledger)
+and `auto-discovery.json` (the node's identity after registration). The command also
+forces `--disable-auto-update`, since the agent cannot replace its own binary inside
+a container.
 
 ## Tooling added
 

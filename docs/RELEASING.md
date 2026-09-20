@@ -28,12 +28,30 @@ supplying a tag name.
 ## Container images
 
 `.github/workflows/docker.yml` builds multi-arch images (`linux/amd64`,
-`linux/arm64`) and pushes them to GHCR:
+`linux/arm64`) and pushes them to GHCR. Two images, one matrix, same tag scheme and
+the same checks:
 
 ```
-ghcr.io/aone2233/nekomari:<tag>
+ghcr.io/aone2233/nekomari:<tag>          # the panel
 ghcr.io/aone2233/nekomari:latest
+ghcr.io/aone2233/nekomari-agent:<tag>    # the agent
+ghcr.io/aone2233/nekomari-agent:latest
 ```
+
+The agent image exists because the panel's install dialog offers a Docker option.
+It used to point at `ghcr.io/komari-monitor/komari-agent:latest` — upstream's image,
+from another project, without the flags this fork added, and depending on
+`--auto-discovery` for the node's identity. Both images are built from the release
+assets rather than recompiled here, so the binary in the image is the binary on the
+release page.
+
+A container cannot update itself: the agent's self-updater replaces its own binary,
+while a container is updated by replacing its image. The dialog therefore passes
+`--disable-auto-update`, and re-running the command it prints — which starts with
+`docker rm -f komari-agent` and uses `--pull always` — is the update path. The
+agent's `/data` volume holds `net_static.json` (the traffic ledger for
+`--month-rotate`) and `auto-discovery.json`, so recreating the container does not
+reset the traffic window or lose the node's identity.
 
 ```bash
 docker run -d --name nekomari   -p 25774:25774   -v nekomari-data:/app/data   ghcr.io/aone2233/nekomari:latest

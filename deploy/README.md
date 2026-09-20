@@ -19,6 +19,7 @@ for the incident that rule came from.
 | `test-volume-footgun.sh` | Reproduces the anonymous-volume trap: install without `-v`, recreate the container, watch the settings disappear. |
 | `test-persist-warning.sh` | Checks the startup warning fires on an anonymous volume and stays quiet on a named volume and a bind mount. |
 | `docker-compose.yml` | The reference container setup: host networking off, bound to `127.0.0.1`, bind-mounted `./data`. |
+| `../Dockerfile.agent` | The agent image (`ghcr.io/aone2233/nekomari-agent`), built by `docker.yml` from the release's `komari-agent-linux-*` assets. Its `/data` volume is the agent's working directory — the panel's Docker install command mounts it so a container replacement does not reset the traffic ledger or the node identity. |
 | `nginx-nekomari.conf` | Host nginx vhost. WebSocket-safe (agents hold long-lived connections) and forwards `CF-Connecting-IP` so the panel records the real visitor rather than Cloudflare's edge. |
 | `install-node-agent.sh` | Installs the agent on a node: refuses to run if one is already active, verifies the download against `SHA256SUMS.txt`, retires older agent units, writes a systemd unit. Works as root or through passwordless sudo. |
 | `enable-webssh-all.sh` | Re-applies units without `--disable-web-ssh`. That flag also disables remote command execution, so it is opt-in per node. Tokens come from `NEKOMARI_NODE_TOKENS`. |
