@@ -12,6 +12,16 @@
 分量都换成本地路径。
 
 用法（在面板主机上）：sudo ./install-theme-background.py
+
+两条实测教训（2026-09-21）
+------------------------
+1. **装进来的图要先压。** 这次落地的四张是 6.3 MB / 5.4 MB / 1.3 MB / 1.1 MB，桌面暗色那张
+   还是 3840x2160 —— 而每个访客每次冷加载都要下一张。面板慢的体感有一半来自这里。
+   建议装之前压到 2560 宽、JPEG q80：同样四张变成 0.51 / 0.23 / 0.25 / 0.17 MB（5-23 倍）。
+   换文件时【用新文件名】，别原地覆盖：Cloudflare 用自己的 max-age（4 小时）覆盖源站的
+   no-store，只有 URL 变了才能立刻取到新文件。
+2. **写完必须重启面板才生效。** 面板把主题配置读在内存里，不重启的话 /api/public 仍返回旧值
+   （定位办法与排查过程见 set-theme-background-local.py 顶部）。
 """
 import json
 import os
@@ -105,3 +115,6 @@ conn.commit()
 conn.close()
 print(f"\n数据库已备份：{backup}")
 print("已写入")
+print("")
+print("!! 面板把主题配置读在内存里，必须重启才生效：")
+print("     cd /opt/nekomari && docker compose restart nekomari")

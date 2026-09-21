@@ -20,6 +20,18 @@ URL 是取不到的。原因我一开始判断错了，记在这里免得下次�
 
 用法（在面板主机上）：
   sudo ./set-theme-background-local.py [--dry-run]
+
+写完之后必须重启面板才生效
+--------------------------
+实测（2026-09-21）：面板把主题配置读进内存，这个脚本写库之后 `/api/public` 仍然返回旧值，
+直到 `docker compose restart nekomari`。排查过程记在这里，免得下次重走：
+
+  * 不是 dbcache —— `theme_configurations` 不在它监视的 configs/clients/sessions/users 里；
+  * 不是 managedconfig —— LuminaPlus 的 komari-theme.json 根本没有 configuration 段；
+  * 不是数据库选错 —— 容器挂载的 /app/data/komari.db 与宿主机是同一个 inode；
+  * 定位办法：往同一行的 JSON 里加一个 zzProbe 键，重启前 API 看不到、重启后立刻看到。
+
+所以脚本最后会打印重启提示。写完就刷新页面看不到变化时，先重启，别怀疑背景图本身。
 """
 import json
 import shutil
@@ -71,3 +83,7 @@ conn.execute("update theme_configurations set data=? where short=?",
 conn.commit()
 conn.close()
 print("已写入")
+print("")
+print("!! 面板把主题配置读在内存里，必须重启才生效：")
+print("     cd /opt/nekomari && docker compose restart nekomari")
+print("   不重启的话 /api/public 仍然返回旧值（详见本文件顶部的实测记录）。")
