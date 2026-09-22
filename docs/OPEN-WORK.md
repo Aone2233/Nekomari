@@ -15,8 +15,9 @@ without re-deriving anything.
 | LuminaPlus IP panel | **Fixed and released** in v0.1.8 — `classification.source` was missing |
 | Family mixing within one ping task | **Fixed** — tasks split per family, verified single-family |
 
-Production runs `ghcr.io/aone2233/nekomari:v0.1.9`; v0.1.10 carries the health-review
-fixes below.
+Production runs `ghcr.io/aone2233/nekomari:v0.1.15` (panel only — the agents stay on
+v0.1.14 because v0.1.15 changes no agent code; see the note in `docs/DEPLOY-OC424.md`).
+The open items below are all unreleased.
 
 ## Released
 

@@ -9,12 +9,12 @@ restored, and the two hostname/TLS traps that cost the most time.
 |---|---|
 | Panel URL | **https://komari.orderly2233.org** |
 | Host | OC424 (`ubuntu@213.35.99.48`, Oracle Cloud, **arm64**, Ubuntu 22.04) |
-| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.14`, bound to `127.0.0.1:25774` |
+| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.15`, bound to `127.0.0.1:25774` |
 | Compose dir | `/opt/nekomari` (bind mount `./data` → `/app/data`) |
 | Reverse proxy | host **nginx** `/etc/nginx/sites-available/nekomari` |
 | TLS at origin | `/etc/nginx/ssl/{fullchain,privkey}.pem` (Cloudflare Origin cert, shared with the other vhosts) |
 | Edge | Cloudflare proxied A → `213.35.99.48` |
-| Agent | `komari-agent-oc424.service`, arm64 agent reporting this host to the local panel |
+| Agent | `komari-agent-oc424-original-node.service` (source: `deploy/hosts/oc424.service`), arm64 agent reporting this host to the local panel |
 | Old data | backed up by the server on first boot to `data/backup/upgrade-*.zip` |
 
 The container is deliberately **not** published on a public interface: UFW allows
@@ -112,14 +112,17 @@ sudo mkdir -p /opt/nekomari/data && sudo chown ubuntu: /opt/nekomari
 #    put komari.db + metrics.db into /opt/nekomari/data (optional), then:
 cd /opt/nekomari && docker compose up -d
 
-# 2. nginx (see deploy/oc424/nginx-nekomari.conf)
-sudo cp nginx-nekomari.conf /etc/nginx/sites-available/nekomari
+# 2. nginx (see deploy/nginx-nekomari.conf)
+sudo cp deploy/nginx-nekomari.conf /etc/nginx/sites-available/nekomari
 sudo ln -sf /etc/nginx/sites-available/nekomari /etc/nginx/sites-enabled/nekomari
 sudo nginx -t && sudo systemctl reload nginx
 
-# 3. agent
-sudo cp deploy/oc424/komari-agent-oc424.service /etc/systemd/system/
-sudo systemctl enable --now komari-agent-oc424.service
+# 3. agent (source of truth: deploy/hosts/oc424.service)
+#    On the host the unit is called komari-agent-oc424-original-node.service,
+#    because it reports as the restored node "甲骨文 OC424" (see the unit's
+#    WorkingDirectory and token comment).
+sudo cp deploy/hosts/oc424.service /etc/systemd/system/komari-agent-oc424-original-node.service
+sudo systemctl enable --now komari-agent-oc424-original-node.service
 ```
 
 ## Notes
@@ -239,3 +242,26 @@ The fleet-wide check needs no panel login: each agent reports its version in its
 basic-info upload, so `select name, version from clients` on `data/komari.db` is the
 answer. It read `v0.1.11` for eight nodes and `v0.1.13` for NOSLA before, and
 `v0.1.14` for all nine after.
+
+## Panel upgrade (2026-09-21) — v0.1.15
+
+The panel moved from v0.1.14 to v0.1.15 and **the agents did not move with it**: this
+release touches only `frontend/`, `deploy/`, `docs/`, `Dockerfile.agent` and
+`.github/workflows/docker.yml`. `git diff --stat v0.1.14..v0.1.15 -- agent protocol pkg
+internal` is empty, and the two `komari-agent-linux-amd64` binaries differ only in the
+version string, the Go build id and the embedded `vcs.*` metadata — so all nine nodes
+keep reporting `v0.1.14` on purpose.
+
+Recorded from the host: compose pin updated in `/opt/nekomari/docker-compose.yml` with
+the previous file kept as `docker-compose.yml.bak-pre-v0.1.15`; the server wrote
+`data/backup/upgrade-20260920-145936.zip` on first boot and logged
+`from "v0.1.14-6ed979b" to "v0.1.15-9bacdf7"`; the banner read
+`Nekomari Monitor v0.1.15 (hash: 9bacdf7)`; eight agents re-established their WebSocket
+in the same second the container started, and `/api/version` answered
+`{"hash":"9bacdf7","version":"v0.1.15"}`.
+
+Two follow-ups from the same day, both in `docs/PERFORMANCE.md`: the LuminaPlus theme's
+background images were re-encoded (6.34 MB → 0.51 MB for the desktop one) and the theme
+settings repointed at new filenames, and `data/backup` was pruned from 1.4 GB to 221 MB
+with `deploy/prune-upgrade-backups.sh` now running weekly from a systemd timer.
+
