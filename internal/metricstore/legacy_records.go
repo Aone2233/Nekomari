@@ -42,16 +42,7 @@ func GetRecordsByTime(ctx context.Context, start, end time.Time) ([]models.Recor
 	if err != nil {
 		return nil, err
 	}
-	var records []models.Record
-	for _, entityID := range entityIDs {
-		items, err := getRecordsByClientAndTimeFromSeries(ctx, s, entityID, start, end)
-		if err != nil {
-			return nil, err
-		}
-		records = append(records, items...)
-	}
-	sortRecords(records)
-	return records, nil
+	return getRecordsForEntitiesFromSeries(ctx, s, entityIDs, start, end)
 }
 
 type recordSeriesKey struct {
@@ -59,30 +50,57 @@ type recordSeriesKey struct {
 	ts     int64
 }
 
-func getRecordsByClientAndTimeFromSeries(ctx context.Context, s *metric.Store, clientUUID string, start, end time.Time) ([]models.Record, error) {
-	now := time.Now().UTC()
-	interval := recordSeriesInterval(s, start, end, now)
-	recordMap := make(map[recordSeriesKey]*models.Record)
-
+// recordBatchSpecs 构造重建记录所需的全部指标规格。
+//
+// 每个指标用一次 SeriesBatch 里的一条 spec 表达：SeriesBatch 会把它们按分辨率
+// 合并成每个 tier 一次扫描，而不是每个指标扫一遍。
+func recordBatchSpecs(interval time.Duration) []metric.BatchSeriesSpec {
+	specs := make([]metric.BatchSeriesSpec, 0, len(loadRecordMetricNames))
 	for _, metricName := range loadRecordMetricNames {
-		points, err := s.Series(ctx, metric.AggregateQuery{
-			Query: metric.Query{
-				MetricName: metricName,
-				EntityID:   clientUUID,
-				Start:      start,
-				End:        end,
-				Order:      metric.OrderAsc,
-			},
-			Aggregation: recordMetricAggregation(metricName),
-			Interval:    interval,
-		}, now)
-		if err != nil {
-			return nil, fmt.Errorf("failed to query metric %s: %w", metricName, err)
-		}
+		specs = append(specs, metric.BatchSeriesSpec{
+			MetricName:   metricName,
+			Aggregations: []metric.Aggregation{recordMetricAggregation(metricName)},
+			Interval:     interval,
+			// 必须保留各实体自己的桶：一次查询可能覆盖整个机群，不保留就会把
+			// 不同节点同一时间桶的数据合并成一条记录。
+			PreserveSeries: true,
+		})
+	}
+	return specs
+}
+
+// getRecordsForEntitiesFromSeries 用一次批量 rollup 查询重建若干节点的记录。
+//
+// 旧实现是「每节点 × 每指标」各一次 Series：全机群一次请求就是
+// 节点数 × 17 次查询（9 节点 = 153 次），而且整个请求期间占着一个查询槽。
+// SeriesBatch 把同样的指标合并成每个分辨率一次扫描，只占一个槽。
+func getRecordsForEntitiesFromSeries(ctx context.Context, s *metric.Store, entityIDs []string, start, end time.Time) ([]models.Record, error) {
+	if len(entityIDs) == 0 {
+		return nil, nil
+	}
+	now := time.Now().UTC()
+	loaded, err := s.SeriesBatch(ctx, metric.BatchSeriesQuery{
+		Specs:     recordBatchSpecs(recordSeriesInterval(s, start, end, now)),
+		EntityIDs: entityIDs,
+		Start:     start,
+		End:       end,
+		Order:     metric.OrderAsc,
+	}, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query record metrics: %w", err)
+	}
+
+	recordMap := make(map[recordSeriesKey]*models.Record)
+	for _, metricName := range loadRecordMetricNames {
+		points := loaded.Values[metricName][recordMetricAggregation(metricName)]
 		for _, point := range points {
 			entityID := point.EntityID
 			if entityID == "" {
-				entityID = clientUUID
+				// 单实体查询时兜底，多实体时缺 EntityID 无法归属，只能跳过。
+				if len(entityIDs) != 1 {
+					continue
+				}
+				entityID = entityIDs[0]
 			}
 			key := recordSeriesKey{client: entityID, ts: point.Bucket.Unix()}
 			if recordMap[key] == nil {
@@ -101,6 +119,10 @@ func getRecordsByClientAndTimeFromSeries(ctx context.Context, s *metric.Store, c
 	}
 	sortRecords(records)
 	return records, nil
+}
+
+func getRecordsByClientAndTimeFromSeries(ctx context.Context, s *metric.Store, clientUUID string, start, end time.Time) ([]models.Record, error) {
+	return getRecordsForEntitiesFromSeries(ctx, s, []string{clientUUID}, start, end)
 }
 
 func getRecordMetricMaxByClientAndTimeFromSeries(ctx context.Context, s *metric.Store, clientUUID, recordMetric string, start, end time.Time) ([]models.Record, error) {
