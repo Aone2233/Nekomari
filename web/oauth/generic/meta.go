@@ -2,7 +2,7 @@ package generic
 
 import (
 	"github.com/Aone2233/nekomari/web/oauth/factory"
-	"github.com/patrickmn/go-cache"
+	"github.com/Aone2233/nekomari/web/oauth/internal/oauthutil"
 )
 
 func init() {
@@ -13,7 +13,7 @@ func init() {
 
 type Generic struct {
 	Addition
-	stateCache *cache.Cache // 用于存储state和用户信息的映射
+	stateCache oauthutil.States
 }
 
 type Addition struct {

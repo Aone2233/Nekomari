@@ -32,10 +32,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          # The agent is a separate module and requires a NEWER Go than the root
-          # (agent/go.mod says 1.26.0, the root says 1.25.0). Reading the root
-          # go.mod installed 1.25.0, and the agent tests then failed with
-          # "go.mod requires go >= 1.26.0". Point at the higher of the two.
+          # Root and agent modules both require Go 1.26 or newer.
           go-version-file: agent/go.mod
           cache: true
           # Both modules are built from this one job.
@@ -55,6 +52,7 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm test
+          npm run lint
           npm run build
 
       - name: Build theme packer
@@ -91,6 +89,17 @@ jobs:
         # 它们在未改动的上游代码上同样失败，详见 docs/TESTING.md。
         working-directory: agent
         run: go test ./... -count=1 -skip 'TestICMPPing|TestTCPPing|TestHTTPPing'
+
+      - name: Vet server
+        run: go vet ./...
+
+      - name: Vet agent
+        working-directory: agent
+        run: go vet ./...
+
+      - name: Race-check authentication
+        if: runner.os == 'Linux'
+        run: go test -race ./database/accounts ./web/oauth/... ./web/api/public ./web/security
 
       - name: Build server
         run: go build -o /dev/null .

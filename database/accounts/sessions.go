@@ -39,9 +39,12 @@ func CreateSession(uuid string, expires int, userAgent, ip, login_method string)
 		LoginMethod:  login_method,
 		LatestOnline: time.Now().UTC(),
 	}
-	go func() {
-		LoginNotification, _ := config.GetAs[bool](config.LoginNotificationKey, false)
-		if LoginNotification {
+	if err := db.Create(&sessionRecord).Error; err != nil {
+		return "", err
+	}
+	loginNotification, _ := config.GetAs[bool](config.LoginNotificationKey, false)
+	if loginNotification {
+		go func() {
 			ipAddr := net.ParseIP(ip)
 			ipinfo, _ := geoip.GetGeoInfo(ipAddr)
 			loc := "unknown"
@@ -54,12 +57,7 @@ func CreateSession(uuid string, expires int, userAgent, ip, login_method string)
 				Message: fmt.Sprintf("%s: %s (%s)\n%s", login_method, ip, loc, userAgent),
 				Emoji:   "🔑",
 			})
-		}
-	}()
-
-	err := db.Create(&sessionRecord).Error
-	if err != nil {
-		return "", err
+		}()
 	}
 	return session, nil
 }

@@ -2,14 +2,14 @@ package public
 
 import (
 	"fmt"
-	"slices"
+	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/database/accounts"
 	"github.com/Aone2233/nekomari/database/auditlog"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/utils"
 	"github.com/Aone2233/nekomari/web/oauth"
+	"github.com/gin-gonic/gin"
 )
 
 // /api/oauth
@@ -20,37 +20,45 @@ func OAuth(c *gin.Context) {
 		return
 	}
 
-	authURL, state := oauth.CurrentProvider().GetAuthorizationURL(utils.GetCallbackURL(c))
+	provider := oauth.CurrentProvider()
+	if provider == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "error": "OAuth provider unavailable"})
+		return
+	}
+	authURL, state := provider.GetAuthorizationURL(utils.GetCallbackURL(c))
+	if authURL == "" || state == "" {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "error": "OAuth authorization unavailable; retry later"})
+		return
+	}
 
-	c.SetCookie("oauth_state", state, 3600, "/", "", false, true)
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("oauth_state", state, 300, "/", "", utils.GetScheme(c) == "https", true)
 
 	c.Redirect(302, authURL)
 }
 
 // /api/oauth_callback
 func OAuthCallback(c *gin.Context) {
+	enabled, err := config.GetAs[bool](config.OAuthEnabledKey, false)
+	if err != nil || !enabled {
+		c.JSON(http.StatusForbidden, gin.H{"status": "error", "error": "OAuth is not enabled"})
+		return
+	}
+	provider := oauth.CurrentProvider()
+	if provider == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "error": "OAuth provider unavailable"})
+		return
+	}
 
 	// 验证state防止CSRF攻击
 	state, _ := c.Cookie("oauth_state")
-	c.SetCookie("oauth_state", "", -1, "/", "", false, true)
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("oauth_state", "", -1, "/", "", utils.GetScheme(c) == "https", true)
 
 	// 获取当前OAuth提供商名称
-	providerName := oauth.CurrentProvider().GetName()
-
-	providersSkipStateCheck := []string{"qq"}
-	if slices.Contains(providersSkipStateCheck, providerName) {
-		// 对于QQ登录，由于是通过QQ聚合登录平台中转，state可能会不匹配
-		// 但我们仍然需要验证state的存在性（不能是空的）
-		if state == "" {
-			c.JSON(400, gin.H{"status": "error", "error": "Invalid state"})
-			return
-		}
-	} else {
-		// 对于其他提供商，严格验证state匹配
-		if state == "" || state != c.Query("state") {
-			c.JSON(400, gin.H{"status": "error", "error": "Invalid state"})
-			return
-		}
+	if state == "" || state != c.Query("state") {
+		c.JSON(400, gin.H{"status": "error", "error": "Invalid state"})
+		return
 	}
 
 	queries := make(map[string]string)
@@ -59,14 +67,14 @@ func OAuthCallback(c *gin.Context) {
 			queries[key] = values[0]
 		}
 	}
-	oidcUser, err := oauth.CurrentProvider().OnCallback(c, state, queries, utils.GetCallbackURL(c))
+	oidcUser, err := provider.OnCallback(c, state, queries, utils.GetCallbackURL(c))
 	if err != nil {
 		c.JSON(500, gin.H{"status": "error", "error": "Failed to get user info: " + err.Error()})
 		return
 	}
 
 	// ID作为SSO ID
-	sso_id := fmt.Sprintf("%s_%s", oauth.CurrentProvider().GetName(), oidcUser.UserId)
+	sso_id := fmt.Sprintf("%s_%s", provider.GetName(), oidcUser.UserId)
 
 	// 如果cookie中有binding_external_account，说明是绑定外部账号
 	// 否则是登录

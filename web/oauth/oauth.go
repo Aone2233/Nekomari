@@ -41,23 +41,27 @@ func Shutdown() error {
 func LoadProvider(name string, configJson string) error {
 	mu.Lock()
 	defer mu.Unlock()
+	constructor, exists := factory.GetConstructor(name)
+	if !exists {
+		return fmt.Errorf("provider %s not found", name)
+	}
+	candidate := constructor()
+	if err := json.Unmarshal([]byte(configJson), candidate.GetConfiguration()); err != nil {
+		return fmt.Errorf("failed to unmarshal config for provider %s: %w", name, err)
+	}
+	err := candidate.Init()
+	if err != nil {
+		_ = candidate.Destroy()
+		return fmt.Errorf("failed to initialize provider %s: %w", name, err)
+	}
+	// Publish only a fully initialized provider; bad settings must not replace
+	// the working instance or discard its pending authorization states.
 	if currentProvider != nil {
 		if err := currentProvider.Destroy(); err != nil {
 			logger.Errorf("oauth", "Failed to destroy provider %s: %v", currentProvider.GetName(), err)
 		}
 	}
-	constructor, exists := factory.GetConstructor(name)
-	if !exists {
-		return fmt.Errorf("provider %s not found", name)
-	}
-	currentProvider = constructor()
-	if err := json.Unmarshal([]byte(configJson), currentProvider.GetConfiguration()); err != nil {
-		return fmt.Errorf("failed to unmarshal config for provider %s: %w", name, err)
-	}
-	err := currentProvider.Init()
-	if err != nil {
-		return fmt.Errorf("failed to initialize provider %s: %w", name, err)
-	}
+	currentProvider = candidate
 	return nil
 }
 

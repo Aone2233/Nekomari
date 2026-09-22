@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/utils"
+	"github.com/Aone2233/nekomari/web/upload"
+	"github.com/gin-gonic/gin"
 )
 
 // Bootstrap initializes the data directory, primary database, and settings.
@@ -36,5 +37,17 @@ func (a *App) Bootstrap() error {
 		return fmt.Errorf("failed to load settings: %w", err)
 	}
 	a.settings = settings
+	uploadCtx, stopUploads := context.WithCancel(context.Background())
+	uploadDone := make(chan struct{})
+	go func() { defer close(uploadDone); upload.DefaultStore.RunCleanup(uploadCtx) }()
+	a.addCleanup("upload-cleanup", func(ctx context.Context) error {
+		stopUploads()
+		select {
+		case <-uploadDone:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	})
 	return nil
 }
