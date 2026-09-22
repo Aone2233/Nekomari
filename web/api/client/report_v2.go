@@ -55,22 +55,22 @@ func agentMessageWithinControlLimit(method string, size int64) bool {
 	return size <= api.MaxControlBody
 }
 
-func bindV2Params[T any](raw any, target *T) error {
-	b, err := json.Marshal(raw)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(b, target)
-}
-
-func handleV2RPC(uuid string, req v2.Request, allowWait bool) v2.Response {
+// handleV2RPC dispatches one decoded JSON-RPC request.
+//
+// req is a v2.RawRequest rather than a v2.Request so each method's typed params
+// are unmarshalled straight from the bytes that arrived. Decoding the params as
+// an untyped map first (which is what v2.Request.Params would do here) parses
+// the whole report body into map[string]any and then re-marshals it to reach the
+// typed struct: two extra passes over every report, on the hottest ingest path
+// the panel has.
+func handleV2RPC(uuid string, req v2.RawRequest, allowWait bool) v2.Response {
 	if req.JSONRPC != v2.Version {
 		return v2.Error(req.ID, -32600, "invalid jsonrpc version", nil)
 	}
 	switch req.Method {
 	case v2.MethodAgentReport:
 		var params v2.ReportParams
-		if err := bindV2Params(req.Params, &params); err != nil {
+		if err := req.DecodeParams(&params); err != nil {
 			return v2.Error(req.ID, -32602, "invalid report params", err.Error())
 		}
 		if err := ingestReport(uuid, params.Report, true); err != nil {
@@ -82,7 +82,7 @@ func handleV2RPC(uuid string, req v2.Request, allowWait bool) v2.Response {
 		})
 	case v2.MethodAgentBasicInfo:
 		var params v2.BasicInfoParams
-		if err := bindV2Params(req.Params, &params); err != nil {
+		if err := req.DecodeParams(&params); err != nil {
 			return v2.Error(req.ID, -32602, "invalid basic info params", err.Error())
 		}
 		if err := ingestBasicInfo(uuid, params.Info, ""); err != nil {
@@ -91,7 +91,7 @@ func handleV2RPC(uuid string, req v2.Request, allowWait bool) v2.Response {
 		return v2.Success(req.ID, gin.H{"status": "success"})
 	case v2.MethodAgentUnlock:
 		var params v2.UnlockParams
-		if err := bindV2Params(req.Params, &params); err != nil {
+		if err := req.DecodeParams(&params); err != nil {
 			return v2.Error(req.ID, -32602, "invalid unlock params", err.Error())
 		}
 		if err := unlock.Save(uuid, params); err != nil {
@@ -100,7 +100,7 @@ func handleV2RPC(uuid string, req v2.Request, allowWait bool) v2.Response {
 		return v2.Success(req.ID, gin.H{"status": "success"})
 	case v2.MethodAgentPingResult:
 		var params v2.PingResultParams
-		if err := bindV2Params(req.Params, &params); err != nil {
+		if err := req.DecodeParams(&params); err != nil {
 			return v2.Error(req.ID, -32602, "invalid ping result params", err.Error())
 		}
 		if err := ingestPingResult(uuid, params.TaskID, params.PingType, params.Role, params.Value); err != nil {
@@ -109,7 +109,7 @@ func handleV2RPC(uuid string, req v2.Request, allowWait bool) v2.Response {
 		return v2.Success(req.ID, gin.H{"status": "success"})
 	case v2.MethodAgentTaskResult:
 		var params v2.TaskResultParams
-		if err := bindV2Params(req.Params, &params); err != nil {
+		if err := req.DecodeParams(&params); err != nil {
 			return v2.Error(req.ID, -32602, "invalid task result params", err.Error())
 		}
 		finishedAt := params.FinishedAt
@@ -122,7 +122,7 @@ func handleV2RPC(uuid string, req v2.Request, allowWait bool) v2.Response {
 		return v2.Success(req.ID, gin.H{"status": "success"})
 	case v2.MethodAgentPull:
 		var params v2.PullParams
-		if err := bindV2Params(req.Params, &params); err != nil {
+		if err := req.DecodeParams(&params); err != nil {
 			return v2.Error(req.ID, -32602, "invalid pull params", err.Error())
 		}
 		refreshPostPresence(uuid)
@@ -136,7 +136,7 @@ func handleV2RPC(uuid string, req v2.Request, allowWait bool) v2.Response {
 		})
 	case v2.MethodAgentFileResult:
 		var params v2.FileResult
-		if err := bindV2Params(req.Params, &params); err != nil {
+		if err := req.DecodeParams(&params); err != nil {
 			return v2.Error(req.ID, -32602, "invalid file result params", err.Error())
 		}
 		params.UUID = uuid
@@ -155,7 +155,7 @@ func UploadV2RPC(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, v2.Error(nil, -32700, "invalid compressed body", err.Error()))
 		return
 	}
-	var req v2.Request
+	var req v2.RawRequest
 	if err := json.Unmarshal(bytesBody, &req); err != nil {
 		c.JSON(http.StatusBadRequest, v2.Error(nil, -32700, "parse error", err.Error()))
 		return
@@ -200,7 +200,7 @@ func WebSocketV2RPC(c *gin.Context) {
 		conn.WriteJSON(v2.Error(nil, -32001, "invalid token", nil))
 		return
 	}
-	if oldConn, exists := agent_runtime.GetConnectedClients()[uuid]; exists {
+	if oldConn := agent_runtime.GetConnectedClient(uuid); oldConn != nil {
 		go oldConn.Close()
 	}
 	agent_runtime.SetConnectedClients(uuid, conn)
@@ -224,7 +224,7 @@ func WebSocketV2RPC(c *gin.Context) {
 			return
 		}
 		message = bytes.TrimSpace(message)
-		var req v2.Request
+		var req v2.RawRequest
 		if err := json.Unmarshal(message, &req); err != nil {
 			conn.WriteJSON(v2.Error(nil, -32700, "parse error", err.Error()))
 			continue

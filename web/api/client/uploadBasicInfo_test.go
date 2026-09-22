@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"net"
 	"testing"
 	"time"
@@ -61,15 +62,11 @@ func TestV2BasicInfoFillsRegionFromGeoIP(t *testing.T) {
 		t.Fatalf("create client: %v", err)
 	}
 
-	resp := handleV2RPC(clientUUID, v2.Request{
+	resp := handleV2RPC(clientUUID, v2.RawRequest{
 		JSONRPC: v2.Version,
 		Method:  v2.MethodAgentBasicInfo,
-		Params: map[string]interface{}{
-			"info": map[string]interface{}{
-				"ipv4": "8.8.8.8",
-			},
-		},
-		ID: "basic-info",
+		Params:  json.RawMessage(`{"info":{"ipv4":"8.8.8.8"}}`),
+		ID:      "basic-info",
 	}, false)
 	if resp.Error != nil {
 		t.Fatalf("v2 basic info failed: %+v", resp.Error)

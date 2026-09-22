@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"bytes"
 	"encoding/json"
 	"time"
 )
@@ -51,6 +52,40 @@ type Request struct {
 	Method  string `json:"method"`
 	Params  any    `json:"params,omitempty"`
 	ID      any    `json:"id,omitempty"`
+}
+
+// RawRequest is the wire shape of one inbound JSON-RPC request whose params
+// have not been decoded yet.
+//
+// The panel has to hand the params to a method-specific struct. Decoding them
+// through Request.Params (an untyped `any`) builds a map[string]any for the
+// whole payload — every number, nested object and string — only to marshal it
+// back to JSON and unmarshal it into the typed struct. RawRequest keeps the
+// params as the bytes that arrived, so the payload is decoded exactly once, by
+// the code that knows what it is.
+//
+// Request itself is unchanged: it is the shape this protocol uses when the
+// panel *builds* a message (web/agent, web/rpc/jsonrpc), where the params are
+// Go values that still have to be marshalled onto the wire.
+type RawRequest struct {
+	JSONRPC string          `json:"jsonrpc"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	ID      any             `json:"id,omitempty"`
+}
+
+// DecodeParams unmarshals the request params into target.
+//
+// Params are optional in JSON-RPC, and an omitted or explicitly null value
+// leaves target untouched and reports no error, so method defaults keep
+// applying exactly as they did when the params travelled through an untyped
+// map.
+func (r RawRequest) DecodeParams(target any) error {
+	params := bytes.TrimSpace(r.Params)
+	if len(params) == 0 || bytes.Equal(params, []byte("null")) {
+		return nil
+	}
+	return json.Unmarshal(params, target)
 }
 
 type Response struct {
