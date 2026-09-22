@@ -10,12 +10,12 @@ import (
 )
 
 func TestQuotaSurvivesRestartAndCancelReleasesIt(t *testing.T) {
-	s := &Store{Root: t.TempDir(), MaxSize: 20, MaxSessions: 2, MaxTotalSize: 20}
+	s := &Store{Root: t.TempDir(), MaxSize: 20, MaxSessions: 2, MaxTotalSize: 20, FreeSpace: unlimitedFreeSpace}
 	first, err := s.Init(PurposeTheme, "a.zip", 12)
 	if err != nil {
 		t.Fatal(err)
 	}
-	restarted := &Store{Root: s.Root, MaxSize: 20, MaxSessions: 2, MaxTotalSize: 20}
+	restarted := &Store{Root: s.Root, MaxSize: 20, MaxSessions: 2, MaxTotalSize: 20, FreeSpace: unlimitedFreeSpace}
 	if _, err := restarted.Init(PurposeTheme, "b.zip", 9); !errors.Is(err, ErrQuota) {
 		t.Fatalf("quota: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestQuotaSurvivesRestartAndCancelReleasesIt(t *testing.T) {
 }
 
 func TestExpiredUploadRemovedAndQuotaReclaimed(t *testing.T) {
-	s := &Store{Root: t.TempDir(), MaxSize: 10, MaxSessions: 1, TTL: time.Hour}
+	s := &Store{Root: t.TempDir(), MaxSize: 10, MaxSessions: 1, TTL: time.Hour, FreeSpace: unlimitedFreeSpace}
 	session, err := s.Init(PurposeTheme, "a.zip", 10)
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +58,7 @@ func TestExpiredUploadRemovedAndQuotaReclaimed(t *testing.T) {
 }
 
 func TestFinalizationExcludesCancelAndDuplicateMerge(t *testing.T) {
-	s := &Store{Root: t.TempDir(), MaxSize: 10}
+	s := &Store{Root: t.TempDir(), MaxSize: 10, FreeSpace: unlimitedFreeSpace}
 	session, err := s.Init(PurposeTheme, "a.zip", 1)
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +99,7 @@ func TestFinalizationExcludesCancelAndDuplicateMerge(t *testing.T) {
 }
 
 func TestCleanupPreservesUnknownDirectories(t *testing.T) {
-	s := &Store{Root: t.TempDir(), MaxSize: 10}
+	s := &Store{Root: t.TempDir(), MaxSize: 10, FreeSpace: unlimitedFreeSpace}
 	unknown := filepath.Join(s.Root, "keep-me")
 	if err := os.Mkdir(unknown, 0700); err != nil {
 		t.Fatal(err)

@@ -50,7 +50,21 @@ type Store struct {
 	MaxSessions  int
 	MaxTotalSize int64
 	TTL          time.Duration
-	mu           sync.Mutex
+	// FreeSpace reports the bytes available to this process on the filesystem
+	// holding the store root. Nil selects the build-tagged platform query in
+	// freespace_windows.go / freespace_unix.go / freespace_other.go; tests
+	// inject a deterministic implementation so admission never depends on the
+	// host's real disk.
+	FreeSpace func(path string) (int64, error)
+	mu        sync.Mutex
+	// statsMu guards the maintenance view read by Stats. It is a leaf lock, so
+	// Stats stays cheap and cannot block behind an in-flight upload.
+	statsMu       sync.Mutex
+	stats         CleanupStats
+	oldestSession time.Time
+	// suppressed counts repeats of the cleanup failure already logged for the
+	// current burst, so a failure that repeats every tick logs once.
+	suppressed int
 }
 
 var DefaultStore = &Store{

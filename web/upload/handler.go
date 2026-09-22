@@ -121,5 +121,14 @@ func (h *Handler) respondUploadError(c *gin.Context, err error) {
 		api.RespondError(c, http.StatusNotFound, "upload not found or expired")
 		return
 	}
+	// 507 is the status that says "the server cannot store this", so a full
+	// disk is not reported as a malformed request; the message carries the
+	// measured free space and the required budget. No Retry-After is sent: the
+	// condition clears when an admin frees space or a session expires, not on a
+	// short timer.
+	if errors.Is(err, ErrNoSpace) {
+		api.RespondError(c, http.StatusInsufficientStorage, err.Error())
+		return
+	}
 	api.RespondError(c, http.StatusBadRequest, err.Error())
 }
