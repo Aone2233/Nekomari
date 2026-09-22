@@ -47,8 +47,11 @@ func (m *PingTaskManager) Reload(pingTasks []models.PingTask) error {
 		tasks := append([]models.PingTask(nil), tasks...)
 		m.tasks[interval] = tasks
 		if err := scheduler.AddContextFunc(fmt.Sprintf("ping:%d", interval), scheduler.Every(time.Duration(interval)*time.Second), false, func(ctx context.Context) {
+			// 一次调度共用一份地址族信息：地址族是这一批任务的共同输入，逐任务
+			// 查询会让 N 个任务产生 N 次 clients 全表读取。
+			addresses := newClientAddressLookup()
 			for _, task := range tasks {
-				go executePingTask(ctx, task)
+				go executePingTask(ctx, task, addresses)
 			}
 		}); err != nil {
 			return err
@@ -65,8 +68,10 @@ func (m *PingTaskManager) Reload(pingTasks []models.PingTask) error {
 }
 
 // executePingTask 执行单个PingTask
-func executePingTask(ctx context.Context, task models.PingTask) {
-	for _, clientUUID := range targetPingClientUUIDs(task) {
+//
+// addresses 是本次调度共享的地址族查询；nil 表示自己查一次。
+func executePingTask(ctx context.Context, task models.PingTask, addresses *clientAddressLookup) {
+	for _, clientUUID := range targetPingClientUUIDs(task, addresses) {
 		select {
 		case <-ctx.Done():
 			// Context was canceled, stop sending pings.
@@ -84,14 +89,17 @@ func executePingTask(ctx context.Context, task models.PingTask) {
 // 会剔除【地址族不匹配】的节点：目标是 IPv4 字面量时，纯 IPv6 节点永远不可能成功，
 // 下发只会换来一条恒定的 100% 丢包曲线，看起来像目标故障，实际是结构上做不到。
 // 域名目标不筛选——由 agent 自行解析，可能双栈。
-func targetPingClientUUIDs(task models.PingTask) []string {
+//
+// addresses 由调用方在一次调度内共享（见 clientAddressLookup）；nil 表示本次调用
+// 自己查一次库。
+func targetPingClientUUIDs(task models.PingTask, addresses *clientAddressLookup) []string {
 	family := pingTargetFamily(task.Target)
 	if family == familyAny {
 		return task.Clients
 	}
 
-	// 一次批量查询，而不是每个节点查一次库。
-	byUUID, err := loadClientAddresses()
+	// 共享一次批量查询，而不是每个节点查一次库。
+	byUUID, err := addresses.addresses()
 	if err != nil {
 		// 拿不到地址就不筛选：多下发一次远好过把正常节点排除掉。
 		return task.Clients
@@ -106,11 +114,13 @@ func targetPingClientUUIDs(task models.PingTask) []string {
 // 放在 Reload 而不是每次调度里：调度是秒级的，逐次打印会把日志刷满；而"哪些节点
 // 因为地址族被跳过"是配置属性，配置不变就不会变。
 func describeFamilySkips(pingTasks []models.PingTask) []string {
-	byTask, err := PingTasksFamilySkips(pingTasks)
+	// 跳过判断和下面的名字映射共用一份地址族信息：原来这里会查两次 clients。
+	addresses := newClientAddressLookup()
+	byTask, err := pingTasksFamilySkips(pingTasks, addresses)
 	if err != nil {
 		return nil
 	}
-	byUUID, _ := loadClientAddresses()
+	byUUID, _ := addresses.addresses()
 	nameOf := make(map[string]string, len(byUUID))
 	for uuid, c := range byUUID {
 		nameOf[uuid] = c.Name
@@ -145,7 +155,11 @@ func describeFamilySkips(pingTasks []models.PingTask) []string {
 // 供管理界面标注：让用户看到"这个节点被跳过了"，而不是只发现某条曲线没有数据。
 // 与实际调度共用 filterClientsByTargetFamily，所以界面显示的和真正下发的不会分叉。
 func PingTasksFamilySkips(pingTasks []models.PingTask) (map[uint][]string, error) {
-	byUUID, err := loadClientAddresses()
+	return pingTasksFamilySkips(pingTasks, newClientAddressLookup())
+}
+
+func pingTasksFamilySkips(pingTasks []models.PingTask, addresses *clientAddressLookup) (map[uint][]string, error) {
+	byUUID, err := addresses.addresses()
 	if err != nil {
 		return nil, err
 	}

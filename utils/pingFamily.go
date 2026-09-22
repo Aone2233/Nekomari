@@ -3,6 +3,7 @@ package utils
 import (
 	"net"
 	"strings"
+	"sync"
 
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
@@ -31,6 +32,35 @@ func loadClientAddresses() (byUUID map[string]models.Client, err error) {
 		byUUID[c.UUID] = c
 	}
 	return byUUID, nil
+}
+
+// clientAddressLookup 在一次调度内复用 clients 的地址族信息。
+//
+// 为什么需要它：每个任务原本各查一次 clients 表，一次调度里 N 个任务就是 N 次
+// 全表读取，而调度是秒级的。地址族信息在一次调度内不会变化，查一次即可。同一批
+// 任务是并发执行的，所以用 sync.Once 收敛：只产生一次查询，而不是同时穿透。
+type clientAddressLookup struct {
+	once   sync.Once
+	byUUID map[string]models.Client
+	err    error
+}
+
+// newClientAddressLookup 开始一次查询生命周期（一次调度，或一次调用）。
+func newClientAddressLookup() *clientAddressLookup {
+	return &clientAddressLookup{}
+}
+
+// addresses 返回本生命周期内（缓存的）地址族信息。
+//
+// nil 接收者表示调用方没有共享范围：直接查一次，保持旧行为。
+func (l *clientAddressLookup) addresses() (map[string]models.Client, error) {
+	if l == nil {
+		return loadClientAddresses()
+	}
+	l.once.Do(func() {
+		l.byUUID, l.err = loadClientAddresses()
+	})
+	return l.byUUID, l.err
 }
 
 // targetAddressFamily 是延迟监测目标所要求的地址族。
