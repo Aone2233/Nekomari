@@ -8,15 +8,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/database/accounts"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestLogin(t *testing.T) {
+	isolateLoginLimiter(t)
 	// 设置测试模式
 	gin.SetMode(gin.TestMode)
-	accounts.CreateAccount("testuser", "correctpassword")
+	if _, err := accounts.CreateAccount("testuser", "correctpassword"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		assert.NoError(t, accounts.DeleteAllSessions())
+		assert.NoError(t, accounts.DeleteAccountByUsername("testuser"))
+	})
 	tests := []struct {
 		name           string
 		requestBody    LoginRequest
@@ -98,9 +105,6 @@ func TestLogin(t *testing.T) {
 			}
 		})
 	}
-	// 清除测试数据
-	accounts.DeleteAccountByUsername("testuser")
-	accounts.DeleteAllSessions()
 }
 
 func TestSessionCookieSecureFollowsRequestScheme(t *testing.T) {

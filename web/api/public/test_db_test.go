@@ -17,5 +17,16 @@ func TestMain(m *testing.M) {
 		sqlDB.SetMaxOpenConns(1)
 	}
 
-	os.Exit(m.Run())
+	code := m.Run()
+	_ = dbcore.Close()
+	os.Exit(code)
+}
+
+// Tests using the production entry points must not inherit other tests' buckets.
+// These tests are deliberately serial because the entry points share this state.
+func isolateLoginLimiter(t *testing.T) {
+	t.Helper()
+	previous := defaultLoginLimiter
+	defaultLoginLimiter = newLoginLimiter()
+	t.Cleanup(func() { defaultLoginLimiter = previous })
 }
