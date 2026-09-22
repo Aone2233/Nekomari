@@ -39,6 +39,11 @@ type CleanupStats struct {
 	// removed since the process started.
 	ReclaimedFiles int   `json:"reclaimed_files"`
 	ReclaimedBytes int64 `json:"reclaimed_bytes"`
+	// Contention reports how often the store lock refused a caller and how long
+	// it was held. It is the evidence for whether the single lock needs
+	// splitting, which is why it is measured before anything is changed; see
+	// contention.go.
+	Contention ContentionStats `json:"contention"`
 }
 
 // Stats returns the cached maintenance view. It takes a dedicated lock and
@@ -52,6 +57,8 @@ func (s *Store) Stats() CleanupStats {
 		// instead of frozen at the last scan.
 		stats.OldestSessionAge = time.Since(s.oldestSession)
 	}
+	// The maps are shared with the writer, so hand out copies.
+	stats.Contention = copyContention(s.contention)
 	return stats
 }
 
@@ -281,10 +288,11 @@ func allDigits(value string) bool {
 }
 
 func (s *Store) CleanupExpired() error {
-	if !s.mu.TryLock() {
+	release, ok := s.acquire(opCleanup)
+	if !ok {
 		return ErrBusy
 	}
-	defer s.mu.Unlock()
+	defer release()
 	_, err := s.scan()
 	return err
 }
@@ -321,10 +329,27 @@ func (s *Store) startupPass() {
 	s.reportCleanup(err)
 }
 
-// expirePass runs one expiry pass and reports its outcome. The hourly ticker
-// uses it so the error is not dropped.
+// expirePass runs one expiry pass and reports its outcome, then reports the
+// lock-contention figures gathered since the last pass. The hourly ticker uses
+// it so neither the error nor the contention numbers are collected and never
+// read.
 func (s *Store) expirePass() {
 	s.reportCleanup(s.CleanupExpired())
+	s.reportContention()
+}
+
+// reportContention logs one line per hour, and only when caller work actually
+// touched the store: a panel nobody is uploading to logs nothing. The figures
+// are what decides whether the single store lock needs splitting, so they are
+// reported rather than only stored -- see contention.go.
+func (s *Store) reportContention() {
+	stats, ok := s.takeContentionSummary()
+	if !ok {
+		return
+	}
+	logger.Info("upload", "upload store lock activity",
+		"busy", formatBusy(stats.Busy),
+		"hold", formatHold(stats.Hold))
 }
 
 // reconcileAndExpire holds the store lock across both steps so an admission
