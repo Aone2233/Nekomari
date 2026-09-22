@@ -9,7 +9,7 @@ restored, and the two hostname/TLS traps that cost the most time.
 |---|---|
 | Panel URL | **https://komari.orderly2233.org** |
 | Host | OC424 (`ubuntu@213.35.99.48`, Oracle Cloud, **arm64**, Ubuntu 22.04) |
-| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.19`, bound to `127.0.0.1:25774` |
+| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.20`, bound to `127.0.0.1:25774` |
 | Compose dir | `/opt/nekomari` (bind mount `./data` → `/app/data`) |
 | Reverse proxy | host **nginx** `/etc/nginx/sites-available/nekomari` |
 | TLS at origin | `/etc/nginx/ssl/{fullchain,privkey}.pem` (Cloudflare Origin cert, shared with the other vhosts) |
@@ -21,7 +21,59 @@ The container is deliberately **not** published on a public interface: UFW allow
 80/443 only from Cloudflare's ranges, so all traffic arrives via the edge, and
 nginx is the only thing that talks to the panel port.
 
-## Current rollout: 2026-09-22 (v0.1.19)
+## Current rollout: 2026-09-22 (v0.1.20)
+
+Panel upgraded from v0.1.19 to v0.1.20 at 15:02 UTC. Runtime API reports hash
+`5f82c78`. **The agents did not move with it and do not need to**: `git diff
+v0.1.19..v0.1.20 -- agent/ protocol/ pkg/` is empty, so the agent source is
+byte-identical and the fleet stays on v0.1.19 — the same reasoning as the v0.1.15
+rollout. This release is the follow-up hardening batch from
+[next improvements](NEXT-REVIEW-v0.1.19.md): the probe fix, the upload disk budget
+and cleanup observability, the lock-contention measurement, the OAuth admission
+work, and the Recharts 3 / ESLint 10 upgrades.
+
+- Exact release commit: `5f82c788b6b8b783c10a4e1a49e432b21c1546cb`.
+- Exact-commit CI on `main`: `35742632268`, Linux and Windows both passed.
+- Release: `35743235246` — all eight binaries built and passed
+  `govulncheck -mode=binary`, the Release was created, and the real
+  downloaded-artifact deployment test (`deploy/deploy-verify.sh`, which completes
+  the first-run install, connects an agent and asserts the version it reports)
+  passed.
+- Container release: `35744018445`, both images pushed.
+- Panel image: `sha256:213751eb00e1b375f903299a4304f52fc7b23dbf8f2ce62a7d8dfb3cc3844aba`
+  (v0.1.19 was `sha256:52e36dad…`, retained for rollback).
+- Arm64 executable SHA256 verified against the published `SHA256SUMS.txt`;
+  the artifact is `not stripped`, so the symbol tables v0.1.19 restored are intact
+  and the version string reads `v0.1.20`.
+- Stopped writes, then backed up Compose and the complete data directory to
+  `/opt/nekomari-backups/pre-v0.1.20-20260922-150235` (mode 0700).
+  `data.tar` SHA256: `528578aa10a67f4956afb36d51e0fc9d96e8cfde13ecd7ef4b50459654cf97e6`
+  over 366 entries; the listing was checked before the swap. The image was pulled
+  *before* stopping the container, so the downtime was the recreate only.
+- The panel wrote its own pre-migration archive on first boot:
+  `upgrade-20260922-150239.zip`, logged as `from "v0.1.19-31b3ee5" to
+  "v0.1.20-5f82c78"` with the local metric store excluded and left in place.
+
+Verified after the rollout:
+
+- `/api/version` → `{"hash":"5f82c78","version":"v0.1.20"}`; the origin and the
+  public URL both answered 200.
+- Nine of nine agents reconnected and kept reporting: every node's `updated_at`
+  advanced within the following ten minutes (they are staggered by a few minutes
+  each, so a single snapshot can look stale — comparing two snapshots is what
+  settles it), and the metric store took writes continuously, newest rollup
+  15:05:00 across 336 series.
+- `pragma quick_check` on `komari.db` → `ok`; 9 clients, 1 user and 9 ping tasks
+  retained; container restart count 0; zero ERRO/FATAL lines since start.
+- The health probe kept logging healthy samples (`origin=0.002s`) across the
+  restart.
+
+Rollback: restore `/opt/nekomari/docker-compose.yml.bak-pre-v0.1.20` and start the
+retained v0.1.19 image. For data, stop the container, preserve the current `data`
+separately, and restore `pre-v0.1.20-20260922-150235/data.tar` before restarting.
+Never extract a rollback archive over a running database.
+
+## Panel upgrade (2026-09-22) — v0.1.19
 
 Panel upgraded from v0.1.16 to v0.1.19 at approximately 09:53 UTC. Runtime API
 reports hash `31b3ee5`. This rollout changed only the panel; the nine agents were
@@ -147,6 +199,17 @@ Verified on the host, not just locally:
   panel rather than the edge. The old script logged the same run as healthy.
 - `systemctl start panel-probe.service` (exactly what the 10-minute timer runs)
   reports `ExecMainStatus=0` on a healthy panel, and the timer remains scheduled.
+
+What the corrected probe immediately showed, and what it means: the origin has held
+at `origin=0.002s` on every run, while the public path ranges from 0.17 s to
+**26.9 s** depending on which POP answers. The slow runs cluster on US-East POPs —
+IAD and EWR at 3.0-5.6 s, MIA at 3.6 s — where the Asian and European POPs that
+usually serve this origin (SIN, HKG, KIX, CDG, MRS, MXP) sit at 0.2-1.5 s. Two
+outliers of 26.9 s and 15.97 s (both HKG) predate the probe fix and would have
+alerted under the old script too, so this is not a regression from it: it is the
+edge path, and the probe is now recording the distinction between "the panel is
+slow" and "this POP is far away" that it was written to make. `PUBLIC_MAX`
+(default 3.0 s) is the knob if the alert rate becomes noise.
 
 ## Data restoration
 
