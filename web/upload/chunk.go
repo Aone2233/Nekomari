@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
+	"time"
 
-	"github.com/google/uuid"
 	"github.com/Aone2233/nekomari/web/backup"
+	"github.com/google/uuid"
 )
 
 const ChunkSize int64 = 5 * 1024 * 1024
@@ -25,6 +27,8 @@ const (
 )
 
 var ErrNotFound = errors.New("upload not found")
+var ErrBusy = errors.New("upload store busy; retry later")
+var ErrQuota = errors.New("upload quota exceeded")
 
 type Metadata struct {
 	Purpose  Purpose `json:"purpose"`
@@ -42,6 +46,11 @@ type Session struct {
 type Store struct {
 	Root    string
 	MaxSize int64
+	// Zero values select 16 sessions, 8 GiB of reserved payload and 24 hours.
+	MaxSessions  int
+	MaxTotalSize int64
+	TTL          time.Duration
+	mu           sync.Mutex
 }
 
 var DefaultStore = &Store{
@@ -50,11 +59,21 @@ var DefaultStore = &Store{
 }
 
 func (s *Store) Init(purpose Purpose, filename string, size int64) (Session, error) {
+	if !s.mu.TryLock() {
+		return Session{}, ErrBusy
+	}
+	defer s.mu.Unlock()
 	if !isKnownPurpose(purpose) {
 		return Session{}, fmt.Errorf("invalid upload purpose")
 	}
 	if size <= 0 || size > s.MaxSize {
 		return Session{}, fmt.Errorf("size must be between 1 and %d bytes", s.MaxSize)
+	}
+	if len(filename) > 1024 {
+		return Session{}, fmt.Errorf("filename too long")
+	}
+	if err := s.admit(size); err != nil {
+		return Session{}, err
 	}
 
 	id := uuid.NewString()
@@ -76,6 +95,10 @@ func (s *Store) Init(purpose Purpose, filename string, size int64) (Session, err
 }
 
 func (s *Store) SaveChunk(uploadID string, index int64, source io.Reader) error {
+	if !s.mu.TryLock() {
+		return ErrBusy
+	}
+	defer s.mu.Unlock()
 	session, err := s.load(uploadID)
 	if err != nil {
 		return err
@@ -115,6 +138,29 @@ func (s *Store) SaveChunk(uploadID string, index int64, source io.Reader) error 
 }
 
 func (s *Store) Merge(uploadID string) (Session, error) {
+	if !s.mu.TryLock() {
+		return Session{}, ErrBusy
+	}
+	defer s.mu.Unlock()
+	return s.merge(uploadID)
+}
+
+// Complete holds admission through finalization, so cancel/merge cannot remove
+// an archive while an installer or backup restorer is reading it.
+func (s *Store) Complete(uploadID string, finalize Finalizer) (Result, error) {
+	if !s.mu.TryLock() {
+		return Result{}, ErrBusy
+	}
+	defer s.mu.Unlock()
+	session, err := s.merge(uploadID)
+	if err != nil {
+		return Result{}, err
+	}
+	defer s.cancel(uploadID)
+	return finalize(session)
+}
+
+func (s *Store) merge(uploadID string) (Session, error) {
 	session, err := s.load(uploadID)
 	if err != nil {
 		return Session{}, err
@@ -161,6 +207,9 @@ func (s *Store) Merge(uploadID string) (Session, error) {
 	}
 
 	archivePath := filepath.Join(session.Directory, "archive.zip")
+	if err := os.Remove(archivePath); err != nil && !os.IsNotExist(err) {
+		return Session{}, err
+	}
 	if err := os.Rename(temporaryPath, archivePath); err != nil {
 		return Session{}, fmt.Errorf("publish merged archive: %w", err)
 	}
@@ -169,6 +218,14 @@ func (s *Store) Merge(uploadID string) (Session, error) {
 }
 
 func (s *Store) Cancel(uploadID string) error {
+	if !s.mu.TryLock() {
+		return ErrBusy
+	}
+	defer s.mu.Unlock()
+	return s.cancel(uploadID)
+}
+
+func (s *Store) cancel(uploadID string) error {
 	if !validUploadID(uploadID) {
 		return fmt.Errorf("invalid upload id")
 	}
@@ -183,6 +240,23 @@ func (s *Store) load(uploadID string) (Session, error) {
 		return Session{}, fmt.Errorf("invalid upload id")
 	}
 	directory := filepath.Join(s.Root, uploadID)
+	info, err := os.Lstat(directory)
+	if os.IsNotExist(err) {
+		return Session{}, ErrNotFound
+	}
+	if err != nil {
+		return Session{}, err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return Session{}, fmt.Errorf("invalid upload directory")
+	}
+	metaInfo, err := os.Stat(filepath.Join(directory, "upload.json"))
+	if err != nil {
+		return Session{}, ErrNotFound
+	}
+	if time.Since(metaInfo.ModTime()) >= s.ttl() {
+		return Session{}, ErrNotFound
+	}
 	data, err := os.ReadFile(filepath.Join(directory, "upload.json"))
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -205,8 +279,8 @@ func isKnownPurpose(purpose Purpose) bool {
 }
 
 func validUploadID(uploadID string) bool {
-	_, err := uuid.Parse(uploadID)
-	return err == nil
+	id, err := uuid.Parse(uploadID)
+	return err == nil && id.String() == uploadID
 }
 
 func chunkCount(size int64) int64 {

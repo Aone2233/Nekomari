@@ -1,16 +1,15 @@
 package github
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
-	"time"
+	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/utils"
 	"github.com/Aone2233/nekomari/web/oauth/factory"
-	"github.com/patrickmn/go-cache"
+	"github.com/Aone2233/nekomari/web/oauth/internal/oauthutil"
+	"github.com/gin-gonic/gin"
 )
 
 func init() {
@@ -33,7 +32,9 @@ func (g *Github) GetAuthorizationURL(_ string) (string, string) {
 		url.QueryEscape(g.Addition.ClientId),
 		url.QueryEscape(state),
 	)
-	g.stateCache.Set(state, true, cache.NoExpiration)
+	if !g.stateCache.Add(state) {
+		return "", ""
+	}
 	return authURL, state
 }
 func (g *Github) OnCallback(ctx *gin.Context, state string, query map[string]string, _ string) (factory.OidcCallback, error) {
@@ -41,13 +42,7 @@ func (g *Github) OnCallback(ctx *gin.Context, state string, query map[string]str
 
 	// 验证state防止CSRF攻击
 	// state, _ := c.Cookie("oauth_state")
-	if g.stateCache == nil {
-		return factory.OidcCallback{}, fmt.Errorf("state cache not initialized")
-	}
-	if _, ok := g.stateCache.Get(state); !ok {
-		return factory.OidcCallback{}, fmt.Errorf("invalid state")
-	}
-	if state == "" {
+	if !g.stateCache.Consume(state) {
 		return factory.OidcCallback{}, fmt.Errorf("invalid state")
 	}
 
@@ -65,15 +60,9 @@ func (g *Github) OnCallback(ctx *gin.Context, state string, query map[string]str
 		"code":          {code},
 	}
 
-	req, _ := http.NewRequest("POST", tokenURL, nil)
-	req.URL.RawQuery = data.Encode()
+	req, _ := http.NewRequestWithContext(ctx.Request.Context(), "POST", tokenURL, strings.NewReader(data.Encode()))
 	req.Header.Set("Accept", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return factory.OidcCallback{}, fmt.Errorf("failed to get access token: %s", utils.DataMasking(err.Error(), []string{g.Addition.ClientSecret, g.Addition.ClientId}))
-	}
-	defer resp.Body.Close()
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	var tokenResp struct {
 		AccessToken string `json:"access_token"`
@@ -81,34 +70,34 @@ func (g *Github) OnCallback(ctx *gin.Context, state string, query map[string]str
 		Scope       string `json:"scope"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return factory.OidcCallback{}, fmt.Errorf("failed to parse access token response: %s", utils.DataMasking(err.Error(), []string{g.Addition.ClientSecret, g.Addition.ClientId}))
+	if err := oauthutil.JSON(req, &tokenResp); err != nil {
+		return factory.OidcCallback{}, err
+	}
+	if tokenResp.AccessToken == "" {
+		return factory.OidcCallback{}, fmt.Errorf("empty access token")
 	}
 
 	// 获取用户信息
-	userReq, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
+	userReq, _ := http.NewRequestWithContext(ctx.Request.Context(), "GET", "https://api.github.com/user", nil)
 	userReq.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
 	userReq.Header.Set("Accept", "application/json")
 
-	userResp, err := http.DefaultClient.Do(userReq)
-	if err != nil {
-		return factory.OidcCallback{}, fmt.Errorf("failed to get user info: %v", err)
-	}
-	defer userResp.Body.Close()
-
 	var githubUser GitHubUser
-	if err := json.NewDecoder(userResp.Body).Decode(&githubUser); err != nil {
-		return factory.OidcCallback{}, fmt.Errorf("failed to parse user info response: %v", err)
+	if err := oauthutil.JSON(userReq, &githubUser); err != nil {
+		return factory.OidcCallback{}, err
+	}
+	if githubUser.ID <= 0 {
+		return factory.OidcCallback{}, fmt.Errorf("invalid user id")
 	}
 
 	return factory.OidcCallback{UserId: fmt.Sprintf("%d", githubUser.ID)}, nil
 }
 func (g *Github) Init() error {
-	g.stateCache = cache.New(time.Minute*5, time.Minute*10)
+	g.stateCache.Clear()
 	return nil
 }
 func (g *Github) Destroy() error {
-	g.stateCache.Flush()
+	g.stateCache.Clear()
 	return nil
 }
 

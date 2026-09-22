@@ -1,5 +1,6 @@
 export const CHUNK_SIZE = 5 * 1024 * 1024;
-const WORKER_COUNT = 5;
+// Archive storage serializes writes and finalization to bound temporary disk use.
+const WORKER_COUNT = 1;
 const MAX_ATTEMPTS = 4;
 
 export type UploadPurpose = "backup" | "plugin" | "theme";
@@ -75,6 +76,9 @@ export function createChunkUploadTask(basePath: string): ChunkUploadTask {
       xhr.addEventListener("error", () =>
         finish(() => reject(new Error(`chunk ${index} upload failed`))),
       );
+      xhr.addEventListener("timeout", () =>
+        finish(() => reject(new Error(`chunk ${index} upload timed out`))),
+      );
       xhr.addEventListener("abort", () =>
         finish(() => reject(new DOMException("Upload cancelled", "AbortError"))),
       );
@@ -84,6 +88,7 @@ export function createChunkUploadTask(basePath: string): ChunkUploadTask {
       form.append("chunk_index", String(index));
       form.append("chunk_data", chunk, `chunk-${index}`);
       xhr.open("POST", `${basePath}/chunk`);
+      xhr.timeout = 120_000;
       xhr.send(form);
     });
 
@@ -138,6 +143,17 @@ export function createChunkUploadTask(basePath: string): ChunkUploadTask {
               return;
             } catch (error) {
               if (cancelled || attempt === MAX_ATTEMPTS - 1) throw error;
+              await new Promise<void>((resolve, reject) => {
+                const abort = () => {
+                  clearTimeout(timer);
+                  reject(new DOMException("Upload cancelled", "AbortError"));
+                };
+                const timer = setTimeout(() => {
+                  controller.signal.removeEventListener("abort", abort);
+                  resolve();
+                }, 5_000 * 2 ** attempt);
+                controller.signal.addEventListener("abort", abort, { once: true });
+              });
             }
           }
         };

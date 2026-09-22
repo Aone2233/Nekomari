@@ -6,6 +6,26 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.17] — 2026-09-22
+
+- Bound archive uploads to 16 sessions and 8 GiB of reserved payload, with
+  24-hour expiry, hourly cleanup and restart-persistent quota accounting.
+  Serialize writes/finalization, reject conflicting operations with 429 and
+  use sequential frontend chunks with bounded timeout and retry backoff.
+
+- Harden OAuth callbacks: honor disabled login, require matching state for every
+  provider, bound pending states and make them expire and consume atomically.
+  QQ authorization embeds state in the callback URL; aggregators must preserve it.
+- Bound OAuth HTTP requests to 15 seconds and 1 MiB; reject failed responses,
+  missing tokens and invalid user identities. Send GitHub credentials in the POST
+  body. Keep a working provider when a replacement configuration cannot load.
+- Preserve uploaded chunks after an incomplete merge so the upload can resume.
+- Refresh frontend dependencies within declared ranges; upgrade Go crypto/network
+  and compression dependencies, including the theme packer. Server Go minimum is
+  now 1.26, matching the agent.
+- Add lint, vet and authentication race checks to CI. See
+  [the review](./docs/REVIEW-2026-09-22.md) for verification and remaining work.
+
 ## [v0.1.16] — 2026-09-22
 
 Everything here comes from the five-area optimization review in

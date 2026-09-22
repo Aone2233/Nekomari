@@ -6,12 +6,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/utils"
 	"github.com/Aone2233/nekomari/web/oauth/factory"
-	"github.com/patrickmn/go-cache"
+	"github.com/Aone2233/nekomari/web/oauth/internal/oauthutil"
+	"github.com/gin-gonic/gin"
 )
 
 func (g *Generic) GetName() string {
@@ -33,20 +32,16 @@ func (g *Generic) GetAuthorizationURL(redirectURI string) (string, string) {
 		url.QueryEscape(g.Addition.Scope),
 		url.QueryEscape(redirectURI),
 	)
-	g.stateCache.Set(state, true, cache.DefaultExpiration)
+	if !g.stateCache.Add(state) {
+		return "", ""
+	}
 	return authURL, state
 }
 func (g *Generic) OnCallback(ctx *gin.Context, state string, query map[string]string, callbackURI string) (factory.OidcCallback, error) {
 	code := query["code"]
 
 	// 验证state防止CSRF攻击
-	if g.stateCache == nil {
-		return factory.OidcCallback{}, fmt.Errorf("state cache not initialized")
-	}
-	if _, ok := g.stateCache.Get(state); !ok {
-		return factory.OidcCallback{}, fmt.Errorf("invalid state")
-	}
-	if state == "" {
+	if !g.stateCache.Consume(state) {
 		return factory.OidcCallback{}, fmt.Errorf("invalid state")
 	}
 
@@ -64,38 +59,35 @@ func (g *Generic) OnCallback(ctx *gin.Context, state string, query map[string]st
 		"grant_type":    {"authorization_code"},
 	}
 
-	req, _ := http.NewRequest("POST", g.Addition.TokenURL, strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx.Request.Context(), "POST", g.Addition.TokenURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		return factory.OidcCallback{}, fmt.Errorf("invalid token URL")
+	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return factory.OidcCallback{}, fmt.Errorf("failed to get access token: %s", utils.DataMasking(err.Error(), []string{g.Addition.ClientSecret, g.Addition.ClientId}))
-	}
-	defer resp.Body.Close()
 
 	var tokenResp struct {
 		AccessToken string `json:"access_token"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return factory.OidcCallback{}, fmt.Errorf("failed to parse access token response: %s", utils.DataMasking(err.Error(), []string{g.Addition.ClientSecret, g.Addition.ClientId}))
+	if err := oauthutil.JSON(req, &tokenResp); err != nil {
+		return factory.OidcCallback{}, err
+	}
+	if tokenResp.AccessToken == "" {
+		return factory.OidcCallback{}, fmt.Errorf("empty access token")
 	}
 
 	// 获取用户信息
-	userReq, _ := http.NewRequest("GET", g.Addition.UserInfoURL, nil)
+	userReq, err := http.NewRequestWithContext(ctx.Request.Context(), "GET", g.Addition.UserInfoURL, nil)
+	if err != nil {
+		return factory.OidcCallback{}, fmt.Errorf("invalid user info URL")
+	}
 	userReq.Header.Set("Authorization", "Bearer "+tokenResp.AccessToken)
 	userReq.Header.Set("Accept", "application/json")
 
-	userResp, err := http.DefaultClient.Do(userReq)
-	if err != nil {
-		return factory.OidcCallback{}, fmt.Errorf("failed to get user info: %v", err)
-	}
-	defer userResp.Body.Close()
-
-	var user map[string]interface{}
-	if err := json.NewDecoder(userResp.Body).Decode(&user); err != nil {
-		return factory.OidcCallback{}, fmt.Errorf("failed to parse user info response: %v", err)
+	var user map[string]json.RawMessage
+	if err := oauthutil.JSON(userReq, &user); err != nil {
+		return factory.OidcCallback{}, err
 	}
 
 	userId, ok := user[g.Addition.UserIDField]
@@ -103,14 +95,27 @@ func (g *Generic) OnCallback(ctx *gin.Context, state string, query map[string]st
 		return factory.OidcCallback{}, fmt.Errorf("user id field '%s' not found in user info response", g.Addition.UserIDField)
 	}
 
-	return factory.OidcCallback{UserId: fmt.Sprintf("%v", userId)}, nil
+	var id string
+	if err := json.Unmarshal(userId, &id); err != nil {
+		var number float64
+		if err := json.Unmarshal(userId, &number); err != nil || string(userId) == "null" {
+			return factory.OidcCallback{}, fmt.Errorf("invalid user id")
+		}
+		// Existing account bindings store this representation. Changing numeric
+		// formatting requires a migration; providers should prefer string IDs.
+		id = fmt.Sprint(number)
+	}
+	if strings.TrimSpace(id) == "" {
+		return factory.OidcCallback{}, fmt.Errorf("empty user id")
+	}
+	return factory.OidcCallback{UserId: id}, nil
 }
 func (g *Generic) Init() error {
-	g.stateCache = cache.New(time.Minute*5, time.Minute*10)
+	g.stateCache.Clear()
 	return nil
 }
 func (g *Generic) Destroy() error {
-	g.stateCache.Flush()
+	g.stateCache.Clear()
 	return nil
 }
 

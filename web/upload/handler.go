@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/web/api"
+	"github.com/gin-gonic/gin"
 )
 
 const maxChunkRequestSize = ChunkSize + 1*1024*1024
@@ -44,7 +44,7 @@ func (h *Handler) Init(c *gin.Context) {
 	}
 	session, err := h.Store.Init(request.Purpose, request.Filename, request.Size)
 	if err != nil {
-		api.RespondError(c, http.StatusBadRequest, err.Error())
+		h.respondUploadError(c, err)
 		return
 	}
 	api.RespondSuccess(c, gin.H{
@@ -82,22 +82,15 @@ func (h *Handler) Merge(c *gin.Context) {
 		api.RespondError(c, http.StatusBadRequest, fmt.Sprintf("invalid request: %v", err))
 		return
 	}
-	session, err := h.Store.Merge(request.UploadID)
+	result, err := h.Store.Complete(request.UploadID, func(session Session) (Result, error) {
+		finalize, ok := h.Finalizers[session.Metadata.Purpose]
+		if !ok {
+			return Result{}, fmt.Errorf("unsupported upload purpose")
+		}
+		return finalize(session)
+	})
 	if err != nil {
-		_ = h.Store.Cancel(request.UploadID)
 		h.respondUploadError(c, err)
-		return
-	}
-	defer h.Store.Cancel(session.ID)
-
-	finalize, ok := h.Finalizers[session.Metadata.Purpose]
-	if !ok {
-		api.RespondError(c, http.StatusBadRequest, "unsupported upload purpose")
-		return
-	}
-	result, err := finalize(session)
-	if err != nil {
-		api.RespondError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	api.RespondSuccessMessage(c, result.Message, result.Data)
@@ -112,13 +105,18 @@ func (h *Handler) Cancel(c *gin.Context) {
 		return
 	}
 	if err := h.Store.Cancel(request.UploadID); err != nil {
-		api.RespondError(c, http.StatusBadRequest, err.Error())
+		h.respondUploadError(c, err)
 		return
 	}
 	api.RespondSuccess(c, gin.H{})
 }
 
 func (h *Handler) respondUploadError(c *gin.Context, err error) {
+	if errors.Is(err, ErrBusy) || errors.Is(err, ErrQuota) {
+		c.Header("Retry-After", "5")
+		api.RespondError(c, http.StatusTooManyRequests, err.Error())
+		return
+	}
 	if errors.Is(err, ErrNotFound) {
 		api.RespondError(c, http.StatusNotFound, "upload not found or expired")
 		return
