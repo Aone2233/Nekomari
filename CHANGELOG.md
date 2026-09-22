@@ -6,6 +6,19 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.21] — 2026-09-22
+
+- Split React providers from context/hook exports and move App out of bootstrap;
+  eliminate all 14 Fast Refresh warnings and enforce zero-warning lint.
+- Replace terminal drag lodash throttling with an animation-frame scheduler,
+  flushing the final position and cancelling work on unmount; remove the dependency.
+- Expose cached upload cleanup/contention statistics through admin-only RPC2
+  admin:getUploadStats, including scan freshness; clear stale counts for a missing store.
+- Isolate authentication fixtures and run ten shuffled race-test iterations in CI.
+- Add provider identity and frame scheduling tests. Adopt seven audited compiler
+  rules and provide a separate full compiler audit command. See
+  [follow-up scope and remaining work](./docs/FOLLOWUP-v0.1.21.md).
+
 ## [v0.1.20] — 2026-09-22
 
 Follow-up hardening from [the v0.1.19 review](./docs/NEXT-REVIEW-v0.1.19.md), plus the
