@@ -1700,7 +1700,8 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
                     accessibilityLayer
                     margin={{ top: 16, right: 8, bottom: 4, left: 8 }}
                   >
-                    <CartesianGrid vertical={false} />
+                    {/* v3 grid lines follow the axis named here; "left" is always the first unit axis. */}
+                    <CartesianGrid vertical={false} yAxisId="left" />
                     <XAxis
                       dataKey="time"
                       tickLine={false}

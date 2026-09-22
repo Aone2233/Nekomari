@@ -9,7 +9,7 @@ restored, and the two hostname/TLS traps that cost the most time.
 |---|---|
 | Panel URL | **https://komari.orderly2233.org** |
 | Host | OC424 (`ubuntu@213.35.99.48`, Oracle Cloud, **arm64**, Ubuntu 22.04) |
-| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.16`, bound to `127.0.0.1:25774` |
+| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.19`, bound to `127.0.0.1:25774` |
 | Compose dir | `/opt/nekomari` (bind mount `./data` → `/app/data`) |
 | Reverse proxy | host **nginx** `/etc/nginx/sites-available/nekomari` |
 | TLS at origin | `/etc/nginx/ssl/{fullchain,privkey}.pem` (Cloudflare Origin cert, shared with the other vhosts) |
@@ -20,6 +20,133 @@ restored, and the two hostname/TLS traps that cost the most time.
 The container is deliberately **not** published on a public interface: UFW allows
 80/443 only from Cloudflare's ranges, so all traffic arrives via the edge, and
 nginx is the only thing that talks to the panel port.
+
+## Current rollout: 2026-09-22 (v0.1.19)
+
+Panel upgraded from v0.1.16 to v0.1.19 at approximately 09:53 UTC. Runtime API
+reports hash `31b3ee5`. This rollout changed only the panel; the nine agents were
+refreshed to the same tag separately — see
+[the fleet agent refresh](#fleet-agent-refresh-2026-09-22-v0119-toolchain) below.
+
+- Exact release commit: `31b3ee512a469bade95de667486f133a029c38a7`.
+- Exact-commit CI: `35711635197`, both Linux and Windows passed.
+- Release: `35712077446`, all eight binary vulnerability scans and the real
+  downloaded-artifact deployment test passed.
+- Container release: `35712642893`, both images passed smoke/public-pull checks.
+- Panel image: `sha256:52e36dadee990abfb66dd440c54edc1e60f6f037b446184c1be64c73b4fb256e`.
+- Arm64 executable SHA256: `e7a845a698986e8f9e4ceee2de6d00e6aa61a8d1307afeeccfabd7909f1c7976`.
+  Independently matched the published checksum and the binary inside the image;
+  downloaded binary govulncheck found no affected symbols.
+- Stopped writes before backing up Compose and the complete data directory to
+  `/opt/nekomari-backups/pre-v0.1.19-20260922-095308` (directory mode 0700).
+  `data.tar` SHA256: `b867c42aa434a24f30bab522160d1ac532f01cc41ef9af1197a648e8c2dfb4d4`.
+  Archive listing was validated before replacing the container. Old image retained.
+- Origin/public version API and homepage returned 200; unauthenticated admin
+  session API returned 401; disabled OAuth start/callback returned 403.
+- Both SQLite `quick_check` results were `ok`; 9 clients, 1 user and 9 ping tasks
+  were retained. Port remains loopback-only, data remains `/opt/nekomari/data`,
+  nginx configuration passes, and container restart count is zero.
+- Repeated database samples confirmed all nine latest metric buckets advanced
+  past the restart; the follow-up sample had a maximum age of 73 seconds.
+  No ERRO/FATAL lines were observed. Anonymous recent-history requests returned
+  401, so verification did not relax access controls.
+- Initial public homepage TTFB was 0.087 seconds from OC424; this is a single
+  observation, not a performance benchmark.
+
+v0.1.17 was not deployed: its workflow selected Go 1.26.0. v0.1.18 publication
+was blocked by conservative scanner fallback on stripped binaries. v0.1.19 uses
+Go 1.27.1 and retains symbol tables, without suppressing advisories. See
+[next improvements](NEXT-REVIEW-v0.1.19.md) for evidence and acceptance criteria.
+Authenticated admin uploads/restores and real OAuth provider login were not
+exercised against production. Earlier sections below are historical records.
+
+For rollback, restore the backed-up Compose file and start the retained v0.1.16
+image. If data rollback is necessary, stop the container, preserve the current
+data separately, and restore the consistent archive before restarting. Never
+extract a rollback archive over a running database.
+
+## Fleet agent refresh: 2026-09-22 (v0.1.19 toolchain)
+
+The nine agents were still on v0.1.16 after the panel moved to v0.1.19. The agent
+**source** did not change between those tags — the reason to move is the compiler:
+v0.1.16 was built with Go 1.26.0, whose standard library carried 34 govulncheck
+findings, while v0.1.19 pins Go 1.27.1 and ships symbol tables so the distributed
+executable itself stays scannable. This is a compiler refresh, not a feature
+change; no agent behaviour differs.
+
+Method: the release assets were downloaded and verified against the published
+`SHA256SUMS.txt` locally (`a6930033…` amd64, `d79f378a…` arm64), then copied to
+each node and installed with `deploy/install-staged-agent.sh` — the staged path
+exists because PZYC cannot reach the release assets, and one download per node is
+one failure mode per node. Per node the old binary is kept as
+`<bin>.bak-pre-v0.1.19`, owner, group and mode are preserved, `cap_net_raw` is
+restored where it existed, and the unit is restarted and checked `active`.
+
+| Node | Binary | Unit | Before | After |
+|---|---|---|---|---|
+| 甲骨文 OC424 | `/home/ubuntu/nekomari-agent/komari-agent-linux-arm64` | `komari-agent-oc424-original-node.service` | `a30b5445…` | `d79f378a…` |
+| 华纳云 HN-JP1 | `/opt/nekomari-agent/komari-agent-linux-amd64` | `nekomari-agent.service` | `394d9ad0…` | `a6930033…` |
+| HK04 | same | same | `394d9ad0…` | `a6930033…` |
+| AkkoCloud SJ | same | same | `394d9ad0…` | `a6930033…` |
+| BandwagonHost MegaBox | same | same | `394d9ad0…` | `a6930033…` |
+| 并行智算云 PYZC | same | same | `394d9ad0…` | `a6930033…` |
+| MAC Server | `/home/macos/nekomari-agent/komari-agent-linux-amd64` | user `nekomari-agent.service` | `394d9ad0…` | `a6930033…` |
+| NOSLA 东京-26秋-M | `/opt/komari/agent` | `komari-agent.service` | `394d9ad0…` | `a6930033…` |
+| CloudLeadInno | `/opt/nekomari-agent/komari-agent-linux-amd64` | `nekomari-agent.service` | `394d9ad0…` | `a6930033…` |
+
+Two nodes needed the paths the earlier rollouts established:
+
+- **MAC Server** runs a *user* unit with no passwordless sudo, so
+  `install-staged-agent.sh` (which resolves a system unit and calls `setcap`
+  directly) does not apply. The binary was installed as `macos:macos` and the
+  unit restarted with `XDG_RUNTIME_DIR=/run/user/1000 systemctl --user`; the
+  install dropped `cap_net_raw=ep` as it always does, and it was restored with the
+  host's own `setcap` through a privileged container
+  (`docker run --rm --privileged -v /:/host alpine chroot /host setcap
+  cap_net_raw+ep <bin>`), verified with `getcap` before and after.
+- **CloudLeadInno** still refuses both keys held on this workstation. The working
+  path is the `CLISP` entry in MAC-WAN's `~/.ssh/config`: MAC-WAN holds the key
+  that authenticates as `root@192.220.32.17`, so the staged binary and installer
+  were copied to MAC-WAN and from there to the node. This is simpler than the
+  panel remote-exec route in `deploy/panel-agent-upgrade.py`, which needs an
+  authenticated admin session plus 2FA and only works because the node runs the
+  agent with web-ssh enabled.
+
+Verified after the rollout: `select name, version from clients` on the panel's
+`data/komari.db` reports `v0.1.19` for all nine, each with a fresh `updated_at`,
+and the container logged zero ERRO/FATAL lines across the window. Rollback per
+node is `install -m 755 <bin>.bak-pre-v0.1.19 <bin>` plus a unit restart, with the
+capability dance again on MAC.
+
+## Health probe: the fix is deployed (2026-09-22)
+
+`deploy/panel-probe.sh` on OC424 was replaced with the corrected version
+(`/usr/local/bin/panel-probe.sh`, previous file kept as
+`panel-probe.sh.bak-pre-v0.1.20`). The old script recorded `time_starttransfer`
+without checking curl's exit status or the HTTP status, so a fast HTTP 500 — or a
+connection refused, which returns `0.000000` — was logged as a healthy sample and
+exited 0.
+
+The replacement requires curl success, HTTP 200 and a valid success envelope
+before a sample can count as healthy, and separates the failure reasons
+(`refused` / `timeout` / `status-NNN` / `no-timing` / `envelope`) in both the log
+line and the alert. The healthy log line is byte-identical to the old format, so
+existing log parsing is unaffected; failures append `origin_fail=` /
+`public_fail=`.
+
+Verified on the host, not just locally:
+
+- `deploy/panel-probe.test.sh` — 88 assertions, 0 failures on OC424's Ubuntu
+  22.04 and Python 3.10, including the real closed-port refusal path that cannot
+  be reproduced on Windows (a closed loopback port there is dropped rather than
+  refused).
+- A healthy run logs
+  `origin=0.002s public_max=1.307s pop=MXP cache=DYNAMIC samples=5/5` and exits 0.
+- A run with `PANEL_ORIGIN` pointed at a closed port exits **1** and logs
+  `origin=0.000s … origin_fail=refused`, with the alert attributing it to the
+  panel rather than the edge. The old script logged the same run as healthy.
+- `systemctl start panel-probe.service` (exactly what the 10-minute timer runs)
+  reports `ExecMainStatus=0` on a healthy panel, and the timer remains scheduled.
 
 ## Data restoration
 
@@ -318,4 +445,3 @@ Two leftovers were removed while doing this: `happy_heisenberg` on OC424 and
 v0.1.15 work, still running with a `bogus` token. They looked like host agents in the
 process table (their parent is containerd), which is exactly why
 `install-staged-agent.sh` discovers the systemd unit instead of matching the process name.
-

@@ -3,6 +3,7 @@ package backup
 
 import (
 	"archive/zip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -105,6 +106,80 @@ func (l *RestoreLock) SaveUploadedBackup(file io.Reader, filename string) error 
 		return fmt.Errorf("close backup file: %w", err)
 	}
 	return nil
+}
+
+// CleanupStagedUploads reclaims staging files a process that died mid-upload
+// left in ./data. SaveUploadedBackup removes its temporary file on every error
+// path, so a file that survives belongs to a process that was killed between
+// CreateTemp and the rename -- up to MaxArchiveSize each. Nothing else reclaims
+// them: the startup restore only clears ./data when a backup.zip is actually
+// waiting, so an abandoned staging file would otherwise sit on the disk
+// indefinitely.
+//
+// Only the exact name os.CreateTemp produces from the pattern in
+// SaveUploadedBackup is eligible, and only regular files, so an operator's own
+// file in ./data is never touched. The restore lock is taken for the duration:
+// if a restore is already staging a file, that operation owns its cleanup.
+func CleanupStagedUploads() (int, int64, error) {
+	lock, err := AcquireRestoreLock()
+	if err != nil {
+		return 0, 0, nil
+	}
+	defer lock.Release()
+
+	entries, err := os.ReadDir("./data")
+	if os.IsNotExist(err) {
+		return 0, 0, nil
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+	var files int
+	var bytes int64
+	var failures []error
+	for _, entry := range entries {
+		if !isStagedUploadName(entry.Name()) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			failures = append(failures, fmt.Errorf("stat staged upload %s: %w", entry.Name(), err))
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		path := filepath.Join(".", "data", entry.Name())
+		if err := os.Remove(path); err != nil {
+			failures = append(failures, fmt.Errorf("remove staged upload %s: %w", path, err))
+			continue
+		}
+		files++
+		bytes += info.Size()
+	}
+	return files, bytes, errors.Join(failures...)
+}
+
+// isStagedUploadName matches exactly what os.CreateTemp writes for the pattern
+// used by SaveUploadedBackup: the literal prefix, a decimal random suffix and
+// the .zip extension. Matching the suffix strictly keeps the allowlist from
+// claiming a name this package never created.
+func isStagedUploadName(name string) bool {
+	const prefix = ".backup-upload-"
+	const suffix = ".zip"
+	if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, suffix) {
+		return false
+	}
+	random := name[len(prefix) : len(name)-len(suffix)]
+	if random == "" {
+		return false
+	}
+	for _, char := range random {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // ValidateArchive checks the backup marker and bounds archive expansion before

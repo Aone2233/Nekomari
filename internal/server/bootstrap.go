@@ -8,6 +8,8 @@ import (
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/utils"
+	logger "github.com/Aone2233/nekomari/utils/log"
+	"github.com/Aone2233/nekomari/web/backup"
 	"github.com/Aone2233/nekomari/web/upload"
 	"github.com/gin-gonic/gin"
 )
@@ -22,6 +24,19 @@ func (a *App) Bootstrap() error {
 	}
 	if err := os.MkdirAll("./data/plugin-data", os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create plugin storage directory: %w", err)
+	}
+
+	// Reclaim a backup staging file left by a process that died mid-upload
+	// before anything else reads ./data. A restore pending in
+	// dbcore.Initialize() below clears ./data itself, but only when a
+	// backup.zip is actually waiting, so without this an abandoned staging file
+	// would keep its bytes forever.
+	if files, bytes, err := backup.CleanupStagedUploads(); err != nil {
+		logger.Warn("bootstrap", "could not reclaim an abandoned backup staging file",
+			"files", files, "error", err.Error())
+	} else if files > 0 {
+		logger.Info("bootstrap", "reclaimed an abandoned backup staging file",
+			"files", files, "bytes", bytes)
 	}
 
 	dbcore.SetVersionID(utils.CurrentVersion + "-" + utils.VersionHash)

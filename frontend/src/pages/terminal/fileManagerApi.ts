@@ -245,7 +245,9 @@ export const getDroppedUploadFiles = (transfer: DataTransfer): File[] => {
   for (const rawItem of Array.from(transfer.items ?? [])) {
     if (rawItem.kind !== "file") continue;
     const item = rawItem as DroppedDataTransferItem;
-    let entry: DroppedFileSystemEntry | null = null;
+    // Assigned on every path that survives: the catch `continue`s, so the `null`
+    // initialiser this used to carry was dead.
+    let entry: DroppedFileSystemEntry | null;
     try {
       entry = item.webkitGetAsEntry?.() ?? null;
     } catch {
@@ -253,7 +255,8 @@ export const getDroppedUploadFiles = (transfer: DataTransfer): File[] => {
     }
     if (!entry?.isDirectory) continue;
     if (entry.name) directoryNames.add(entry.name);
-    let placeholder: File | null = null;
+    // Both the try and the catch assign, so no initialiser is needed.
+    let placeholder: File | null;
     try {
       placeholder = item.getAsFile();
     } catch {

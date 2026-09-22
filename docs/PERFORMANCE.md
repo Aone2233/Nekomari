@@ -20,6 +20,14 @@ curl -s -D - -o /dev/null -w "%{size_download} %{time_total}\n" \
   https://komari.orderly2233.org/assets/<file> | grep -iE 'cf-cache-status|^[0-9]'
 ```
 
+> A bare `time_starttransfer` measures nothing on its own: a fast HTTP 500, and a
+> connection refused (which reports `0.000000`), both look like an excellent number.
+> Add `-w '%{http_code} %{time_starttransfer}\n'` and check the status, or just read
+> `/var/log/nekomari-panel-probe.log` — `deploy/panel-probe.sh` runs these checks every
+> ten minutes and refuses to call a sample healthy unless curl succeeded, the status is
+> 200 and the body is a valid success envelope. This is not hypothetical: the probe
+> itself had that bug until 2026-09-22, and the numbers in this file were read with it.
+
 Reading them:
 
 - **The POP suffix in `cf-ray`** is the whole story for an uncached request. Measured on

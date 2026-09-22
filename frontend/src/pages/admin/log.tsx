@@ -51,7 +51,12 @@ const LogPage = () => {
       }
     };
     fetchLogs();
-  }, [page]);
+    // limit 是真实依赖：URL 里带着它，之前漏掉意味着改 Limit 后表格不会重新拉取，
+    // 而 totalPages 已经按新 limit 计算 —— 数据和分页会互相矛盾。
+    // 请求次数：每次 limit 变化 +1 次（NumberPicker 每敲一个合法数字发一次
+    // onChange，输入 "50" 会发 2 次请求；点 +/- 按钮发 1 次；失焦时值没变则
+    // setState 同值 bail-out，不额外发请求）。
+  }, [page, limit]);
 
   const totalPages = Math.ceil(total / limit);
   // 计算分页页码，显示当前页及前后1页，两端省略号
@@ -101,7 +106,13 @@ const LogPage = () => {
           Limit
           <NumberPicker
             defaultValue={limit}
-            onChange={setLimit}
+            // Changing the page size returns to the first page: the current page
+            // can be past the new last page, and the table would then render
+            // empty while the data it asked for exists on page 1.
+            onChange={(value) => {
+              setLimit(value);
+              setPage(1);
+            }}
             min={1}
             max={100}
           />

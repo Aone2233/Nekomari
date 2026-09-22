@@ -120,6 +120,11 @@ function ChartTooltipContent({
   nameKey,
   labelKey,
 }: React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
+  // v3 moved the state-derived fields out of TooltipProps; Tooltip still injects
+  // them into a `content` element at render time, so they remain optional here.
+  Partial<
+    Pick<RechartsPrimitive.TooltipContentProps, "active" | "payload" | "label">
+  > &
   React.ComponentProps<"div"> & {
     hideLabel?: boolean;
     hideIndicator?: boolean;
@@ -187,7 +192,8 @@ function ChartTooltipContent({
 
           return (
             <div
-              key={item.dataKey}
+              // v3 widened payload dataKey to include functions, so it is no longer a valid key.
+              key={index}
               className={cn(
                 "[&>svg]:text-muted-foreground flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5",
                 indicator === "dot" && "items-center"
@@ -262,7 +268,11 @@ function ChartLegendContent({
   verticalAlign = "bottom",
   nameKey,
 }: React.ComponentProps<"div"> &
-  Pick<RechartsPrimitive.LegendProps, "payload" | "verticalAlign"> & {
+  // v3 omits `payload` from LegendProps; the content element still receives it.
+  Pick<
+    RechartsPrimitive.DefaultLegendContentProps,
+    "payload" | "verticalAlign"
+  > & {
     hideIcon?: boolean;
     nameKey?: string;
   }) {

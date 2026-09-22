@@ -39,12 +39,11 @@ const LoginDialog = ({ trigger, autoOpen = false, showSettings = true, info, onL
   const onlyOAuthLogin = oauthEnabled && !passwordLoginEnabled; // 只有 OAuth
   // Validate inputs (仅在启用密码登录时需要)
   const isFormValid = passwordLoginEnabled && username.trim() !== "" && password.trim() !== "";
-    //console.log(autoOpen, open);
-    React.useEffect(() => {
-      if (autoOpen) {
-        setOpen(true);
-      }
-    }, [autoOpen]);
+    // autoOpen 只在挂载时生效：InnerLayout 是 LoginDialog 内部定义的内联组件，
+    // 每次 LoginDialog 重渲染都会产生新的组件类型 → React 重新挂载 InnerLayout →
+    // useState 的初始值 `autoOpen || false` 已经应用了新的 autoOpen。
+    // 因此这里原先的 useEffect(() => setOpen(true), [autoOpen]) 永远不会观察到
+    // autoOpen 的变化，属于死代码，已删除（删除后行为不变）。
     // Handle login
     const handleLogin = async () => {
       if (!isFormValid) {

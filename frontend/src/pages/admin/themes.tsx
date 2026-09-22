@@ -139,7 +139,12 @@ const ThemePage = () => {
 
   const loading = themesLoading || settingsLoading || !currentTheme;
   // 获取主题列表
-  const fetchThemes = async () => {
+  //
+  // useCallback 必须带上 currentTheme（列表里的 active 标记由它算出）。直接把这个
+  // 函数加进下面 effect 的依赖会无限循环：每次渲染都是新引用 → effect 重跑 →
+  // setThemes → 重渲染 → 又是新引用。固定引用后，effect 只在 currentTheme
+  // 真的变化时重跑（两个依赖在同一次提交里一起变，所以仍然只发一次请求）。
+  const fetchThemes = useCallback(async () => {
     try {
       const response = await fetch("/api/admin/theme/list");
       if (!response.ok) {
@@ -160,7 +165,7 @@ const ThemePage = () => {
     } finally {
       setThemesLoading(false);
     }
-  };
+  }, [currentTheme]);
 
   // 上传主题
   const uploadTheme = async (file: File) => {
@@ -369,7 +374,7 @@ const ThemePage = () => {
   // 同步活跃状态
   useEffect(() => {
     fetchThemes();
-  }, [currentTheme]);
+  }, [currentTheme, fetchThemes]);
 
   useEffect(() => {
     if (!settingsLoading && themes.length > 0) {

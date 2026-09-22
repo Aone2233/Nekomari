@@ -43,7 +43,11 @@ const Footer = () => {
     };
 
     fetchVersionInfo();
-  }, []);
+    // `call` comes from useRPC2Call() and is memoised on the RPC2 client, which
+    // is created once per provider (useState initialiser). It is therefore a
+    // stable reference: adding it cannot re-trigger this effect, it only makes
+    // the dependency explicit so the closure can never capture a stale client.
+  }, [call]);
 
   return (
     <div className="km-footer footer p-2 border-t-1 border-t-[var(--gray-7)]">

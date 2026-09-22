@@ -42,6 +42,30 @@ import {
 // 将JSON配置转换为类型安全的菜单项数组 (基础静态菜单)
 const baseMenuItems = (menuConfig as { menu: MenuItem[] }).menu;
 
+// 规范化版本为 [major, minor, patch] 数组，忽略前缀 v 和后缀
+//
+// 这两个 helper 是纯函数（不读 props/state），所以放在模块作用域：
+// 之前它们定义在组件体内，每次渲染都是新引用，把它加进 useEffect 依赖会造成
+// 「effect → setState → 重渲染 → 新引用 → effect」的无限请求循环。
+function parseSemver(input?: string | null): number[] | null {
+  if (!input) return null;
+  const s = String(input).trim().replace(/^v/i, "");
+  const match = s.match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function isNewerVersion(latest?: string | null, current?: string | null) {
+  const a = parseSemver(latest);
+  const b = parseSemver(current);
+  if (!a || !b) return false;
+  for (let i = 0; i < 3; i++) {
+    if (a[i] > b[i]) return true;
+    if (a[i] < b[i]) return false;
+  }
+  return false;
+}
+
 // 扩展的菜单项类型（允许直接提供 rawLabel 而不是多语言 key）
 interface ExtendedMenuItem extends MenuItem {
   rawLabel?: string; // 不走 i18n，直接显示
@@ -162,7 +186,12 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
     return () => {
       ignore = true;
     };
-  }, [currentTheme, refreshVersion]);
+    // currentLanguage / t are real dependencies: the menu label is resolved with
+    // them, so a language switch must rebuild the item. Both only change on
+    // i18n "languageChanged" (useTranslation's `t` is memoised on the i18n
+    // instance + language, and currentLanguage is read off that same instance),
+    // so they change together, at most once per language switch -- no loop.
+  }, [currentTheme, refreshVersion, currentLanguage, t]);
   // 插件注入的管理页面：manifest pages（visibility=admin）-> 插件菜单的二级菜单。
   // iframe 页面进入 plugin-page 路由；redirect 页面复用主题的站内跳转校验。
   useEffect(() => {
@@ -230,27 +259,9 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
     };
 
     fetchVersionInfo();
-  }, []);
-
-  // 规范化版本为 [major, minor, patch] 数组，忽略前缀 v 和后缀
-  function parseSemver(input?: string | null): number[] | null {
-    if (!input) return null;
-    const s = String(input).trim().replace(/^v/i, "");
-    const match = s.match(/^(\d+)\.(\d+)\.(\d+)/);
-    if (!match) return null;
-    return [Number(match[1]), Number(match[2]), Number(match[3])];
-  }
-
-  function isNewerVersion(latest?: string | null, current?: string | null) {
-    const a = parseSemver(latest);
-    const b = parseSemver(current);
-    if (!a || !b) return false;
-    for (let i = 0; i < 3; i++) {
-      if (a[i] > b[i]) return true;
-      if (a[i] < b[i]) return false;
-    }
-    return false;
-  }
+    // `call` is memoised on the (stable) RPC2 client, so this effect still runs
+    // once per mount -- the dependency is explicit, not new behaviour.
+  }, [call]);
 
   // 获取本仓库的 GitHub releases 列表，并筛选出“比当前版本新的所有 release”
   //

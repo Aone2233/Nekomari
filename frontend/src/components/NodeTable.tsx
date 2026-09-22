@@ -13,7 +13,7 @@ import { Link } from "react-router-dom";
 import { ChevronRight, ChevronUp, ChevronDown } from "lucide-react";
 import type { NodeBasicInfo } from "@/contexts/NodeListContext";
 import type { LiveData, Record } from "../types/LiveData";
-import { formatUptime } from "./Node";
+import { formatUptime } from "@/utils/timeFormat";
 import { formatBytes } from "@/utils/unitHelper";
 import UsageBar from "./UsageBar";
 import Flag from "./Flag";
@@ -146,7 +146,9 @@ const NodeTable: React.FC<NodeTableProps> = ({ nodes, liveData, onlineSet }) => 
     }
 
     // 自定义排序逻辑
-    let comparison = 0;
+    // The switch has a `default`, so every path assigns before the read below and
+    // an initial value here would be dead.
+    let comparison: number;
     switch (sortState.field) {
       case "name": {
         comparison = a.name.localeCompare(b.name);

@@ -50,7 +50,26 @@ type Store struct {
 	MaxSessions  int
 	MaxTotalSize int64
 	TTL          time.Duration
-	mu           sync.Mutex
+	// FreeSpace reports the bytes available to this process on the filesystem
+	// holding the store root. Nil selects the build-tagged platform query in
+	// freespace_windows.go / freespace_unix.go / freespace_other.go; tests
+	// inject a deterministic implementation so admission never depends on the
+	// host's real disk.
+	FreeSpace func(path string) (int64, error)
+	mu        sync.Mutex
+	// statsMu guards the maintenance view read by Stats. It is a leaf lock, so
+	// Stats stays cheap and cannot block behind an in-flight upload.
+	statsMu       sync.Mutex
+	stats         CleanupStats
+	oldestSession time.Time
+	// suppressed counts repeats of the cleanup failure already logged for the
+	// current burst, so a failure that repeats every tick logs once.
+	suppressed int
+	// contention holds the lock-contention counters described in contention.go,
+	// guarded by statsMu. contentionPending marks figures that have not been
+	// reported yet, so the hourly pass logs them once instead of every pass.
+	contention        ContentionStats
+	contentionPending bool
 }
 
 var DefaultStore = &Store{
@@ -59,10 +78,11 @@ var DefaultStore = &Store{
 }
 
 func (s *Store) Init(purpose Purpose, filename string, size int64) (Session, error) {
-	if !s.mu.TryLock() {
+	release, ok := s.acquire(opInit)
+	if !ok {
 		return Session{}, ErrBusy
 	}
-	defer s.mu.Unlock()
+	defer release()
 	if !isKnownPurpose(purpose) {
 		return Session{}, fmt.Errorf("invalid upload purpose")
 	}
@@ -95,10 +115,11 @@ func (s *Store) Init(purpose Purpose, filename string, size int64) (Session, err
 }
 
 func (s *Store) SaveChunk(uploadID string, index int64, source io.Reader) error {
-	if !s.mu.TryLock() {
+	release, ok := s.acquire(opChunk)
+	if !ok {
 		return ErrBusy
 	}
-	defer s.mu.Unlock()
+	defer release()
 	session, err := s.load(uploadID)
 	if err != nil {
 		return err
@@ -138,20 +159,22 @@ func (s *Store) SaveChunk(uploadID string, index int64, source io.Reader) error 
 }
 
 func (s *Store) Merge(uploadID string) (Session, error) {
-	if !s.mu.TryLock() {
+	release, ok := s.acquire(opMerge)
+	if !ok {
 		return Session{}, ErrBusy
 	}
-	defer s.mu.Unlock()
+	defer release()
 	return s.merge(uploadID)
 }
 
 // Complete holds admission through finalization, so cancel/merge cannot remove
 // an archive while an installer or backup restorer is reading it.
 func (s *Store) Complete(uploadID string, finalize Finalizer) (Result, error) {
-	if !s.mu.TryLock() {
+	release, ok := s.acquire(opComplete)
+	if !ok {
 		return Result{}, ErrBusy
 	}
-	defer s.mu.Unlock()
+	defer release()
 	session, err := s.merge(uploadID)
 	if err != nil {
 		return Result{}, err
@@ -218,10 +241,11 @@ func (s *Store) merge(uploadID string) (Session, error) {
 }
 
 func (s *Store) Cancel(uploadID string) error {
-	if !s.mu.TryLock() {
+	release, ok := s.acquire(opCancel)
+	if !ok {
 		return ErrBusy
 	}
-	defer s.mu.Unlock()
+	defer release()
 	return s.cancel(uploadID)
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Card, Switch } from "@radix-ui/themes";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { useTranslation } from "react-i18next";
@@ -218,8 +218,9 @@ const MiniPingChart = ({
     [chartData],
   );
 
-  const labelFormatter = (value: string | number) =>
-    new Date(value).toLocaleString([], {
+  // v3 widens the tooltip label to ReactNode; this axis always supplies the ISO time string.
+  const labelFormatter = (value: ReactNode) =>
+    new Date(value as string | number).toLocaleString([], {
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
