@@ -300,7 +300,7 @@ export class RPC2Client {
       if (error instanceof Error) {
         throw error;
       }
-      throw new Error(i18n.t("rpc2.request_failed", { method }));
+      throw new Error(i18n.t("rpc2.request_failed", { method }), { cause: error });
     } finally {
       requestAbort.clear();
     }
@@ -346,7 +346,7 @@ export class RPC2Client {
       if (error instanceof Error) {
         throw error;
       }
-      throw new Error(i18n.t("rpc2.batch_request_failed"));
+      throw new Error(i18n.t("rpc2.batch_request_failed"), { cause: error });
     } finally {
       requestAbort.clear();
     }

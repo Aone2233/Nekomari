@@ -267,7 +267,8 @@ const buildOutline = (content: string, language: string): OutlineItem[] => {
     const line = lines[index];
     let match: RegExpMatchArray | null = null;
     let detail = "symbol";
-    let level = 0;
+    // Every push below follows an assignment, so the initialiser was dead.
+    let level: number;
     const indent = line.match(/^\s*/)?.[0] ?? "";
     if (language === "markdown") {
       match = line.match(/^\s*(#{1,6})\s+(.+?)\s*#*$/);
@@ -1230,7 +1231,9 @@ const FileEditorDialog = ({
       ];
     }
     return [];
-  }, [activeDocument, activeDocument?.encoding, activeDocument?.language, requestReopenWithEncoding, saveWithEncoding, statusMenuKind, setActiveLanguage, tabSize, t]);
+    // activeDocument 已经覆盖了 activeDocument?.encoding / ?.language：
+    // 那两个属性只能随 activeDocument 的引用变化而变化，单独列出来是多余的。
+  }, [activeDocument, requestReopenWithEncoding, saveWithEncoding, statusMenuKind, setActiveLanguage, tabSize, t]);
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {

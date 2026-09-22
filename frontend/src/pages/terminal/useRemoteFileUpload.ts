@@ -589,9 +589,10 @@ export const useRemoteFileUpload = (
         }
         return false;
       } finally {
+        // No `progressTimer = null` here: the interval is cleared and the
+        // variable is never read again in this scope, so the assignment was dead.
         if (progressTimer !== null) {
           window.clearInterval(progressTimer);
-          progressTimer = null;
         }
         abortControllersRef.current.delete(taskID);
         activeUploadsRef.current -= 1;

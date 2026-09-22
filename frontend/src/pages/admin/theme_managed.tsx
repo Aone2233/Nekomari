@@ -39,7 +39,13 @@ interface ThemeConfigResponse {
 const ThemeManaged: React.FC = () => {
   const { publicInfo, refresh } = usePublicInfo();
   const theme = publicInfo?.theme;
-  const themeSettings = publicInfo?.theme_settings || {}; // 当前值
+  // `|| {}` 每次渲染都会产生新对象，而下面的拉取 effect 依赖 themeSettings ——
+  // effect 里又会 setState，于是「重渲染 → 新对象 → effect 重跑 → setState」
+  // 会变成无限请求循环。memo 到 theme_settings 本身，引用只在它真的换掉时变。
+  const themeSettings = useMemo(
+    () => publicInfo?.theme_settings || {},
+    [publicInfo?.theme_settings],
+  ); // 当前值
   const { t, i18n } = useTranslation();
 
   const currentLanguage =

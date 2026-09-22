@@ -277,7 +277,9 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
       if (!uuid) return;
       const version = ++requestVersionRef.current;
       setLoading(true);
-      let items: RemoteFileInfo[] = [];
+      // Read only on the try path, right after the assignment; the catch never
+      // touches it, so the empty-array initialiser was dead.
+      let items: RemoteFileInfo[];
       try {
         items = await fileService.list(path);
         if (requestVersionRef.current !== version) return;

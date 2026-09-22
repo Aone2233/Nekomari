@@ -352,7 +352,7 @@ const InnerLayout = () => {
   );
 };
 const TwoFactorDisabled = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { refresh } = useAccount();
   const [saving, setSaving] = React.useState(false);
   const [isOpen, setIsOpen] = React.useState(false);
@@ -366,7 +366,10 @@ const TwoFactorDisabled = () => {
       fetch("/api/admin/2fa/generate")
         .then((response) => {
           if (!response.ok) {
-            throw new Error(t("account.qr_fetch_error"));
+            // 只用到一句静态文案，所以走稳定的 i18n 实例，而不是把会随语言变化的
+            // `t` 加进依赖：/api/admin/2fa/generate 每次调用都会签发一个新的 TOTP
+            // 密钥，切语言时重跑这个 effect 会让已经扫码的用户拿到另一个密钥。
+            throw new Error(i18n.t("account.qr_fetch_error"));
           }
           return response.blob();
         })
@@ -377,7 +380,8 @@ const TwoFactorDisabled = () => {
         .catch((err) => toast.error(err.message))
         .finally(() => setIsLoading(false));
     }
-  }, [isOpen]);
+    // i18n 是模块级单例（引用恒定）：请求次数仍是「每次 isOpen 变 true 一次」。
+  }, [isOpen, i18n]);
 
   const handleEnable2fa = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
