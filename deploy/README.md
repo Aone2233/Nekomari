@@ -22,6 +22,8 @@ for the incident that rule came from.
 | `../Dockerfile.agent` | The agent image (`ghcr.io/aone2233/nekomari-agent`), built by `docker.yml` from the release's `komari-agent-linux-*` assets. Its `/data` volume is the agent's working directory — the panel's Docker install command mounts it so a container replacement does not reset the traffic ledger or the node identity. |
 | `nginx-nekomari.conf` | Host nginx vhost. WebSocket-safe (agents hold long-lived connections) and forwards `CF-Connecting-IP` so the panel records the real visitor rather than Cloudflare's edge. |
 | `install-node-agent.sh` | Installs the agent on a node: refuses to run if one is already active, verifies the download against `SHA256SUMS.txt`, retires older agent units, writes a systemd unit. Works as root or through passwordless sudo. |
+| `install-staged-agent.sh` | Installs an **already copied** binary over the running agent: finds the unit rather than the process name (a `pgrep -f komari-agent` also matches the shell running the script, and a leftover `docker run` of the agent image looks like a host process), verifies the hash, keeps the old binary, preserves owner and mode, restores `cap_net_raw` if the node had it, restarts and confirms. This is how the v0.1.16 fleet upgrade was done — copy the release asset to each node first, which also covers nodes that cannot reach the release assets. |
+| `upgrade-agent.sh` | Downloads the release asset **on the node** and installs it, comparing SHA-256 against `SHA256SUMS.txt` (the agent has no `--version`, so a version check cannot decide whether an upgrade is needed). |
 | `enable-webssh-all.sh` | Re-applies units without `--disable-web-ssh`. That flag also disables remote command execution, so it is opt-in per node. Tokens come from `NEKOMARI_NODE_TOKENS`. |
 | `set-month-rotate.sh` | Sets `--month-rotate` to a node's billing day and adopts the previous agent's `net_static.json`. Without it the panel divides a since-boot counter by the plan limit and reports inflated traffic. |
 
@@ -30,6 +32,7 @@ for the incident that rule came from.
 | Script | What it does |
 |---|---|
 | `healthcheck.py` | Post-deployment check of the running instance: host services, container, agent unit, databases, API reachability, which nodes are actually reporting, retained history, the ip-info endpoints, private-IP rejection, active theme. |
+| `panel-probe.sh` | The always-on version of the check above for latency: every 10 minutes it records the origin TTFB (the only number that implicates the panel, so it has the tight threshold) plus the public TTFB with the `cf-ray` POP and cache status, one line per run. Installed with `hosts/panel-probe.{service,timer}`. `docs/PERFORMANCE.md` explains how to read it. |
 | `node_status.py` | Which nodes are live. Distinguishes a restored-but-silent node from a reconnected one. |
 | `ping-task-stats.py` | Per-node loss and latency for one ping task. Picks the newest series tag shape automatically — the pre-fork agents tagged `{"task_id":"N"}` and this fork's tag `{"protocol":"tcp","task_id":"N"}`, so matching only the old shape returns history that stopped when the old instance was retired and makes every node look dead. |
 | `ping-tasks-audit-all.py` | Fleet-wide: which tasks pair a node with a target its address family cannot reach, and which carry references to deleted nodes. |

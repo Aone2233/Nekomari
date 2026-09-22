@@ -9,7 +9,7 @@ restored, and the two hostname/TLS traps that cost the most time.
 |---|---|
 | Panel URL | **https://komari.orderly2233.org** |
 | Host | OC424 (`ubuntu@213.35.99.48`, Oracle Cloud, **arm64**, Ubuntu 22.04) |
-| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.15`, bound to `127.0.0.1:25774` |
+| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.16`, bound to `127.0.0.1:25774` |
 | Compose dir | `/opt/nekomari` (bind mount `./data` → `/app/data`) |
 | Reverse proxy | host **nginx** `/etc/nginx/sites-available/nekomari` |
 | TLS at origin | `/etc/nginx/ssl/{fullchain,privkey}.pem` (Cloudflare Origin cert, shared with the other vhosts) |
@@ -264,4 +264,58 @@ Two follow-ups from the same day, both in `docs/PERFORMANCE.md`: the LuminaPlus 
 background images were re-encoded (6.34 MB → 0.51 MB for the desktop one) and the theme
 settings repointed at new filenames, and `data/backup` was pruned from 1.4 GB to 221 MB
 with `deploy/prune-upgrade-backups.sh` now running weekly from a systemd timer.
+
+## Fleet upgrade (2026-09-22) — v0.1.16
+
+The optimization batch in `docs/OPTIMIZATION-REVIEW-2026-09-22.md`. Unlike v0.1.15 this
+one **does** change the agent (socket counting reads `/proc/net/sockstat`; the traffic
+sampler moved from 2 s to 30 s and rewrites its ledger less often), so the panel and all
+nine nodes moved together.
+
+Panel: compose pin `v0.1.16`, previous file kept as `docker-compose.yml.bak-pre-v0.1.16`;
+banner `Nekomari Monitor v0.1.16 (hash: 4f26aad)`; `/api/version`
+`{"hash":"4f26aad","version":"v0.1.16"}`; 0 ERRO/FATAL lines since start; nine agents
+reconnected. The upgrade also exercised two of the fixes:
+
+- the archive is now taken **before** the migrations and excludes the metric store —
+  `upgrade-20260922-042859.zip` is **26 MB** where the previous three were 62-100 MB, and
+  the log says so: `backed up … before upgrade (from "v0.1.15-9bacdf7" to
+  "v0.1.16-4f26aad"); the local metric store is excluded and left in place`.
+- the agent's persisted traffic config migrated on load: `/opt/komari/net_static.json`
+  now reads `detect_interval=30`, `config_version=2` with its 4,232 buckets intact.
+
+Agents: `deploy/install-staged-agent.sh` (new, in-tree) with the release asset copied to
+each node, which also covers PZYC, which cannot reach the release assets. Per node the
+old binary is kept as `<bin>.bak-pre-v0.1.16`, owner/mode preserved, `cap_net_raw`
+restored where it existed, the unit restarted, and the installed hash checked:
+`394d9ad0…` on amd64, `a30b5445…` on arm64 (OC424).
+
+| Node | Binary | Unit | Result |
+|---|---|---|---|
+| 甲骨文 OC424 | `/home/ubuntu/nekomari-agent/komari-agent-linux-arm64` | `komari-agent-oc424-original-node.service` | v0.1.16 |
+| 华纳云 HN-JP1 | `/opt/nekomari-agent/komari-agent-linux-amd64` | `nekomari-agent.service` | v0.1.16 |
+| HK04 | same | same | v0.1.16 |
+| AkkoCloud SJ | same | same | v0.1.16 |
+| BandwagonHost MegaBox | same | same | v0.1.16 |
+| CloudLeadInno | same | same | v0.1.16 |
+| 并行智算云 PYZC | same | same | v0.1.16 |
+| MAC Server | `/home/macos/nekomari-agent/komari-agent-linux-amd64` | user `nekomari-agent.service` | v0.1.16 |
+| NOSLA 东京-26秋-M | `/opt/komari/agent` | `komari-agent.service` | v0.1.16 |
+
+MAC needs the capability dance again: replacing the binary drops `cap_net_raw`, there is
+no passwordless sudo, so it is restored with the host's own `setcap` through a privileged
+container (`docker run --rm --privileged -v /:/host alpine chroot /host setcap
+cap_net_raw+ep <bin>`), checked with `getcap` afterwards.
+
+Verified after the rollout: nine of nine nodes report `v0.1.16`, nine established agent
+connections, every node's newest metric bucket is ~1 minute old, and the traffic ledger
+path is live again on all nine (`net.total.up` fresh and non-zero, e.g. 19.8 GiB on
+OC424's restored node). The probe timer recorded `origin=0.002s public_max=0.152s
+pop=SIN`, and the public URL answered 200 in 0.167 s.
+
+Two leftovers were removed while doing this: `happy_heisenberg` on OC424 and
+`funny_goldberg` on MAC — both `docker run` smoke tests of the agent image from the
+v0.1.15 work, still running with a `bogus` token. They looked like host agents in the
+process table (their parent is containerd), which is exactly why
+`install-staged-agent.sh` discovers the systemd unit instead of matching the process name.
 
