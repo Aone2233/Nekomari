@@ -6,10 +6,10 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
-## [Unreleased]
+## [v0.1.20] — 2026-09-22
 
 Follow-up hardening from [the v0.1.19 review](./docs/NEXT-REVIEW-v0.1.19.md), plus the
-fleet agent compiler refresh. Not tagged or released yet.
+fleet agent compiler refresh and two deprecated frontend dependencies.
 
 ### Fixed
 
@@ -38,6 +38,19 @@ fleet agent compiler refresh. Not tagged or released yet.
   `Insufficient Storage` like any other 5xx. The store's only transient refusal is 429
   (another write holds the lock, with `Retry-After`), so a disk-full refusal now fails on
   the first response instead of burning the retry budget.
+- **Four React effects that fetched in a loop or not at all.** Resolving the
+  `react-hooks/exhaustive-deps` warnings meant checking each one rather than adding the
+  missing name: `theme_managed` rebuilt `theme_settings` inline on every render and issued
+  unbounded requests (40+ and still looping), the themes list needed a `useCallback` before
+  it could take its dependency, the admin node list rebuilt its 5-second interval on every
+  poll response, and the log page never refetched when the page size changed while its
+  pagination already used the new value. Two more would have been made *worse* by the naive
+  fix: adding `t` to the 2FA effect would re-run `/api/admin/2fa/generate`, which mints a new
+  TOTP secret under a user who already scanned the QR, and adding the release-check helper
+  would have re-fetched the GitHub API on every render.
+- **Eight findings ESLint 10 adds**, all fixed rather than suppressed: six dead stores (an
+  initialiser every path overwrites) and two rethrows in `rpc2.ts` that dropped the original
+  error, which now carry `cause`.
 
 ### Added
 
@@ -51,6 +64,14 @@ fleet agent compiler refresh. Not tagged or released yet.
   recovery are logged once per burst (with folded repeat counts) through the shared logger,
   and `Store.Stats()` exposes session count, reserved bytes, oldest session age, last
   success, last error and reclaimed totals without doing I/O.
+- **Upload lock-contention measurement.** The review proposed splitting the single store
+  lock into per-session exclusion plus a global I/O semaphore, but said to instrument
+  duration and rejection counts first, and that is what was done. Measured on the production
+  panel before changing anything: **zero** archive uploads across every retained nginx log,
+  an empty upload store, and not one 429 on an upload route — so there was no contention to
+  find and the lock was deliberately left exactly as it was. `Store.Stats()` now reports
+  refusals and hold durations per operation (logged hourly, and only when caller work
+  actually happened) so the next decision rests on data.
 - **Per-IP admission on OAuth start**, alongside the existing global pending-state cap, so
   one caller cannot fill every slot; refusals use the login limiter's 429 + `Retry-After`
   convention.
@@ -62,6 +83,26 @@ fleet agent compiler refresh. Not tagged or released yet.
 
 ### Changed
 
+- **Recharts 2.15.4 → 3.10.1.** The 2.x branch is no longer maintained. Eight API changes
+  across the four call sites; two were behavioural and would have shipped silently —
+  v3 defaults `CartesianGrid`'s axis ids to `0`, and both multi-axis charts use their own
+  ids, so the horizontal grid lines would have disappeared while everything still compiled.
+  Verified by rendering all three chart call sites in a real browser against a throwaway
+  panel, not by compiling alone.
+- **ESLint 9.39.5 → 10.11.0**, with `@eslint/js` 10, `eslint-plugin-react-hooks` 7 and
+  `eslint-plugin-react-refresh` 0.5. `react-hooks` v7 folds the React Compiler rules into
+  `recommended`, which flag 133 pre-existing patterns in this app; adopting those is its own
+  change, so the two rules this project has always enforced are named explicitly in
+  `eslint.config.js`. Nothing is silenced — the compiler rules are simply not enabled yet.
+  Lint is now 14 warnings and 0 errors, down from 27, and the 14 left are all
+  refresh-ergonomics rather than correctness.
+- **`lodash` is now a declared dependency.** `src/pages/terminal/useTerminalPage.ts` imports
+  `lodash/throttle` and it resolved only because Recharts 2 hoisted it; Recharts 3 dropped
+  lodash for `es-toolkit`, npm pruned it, and the build failed to resolve the import. This
+  makes an implicit dependency explicit rather than adding a new library. A local or
+  `requestAnimationFrame` throttle would remove it entirely and is a reasonable follow-up.
+- TypeScript `target`/`lib` moved ES2020 → ES2022 so a rethrow can carry `cause`. This is
+  type-check-only: `noEmit` is true and Vite owns the real build target.
 - The nine production agents were refreshed to the v0.1.19 binaries (Go 1.27.1, symbol
   tables retained) — a compiler refresh, not a behaviour change; the agent source is
   identical between v0.1.16 and v0.1.19. See
