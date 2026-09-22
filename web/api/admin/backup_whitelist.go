@@ -9,15 +9,18 @@ import (
 // backupWhitelist 定义需要备份的 ./data/ 下文件/目录（相对路径）。
 // 目录项会递归包含其下所有文件。新增需持久化数据时在此追加。
 //
-// 注意：komari.db 不在白名单中——database 通过 DownloadBackup 中的
-// SQLite VACUUM INTO 或 copyFile 单独备份，确保一致性快照。
+// 注意：komari.db 与 metrics.db 都不在白名单中——它们通过 DownloadBackup 中的
+// SQLite VACUUM INTO 单独备份，确保一致性快照。
+//
+// metrics.db 尤其不能按普通文件复制：它跑在 WAL 模式下，主文件里没有仍在 -wal
+// 的 rollup，而 -wal/-shm 又不在白名单里（恢复时 dbcore 还会主动删除它们），
+// 于是归档看起来完整、恢复后却静默丢掉最近的数据。
 var backupWhitelist = []string{
 	"favicon.ico",
 	"font.ttf",
 	"theme/",
 	"plugin/",
 	"plguin-data/",
-	"metrics.db",
 }
 
 // copyWhitelistedFiles 将白名单中存在的文件/目录复制到临时目录。

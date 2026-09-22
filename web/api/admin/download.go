@@ -2,6 +2,7 @@ package admin
 
 import (
 	"archive/zip"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/cmd/flags"
 	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/pkg/metric"
 	"github.com/Aone2233/nekomari/web/api"
 )
 
@@ -123,6 +126,54 @@ func backupSQLiteTo(destDBPath string) error {
 	return nil
 }
 
+// backupMetricStoreTo 将 metrics 数据库一致性备份到 content/metrics.db。
+//
+// metrics.db 跑在 WAL 模式下，白名单里的普通 copyFile 只会拿到主文件，仍在
+// -wal 里的 rollup 会静默丢失（恢复时 -wal/-shm 还会被 dbcore 删除）。所以这里
+// 对 metric store 自己的连接执行 VACUUM INTO —— 与 komari.db 相同的一致性快照，
+// SQLite 会把所有已提交的 WAL 页一并写进目标文件。
+func backupMetricStoreTo(destDBPath string) error {
+	return backupMetricStoreSnapshot(metricstore.GetStore(), destDBPath)
+}
+
+// backupMetricStoreSnapshot 是 backupMetricStoreTo 的实现，store 由调用方给出，
+// 便于测试直接注入一个指向临时文件的 store。
+func backupMetricStoreSnapshot(store *metric.Store, destDBPath string) error {
+	if store == nil || store.Driver() != metric.DriverSQLite {
+		// 没有可做一致性快照的 SQLite 活库：store 未初始化（启动失败），或后端
+		// 已切到 MySQL/PostgreSQL。这两种情况下没有活库可快照，退回按默认位置
+		// 复制，与 metrics.db 曾在白名单里时的归档内容保持一致。
+		return copyDefaultMetricsDB(destDBPath)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(destDBPath), 0o755); err != nil {
+		return fmt.Errorf("failed to create parent directory for metric db: %v", err)
+	}
+	// VACUUM INTO 要求目标文件不存在。
+	_ = os.Remove(destDBPath)
+
+	// Windows 下 VACUUM INTO 传绝对路径时，统一使用正斜杠避免路径解析歧义。
+	safePath := filepath.ToSlash(destDBPath)
+	safePath = strings.ReplaceAll(safePath, "'", "''")
+	if _, err := store.ExecContext(context.Background(), fmt.Sprintf("VACUUM INTO '%s'", safePath)); err != nil {
+		return fmt.Errorf("metric store VACUUM INTO failed: %v", err)
+	}
+	return nil
+}
+
+// copyDefaultMetricsDB 是无活库可快照时的退路：按默认位置复制 metrics.db，
+// 与它在白名单里时的行为一致。
+func copyDefaultMetricsDB(destDBPath string) error {
+	src := filepath.Join(".", "data", "metrics.db")
+	if _, err := os.Stat(src); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to stat metrics database: %v", err)
+	}
+	return copyFile(src, destDBPath)
+}
+
 // DownloadBackup 使用白名单打包 ./data 及数据库文件为 zip 并下载，
 // 同时归档到 ./data/backup/ 确保 Docker 挂载后备份文件可持久化。
 //
@@ -169,6 +220,14 @@ func DownloadBackup(c *gin.Context) {
 			api.RespondError(c, http.StatusInternalServerError, fmt.Sprintf("Error stating database file: %v", err))
 			return
 		}
+	}
+
+	// 3.1) metric store 一致性快照 -> content/metrics.db
+	// metrics.db 不在白名单里（见 backup_whitelist.go）：WAL 模式下普通复制会丢掉
+	// 仍在 -wal 里的 rollup，这里改用 VACUUM INTO 出一份完整快照。
+	if err := backupMetricStoreTo(filepath.Join(contentDir, "metrics.db")); err != nil {
+		api.RespondError(c, http.StatusInternalServerError, fmt.Sprintf("Error backing up metric store: %v", err))
+		return
 	}
 
 	// 4) 打包到临时 ZIP（放在 tempDir 下，与 content 平级）
