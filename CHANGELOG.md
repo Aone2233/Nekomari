@@ -6,6 +6,116 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.16] — 2026-09-22
+
+Everything here comes from the five-area optimization review in
+[docs/OPTIMIZATION-REVIEW-2026-09-22.md](./docs/OPTIMIZATION-REVIEW-2026-09-22.md), which
+records the evidence for each item, including the two that were deliberately not done.
+
+### Fixed
+
+- **A manual release could publish a version called `main`.** The build jobs injected the
+  version from `github.ref_name`, which is the tag on a tag push but the *branch* on a
+  `workflow_dispatch` run, while the tag the release is created for is resolved separately.
+  A manually released agent would have reported `main` as its version — the string its own
+  self-updater compares to decide whether a newer release exists. All four jobs now take the
+  tag from one `resolve` job, and each build fails if the binary does not carry it. The
+  end-to-end deploy check asserts the agent's reported version too, not just the server
+  banner.
+- **`metrics.db` was archived as a raw copy of a live WAL database.** The admin backup
+  copied the main file while the metric store ran in WAL, and `-wal`/`-shm` were neither
+  archived nor restorable (the restore path deletes them), so a restored archive silently
+  lost every rollup still in the WAL. It is now snapshotted with `VACUUM INTO` through the
+  metric store's own handle, exactly like `komari.db`.
+- **The pre-upgrade archive was written after the migrations it exists to undo.** It was
+  taken after `migrations.Run` had already dropped the legacy `configs` table, renamed
+  `client_infos` and rewritten timestamps, so it could not roll back the upgrade it was
+  named for. The snapshot now precedes the migrations; the version marker is read with raw
+  SQL (moving `config.SetDb` earlier would make its `AutoMigrate` panic on a legacy schema),
+  and the metric store is left out of that archive, which is what made it 60-100 MB.
+- **A published Release could end up with no container image.** The image workflow gated on
+  the whole `release` workflow's conclusion, which includes the verification job; one flake
+  there meant a Release with no image and only a skipped job. It now checks that the Release
+  exists, which is what it actually depends on.
+- **The panel's live-status poll computed a ping map that the built-in UI throws away.**
+  Omitting `include_ping` selects the expensive path (an uncached ping-task read plus one
+  metric-store rollup scan per node), and all three in-repo callers omitted it and then
+  never read the field — including a terminal monitor that polls every 2 seconds. They now
+  pass `include_ping: false`. The default is unchanged, because third-party themes rely on
+  it, and the server side got cheaper for callers that do want it: the task list is cached,
+  and the per-node rollup scans became one batched query.
+- **Theme and SPA assets had no validator at all.** Every request re-read the file from disk
+  and sent it whole, so no client could revalidate and Cloudflare could never get a 304 on a
+  cache fill. They are now served with `Last-Modified`/`ETag` and Range support, with the
+  local theme files streamed rather than read into memory; the favicon's deliberate
+  `no-store` is untouched.
+- **The frontend asked for the same settings once per mounted consumer** (~13 call sites):
+  a page with N consumers made N requests, and every navigation re-issued them. They now
+  share one store — one request per page, none while it is cached — with saves, `refetch()`
+  and logout publishing through it so a change is still visible without a reload.
+
+### Changed
+
+- **The agent samples traffic every 30 seconds instead of every 2.** The flush already sums
+  the window into one bucket, so the finer cadence bought no resolution: it bought 43,200
+  `/proc/net/dev` reads per node per day, now 2,880, and a counter reset inside a bucket
+  loses at most one interval. The 31-day ledger is also no longer rewritten on every save
+  (every 10 minutes) but when it has actually changed and at most every 30 minutes. Because
+  the interval is persisted in `net_static.json`, a config generation migrates the old
+  default — otherwise the change would have been a no-op on every deployed node.
+- **Socket counting reads `/proc/net/sockstat`** (and `sockstat6`) instead of parsing four
+  `/proc/net/{tcp,tcp6,udp,udp6}` tables whose size grows with the host's connection count.
+  `inuse + tw` keeps the number meaning what it meant — all TCP sockets, TIME_WAIT included —
+  which was verified against the old table count on the live host; the table scan remains as
+  a fallback.
+- **Entity-scoped rollup reads seek the series index.** Forcing
+  `(resolution_id, bucket_milli)` made every per-node read range-scan all series in the
+  window; dropping the hint alone does not help (the planner cannot see `json_each`
+  cardinality), so small series sets now force the series unique index, looked up from the
+  catalogue rather than hardcoded. Measured 165.7 ms → 2.6 ms per query on 200 nodes × 17
+  metrics.
+- **The panel decodes report bodies once instead of three times.** The ingest path
+  round-tripped the generic params through JSON to reach the typed struct; it now decodes
+  straight from `json.RawMessage` (29.1 → 8.4 µs, 7.4 → 1.6 KB per report). The wire format
+  is unchanged, so agents and the protocol's `Request` type are unaffected.
+- **Legacy history reconstruction batches its queries.** One all-clients request used to run
+  one metric-store scan per metric *per node* (~170 queries at nine nodes, ~1500 at ninety)
+  while holding one of the four public query slots; it is now one batched query per tier.
+- **The ping scheduler reads `clients` once per pass** instead of once per task, and
+  `GetConnectedClients()` gained a single-key accessor for the callers that were copying the
+  whole connection map — one of them twice per request.
+- **The admin console no longer precaches the code editor.** The service worker precached
+  532 entries / 8.83 MiB, including a 3 MB editor chunk and 216 Monaco language chunks that
+  most sessions never open; the editor and its languages are excluded (532 → 448 entries,
+  −42 %) and still load on demand.
+- **The terminal resource monitors ask for the node they are watching** instead of the whole
+  fleet every 2 seconds, and a node that has never reported renders as offline rather than
+  as an error.
+
+### Added
+
+- `deploy/panel-probe.sh` with a 10-minute systemd timer: records the panel's origin TTFB
+  (the only number that implicates the panel) plus the public TTFB with the `cf-ray` POP and
+  cache status, one line per run, and exits non-zero past a threshold. The 2026-09-21
+  slowness was found by feel; `docs/PERFORMANCE.md` records what it turned out to be.
+- `deploy/prune-upgrade-backups.sh` with a weekly timer: keeps the newest few pre-upgrade
+  archives and verifies each survivor as a readable zip before deleting anything. Four days
+  of upgrades had left 17 files and 1.4 GB beside the databases.
+- `docs/PERFORMANCE.md`: how to measure the panel's load path in three commands, the two
+  causes found, and the numbers behind them.
+
+### Not done, on purpose
+
+- **The main database still uses a single connection.** The review flagged it, but at this
+  fleet's size it is not measurable: 20-way concurrent requests straight to the container
+  answer in 6.7 ms median / 10.7 ms p95. Changing the riskiest setting in the list for no
+  measured gain would be change for its own sake; the review records what to measure before
+  revisiting it.
+- **The locale bundles still load eagerly.** Deferring them would mean resolving the
+  detected language before `i18next.init()` and re-rendering on a late bundle, which
+  react-i18next's default binding does not do — a changed bootstrap for ~300 KB of JSON that
+  compresses well. The precache change above already keeps the first install small.
+
 ## [v0.1.15] — 2026-09-20
 
 ### Added
