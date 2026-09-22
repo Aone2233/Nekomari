@@ -35,6 +35,17 @@ func GetConnectedClients() map[string]*connection.SafeConn {
 	return clientsCopy
 }
 
+// GetConnectedClient 返回指定节点的连接；节点不在线时返回 nil。
+//
+// 为什么单独开一个单键访问器：GetConnectedClients 会复制整张连接表，调用方却
+// 大多只查一个 key。adminExec 这类每个客户端查一次、每个在线客户端再查一次的
+// 路径，用整表复制就是每个请求复制整表好几遍。
+func GetConnectedClient(uuid string) *connection.SafeConn {
+	mu.RLock()
+	defer mu.RUnlock()
+	return connectedClients[uuid]
+}
+
 func SetConnectedClients(uuid string, conn *connection.SafeConn) {
 	mu.Lock()
 	defer mu.Unlock()

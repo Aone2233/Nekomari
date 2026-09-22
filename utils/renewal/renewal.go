@@ -25,7 +25,7 @@ func CheckAndAutoRenewal(client models.Client) {
 		return
 	}
 	// 不在线则不续费
-	if _, ok := agent_runtime.GetConnectedClients()[client.UUID]; !ok {
+	if agent_runtime.GetConnectedClient(client.UUID) == nil {
 		return
 	}
 	if client.ExpiredAt == nil {

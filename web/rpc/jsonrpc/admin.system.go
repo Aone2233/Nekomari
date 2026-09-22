@@ -113,7 +113,7 @@ func adminExec(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcE
 
 	var onlineClients, queuedClients, offlineClients []string
 	for _, uuid := range params.Clients {
-		if client := agent_runtime.GetConnectedClients()[uuid]; client != nil {
+		if client := agent_runtime.GetConnectedClient(uuid); client != nil {
 			onlineClients = append(onlineClients, uuid)
 		} else if agent_runtime.IsAgentOnline(uuid) {
 			queuedClients = append(queuedClients, uuid)
@@ -132,7 +132,7 @@ func adminExec(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcE
 	}
 	for _, uuid := range onlineClients {
 		payload, _ := json.Marshal(v2.Request{JSONRPC: v2.Version, Method: v2.MethodAgentExec, Params: v2.ExecParams{TaskID: taskId, Command: params.Command}})
-		client := agent_runtime.GetConnectedClients()[uuid]
+		client := agent_runtime.GetConnectedClient(uuid)
 		if client == nil {
 			return nil, rpc.MakeError(rpc.InvalidParams, "Client connection is null: "+uuid, nil)
 		}
