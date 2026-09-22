@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly prune of old Nekomari pre-upgrade backups
+Documentation=https://github.com/Aone2233/Nekomari
+
+[Timer]
+# Weekly is enough: the backups only appear when the panel image changes.
+OnCalendar=weekly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

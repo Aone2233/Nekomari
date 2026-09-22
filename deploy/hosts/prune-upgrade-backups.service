@@ -1,0 +1,8 @@
+[Unit]
+Description=Prune old Nekomari pre-upgrade backups
+Documentation=https://github.com/Aone2233/Nekomari
+
+[Service]
+Type=oneshot
+# Keeps the three newest upgrade-*.zip files and verifies each survivor first.
+ExecStart=/usr/local/bin/prune-upgrade-backups.sh --keep 3
