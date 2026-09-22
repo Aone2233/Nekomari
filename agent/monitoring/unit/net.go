@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -58,6 +59,13 @@ func procRoot() string {
 }
 
 func procNetConnectionsCount(root string) (tcpCount, udpCount int, err error) {
+	// /proc/net/sockstat 只有一行 TCP: 和一行 UDP:，约 200 字节，
+	// 而 countProcNetFiles 要整表解析 /proc/net/{tcp,tcp6,udp,udp6}，
+	// 成本随主机连接数增长。sockstat 缺失/不可读/字段不全时再退回整表解析。
+	if tcpCount, udpCount, sockErr := procNetSockstatCount(root); sockErr == nil {
+		return tcpCount, udpCount, nil
+	}
+
 	tcpCount, err = countProcNetFiles(root, "tcp", "tcp6")
 	if err != nil {
 		return 0, 0, err
@@ -65,6 +73,91 @@ func procNetConnectionsCount(root string) (tcpCount, udpCount int, err error) {
 	udpCount, err = countProcNetFiles(root, "udp", "udp6")
 	if err != nil {
 		return 0, 0, err
+	}
+	return tcpCount, udpCount, nil
+}
+
+// procNetSockstatCount 从 sockstat 读取 TCP/UDP 计数，语义与旧的整表解析一致：
+// 数的是"所有 TCP socket，含 TIME_WAIT"，也就是 /proc/net/{tcp,tcp6} 的行数。
+// sockstat 把这个数字拆成了 inuse 和 tw 两部分，所以要相加。
+// sockstat 只统计 IPv4，IPv6 在 sockstat6 里，因此尽力补上 IPv6 的计数：
+// 旧路径统计的是 tcp+tcp6 / udp+udp6，丢掉 IPv6 会是功能回退。
+func procNetSockstatCount(root string) (tcpCount, udpCount int, err error) {
+	tcpCount, udpCount, err = parseSockstatFile(filepath.Join(root, "net", "sockstat"), "TCP:", "UDP:")
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if tcp6, udp6, err6 := parseSockstatFile(filepath.Join(root, "net", "sockstat6"), "TCP6:", "UDP6:"); err6 == nil {
+		tcpCount += tcp6
+		udpCount += udp6
+	}
+	return tcpCount, udpCount, nil
+}
+
+// parseSockstatFile 解析形如
+//
+//	TCP: inuse 118 orphan 0 tw 217 alloc 218 mem 216
+//	UDP: inuse 3 mem 130
+//
+// 的计数行。TCP 行取 inuse + tw，UDP 行只取 inuse（UDP 没有 TIME_WAIT 语义）。
+// 旧实现数的是 /proc/net/{tcp,tcp6} 的行数，即"所有 TCP socket，含 TIME_WAIT"，
+// 而 sockstat 把这两部分分开报，只取 inuse 会漏掉 TIME_WAIT。
+// tw 是可选字段：缺失时只少算 TIME_WAIT，不能因此判失败退回整表解析。
+// 两行的 inuse 缺任意一个都算解析失败（由调用方决定是否回退）。
+func parseSockstatFile(path, tcpKey, udpKey string) (tcpCount, udpCount int, err error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer file.Close()
+
+	var haveTCP, haveUDP bool
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) < 3 {
+			continue
+		}
+
+		var target *int
+		var found *bool
+		switch fields[0] {
+		case tcpKey:
+			target, found = &tcpCount, &haveTCP
+		case udpKey:
+			target, found = &udpCount, &haveUDP
+		default:
+			continue
+		}
+
+		isTCPLine := fields[0] == tcpKey
+		total := 0
+		haveInuse := false
+		for i := 1; i+1 < len(fields); i++ {
+			field := fields[i]
+			if field == "inuse" {
+				haveInuse = true
+			} else if field != "tw" || !isTCPLine {
+				continue
+			}
+			n, convErr := strconv.Atoi(fields[i+1])
+			if convErr != nil {
+				return 0, 0, fmt.Errorf("malformed %s count in %s: %w", field, path, convErr)
+			}
+			total += n
+		}
+		if !haveInuse {
+			return 0, 0, fmt.Errorf("no inuse field in %s line of %s", fields[0], path)
+		}
+		*target = total
+		*found = true
+	}
+	if err := scanner.Err(); err != nil {
+		return 0, 0, err
+	}
+	if !haveTCP || !haveUDP {
+		return 0, 0, fmt.Errorf("no %s/%s inuse fields in %s", tcpKey, udpKey, path)
 	}
 	return tcpCount, udpCount, nil
 }

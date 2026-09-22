@@ -2,10 +2,184 @@ package monitoring
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 )
+
+// writeFakeProcFile 在伪造的 proc root 下写一个 <root>/net/<name> 文件
+func writeFakeProcFile(t *testing.T, root, name, content string) {
+	t.Helper()
+	dir := filepath.Join(root, "net")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("failed to create fake proc net dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatalf("failed to write fake %s: %v", name, err)
+	}
+}
+
+// procNetTable 生成一个带表头、共 rows 行数据的 /proc/net/{tcp,udp} 样式文件
+func procNetTable(rows int) string {
+	var b strings.Builder
+	b.WriteString("  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n")
+	for i := 0; i < rows; i++ {
+		fmt.Fprintf(&b, "%4d: 0100007F:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000 1000 0 %d 1 0000000000000000 100 0 0 10 0\n", i, i)
+	}
+	return b.String()
+}
+
+// 下列 sockstat/sockstat6 内容逐字来自 OC424 的 /proc/net/sockstat（与 sockstat6）
+const (
+	liveSockstat  = "sockets: used 428\nTCP: inuse 118 orphan 0 tw 217 alloc 218 mem 216\nUDP: inuse 3 mem 130\nUDPLITE: inuse 0\nRAW: inuse 0\nFRAG: inuse 0 memory 0\n"
+	liveSockstat6 = "TCP6: inuse 5\nUDP6: inuse 6\nUDPLITE6: inuse 0\nRAW6: inuse 1\nFRAG6: inuse 0 memory 0\n"
+)
+
+func TestProcNetConnectionsCountPrefersSockstat(t *testing.T) {
+	root := t.TempDir()
+	writeFakeProcFile(t, root, "sockstat", liveSockstat)
+	writeFakeProcFile(t, root, "sockstat6", liveSockstat6)
+	// 同时放上整表：sockstat 可用时不应该再去解析它们
+	writeFakeProcFile(t, root, "tcp", procNetTable(50))
+	writeFakeProcFile(t, root, "tcp6", procNetTable(7))
+	writeFakeProcFile(t, root, "udp", procNetTable(9))
+	writeFakeProcFile(t, root, "udp6", procNetTable(11))
+
+	tcpCount, udpCount, err := procNetConnectionsCount(root)
+	if err != nil {
+		t.Fatalf("procNetConnectionsCount failed: %v", err)
+	}
+	// TCP = inuse(118) + tw(217) + TCP6 inuse(5)，即"所有 TCP socket，含 TIME_WAIT"
+	if tcpCount != 340 {
+		t.Errorf("expected tcp=340 (118+217+5), got %d", tcpCount)
+	}
+	// UDP = inuse(3) + UDP6 inuse(6)
+	if udpCount != 9 {
+		t.Errorf("expected udp=9 (3+6), got %d", udpCount)
+	}
+}
+
+func TestProcNetConnectionsCountIncludesTimeWait(t *testing.T) {
+	root := t.TempDir()
+	writeFakeProcFile(t, root, "sockstat", liveSockstat)
+
+	tcpCount, udpCount, err := procNetConnectionsCount(root)
+	if err != nil {
+		t.Fatalf("procNetConnectionsCount failed: %v", err)
+	}
+	// 契约：TCP 必须把 TIME_WAIT 算进去（inuse 118 + tw 217），
+	// 只报 inuse 会丢掉 65% 的 TCP socket，与旧的 /proc/net/tcp 行数语义不符。
+	if tcpCount != 335 {
+		t.Errorf("expected tcp=335 (118 inuse + 217 tw), got %d", tcpCount)
+	}
+	// sockstat6 缺失只影响 IPv6 部分，不应导致整体失败或回退
+	if udpCount != 3 {
+		t.Errorf("expected udp=3, got %d", udpCount)
+	}
+}
+
+func TestProcNetConnectionsCountTimeWaitIsOptional(t *testing.T) {
+	root := t.TempDir()
+	// 有的内核/容器不输出 tw 字段：只算 inuse，不能因此判失败退回整表解析
+	writeFakeProcFile(t, root, "sockstat",
+		"TCP: inuse 118 orphan 0 alloc 218 mem 216\nUDP: inuse 3 mem 130\n")
+	writeFakeProcFile(t, root, "tcp", procNetTable(4))
+
+	tcpCount, udpCount, err := procNetConnectionsCount(root)
+	if err != nil {
+		t.Fatalf("procNetConnectionsCount failed: %v", err)
+	}
+	if tcpCount != 118 {
+		t.Errorf("expected tcp=118 (inuse only when tw is absent), got %d", tcpCount)
+	}
+	if udpCount != 3 {
+		t.Errorf("expected udp=3, got %d", udpCount)
+	}
+}
+
+func TestProcNetConnectionsCountMatchesTableScan(t *testing.T) {
+	// sockstat 路径与整表解析路径对同一份数据必须给出同样的数：
+	// 334 行 /proc/net/tcp + 6 行 /proc/net/tcp6（各含 1 行表头）= 335 + 5 个 socket
+	sockstatRoot := t.TempDir()
+	writeFakeProcFile(t, sockstatRoot, "sockstat", liveSockstat)
+	writeFakeProcFile(t, sockstatRoot, "sockstat6", liveSockstat6)
+	writeFakeProcFile(t, sockstatRoot, "tcp", procNetTable(335))
+	writeFakeProcFile(t, sockstatRoot, "tcp6", procNetTable(5))
+	writeFakeProcFile(t, sockstatRoot, "udp", procNetTable(3))
+	writeFakeProcFile(t, sockstatRoot, "udp6", procNetTable(6))
+
+	tableRoot := t.TempDir()
+	writeFakeProcFile(t, tableRoot, "tcp", procNetTable(335))
+	writeFakeProcFile(t, tableRoot, "tcp6", procNetTable(5))
+	writeFakeProcFile(t, tableRoot, "udp", procNetTable(3))
+	writeFakeProcFile(t, tableRoot, "udp6", procNetTable(6))
+
+	sockTCP, sockUDP, err := procNetConnectionsCount(sockstatRoot)
+	if err != nil {
+		t.Fatalf("sockstat path failed: %v", err)
+	}
+	tableTCP, tableUDP, err := procNetConnectionsCount(tableRoot)
+	if err != nil {
+		t.Fatalf("table path failed: %v", err)
+	}
+
+	if sockTCP != tableTCP || sockUDP != tableUDP {
+		t.Errorf("sockstat path returned tcp=%d udp=%d, table path returned tcp=%d udp=%d",
+			sockTCP, sockUDP, tableTCP, tableUDP)
+	}
+	if sockTCP != 340 || sockUDP != 9 {
+		t.Errorf("expected tcp=340 udp=9 from both paths, got tcp=%d udp=%d", sockTCP, sockUDP)
+	}
+}
+
+func TestProcNetConnectionsCountFallsBackToTableScan(t *testing.T) {
+	tests := []struct {
+		name     string
+		sockstat string // 空字符串表示不创建 sockstat 文件
+	}{
+		{name: "sockstat absent"},
+		{name: "sockstat malformed", sockstat: "TCP: inuse abc orphan 0 tw 222\nUDP: inuse 3 mem 130\n"},
+		{name: "sockstat malformed tw", sockstat: "TCP: inuse 118 orphan 0 tw xyz\nUDP: inuse 3 mem 130\n"},
+		{name: "sockstat missing udp field", sockstat: "sockets: used 422\nTCP: inuse 118 orphan 0 tw 217\n"},
+		{name: "sockstat without inuse fields", sockstat: "sockets: used 422\nTCP: orphan 0 tw 222\nUDP: mem 130\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			if tt.sockstat != "" {
+				writeFakeProcFile(t, root, "sockstat", tt.sockstat)
+			}
+			writeFakeProcFile(t, root, "tcp", procNetTable(4))
+			writeFakeProcFile(t, root, "tcp6", procNetTable(1))
+			writeFakeProcFile(t, root, "udp", procNetTable(2))
+			writeFakeProcFile(t, root, "udp6", procNetTable(3))
+
+			tcpCount, udpCount, err := procNetConnectionsCount(root)
+			if err != nil {
+				t.Fatalf("procNetConnectionsCount failed: %v", err)
+			}
+			if tcpCount != 5 {
+				t.Errorf("expected tcp=5 from table scan, got %d", tcpCount)
+			}
+			if udpCount != 5 {
+				t.Errorf("expected udp=5 from table scan, got %d", udpCount)
+			}
+		})
+	}
+}
+
+func TestParseSockstatFileReportsMissingFields(t *testing.T) {
+	root := t.TempDir()
+	writeFakeProcFile(t, root, "sockstat", "sockets: used 422\n")
+
+	if _, _, err := parseSockstatFile(filepath.Join(root, "net", "sockstat"), "TCP:", "UDP:"); err == nil {
+		t.Fatal("expected error for sockstat without inuse fields, got nil")
+	}
+}
 
 func TestConnectionsCount(t *testing.T) {
 	tcpCount, udpCount, err := ConnectionsCount()

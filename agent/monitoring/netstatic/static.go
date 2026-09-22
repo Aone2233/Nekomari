@@ -23,10 +23,29 @@ unix时间戳，单位秒
 
 只有在启动、停止和保存时，才会进行文件的读写操作
 */
+// legacyDetectInterval 是旧版本的 DefaultDetectInterval。存量 net_static.json 的 config 里
+// 记着 detect_interval=2，agent 从不下发这个字段（cmd/root.go 只下发 Nics），所以它只是当时
+// 默认值的残留；见 migrateConfig。
+const legacyDetectInterval = 2.0
+
+// netStaticConfigVersion 当前配置代次。没有 config_version 字段的文件属于第 1 代。
+const netStaticConfigVersion = 2
+
 var (
-	DefaultDataPreserveDay = 31.0      // in days，保存最近多少天的数据，过期数据会被删除
-	DefaultDetectInterval  = 2.0       // in seconds，采集间隔
-	DefaultSaveInterval    = 60.0 * 10 // in seconds，写入到磁盘的间隔，避免大量IO操作，保存到文件的间隔也是这个值，而不是DetectInterval
+	DefaultDataPreserveDay = 31.0 // in days，保存最近多少天的数据，过期数据会被删除
+	// in seconds，采集间隔。落盘时 flushCacheLocked 会把 SaveInterval 窗口内的样本合并成一个桶，
+	// 所以比 SaveInterval 细得多的采集间隔换不到任何分辨率，只换来 /proc/net/dev 的读取次数：
+	// 2 秒 = 43200 次/天/节点，30 秒 = 2880 次/天/节点。取 30 秒（600 秒桶的 1/20），
+	// 一个桶里因计数器重置最多丢一个采集间隔的流量（≤5%），并留出 20 个样本/桶的余量，
+	// 避免采集与保存 tick 相邻时把桶拉空。
+	DefaultDetectInterval = 30.0
+	DefaultSaveInterval   = 60.0 * 10 // in seconds，写入到磁盘的间隔，避免大量IO操作，保存到文件的间隔也是这个值，而不是DetectInterval
+	// DefaultRewriteInterval in seconds，两次整体重写 net_static.json 之间的最小间隔。
+	// saveToFileLocked 每次都要把 31 天的全量数据重新序列化一遍（OC424 实测单网卡 216644 字节），
+	// 按 SaveInterval 每 600 秒写一次是 144 次/天/节点；限流到 1800 秒后是 48 次/天/节点。
+	// 代价是最多 3 个桶（30 分钟）只存在于内存，进程被 SIGKILL 时丢失；报表路径读的是内存，
+	// 不受影响，Stop() 仍然无条件落盘。
+	DefaultRewriteInterval = 60.0 * 30
 	SaveFilePath           = "./net_static.json"
 )
 
@@ -42,10 +61,11 @@ type NetStatic struct {
 }
 
 type NetStaticConfig struct {
-	DataPreserveDay float64  `json:"data_preserve_day"` // in days，保存最近多少天的数据，过期数据会被删除
-	DetectInterval  float64  `json:"detect_interval"`   // in seconds，采集间隔
-	SaveInterval    float64  `json:"save_interval"`     // in seconds，写入到磁盘的间隔，避免大量IO操作
-	Nics            []string `json:"nics"`              // 仅监控指定的网卡名称列表，空表示监控所有网卡
+	DataPreserveDay float64  `json:"data_preserve_day"`        // in days，保存最近多少天的数据，过期数据会被删除
+	DetectInterval  float64  `json:"detect_interval"`          // in seconds，采集间隔
+	SaveInterval    float64  `json:"save_interval"`            // in seconds，写入到磁盘的间隔，避免大量IO操作
+	Nics            []string `json:"nics"`                     // 仅监控指定的网卡名称列表，空表示监控所有网卡
+	ConfigVersion   int      `json:"config_version,omitempty"` // 这份配置是哪一代默认值写出来的，用于迁移
 }
 
 type TrafficData struct {
@@ -63,6 +83,13 @@ var (
 
 	// 内存持久区（与文件内容一致，但仅在启动、保存、停止时与磁盘交互）
 	store NetStatic
+
+	// storeDirty 表示内存中的 store 自上次成功落盘后是否变过（新桶、过期清理、整体替换等）。
+	// 没变过就没必要把整个文件重写一遍。
+	storeDirty bool
+
+	// lastWriteUnix 上次成功落盘的时间，用于限流整体重写（见 DefaultRewriteInterval）
+	lastWriteUnix uint64
 
 	// 上次采集到的累计字节数（用于计算 delta）
 	lastCounters = map[string]struct{ Tx, Rx uint64 }{}
@@ -102,6 +129,10 @@ func ensureInitLocked() {
 }
 
 func loadFromFileLocked() error {
+	// 读完盘之后内存状态至少要落盘一次：配置可能被迁移过（见 migrateConfig），
+	// 坏文件也会在这一轮被一份干净的文件替换掉。
+	storeDirty = true
+
 	// 不存在则用默认配置
 	f, err := os.Open(SaveFilePath)
 	if err != nil {
@@ -154,10 +185,45 @@ func saveToFileLocked() error {
 	if err := os.WriteFile(tmp, b, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, SaveFilePath)
+	if err := os.Rename(tmp, SaveFilePath); err != nil {
+		return err
+	}
+	// 落盘成功：内存与文件一致，刷新限流时间戳
+	storeDirty = false
+	lastWriteUnix = nowUnix()
+	return nil
+}
+
+// shouldRewriteFileLocked 判断这次周期保存是否需要整体重写文件。
+// store 没变过就不写；变过也要等离上次落盘至少 DefaultRewriteInterval 秒，
+// 避免每 SaveInterval 都把 31 天的全量数据重新序列化一遍。
+func shouldRewriteFileLocked(now uint64) bool {
+	if !storeDirty {
+		return false
+	}
+	if lastWriteUnix == 0 || DefaultRewriteInterval <= 0 {
+		return true
+	}
+	return now >= lastWriteUnix+uint64(DefaultRewriteInterval)
+}
+
+// migrateConfig 把上一代默认值写出来的配置升级到当前代次。
+// 第 1 代文件里的 detect_interval=2 是当时的默认值（agent 只会通过 SetNewConfig 下发 Nics，
+// 从不主动设置采集间隔），不迁移的话把 DefaultDetectInterval 调大对存量节点完全不生效。
+// 只有恰好等于旧默认值时才替换，其它值视为用户/面板的选择，原样保留。
+func migrateConfig(c NetStaticConfig) NetStaticConfig {
+	if c.ConfigVersion >= netStaticConfigVersion {
+		return c
+	}
+	if c.DetectInterval == legacyDetectInterval {
+		c.DetectInterval = DefaultDetectInterval
+	}
+	c.ConfigVersion = netStaticConfigVersion
+	return c
 }
 
 func configOrDefault(c NetStaticConfig) NetStaticConfig {
+	c = migrateConfig(c)
 	if c.DataPreserveDay == 0 {
 		c.DataPreserveDay = DefaultDataPreserveDay
 	}
@@ -184,7 +250,11 @@ func purgeExpiredLocked() {
 		}
 		if len(kept) == 0 {
 			delete(store.Interfaces, name)
+			storeDirty = true
 		} else {
+			if len(kept) != len(arr) {
+				storeDirty = true
+			}
 			store.Interfaces[name] = kept
 		}
 	}
@@ -239,6 +309,7 @@ func flushCacheLocked(ts uint64) {
 		}
 		if sumTx > 0 || sumRx > 0 {
 			store.Interfaces[name] = append(store.Interfaces[name], TrafficData{Timestamp: ts, Tx: sumTx, Rx: sumRx})
+			storeDirty = true
 		}
 	}
 	// 清空缓存
@@ -269,7 +340,9 @@ func startGoroutinesLocked() {
 				mu.Lock()
 				flushCacheLocked(uint64(t.Unix()))
 				purgeExpiredLocked()
-				_ = saveToFileLocked()
+				if shouldRewriteFileLocked(uint64(t.Unix())) {
+					_ = saveToFileLocked()
+				}
 				mu.Unlock()
 			case <-stopCh:
 				return
@@ -327,6 +400,7 @@ func Clear() error {
 	store.Interfaces = make(map[string][]TrafficData)
 	staticCache = make(map[string][]TrafficData)
 	lastCounters = map[string]struct{ Tx, Rx uint64 }{}
+	storeDirty = true
 	// 不落盘，等下次保存或停止时写
 	return nil
 }
@@ -529,6 +603,7 @@ func ForceReplaceRecord(rec map[string][]TrafficData) error {
 	defer mu.Unlock()
 	ensureInitLocked()
 	store.Interfaces = rec
+	storeDirty = true
 	// 不立即写盘，等下一次周期性保存或停止时写
 	// 同时做一次过期清理
 	purgeExpiredLocked()
