@@ -1,7 +1,10 @@
 package public
 
 import (
+	"bytes"
 	"embed"
+	"fmt"
+	"io"
 	"io/fs"
 	"mime"
 	"net/http"
@@ -21,6 +24,60 @@ var PublicFS embed.FS
 
 //go:embed defaultTheme/dist.tar.zst
 var embeddedDistArchive []byte
+
+// embeddedAssetModTime 是嵌入资源的修改时间。
+//
+// 嵌入文件没有真实文件时间，而 http.ServeContent 只有在 modTime 非零时才会发
+// Last-Modified、才做条件请求协商。用进程启动时间作为它们的稳定校验值：进程存活
+// 期间嵌入内容不变，所以校验值稳定、条件请求能命中 304；换二进制重启后时间变化，
+// 缓存自然失效并回源 —— 这正是升级后需要的行为。
+var embeddedAssetModTime = time.Now()
+
+// assetSource 是一个已解析的静态资源。
+//
+// 为什么返回 io.ReadSeeker 而不是 []byte：http.ServeContent 需要 Seek 来支持
+// Range 与长度计算，本地主题文件因此不必再整份读进内存（0.5MB 的背景图也一样）。
+type assetSource struct {
+	reader   io.ReadSeeker
+	modTime  time.Time
+	mimeType string
+	size     int64
+	// close 释放底层文件句柄；嵌入资源为 nil。
+	close func()
+}
+
+// serveAsset 用 http.ServeContent 输出一个静态资源。
+//
+// 为什么不再用 c.Data：那会整份读进内存，而且没有 Last-Modified/ETag/Range，
+// 每次请求都要回源全量传输。ServeContent 用修改时间与 ETag 协商 304、原生支持
+// Range，对 Cloudflare 的回源也友好。
+//
+// Content-Type 仍然沿用解析时算出的结果：扩展名没有已知类型时显式把头部置空，
+// 阻止 ServeContent 改成嗅探内容 —— 保持原有的响应行为。
+func serveAsset(c *gin.Context, source assetSource, name string) {
+	if source.close != nil {
+		defer source.close()
+	}
+	header := c.Writer.Header()
+	if source.mimeType == "" {
+		header["Content-Type"] = nil
+	} else {
+		header.Set("Content-Type", source.mimeType)
+	}
+	// 与 web/filemanager 的下载路径同一个形状：长度-纳秒时间。
+	header.Set("ETag", fmt.Sprintf("\"%x-%x\"", source.size, source.modTime.UnixNano()))
+	http.ServeContent(c.Writer, c.Request, name, source.modTime, source.reader)
+}
+
+// embeddedAsset 把嵌入内容包装成 assetSource。
+func embeddedAsset(embedPath string, content []byte) assetSource {
+	return assetSource{
+		reader:   bytes.NewReader(content),
+		modTime:  embeddedAssetModTime,
+		mimeType: mime.TypeByExtension(filepath.Ext(embedPath)),
+		size:     int64(len(content)),
+	}
+}
 
 // 常量定义
 const (
@@ -150,31 +207,40 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		return cfg
 	}
 
-	// 核心逻辑：获取文件内容
+	// 核心逻辑：解析文件来源
 	// filePath: 相对于主题根目录的路径 (例如 "theme.json" 或 "dist/assets/a.js")
-	// 返回: content, contentType, exists
-	getFileContent := func(themeID string, relativePath string) ([]byte, string, bool) {
+	// 返回: 可 Seek 的资源 + 修改时间 + Content-Type，exists
+	//
+	// 解析顺序与原来的 getFileContent 完全一致：先本地主题目录（仅非 default
+	// 主题），再嵌入的默认前端；安全校验（路径穿透、主题 ID 形状）保持不变。
+	openAsset := func(themeID string, relativePath string) (assetSource, bool) {
 		cleanPath := strings.TrimPrefix(relativePath, "/")
 
 		cleanPath = filepath.Clean(cleanPath)
 
 		if themeID != DefaultTheme {
 			if strings.Contains(themeID, "..") || strings.Contains(themeID, "/") || strings.Contains(themeID, "\\") {
-				return nil, "", false
+				return assetSource{}, false
 			}
 
 			themeBasePath := filepath.Join(DataDir, ThemesDir, themeID)
 
 			if !isSafePath(themeBasePath, cleanPath) {
-				return nil, "", false
+				return assetSource{}, false
 			}
 
 			localPath := filepath.Join(themeBasePath, cleanPath)
 			// 检查文件是否存在且不是目录
 			if info, err := os.Stat(localPath); err == nil && !info.IsDir() {
-				content, err := os.ReadFile(localPath)
+				file, err := os.Open(localPath)
 				if err == nil {
-					return content, mime.TypeByExtension(filepath.Ext(localPath)), true
+					return assetSource{
+						reader:   file,
+						modTime:  info.ModTime(),
+						mimeType: mime.TypeByExtension(filepath.Ext(localPath)),
+						size:     info.Size(),
+						close:    func() { _ = file.Close() },
+					}, true
 				}
 			}
 			// 本地文件不存在，或读取失败 -> 继续向下回退
@@ -185,18 +251,45 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		embedPath := filepath.ToSlash(cleanPath)
 
 		if strings.Contains(embedPath, "..") {
-			return nil, "", false
+			return assetSource{}, false
 		}
 
 		if strings.HasPrefix(embedPath, DistDir+"/") {
 			if content, ok := defaultDistFiles[strings.TrimPrefix(embedPath, DistDir+"/")]; ok {
-				return content, mime.TypeByExtension(filepath.Ext(embedPath)), true
+				return embeddedAsset(embedPath, content), true
 			}
 		} else if content, err := fs.ReadFile(defaultThemeFS, embedPath); err == nil {
-			return content, mime.TypeByExtension(filepath.Ext(embedPath)), true
+			return embeddedAsset(embedPath, content), true
 		}
 
-		return nil, "", false
+		return assetSource{}, false
+	}
+
+	// 核心逻辑：获取文件内容（供 index.html 改写与 favicon 等需要完整内容的分支使用）
+	// 返回: content, contentType, exists
+	readAsset := func(themeID string, relativePath string) ([]byte, string, bool) {
+		source, exists := openAsset(themeID, relativePath)
+		if !exists {
+			return nil, "", false
+		}
+		if source.close != nil {
+			defer source.close()
+		}
+		content, err := io.ReadAll(source.reader)
+		if err != nil {
+			return nil, "", false
+		}
+		return content, source.mimeType, true
+	}
+
+	getFileContent := func(themeID string, relativePath string) ([]byte, string, bool) {
+		content, mimeType, exists := readAsset(themeID, relativePath)
+		if exists || themeID == DefaultTheme {
+			return content, mimeType, exists
+		}
+		// 本地主题文件存在但读不出来时，继续向下回退到嵌入的默认前端 —— 这是
+		// 拆分 openAsset 之前 getFileContent 的既有行为。
+		return readAsset(DefaultTheme, relativePath)
 	}
 
 	// 核心逻辑：渲染 Index.html
@@ -305,12 +398,12 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		if forceDefaultTheme {
 			themeID = DefaultTheme
 		}
-		// c.Param("path") 包含了开头的 /，getFileContent 会处理
+		// c.Param("path") 包含了开头的 /，openAsset 会处理
 		filePath := c.Param("path")
 
-		content, mimeType, exists := getFileContent(themeID, filePath)
+		source, exists := openAsset(themeID, filePath)
 		if exists {
-			c.Data(http.StatusOK, mimeType, content)
+			serveAsset(c, source, filePath)
 			return
 		}
 		c.Status(http.StatusNotFound)
@@ -368,9 +461,9 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		// SPA 静态资源回退
 		distPath := path.Join(DistDir, reqPath)
 
-		content, mimeType, exists := getFileContent(currentTheme, distPath)
+		source, exists := openAsset(currentTheme, distPath)
 		if exists {
-			c.Data(http.StatusOK, mimeType, content)
+			serveAsset(c, source, distPath)
 			return
 		}
 
