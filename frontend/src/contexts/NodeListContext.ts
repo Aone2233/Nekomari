@@ -51,7 +51,7 @@ export type NodeBasicInfo = {
   created_at: string;
   /** 更新时间 */
   updated_at: string;
-  ipv4?: string; 
+  ipv4?: string;
   ipv6?: string;
 };
 export interface NodeListContextType {

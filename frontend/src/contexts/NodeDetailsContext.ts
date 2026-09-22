@@ -26,7 +26,7 @@ export type NodeDetail = {
   expired_at: string;
   created_at: string;
   updated_at: string;
-  [key: string]: any; 
+  [key: string]: any;
 };
 export interface NodeDetailsContextType {
   nodeDetail: NodeDetail[] | [];
