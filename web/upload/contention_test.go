@@ -51,8 +51,13 @@ func TestContentionCountsRefusalsByOperation(t *testing.T) {
 }
 
 // TestContentionRecordsHoldDuration covers the other half: a successful hold is
-// timed, because Complete holds the lock across the whole installation and that
-// duration is what an unrelated administrator would be waiting behind.
+// recorded under its operation, because Complete holds the lock across the whole
+// installation and that duration is what an unrelated administrator waits behind.
+//
+// The assertion is deliberately not "duration > 0". A sub-tick operation can
+// legitimately measure as exactly zero on a coarse clock -- the Windows CI runner
+// did exactly that -- so requiring a positive value here would be testing the
+// clock rather than the counter. The measurable case is pinned separately below.
 func TestContentionRecordsHoldDuration(t *testing.T) {
 	store := &Store{Root: t.TempDir(), MaxSize: 1 << 20, FreeSpace: unlimitedFreeSpace}
 
@@ -64,11 +69,39 @@ func TestContentionRecordsHoldDuration(t *testing.T) {
 	if !ok || timing.Count != 1 {
 		t.Fatalf("hold[%s] = %+v (present=%v), want exactly one hold", opInit, timing, ok)
 	}
-	if timing.Max <= 0 || timing.Total <= 0 {
-		t.Fatalf("hold duration was not measured: %+v", timing)
+	if timing.Max < 0 || timing.Total < 0 {
+		t.Fatalf("hold duration is negative: %+v", timing)
 	}
 	if busy := store.Contention().Busy; len(busy) != 0 {
 		t.Fatalf("a successful acquisition was counted as a refusal: %v", busy)
+	}
+}
+
+// TestContentionTimesAHoldThatTakesTime is the measurable half, and the reason
+// the test above can afford to be lenient: a hold long enough to clear any clock
+// tick must actually show up. Without it the counter could report zeroes forever
+// and the previous test would still pass.
+func TestContentionTimesAHoldThatTakesTime(t *testing.T) {
+	store := &Store{Root: t.TempDir(), MaxSize: 1 << 20, FreeSpace: unlimitedFreeSpace}
+
+	release, ok := store.acquire(opComplete)
+	if !ok {
+		t.Fatal("could not acquire the store lock")
+	}
+	time.Sleep(30 * time.Millisecond)
+	release()
+
+	timing := store.Contention().Hold[opComplete]
+	if timing.Count != 1 {
+		t.Fatalf("the hold was not recorded: %+v", timing)
+	}
+	// 30 ms is far above any clock tick, so this is a real assertion rather than
+	// a race with the timer resolution.
+	if timing.Max < 20*time.Millisecond {
+		t.Fatalf("a 30 ms hold was measured as %s", timing.Max)
+	}
+	if timing.Total < timing.Max {
+		t.Fatalf("total %s is below the maximum %s", timing.Total, timing.Max)
 	}
 }
 
