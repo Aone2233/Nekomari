@@ -24,9 +24,9 @@ import {
 import { useRemoteFileService } from "./useRemoteFileService";
 import {
   FileContextMenu,
-  useContextMenu,
   type ContextMenuItemConfig,
 } from "./FileContextMenu";
+import { useContextMenu } from "./useContextMenu";
 import {
   fileDownloadUrl,
   copyTextToClipboard,

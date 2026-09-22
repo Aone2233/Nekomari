@@ -1,10 +1,7 @@
 import LanguageSwitch from "@/components/Language";
 import Loading from "@/components/loading";
-import {
-  CommandClipboardProvider,
-  useCommandClipboard,
-  type CommandClipboard,
-} from "@/contexts/CommandClipboardContext";
+import { useCommandClipboard, type CommandClipboard } from "@/contexts/CommandClipboardContext";
+import { CommandClipboardProvider } from "@/contexts/CommandClipboardProvider";
 import { useTerminal } from "@/contexts/TerminalContext";
 import {
   Button,

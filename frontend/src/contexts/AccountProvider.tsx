@@ -1,26 +1,6 @@
 import React from "react";
+import { AccountContext, type Account } from "./AccountContext";
 
-// 账户数据类型
-type Account = {
-  logged_in: boolean;
-  sso_id: string;
-  sso_type: string;
-  username: string;
-  uuid: string;
-  "2fa_enabled": boolean;
-};
-
-// Context
-interface AccountContextType{
-    account: Account | null;
-    loading: boolean;
-    error: Error | null;
-    refresh: () => void;
-}
-
-// 创建Context
-
-const AccountContext = React.createContext<AccountContextType | undefined>(undefined);
 
 // Provider组件
 export const AccountProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -54,13 +34,4 @@ export const AccountProvider: React.FC<{ children: React.ReactNode }> = ({ child
         {children}
         </AccountContext.Provider>
     );
-}
-
-// 自定义Hook
-export const useAccount = () => {
-    const context = React.useContext(AccountContext);
-    if (!context) {
-        throw new Error("useAccount must be used within an AccountProvider");
-    }
-    return context;
 }

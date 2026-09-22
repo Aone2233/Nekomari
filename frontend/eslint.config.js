@@ -18,17 +18,19 @@ export default tseslint.config(
       'react-refresh': reactRefresh,
     },
     rules: {
-      // react-hooks v7 folds the React Compiler rules into `recommended`: 14
-      // extra rules that flag 133 pre-existing patterns in this app (ref writes
-      // during render, setState inside an effect, manual memoization). Adopting
-      // those is its own change with its own review, so the two rules this
-      // project has always enforced are named explicitly instead of spreading
-      // `recommended`. Nothing is silenced -- the compiler rules are simply not
-      // enabled yet, and turning them on is a deliberate follow-up.
+      // Adopt audited compiler rules incrementally. The remaining diagnostics
+      // and migration boundaries are recorded in docs/FOLLOWUP-v0.1.21.md.
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
+      'react-hooks/use-memo': 'error',
+      'react-hooks/globals': 'error',
+      'react-hooks/error-boundaries': 'error',
+      'react-hooks/set-state-in-render': 'error',
+      'react-hooks/unsupported-syntax': 'warn',
+      'react-hooks/config': 'error',
+      'react-hooks/gating': 'error',
       'react-refresh/only-export-components': [
-        'warn',
+        'error',
         { allowConstantExport: true },
       ],
       '@typescript-eslint/no-explicit-any': 'off',

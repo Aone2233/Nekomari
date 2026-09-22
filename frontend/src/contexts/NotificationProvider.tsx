@@ -1,21 +1,6 @@
 import React from "react";
+import { NotificationContext, type OfflineNotification } from "./NotificationContext";
 
-export type OfflineNotification = {
-  client: string;
-  enable: boolean;
-  cooldown: number;
-  grace_period: number;
-  last_notified: string;
-};
-
-interface OfflineNotificationContextType {
-  offlineNotification: OfflineNotification[]
-  loading?: boolean;
-  error?: Error | null;
-  refresh: () => Promise<void>;
-}
-
-const NotificationContext = React.createContext<OfflineNotificationContextType | undefined>(undefined);
 
 export const OfflineNotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [offlineNotification, setOfflineNotification] = React.useState<OfflineNotification[]>([]);
@@ -52,11 +37,4 @@ export const OfflineNotificationProvider: React.FC<{ children: React.ReactNode }
       {children}
     </NotificationContext.Provider>
   );
-}
-export const useOfflineNotification = () => {
-  const context = React.useContext(NotificationContext);
-  if (!context) {
-    throw new Error("useOfflineNotification must be used within a OfflineNotificationProvider");
-  }
-  return context;
 }

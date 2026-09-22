@@ -2,7 +2,8 @@ import React from "react";
 
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import { AccountProvider, useAccount } from "@/contexts/AccountContext";
+import { useAccount } from "@/contexts/AccountContext";
+import { AccountProvider } from "@/contexts/AccountProvider";
 import {
   Badge,
   Button,

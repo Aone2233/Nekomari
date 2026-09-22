@@ -99,7 +99,9 @@ jobs:
 
       - name: Race-check authentication
         if: runner.os == 'Linux'
-        run: go test -race ./database/accounts ./web/oauth/... ./web/api/public ./web/security
+        run: |
+          go test -race ./database/accounts ./web/api/public -count=10 -shuffle=on
+          go test -race ./web/oauth/... ./web/security ./web/upload
 
       - name: Build server
         run: go build -o /dev/null .

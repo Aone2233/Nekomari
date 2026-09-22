@@ -39,7 +39,8 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useRemoteFileService } from "./useRemoteFileService";
 import ConfirmDialog from "./ConfirmDialog";
-import { FileContextMenu, useContextMenu, type ContextMenuItemConfig } from "./FileContextMenu";
+import { FileContextMenu, type ContextMenuItemConfig } from "./FileContextMenu";
+import { useContextMenu } from "./useContextMenu";
 import TerminalDialog from "./TerminalDialog";
 import TerminalUploadProgress from "./TerminalUploadProgress";
 import {

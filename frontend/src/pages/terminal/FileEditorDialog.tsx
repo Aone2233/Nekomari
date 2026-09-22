@@ -61,9 +61,9 @@ import EditorTerminalPanel from "./EditorTerminalPanel";
 import TerminalDialog from "./TerminalDialog";
 import {
   FileContextMenu,
-  useContextMenu,
   type ContextMenuItemConfig,
 } from "./FileContextMenu";
+import { useContextMenu } from "./useContextMenu";
 import RemoteFileTree from "./RemoteFileTree";
 import ConfirmDialog from "./ConfirmDialog";
 import { normalizeRemotePath } from "./fileManagerApi";

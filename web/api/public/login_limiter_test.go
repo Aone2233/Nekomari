@@ -200,6 +200,7 @@ func TestLoginLimiterExpiresIdleEntries(t *testing.T) {
 // budget. A separate bucket would have made re-enrollment a password oracle the
 // login limiter cannot see.
 func TestSensitivePasswordCheckSharesLoginBuckets(t *testing.T) {
+	isolateLoginLimiter(t)
 	ip, account := "203.0.113.9", "admin"
 	for i := 0; i < int(loginAccountBurst); i++ {
 		RecordSensitivePasswordFailure(ip, account)

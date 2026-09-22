@@ -1,28 +1,6 @@
 import React from "react";
+import { CommandClipboardContext, type CommandClipboard } from "./CommandClipboardContext";
 
-export type CommandClipboard = {
-  id: number;
-  text: string;
-  name: string;
-  remark: string;
-  weight: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-interface CommandClipboardContextType {
-  commands: CommandClipboard[];
-  loading: boolean;
-  error: Error | null;
-  refresh: () => Promise<void>;
-  addCommand: (name: string, text: string, remark: string, weight: number) => Promise<void>;
-  updateCommand: (id: number, name: string, text: string, remark: string, weight: number) => Promise<void>;
-  deleteCommand: (id:number) => Promise<void>;
-}
-
-const CommandClipboardContext = React.createContext<
-  CommandClipboardContextType | undefined
->(undefined);
 
 export const CommandClipboardProvider: React.FC<{
   children: React.ReactNode;
@@ -130,14 +108,4 @@ export const CommandClipboardProvider: React.FC<{
       {children}
     </CommandClipboardContext.Provider>
   );
-};
-
-export const useCommandClipboard = (): CommandClipboardContextType => {
-  const context = React.useContext(CommandClipboardContext);
-  if (!context) {
-    throw new Error(
-      "useCommandClipboard must be used within a CommandClipboardProvider"
-    );
-  }
-  return context;
 };

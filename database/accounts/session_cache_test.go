@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Aone2233/nekomari/cmd/flags"
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/internal/dbcache"
@@ -18,9 +17,11 @@ func restoreSessionCaches(t *testing.T) {
 	t.Helper()
 	sessionCache.Lock()
 	entries, userRevision := sessionCache.entries, sessionCache.userRevision
+	sessionCache.entries = make(map[string]cachedSession)
 	sessionCache.Unlock()
 	sessionActivity.Lock()
 	times := sessionActivity.times
+	sessionActivity.times = make(map[string]time.Time)
 	sessionActivity.Unlock()
 	t.Cleanup(func() {
 		sessionCache.Lock()
@@ -145,23 +146,22 @@ func TestSessionCachePruneBoundsLiveEntries(t *testing.T) {
 // so each logged-in user's next request ran its own SELECT — the cache undoing
 // itself.
 func TestSessionCacheSurvivesActivityWrites(t *testing.T) {
-	flags.DatabaseType = flags.DatabaseTypeSQLite
-	flags.DatabaseFile = "file:session-cache-revision?mode=memory&cache=shared"
 	db := dbcore.GetDBInstance()
-	dbcache.Watch(db)
 	restoreSessionCaches(t)
 
-	user, err := CreateAccount("session-cache", "test-only-password")
-	if err != nil {
-		t.Fatal(err)
-	}
-	token, err := CreateSession(user.UUID, 3600, "test", "127.0.0.1", "password")
+	uuid := createTestAccount(t, "session-cache")
+	token, err := CreateSession(uuid, 3600, "test", "127.0.0.1", "password")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := GetSession(token); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := DeleteSession(token); err != nil {
+			t.Error(err)
+		}
+	})
 
 	revision := dbcache.Revision("sessions")
 	if err := db.Model(&models.Session{}).Where("session = ?", token).Update("latest_online", time.Now().UTC()).Error; err != nil {
@@ -193,16 +193,10 @@ func TestSessionCacheSurvivesActivityWrites(t *testing.T) {
 // Revoking a session must invalidate it immediately, without waiting for the
 // entry's 30-second lifetime: the cache no longer follows the sessions revision.
 func TestDeleteSessionInvalidatesCachedEntry(t *testing.T) {
-	flags.DatabaseType = flags.DatabaseTypeSQLite
-	flags.DatabaseFile = "file:session-cache-revocation?mode=memory&cache=shared"
-	dbcache.Watch(dbcore.GetDBInstance())
 	restoreSessionCaches(t)
 
-	user, err := CreateAccount("session-revocation", "test-only-password")
-	if err != nil {
-		t.Fatal(err)
-	}
-	token, err := CreateSession(user.UUID, 3600, "test", "127.0.0.1", "password")
+	uuid := createTestAccount(t, "session-revocation")
+	token, err := CreateSession(uuid, 3600, "test", "127.0.0.1", "password")
 	if err != nil {
 		t.Fatal(err)
 	}

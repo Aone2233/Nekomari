@@ -9,7 +9,8 @@ import {
 } from "@radix-ui/themes";
 import { useTranslation } from "react-i18next";
 import { TablerSettings } from "./Icones/Tabler";
-import { AccountProvider, useAccount } from "@/contexts/AccountContext";
+import { useAccount } from "@/contexts/AccountContext";
+import { AccountProvider } from "@/contexts/AccountProvider";
 import { usePublicInfo } from "@/contexts/PublicInfoContext";
 
 type LoginDialogProps = {
