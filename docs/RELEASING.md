@@ -27,6 +27,15 @@ supplying a tag name.
 
 ## Container images
 
+CI and release builds pin Go 1.27.1 independently of the `go.mod` minimum.
+Update both workflows together when applying compiler security patches. Every
+server/agent executable must pass `govulncheck -mode=binary` (tool v1.8.0) before
+artifact upload. Local source scanning alone does not verify the compiler used
+in distributed binaries. Keep tags immutable; v0.1.19 supersedes the Go 1.26.0-built
+v0.1.17 artifacts. v0.1.18 was blocked before publication because `-s` removes
+symbol tables, causing conservative module-wide scan findings. Keep `-w` but
+omit `-s` so the distributed executable itself remains accurately scannable.
+
 `.github/workflows/docker.yml` builds multi-arch images (`linux/amd64`,
 `linux/arm64`) and pushes them to GHCR. Two images, one matrix, same tag scheme and
 the same checks:

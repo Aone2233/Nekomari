@@ -9,7 +9,7 @@ restored, and the two hostname/TLS traps that cost the most time.
 |---|---|
 | Panel URL | **https://komari.orderly2233.org** |
 | Host | OC424 (`ubuntu@213.35.99.48`, Oracle Cloud, **arm64**, Ubuntu 22.04) |
-| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.16`, bound to `127.0.0.1:25774` |
+| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.19`, bound to `127.0.0.1:25774` |
 | Compose dir | `/opt/nekomari` (bind mount `./data` → `/app/data`) |
 | Reverse proxy | host **nginx** `/etc/nginx/sites-available/nekomari` |
 | TLS at origin | `/etc/nginx/ssl/{fullchain,privkey}.pem` (Cloudflare Origin cert, shared with the other vhosts) |
@@ -20,6 +20,45 @@ restored, and the two hostname/TLS traps that cost the most time.
 The container is deliberately **not** published on a public interface: UFW allows
 80/443 only from Cloudflare's ranges, so all traffic arrives via the edge, and
 nginx is the only thing that talks to the panel port.
+
+## Current rollout: 2026-09-22 (v0.1.19)
+
+Panel upgraded from v0.1.16 to v0.1.19 at approximately 09:53 UTC. Runtime API
+reports hash `31b3ee5`. The nine agents remain on v0.1.16 and need a separate
+staged compiler-security refresh; this rollout changed only the panel.
+
+- Exact release commit: `31b3ee512a469bade95de667486f133a029c38a7`.
+- Exact-commit CI: `35711635197`, both Linux and Windows passed.
+- Release: `35712077446`, all eight binary vulnerability scans and the real
+  downloaded-artifact deployment test passed.
+- Container release: `35712642893`, both images passed smoke/public-pull checks.
+- Panel image: `sha256:52e36dadee990abfb66dd440c54edc1e60f6f037b446184c1be64c73b4fb256e`.
+- Arm64 executable SHA256: `e7a845a698986e8f9e4ceee2de6d00e6aa61a8d1307afeeccfabd7909f1c7976`.
+  Independently matched the published checksum and the binary inside the image;
+  downloaded binary govulncheck found no affected symbols.
+- Stopped writes before backing up Compose and the complete data directory to
+  `/opt/nekomari-backups/pre-v0.1.19-20260922-095308` (directory mode 0700).
+  `data.tar` SHA256: `b867c42aa434a24f30bab522160d1ac532f01cc41ef9af1197a648e8c2dfb4d4`.
+  Archive listing was validated before replacing the container. Old image retained.
+- Origin/public version API and homepage returned 200; unauthenticated admin
+  session API returned 401; disabled OAuth start/callback returned 403.
+- Both SQLite `quick_check` results were `ok`; 9 clients, 1 user and 9 ping tasks
+  were retained. Port remains loopback-only, data remains `/opt/nekomari/data`,
+  nginx configuration passes, and container restart count is zero.
+- Initial public homepage TTFB was 0.087 seconds from OC424; this is a single
+  observation, not a performance benchmark.
+
+v0.1.17 was not deployed: its workflow selected Go 1.26.0. v0.1.18 publication
+was blocked by conservative scanner fallback on stripped binaries. v0.1.19 uses
+Go 1.27.1 and retains symbol tables, without suppressing advisories. See
+[next improvements](NEXT-REVIEW-v0.1.19.md) for evidence and acceptance criteria.
+Authenticated admin uploads/restores and real OAuth provider login were not
+exercised against production. Earlier sections below are historical records.
+
+For rollback, restore the backed-up Compose file and start the retained v0.1.16
+image. If data rollback is necessary, stop the container, preserve the current
+data separately, and restore the consistent archive before restarting. Never
+extract a rollback archive over a running database.
 
 ## Data restoration
 
@@ -318,4 +357,3 @@ Two leftovers were removed while doing this: `happy_heisenberg` on OC424 and
 v0.1.15 work, still running with a `bogus` token. They looked like host agents in the
 process table (their parent is containerd), which is exactly why
 `install-staged-agent.sh` discovers the systemd unit instead of matching the process name.
-
