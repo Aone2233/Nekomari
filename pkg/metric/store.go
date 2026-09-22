@@ -84,6 +84,19 @@ type Store struct {
 	//
 	// closed 表示 Close 是否已经被调用。
 	closed bool
+	// rollupSeriesIndexOnce guards the one-time lookup of the SQLite index that
+	// leads with series_id on the rollups table.
+	//
+	// rollupSeriesIndexOnce 保护 rollups 表上以 series_id 开头的 SQLite 索引名
+	// 的一次性查找。
+	rollupSeriesIndexOnce sync.Once
+	// rollupSeriesIndex caches that index name; empty means there is none to
+	// force, so entity-scoped rollup reads leave the access path to the
+	// backend's optimizer.
+	//
+	// rollupSeriesIndex 缓存该索引名；为空表示没有可强制的索引，实体范围的
+	// rollup 读取交给后端优化器选择访问路径。
+	rollupSeriesIndex string
 }
 
 // Open initializes a Store from a Config.

@@ -247,17 +247,10 @@ func (s *Store) scanPersistedRollupGroup(ctx context.Context, query BatchSeriesQ
 		return nil
 	}
 	sort.Slice(seriesIDs, func(i, j int) bool { return seriesIDs[i] < seriesIDs[j] })
-	resolutionID, found, err := s.resolveResolutionID(ctx, group.key.resolution)
+	rendered, found, err := s.renderPersistedRollupRead(ctx, query, group, seriesIDs)
 	if err != nil || !found {
 		return err
 	}
-	rendered := s.dialect.renderRollupRead(s.tables, s.cfg.TablePrefix+"rollups_resolution_bucket_idx", rollupReadPlan{
-		SeriesIDs:    seriesIDs,
-		ResolutionID: resolutionID,
-		StartMilli:   bucketStartMillis(query.Start.UnixMilli(), group.key.resolution.Milliseconds()),
-		EndMilli:     query.End.UnixMilli(),
-		Fields:       group.fields,
-	})
 	rows, err := s.reader().QueryContext(ctx, rendered.Query, rendered.Args...)
 	if err != nil {
 		return err
@@ -304,6 +297,28 @@ func (s *Store) scanPersistedRollupGroup(ctx context.Context, query BatchSeriesQ
 		}
 	}
 	return rows.Err()
+}
+
+// renderPersistedRollupRead renders the single query that reads one persisted
+// rollup group for an exact series set. found is false when the group's tier has
+// no resolution row, which means there is nothing persisted to read.
+//
+// The series set is known here, which is what lets the access path be chosen
+// from its size: a read that names a handful of series is driven by the series
+// index instead of being pinned to (resolution_id, bucket_milli). See
+// Store.rollupReadIndex.
+func (s *Store) renderPersistedRollupRead(ctx context.Context, query BatchSeriesQuery, group *batchSeriesGroup, seriesIDs []int64) (renderedSQL, bool, error) {
+	resolutionID, found, err := s.resolveResolutionID(ctx, group.key.resolution)
+	if err != nil || !found {
+		return renderedSQL{}, false, err
+	}
+	return s.dialect.renderRollupRead(s.tables, s.rollupReadIndex(ctx, len(seriesIDs)), rollupReadPlan{
+		SeriesIDs:    seriesIDs,
+		ResolutionID: resolutionID,
+		StartMilli:   bucketStartMillis(query.Start.UnixMilli(), group.key.resolution.Milliseconds()),
+		EndMilli:     query.End.UnixMilli(),
+		Fields:       group.fields,
+	}), true, nil
 }
 
 // readBudgetAfterScan charges one scanned row and reports a scan failure first.
