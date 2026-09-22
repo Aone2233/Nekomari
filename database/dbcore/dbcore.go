@@ -2,6 +2,7 @@ package dbcore
 
 import (
 	"archive/zip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -207,38 +208,73 @@ func resolveDatabaseFile() string {
 	return dbFile
 }
 
+// upgradeArchiveExclusions 返回升级快照需要排除的路径。
+//
+// 除归档自身（backup.zip 与 backup/ 目录）外，还排除本地 metric store：
+// 该归档的用途是回滚【面板自己的库与配置】，也就是启动迁移会改写的那部分；
+// 而 metric store（默认 ./data/metrics.db，60-100 MB 的 rollup）不被任何启动
+// 迁移触碰（旧监控表的导入是管理员显式触发的 web/migration 流程），把它一起
+// Deflate 压缩只是让这次启动备份又慢又占地方。
+//
+// 只排除默认路径：metric DSN 存在配置库里，而取快照时 config.SetDb 还没执行
+// （见 backupOnVersionUpgrade），因此自定义到别处的 SQLite 库仍会被完整归档 ——
+// 这是安全的一侧。
+//
+// 注意：恢复流程用的 pre-restore 快照【不】排除 metric store，因为那条路径会先
+// 删空 ./data，归档是恢复失败时唯一的副本。
+func upgradeArchiveExclusions(backupDir string) map[string]struct{} {
+	exclude := map[string]struct{}{
+		filepath.Join(".", "data", "backup.zip"): {},
+		backupDir:                                {},
+	}
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		exclude[filepath.Join(".", "data", "metrics.db"+suffix)] = struct{}{}
+	}
+	return exclude
+}
+
 // backupOnVersionUpgrade 在检测到版本升级时，把当前 ./data 打包到
-// ./data/backup/upgrade-{time}.zip，便于升级（含 metrics 迁移）异常时回滚。
+// ./data/backup/upgrade-{time}.zip，便于升级异常时回滚。
 //
-// 版本标识存放于配置库（configs 表，键 system_version），因此本函数必须在
-// config.SetDb 之后、一次性 metrics 迁移（InitStores）之前调用。
+// 【必须在 migrations.Run 之前调用】。迁移会 drop 旧 configs 表、把
+// client_infos 改名、重写时间戳列；先迁移再打包，归档里就是升级后的状态，
+// 回滚不了它本要保护的这次升级。
 //
-// 触发规则：
+// 其余顺序约束同样不能动：
+//   - 在 ./data/backup.zip 恢复逻辑之后：归档要描述恢复后的库，而不是被恢复
+//     覆盖掉的那份目录。
+//   - 在 gorm.Open 与 WAL checkpoint 之后：判断是否升级要读旧版本标记，而标记
+//     存在被打开的库的 configs 表里。
+//   - 在 config.SetDb 之前：SetDb 会对 key/value 版 configs 表做 AutoMigrate。
+//     对仍然带着旧版宽 configs 表的库，那等于给已存在的表加 PRIMARY KEY 列，
+//     SQLite 会拒绝，而 SetDb 是 panic 语义。所以标记只能直接读表，且只在表
+//     已是 key/value 结构时才读（readVersionMarkerDirect）。
+//   - 版本标记的【写入】在 migrations.Run 与 config.SetDb 之后，由调用方按本
+//     函数的返回值执行。
+//
+// 返回值表示「配置库就绪后需要写入当前版本标记」。触发规则：
 //   - versionID 为空：跳过（未注入版本，如部分测试场景）。
 //   - 配置中无版本且启动前无数据库文件：全新安装，仅写版本，不备份。
 //   - 配置中无版本但启动前已有数据库文件：从无版本标记的旧稳定版升级，备份。
 //   - 配置中版本与当前不同：版本升级，备份。
 //   - 配置中版本与当前一致：无需备份。
 //
-// 备份失败不阻止启动，但打印明确错误；备份成功（或无需备份）后写入/更新版本。
-func backupOnVersionUpgrade() {
+// 备份失败不阻止启动，但打印明确错误，并且【不写版本标记】——下次启动会重试。
+func backupOnVersionUpgrade() bool {
 	if versionID == "" {
-		return
+		return false
 	}
 
-	prevVersion, readErr := config.GetAs[string](SystemVersionKey)
-	prevVersion = strings.TrimSpace(prevVersion)
-	versionRecorded := readErr == nil && prevVersion != ""
+	prevVersion, versionRecorded := readVersionMarkerDirect(instance)
 
 	// 版本未变化，无需备份。
 	if versionRecorded && prevVersion == versionID {
-		return
+		return false
 	}
 
 	// 全新安装：配置中无版本且启动前无数据库文件，直接写版本不备份。
 	if !versionRecorded && !dbFileExistedAtStartup {
-		writeVersionMarker()
-		return
+		return true
 	}
 
 	// 需要备份（升级或从旧稳定版首次带版本标记启动）。
@@ -251,18 +287,63 @@ func backupOnVersionUpgrade() {
 	backupDir := filepath.Join(".", "data", "backup")
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
 		logger.Errorf("dbcore", "[upgrade-backup] failed to create backup dir: %v", err)
-		return
+		return false
 	}
 	tsName := time.Now().UTC().Format("20060102-150405")
 	bakPath := filepath.Join(backupDir, fmt.Sprintf("upgrade-%s.zip", tsName))
-	backupZipPath := filepath.Join(".", "data", "backup.zip")
-	if zipErr := zipDirectoryExcluding("./data", bakPath, map[string]struct{}{backupZipPath: {}, backupDir: {}}); zipErr != nil {
+	if zipErr := zipDirectoryExcluding("./data", bakPath, upgradeArchiveExclusions(backupDir)); zipErr != nil {
 		logger.Errorf("dbcore", "[upgrade-backup] failed to backup ./data before upgrade (from %q to %q): %v", prevVersion, versionID, zipErr)
-		return
+		return false
 	}
-	logger.Infof("dbcore", "[upgrade-backup] ./data backed up to %s before upgrade (from %q to %q)", bakPath, prevVersion, versionID)
+	logger.Infof("dbcore", "[upgrade-backup] ./data backed up to %s before upgrade (from %q to %q); the local metric store is excluded and left in place", bakPath, prevVersion, versionID)
+	return true
+}
 
-	writeVersionMarker()
+// readVersionMarkerDirect 直接从 configs 表读取 system_version 标记。
+//
+// 这里刻意不用 config.GetAs：它依赖 config.SetDb，而 SetDb 会对 key/value 版
+// configs 表做 AutoMigrate —— 对仍带着旧版宽 configs 表的库，那会给已存在的表
+// 加 PRIMARY KEY 列并 panic（见 backupOnVersionUpgrade 的顺序说明）。因此这里
+// 用裸 SQL 读，且仅在表已经是 key/value 结构时才读；读不到就当作「无版本标记」，
+// 与旧稳定版升级的处理一致（同样会备份）。
+func readVersionMarkerDirect(db *gorm.DB) (string, bool) {
+	if db == nil {
+		return "", false
+	}
+	migrator := db.Migrator()
+	if !migrator.HasTable("configs") ||
+		!tableHasColumn(migrator, "configs", "key") ||
+		!tableHasColumn(migrator, "configs", "value") {
+		return "", false
+	}
+
+	var raw string
+	if err := db.Raw("SELECT value FROM configs WHERE key = ? LIMIT 1", SystemVersionKey).Row().Scan(&raw); err != nil {
+		return "", false
+	}
+	// config.Set 用 json.Marshal 存值，字符串标记在库里是带引号的 JSON。
+	var value string
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return "", false
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", false
+	}
+	return value, true
+}
+
+func tableHasColumn(migrator gorm.Migrator, table, column string) bool {
+	columns, err := migrator.ColumnTypes(table)
+	if err != nil {
+		return false
+	}
+	for _, existing := range columns {
+		if existing.Name() == column {
+			return true
+		}
+	}
+	return false
 }
 
 // writeVersionMarker 将当前 versionID 写入配置库。
@@ -544,14 +625,21 @@ func doInitialize() error {
 	default:
 		return fmt.Errorf("unsupported database type: %s (supported: %s)", flags.DatabaseType, flags.SupportedDatabaseTypes())
 	}
+	// 迁移之前先取升级快照：migrations.Run 会 drop 旧 configs 表、改名
+	// client_infos、重写时间戳，之后再打包就无法回滚这次升级。
+	// 返回值表示迁移与 config.SetDb 完成后是否需要写入版本标记。
+	recordVersion := backupOnVersionUpgrade()
+
 	if err := migrations.Run(migrations.Context{DB: instance}); err != nil {
 		return fmt.Errorf("failed to run startup migrations: %w", err)
 	}
 	config.SetDb(instance)
 
-	// 配置库就绪后、执行后续 AutoMigrate 之前：
-	// 基于配置中的版本标记检测升级并自动备份 ./data，便于回滚。
-	backupOnVersionUpgrade()
+	// 版本标记必须等 config.SetDb 之后写：config 包需要一个已绑定的库句柄，
+	// 而 SetDb 只能在迁移把旧版 configs 表处理掉之后执行。
+	if recordVersion {
+		writeVersionMarker()
+	}
 
 	// 自动迁移模型
 	//
