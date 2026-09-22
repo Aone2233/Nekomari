@@ -30,6 +30,7 @@ type CleanupStats struct {
 	Sessions         int           `json:"sessions"`
 	ReservedBytes    int64         `json:"reserved_bytes"`
 	OldestSessionAge time.Duration `json:"oldest_session_age"`
+	LastScan         time.Time     `json:"last_scan"`
 	// LastSuccess is the last cleanup pass that completed without error.
 	LastSuccess time.Time `json:"last_success"`
 	// LastError is the most recent cleanup failure, empty after a success.
@@ -77,6 +78,7 @@ func (s *Store) recordScan(result scanResult) {
 	defer s.statsMu.Unlock()
 	s.stats.Sessions = result.sessions
 	s.stats.ReservedBytes = result.reserved
+	s.stats.LastScan = time.Now().UTC()
 	s.oldestSession = result.oldest
 }
 
@@ -87,6 +89,7 @@ func (s *Store) scan() (scanResult, error) {
 	var result scanResult
 	entries, err := os.ReadDir(s.Root)
 	if os.IsNotExist(err) {
+		s.recordScan(result)
 		return result, nil
 	}
 	if err != nil {
