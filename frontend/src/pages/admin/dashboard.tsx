@@ -19,6 +19,7 @@ import {
   LineChart,
   XAxis,
   YAxis,
+  type TooltipPayload,
 } from "recharts";
 import { useNodeList, type NodeBasicInfo } from "@/contexts/NodeListContext";
 import { useRPC2Call } from "@/contexts/RPC2Context";
@@ -1149,7 +1150,8 @@ const DashboardContent = () => {
                       />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid vertical={false} />
+                  {/* v3 grid lines follow the axis named here; "rate" is the primary Y axis. */}
+                  <CartesianGrid vertical={false} yAxisId="rate" />
                   <XAxis
                     dataKey="time"
                     tickLine={false}
@@ -1190,7 +1192,7 @@ const DashboardContent = () => {
                     cursor={false}
                     content={
                       <ChartTooltipContent
-                        labelFormatter={(_value: any, payload: any[]) => {
+                        labelFormatter={(_value: any, payload: TooltipPayload) => {
                           const point = payload?.[0]?.payload;
                           return point?.time
                             ? new Date(point.time).toLocaleString()
@@ -1761,7 +1763,7 @@ const MiniMetricChart = ({
               cursor={false}
               content={
                 <ChartTooltipContent
-                  labelFormatter={(_value: any, payload: any[]) => {
+                  labelFormatter={(_value: any, payload: TooltipPayload) => {
                     const point = payload?.[0]?.payload;
                     return point?.time
                       ? new Date(Number(point.time)).toLocaleString()
