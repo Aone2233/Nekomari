@@ -6,6 +6,14 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.19] — 2026-09-22
+
+- Retain executable symbol tables while omitting DWARF debug data. Removing
+  symbols with `-s` made govulncheck fall back to module-wide findings, including
+  unused OpenPGP packages. Reproduced locally with identical code: stripped scan
+  fails, symbol-preserving scan passes. No vulnerability exclusions are added.
+- v0.1.18 publication was blocked by the new gate; no release assets were published.
+
 ## [v0.1.18] — 2026-09-22
 
 - Build every server and agent release with Go 1.27.1, matching CI. The previous

@@ -146,7 +146,7 @@ jobs:
           # 决定日志级别。此前只有 CurrentVersion 被注入，于是每个正式版都跑在
           # Debug 级别，且 /api/version 一直报 hash: unknown。
           go build -trimpath \
-            -ldflags="-s -w -X github.com/Aone2233/nekomari/utils.CurrentVersion=${{ needs.resolve.outputs.tag }} -X github.com/Aone2233/nekomari/utils.VersionHash=${GITHUB_SHA:0:7}" \
+            -ldflags="-w -X github.com/Aone2233/nekomari/utils.CurrentVersion=${{ needs.resolve.outputs.tag }} -X github.com/Aone2233/nekomari/utils.VersionHash=${GITHUB_SHA:0:7}" \
             -o nekomari-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} .
 
       - name: Build agent
@@ -159,7 +159,7 @@ jobs:
         run: |
           # 文件名是探针自更新所依赖的契约，见文件头说明 2)
           go build -trimpath \
-            -ldflags="-s -w -X github.com/Aone2233/nekomari/agent/update.CurrentVersion=${{ needs.resolve.outputs.tag }}" \
+            -ldflags="-w -X github.com/Aone2233/nekomari/agent/update.CurrentVersion=${{ needs.resolve.outputs.tag }}" \
             -o komari-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} .
 
       # 注入错版本号不会让构建失败，只会让产物自称 main。把这个失败模式变成红灯：
@@ -243,7 +243,7 @@ jobs:
           CGO_ENABLED: '0'
         run: |
           go build -trimpath \
-            -ldflags="-s -w -X github.com/Aone2233/nekomari/agent/update.CurrentVersion=${{ needs.resolve.outputs.tag }}" \
+            -ldflags="-w -X github.com/Aone2233/nekomari/agent/update.CurrentVersion=${{ needs.resolve.outputs.tag }}" \
             -o komari-agent-darwin-${{ matrix.goarch }} .
 
       - name: Verify the injected version
