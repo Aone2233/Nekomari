@@ -219,3 +219,8 @@ func AddDefaultOnClientUUID(uuid string) error {
 func GetPingRecords(uuid string, taskId int, start, end time.Time) ([]models.PingRecord, error) {
 	return metricstore.GetPingRecords(context.Background(), uuid, taskId, start, end)
 }
+
+// GetPingRecordsBatch 一次查询取回多个节点的 ping 记录（见 metricstore 里的说明）。
+func GetPingRecordsBatch(uuids []string, taskId int, start, end time.Time) (map[string][]models.PingRecord, error) {
+	return metricstore.GetPingRecordsBatch(context.Background(), uuids, taskId, start, end)
+}

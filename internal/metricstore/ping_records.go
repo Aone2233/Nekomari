@@ -108,29 +108,96 @@ func GetPingRecords(ctx context.Context, clientUUID string, taskID int, start, e
 		return nil, err
 	}
 
+	return pingRecordsFromPoints(points), nil
+}
+
+// GetPingRecordsBatch 用一次 rollup 查询取回多个节点的 ping 记录。
+//
+// 为什么需要它：节点实时状态里的 ping 统计是按节点调 GetPingRecords 的，每次都是一遍
+// Series 扫描（覆盖该节点的全部任务）。节点多起来之后，1 分钟缓存同时过期时这些扫描会
+// 一起爆发。这里把所有节点放进同一个 SeriesBatch —— 指标、聚合、间隔与标签过滤都与单
+// 节点版本逐字一致（这些参数与实体无关），所以每个节点的输出不变，只是每个 tier 只扫
+// 一遍。返回的 map 里没有键表示该节点没有数据。
+func GetPingRecordsBatch(ctx context.Context, clientUUIDs []string, taskID int, start, end time.Time) (map[string][]models.PingRecord, error) {
+	s := GetStore()
+	if s == nil {
+		return nil, fmt.Errorf("metric store not enabled")
+	}
+	if len(clientUUIDs) == 0 {
+		return map[string][]models.PingRecord{}, nil
+	}
+
+	now := time.Now().UTC()
+	interval := pingQueryInterval(end.Sub(start), 4000)
+	interval = s.CompatibleSeriesInterval(start, now, interval)
+
+	query := metric.BatchSeriesQuery{
+		Specs: []metric.BatchSeriesSpec{{
+			MetricName:     MetricPingLatency,
+			Aggregations:   []metric.Aggregation{metric.AggLast},
+			Interval:       interval,
+			PreserveSeries: true,
+		}},
+		EntityIDs: clientUUIDs,
+		Start:     start,
+		End:       end,
+		Order:     metric.OrderAsc,
+	}
+	if taskID >= 0 {
+		query.Tags = map[string]string{"task_id": fmt.Sprintf("%d", taskID)}
+	}
+
+	loaded, err := s.SeriesBatch(ctx, query, now)
+	if err != nil {
+		return nil, err
+	}
+
+	byClient := make(map[string][]models.PingRecord, len(clientUUIDs))
+	for _, point := range loaded.Values[MetricPingLatency][metric.AggLast] {
+		if point.EntityID == "" {
+			continue
+		}
+		byClient[point.EntityID] = append(byClient[point.EntityID], pingRecordFromPoint(point))
+	}
+	for uuid, records := range byClient {
+		sortPingRecordsNewestFirst(records)
+		byClient[uuid] = records
+	}
+	return byClient, nil
+}
+
+func pingRecordsFromPoints(points []metric.AggregatePoint) []models.PingRecord {
 	records := make([]models.PingRecord, 0, len(points))
 	for _, p := range points {
-		taskIDVal := uint(0)
-		if tid, ok := p.Tags["task_id"]; ok {
-			var t uint64
-			fmt.Sscanf(tid, "%d", &t)
-			taskIDVal = uint(t)
-		}
-
-		records = append(records, models.PingRecord{
-			Client:   p.EntityID,
-			TaskId:   taskIDVal,
-			PingType: p.Tags["protocol"], // dual 任务靠它区分 icmp/tcp 两条序列
-			Role:     p.Tags["role"],     // 路径归因靠它区分主目标/参考点
-			Time:     p.Bucket.UTC(),
-			Value:    int(p.Value),
-		})
+		records = append(records, pingRecordFromPoint(p))
 	}
+	sortPingRecordsNewestFirst(records)
+	return records
+}
+
+// pingRecordFromPoint 把一条 rollup 桶映射成 PingRecord。
+// 单节点与批量两条路径共用它，避免两边的标签映射分叉。
+func pingRecordFromPoint(p metric.AggregatePoint) models.PingRecord {
+	taskIDVal := uint(0)
+	if tid, ok := p.Tags["task_id"]; ok {
+		var t uint64
+		fmt.Sscanf(tid, "%d", &t)
+		taskIDVal = uint(t)
+	}
+	return models.PingRecord{
+		Client:   p.EntityID,
+		TaskId:   taskIDVal,
+		PingType: p.Tags["protocol"], // dual 任务靠它区分 icmp/tcp 两条序列
+		Role:     p.Tags["role"],     // 路径归因靠它区分主目标/参考点
+		Time:     p.Bucket.UTC(),
+		Value:    int(p.Value),
+	}
+}
+
+func sortPingRecordsNewestFirst(records []models.PingRecord) {
 	sort.Slice(records, func(i, j int) bool {
 		return records[i].Time.After(records[j].Time)
 	})
-
-	return records, nil
 }
 
 func pingQueryInterval(rangeDuration time.Duration, maxPoints int) time.Duration {

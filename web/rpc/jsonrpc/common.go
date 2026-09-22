@@ -25,6 +25,34 @@ import (
 // pingstats:<uuid>
 var pingStatsCache = cache.New(1*time.Minute, 2*time.Minute)
 
+// pingtasks:all 缓存整张 ping_tasks 表。
+//
+// 为什么不能用 internal/dbcache：它只监听 configs/clients/sessions/users，
+// ping_tasks 的增删改不会改变任何 revision。而 include_ping 默认开启，每个
+// common:getNodesLatestStatus 轮询都会整表读取一次。这里按 pingStatsCache 的
+// 做法用短 TTL：任务配置只在管理端变更，30 秒的陈旧窗口对「最近 1 小时统计」
+// 没有可见影响。
+var pingTasksCache = cache.New(30*time.Second, 1*time.Minute)
+
+const pingTasksCacheKey = "pingtasks:all"
+
+// getAllPingTasksCached 返回缓存的全部延迟监测任务。
+//
+// 读失败不写缓存：下一次轮询要能立刻重试，而不是把一个空结果缓存 30 秒。
+func getAllPingTasksCached() ([]models.PingTask, error) {
+	if v, ok := pingTasksCache.Get(pingTasksCacheKey); ok {
+		if pingTasks, ok2 := v.([]models.PingTask); ok2 {
+			return pingTasks, nil
+		}
+	}
+	pingTasks, err := tasks.GetAllPingTasks()
+	if err != nil {
+		return nil, err
+	}
+	pingTasksCache.Set(pingTasksCacheKey, pingTasks, cache.DefaultExpiration)
+	return pingTasks, nil
+}
+
 type pingStat struct {
 	Name   string  `json:"name"`
 	Latest int     `json:"latest"`
@@ -35,8 +63,11 @@ type pingStat struct {
 	Max    int     `json:"max"`
 }
 
-// getPingStatsForNode 计算并缓存节点最近 1 小时 ping 统计
-func getPingStatsForNode(uuid string, pingTasks []models.PingTask) map[string]pingStat {
+// getPingStatsForNode 计算并缓存节点最近 1 小时 ping 统计。
+//
+// prefetched 是批量查询的结果（见 getAllPingStats）：命中时不再单独查库，nil 表示
+// 自己查一次，保持单节点调用方的行为。
+func getPingStatsForNode(uuid string, pingTasks []models.PingTask, prefetched map[string][]models.PingRecord) map[string]pingStat {
 	if uuid == "" {
 		return map[string]pingStat{}
 	}
@@ -60,8 +91,17 @@ func getPingStatsForNode(uuid string, pingTasks []models.PingTask) map[string]pi
 	}
 	end := time.Now().UTC()
 	start := end.Add(-1 * time.Hour)
-	recs, err := tasks.GetPingRecords(uuid, -1, start, end)
-	if err != nil || len(recs) == 0 {
+	var recs []models.PingRecord
+	if prefetched != nil {
+		recs = prefetched[uuid]
+	} else {
+		var err error
+		recs, err = tasks.GetPingRecords(uuid, -1, start, end)
+		if err != nil {
+			recs = nil
+		}
+	}
+	if len(recs) == 0 {
 		empty := map[string]pingStat{}
 		pingStatsCache.Set(key, empty, cache.DefaultExpiration)
 		return empty
@@ -356,11 +396,26 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 
 	respMap := make(map[string]recordLike, len(latest))
 
-	// 预取所有 ping 任务
+	// 预取所有 ping 任务（走缓存：默认 include_ping 时每个轮询都会读一次整表）
 	includePing := params.IncludePing == nil || *params.IncludePing
 	var pingTasks []models.PingTask
+	var prefetchedPing map[string][]models.PingRecord
 	if includePing {
-		pingTasks, _ = tasks.GetAllPingTasks()
+		pingTasks, _ = getAllPingTasksCached()
+		// 只给缓存里没有的节点预取：全部命中时不必查库，全部过期时也只查一次
+		// （逐节点查询会在 1 分钟缓存同时过期时一起爆发）。
+		missing := make([]string, 0, len(latest))
+		for uuid := range latest {
+			if _, ok := pingStatsCache.Get(fmt.Sprintf("pingstats:%s", uuid)); !ok {
+				missing = append(missing, uuid)
+			}
+		}
+		if len(missing) > 0 {
+			end := time.Now().UTC()
+			if batch, err := tasks.GetPingRecordsBatch(missing, -1, end.Add(-1*time.Hour), end); err == nil {
+				prefetchedPing = batch
+			}
+		}
 	}
 
 	appendOne := func(uuid string, rep *v2.Report) {
@@ -369,7 +424,7 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		}
 		var stats map[string]pingStat
 		if includePing {
-			stats = getPingStatsForNode(uuid, pingTasks)
+			stats = getPingStatsForNode(uuid, pingTasks, prefetchedPing)
 		}
 		rl := recordLike{
 			Client:         uuid,
