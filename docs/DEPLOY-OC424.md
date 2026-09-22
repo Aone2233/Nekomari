@@ -45,6 +45,10 @@ staged compiler-security refresh; this rollout changed only the panel.
 - Both SQLite `quick_check` results were `ok`; 9 clients, 1 user and 9 ping tasks
   were retained. Port remains loopback-only, data remains `/opt/nekomari/data`,
   nginx configuration passes, and container restart count is zero.
+- Repeated database samples confirmed all nine latest metric buckets advanced
+  past the restart; the follow-up sample had a maximum age of 73 seconds.
+  No ERRO/FATAL lines were observed. Anonymous recent-history requests returned
+  401, so verification did not relax access controls.
 - Initial public homepage TTFB was 0.087 seconds from OC424; this is a single
   observation, not a performance benchmark.
 
