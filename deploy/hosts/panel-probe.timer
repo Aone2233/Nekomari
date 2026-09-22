@@ -1,0 +1,13 @@
+[Unit]
+Description=Probe the Nekomari panel's latency every 10 minutes
+Documentation=https://github.com/Aone2233/Nekomari
+
+[Timer]
+# Ten minutes is frequent enough to catch an edge-path stall in progress, and cheap:
+# five small requests per run.
+OnBootSec=2min
+OnUnitActiveSec=10min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

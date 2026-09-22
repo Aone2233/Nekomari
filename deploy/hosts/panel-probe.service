@@ -1,0 +1,16 @@
+[Unit]
+Description=Probe the Nekomari panel's origin and edge latency
+Documentation=https://github.com/Aone2233/Nekomari
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Writes one line per run to /var/log/nekomari-panel-probe.log and exits non-zero when
+# a threshold is exceeded, so `systemctl status` shows the failure.
+ExecStart=/usr/local/bin/panel-probe.sh --quiet
+# The probe is read-only and talks to localhost plus the public URL; it needs no writes
+# outside its log file.
+ProtectSystem=full
+PrivateTmp=yes
+NoNewPrivileges=yes
