@@ -24,8 +24,9 @@ nginx is the only thing that talks to the panel port.
 ## Current rollout: 2026-09-22 (v0.1.19)
 
 Panel upgraded from v0.1.16 to v0.1.19 at approximately 09:53 UTC. Runtime API
-reports hash `31b3ee5`. The nine agents remain on v0.1.16 and need a separate
-staged compiler-security refresh; this rollout changed only the panel.
+reports hash `31b3ee5`. This rollout changed only the panel; the nine agents were
+refreshed to the same tag separately — see
+[the fleet agent refresh](#fleet-agent-refresh-2026-09-22-v0119-toolchain) below.
 
 - Exact release commit: `31b3ee512a469bade95de667486f133a029c38a7`.
 - Exact-commit CI: `35711635197`, both Linux and Windows passed.
@@ -63,6 +64,89 @@ For rollback, restore the backed-up Compose file and start the retained v0.1.16
 image. If data rollback is necessary, stop the container, preserve the current
 data separately, and restore the consistent archive before restarting. Never
 extract a rollback archive over a running database.
+
+## Fleet agent refresh: 2026-09-22 (v0.1.19 toolchain)
+
+The nine agents were still on v0.1.16 after the panel moved to v0.1.19. The agent
+**source** did not change between those tags — the reason to move is the compiler:
+v0.1.16 was built with Go 1.26.0, whose standard library carried 34 govulncheck
+findings, while v0.1.19 pins Go 1.27.1 and ships symbol tables so the distributed
+executable itself stays scannable. This is a compiler refresh, not a feature
+change; no agent behaviour differs.
+
+Method: the release assets were downloaded and verified against the published
+`SHA256SUMS.txt` locally (`a6930033…` amd64, `d79f378a…` arm64), then copied to
+each node and installed with `deploy/install-staged-agent.sh` — the staged path
+exists because PZYC cannot reach the release assets, and one download per node is
+one failure mode per node. Per node the old binary is kept as
+`<bin>.bak-pre-v0.1.19`, owner, group and mode are preserved, `cap_net_raw` is
+restored where it existed, and the unit is restarted and checked `active`.
+
+| Node | Binary | Unit | Before | After |
+|---|---|---|---|---|
+| 甲骨文 OC424 | `/home/ubuntu/nekomari-agent/komari-agent-linux-arm64` | `komari-agent-oc424-original-node.service` | `a30b5445…` | `d79f378a…` |
+| 华纳云 HN-JP1 | `/opt/nekomari-agent/komari-agent-linux-amd64` | `nekomari-agent.service` | `394d9ad0…` | `a6930033…` |
+| HK04 | same | same | `394d9ad0…` | `a6930033…` |
+| AkkoCloud SJ | same | same | `394d9ad0…` | `a6930033…` |
+| BandwagonHost MegaBox | same | same | `394d9ad0…` | `a6930033…` |
+| 并行智算云 PYZC | same | same | `394d9ad0…` | `a6930033…` |
+| MAC Server | `/home/macos/nekomari-agent/komari-agent-linux-amd64` | user `nekomari-agent.service` | `394d9ad0…` | `a6930033…` |
+| NOSLA 东京-26秋-M | `/opt/komari/agent` | `komari-agent.service` | `394d9ad0…` | `a6930033…` |
+| CloudLeadInno | `/opt/nekomari-agent/komari-agent-linux-amd64` | `nekomari-agent.service` | `394d9ad0…` | `a6930033…` |
+
+Two nodes needed the paths the earlier rollouts established:
+
+- **MAC Server** runs a *user* unit with no passwordless sudo, so
+  `install-staged-agent.sh` (which resolves a system unit and calls `setcap`
+  directly) does not apply. The binary was installed as `macos:macos` and the
+  unit restarted with `XDG_RUNTIME_DIR=/run/user/1000 systemctl --user`; the
+  install dropped `cap_net_raw=ep` as it always does, and it was restored with the
+  host's own `setcap` through a privileged container
+  (`docker run --rm --privileged -v /:/host alpine chroot /host setcap
+  cap_net_raw+ep <bin>`), verified with `getcap` before and after.
+- **CloudLeadInno** still refuses both keys held on this workstation. The working
+  path is the `CLISP` entry in MAC-WAN's `~/.ssh/config`: MAC-WAN holds the key
+  that authenticates as `root@192.220.32.17`, so the staged binary and installer
+  were copied to MAC-WAN and from there to the node. This is simpler than the
+  panel remote-exec route in `deploy/panel-agent-upgrade.py`, which needs an
+  authenticated admin session plus 2FA and only works because the node runs the
+  agent with web-ssh enabled.
+
+Verified after the rollout: `select name, version from clients` on the panel's
+`data/komari.db` reports `v0.1.19` for all nine, each with a fresh `updated_at`,
+and the container logged zero ERRO/FATAL lines across the window. Rollback per
+node is `install -m 755 <bin>.bak-pre-v0.1.19 <bin>` plus a unit restart, with the
+capability dance again on MAC.
+
+## Health probe: the fix is deployed (2026-09-22)
+
+`deploy/panel-probe.sh` on OC424 was replaced with the corrected version
+(`/usr/local/bin/panel-probe.sh`, previous file kept as
+`panel-probe.sh.bak-pre-v0.1.20`). The old script recorded `time_starttransfer`
+without checking curl's exit status or the HTTP status, so a fast HTTP 500 — or a
+connection refused, which returns `0.000000` — was logged as a healthy sample and
+exited 0.
+
+The replacement requires curl success, HTTP 200 and a valid success envelope
+before a sample can count as healthy, and separates the failure reasons
+(`refused` / `timeout` / `status-NNN` / `no-timing` / `envelope`) in both the log
+line and the alert. The healthy log line is byte-identical to the old format, so
+existing log parsing is unaffected; failures append `origin_fail=` /
+`public_fail=`.
+
+Verified on the host, not just locally:
+
+- `deploy/panel-probe.test.sh` — 88 assertions, 0 failures on OC424's Ubuntu
+  22.04 and Python 3.10, including the real closed-port refusal path that cannot
+  be reproduced on Windows (a closed loopback port there is dropped rather than
+  refused).
+- A healthy run logs
+  `origin=0.002s public_max=1.307s pop=MXP cache=DYNAMIC samples=5/5` and exits 0.
+- A run with `PANEL_ORIGIN` pointed at a closed port exits **1** and logs
+  `origin=0.000s … origin_fail=refused`, with the alert attributing it to the
+  panel rather than the edge. The old script logged the same run as healthy.
+- `systemctl start panel-probe.service` (exactly what the 10-minute timer runs)
+  reports `ExecMainStatus=0` on a healthy panel, and the timer remains scheduled.
 
 ## Data restoration
 

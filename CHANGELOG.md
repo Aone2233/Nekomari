@@ -6,6 +6,67 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [Unreleased]
+
+Follow-up hardening from [the v0.1.19 review](./docs/NEXT-REVIEW-v0.1.19.md), plus the
+fleet agent compiler refresh. Not tagged or released yet.
+
+### Fixed
+
+- **The panel health probe could not detect failure.** `deploy/panel-probe.sh` recorded
+  `time_starttransfer` without checking curl's exit status or the HTTP status, so a fast
+  HTTP 500 — or a connection refused, which reports `0.000000` — was logged as a healthy
+  sample and exited 0. A sample now counts as healthy only when curl succeeded, the status
+  is 200 and the body is a valid success envelope; failures name their reason
+  (`refused` / `timeout` / `status-NNN` / `no-timing` / `envelope`) in the log line and the
+  alert, and exit nonzero regardless of elapsed time. The healthy log line is byte-identical
+  to the old format. Deployed to OC424: 88 offline assertions pass on that host, and a
+  refused-origin run now exits 1 where the old script reported health.
+- **An abandoned upload reservation directory could take uploads down for a day.** `Init`
+  creates the session directory and then writes `upload.json`; a process killed between the
+  two left a canonical directory with no metadata, and `scan()` then failed on the missing
+  file, refusing *every* later admission until that directory's mtime passed the 24-hour
+  TTL. Startup reconciliation now reclaims a metadata-less session directory once it is
+  empty, and never deletes one that still holds unrecognised content.
+- **An abandoned backup staging file was never reclaimed.** `SaveUploadedBackup` removes
+  its temporary file on every error path, but a process killed mid-upload left
+  `./data/.backup-upload-*.zip` (up to `MaxArchiveSize` each) behind, and nothing collected
+  it: the startup restore only clears `./data` when a `backup.zip` is actually waiting.
+  Bootstrap now reclaims those files by exact name while holding the restore lock, and
+  leaves every other file alone.
+- **Upload retry classification treated 507 as transient.** The client retried
+  `Insufficient Storage` like any other 5xx. The store's only transient refusal is 429
+  (another write holds the lock, with `Retry-After`), so a disk-full refusal now fails on
+  the first response instead of burning the retry budget.
+
+### Added
+
+- **A real disk budget for archive uploads.** Admission reserved the declared payload while
+  the flow holds several payload-sized copies of it. It now also requires room for the merge
+  scratch, the staged copy and bounded extraction expansion on top of a reserve floor —
+  queried per platform (`unix.Statfs` `Bavail` on unix, `GetDiskFreeSpaceExW` on Windows) and
+  injectable for tests. A platform with no query refuses visibly instead of assuming
+  infinite space, and the refusal is HTTP 507 carrying the measured numbers.
+- **Upload cleanup observability.** `RunCleanup` no longer discards its errors: failures and
+  recovery are logged once per burst (with folded repeat counts) through the shared logger,
+  and `Store.Stats()` exposes session count, reserved bytes, oldest session age, last
+  success, last error and reclaimed totals without doing I/O.
+- **Per-IP admission on OAuth start**, alongside the existing global pending-state cap, so
+  one caller cannot fill every slot; refusals use the login limiter's 429 + `Retry-After`
+  convention.
+- **OAuth integration coverage** for the paths production cannot exercise: QQ callback-query
+  preservation, a provider changed mid-login, and back-button replay.
+- [docs/OAUTH-INTEGRATION.md](./docs/OAUTH-INTEGRATION.md) — the numeric provider-ID
+  migration and rebind policy, including the evidence that two ids above 2^53 currently
+  collapse onto one stored binding.
+
+### Changed
+
+- The nine production agents were refreshed to the v0.1.19 binaries (Go 1.27.1, symbol
+  tables retained) — a compiler refresh, not a behaviour change; the agent source is
+  identical between v0.1.16 and v0.1.19. See
+  [the rollout record](./docs/DEPLOY-OC424.md#fleet-agent-refresh-2026-09-22-v0119-toolchain).
+
 ## [v0.1.19] — 2026-09-22
 
 - Retain executable symbol tables while omitting DWARF debug data. Removing
