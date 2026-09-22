@@ -90,10 +90,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          # The agent module requires a newer Go than the root (1.26.0 vs 1.25.0).
-          # Reading the root go.mod installed too old a toolchain and the agent
-          # build failed. This job builds both, so take the higher requirement.
-          go-version-file: agent/go.mod
+          # Module minimums do not select a security-patched release compiler.
+          go-version: '1.27.1'
           cache: true
           cache-dependency-path: |
             go.sum
@@ -191,6 +189,13 @@ jobs:
         run: |
           cp -f agent/komari-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} .
 
+      - name: Scan release binaries
+        shell: bash
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          govulncheck -mode=binary nekomari-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+          govulncheck -mode=binary komari-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -225,7 +230,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: agent/go.mod
+          go-version: '1.27.1'
           cache: true
           cache-dependency-path: agent/go.sum
 
@@ -255,6 +260,12 @@ jobs:
       - name: Stage release asset
         shell: bash
         run: cp -f agent/komari-agent-darwin-${{ matrix.goarch }} .
+
+      - name: Scan release binary
+        shell: bash
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          govulncheck -mode=binary komari-agent-darwin-${{ matrix.goarch }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

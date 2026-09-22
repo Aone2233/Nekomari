@@ -32,8 +32,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          # Root and agent modules both require Go 1.26 or newer.
-          go-version-file: agent/go.mod
+          # Pin the patched release compiler, independently of module minimums.
+          go-version: '1.27.1'
           cache: true
           # Both modules are built from this one job.
           cache-dependency-path: |

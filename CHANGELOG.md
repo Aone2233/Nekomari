@@ -6,6 +6,15 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.18] — 2026-09-22
+
+- Build every server and agent release with Go 1.27.1, matching CI. The previous
+  workflow selected Go 1.26.0 from the module minimum; scanning the v0.1.17 Linux
+  server artifact found vulnerable standard-library symbols despite clean local
+  checks with a patched compiler. Deploy v0.1.18 instead of v0.1.17.
+- Require a pinned govulncheck binary scan for all eight release executables
+  before they can be uploaded and published.
+
 ## [v0.1.17] — 2026-09-22
 
 - Bound archive uploads to 16 sessions and 8 GiB of reserved payload, with
