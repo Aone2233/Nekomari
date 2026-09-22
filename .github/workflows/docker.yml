@@ -54,8 +54,13 @@ concurrency:
 
 jobs:
   build-and-push:
-    # workflow_run 时不关心成功与否就白跑，先判断结论。
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # 只在 release 工作流被【取消】时跳过。
+    #
+    # 此前这里是 conclusion == 'success'，而 release 的结论包含末尾那个 verify job
+    # （sleep 20 + 完整部署检查）。verify 一抖，Release 已经发布、镜像却不构建，线上
+    # 就出现「有 Release、没镜像、只有一个 skipped job」。镜像真正依赖的是【Release
+    # 已存在】，所以那个判断移到下面的 gh release view，并给出能直接看懂的错误。
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion != 'cancelled'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -99,6 +104,20 @@ jobs:
           IMAGE=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}" | tr '[:upper:]' '[:lower:]')
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
           echo "Building ${{ matrix.name }} image for $TAG as $IMAGE"
+
+      # 镜像的前提是 Release 存在，而不是「release 工作流整体成功」——后者包含
+      # verify，它失败不该阻止打包已经发布出去的产物。
+      - name: Check the Release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag='${{ steps.tag.outputs.tag }}'
+          if ! gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::error::release $tag does not exist, so there is nothing to package. If the release workflow failed before creating it, fix that first."
+            exit 1
+          fi
+          echo "release $tag exists"
 
       - name: Checkout
         uses: actions/checkout@v7
