@@ -1,11 +1,7 @@
 import React from "react";
 import defaultTheme from "../../komari-theme.json";
-//import { useRPC2Call } from "./RPC2Context";
+import { PublicInfoContext, type ThemeField, type PublicInfo, type Response } from "./PublicInfoContext";
 
-type ThemeField = {
-  key?: string;
-  default?: unknown;
-};
 
 const defaultThemeSettings = Object.fromEntries(
   (
@@ -32,40 +28,6 @@ const withThemeDefaults = (publicInfo: PublicInfo): PublicInfo => {
     },
   };
 };
-
-export interface PublicInfo {
-  cors_origin_check_enabled: boolean;
-  custom_body: string;
-  custom_head: string;
-  description: string;
-  disable_password_login: boolean;
-  oauth_provider: string;
-  oauth_enable: boolean;
-  metric_retention_days: number;
-  sitename: string;
-  private_site: boolean;
-  theme: string;
-  theme_settings: any;
-  [property: string]: any;
-}
-
-interface Response {
-  data: PublicInfo;
-  message: string;
-  status: string;
-  [property: string]: any;
-}
-
-interface PublicInfoContextType {
-  publicInfo: PublicInfo | null;
-  isLoading: boolean;
-  error: string | null;
-  refresh: () => Promise<void>;
-}
-
-const PublicInfoContext = React.createContext<PublicInfoContextType | undefined>(
-  undefined
-);
 
 export const PublicInfoProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -105,12 +67,4 @@ export const PublicInfoProvider: React.FC<{ children: React.ReactNode }> = ({
       {children}
     </PublicInfoContext.Provider>
   );
-};
-
-export const usePublicInfo = () => {
-  const context = React.useContext(PublicInfoContext);
-  if (!context) {
-    throw new Error("usePublicInfo must be used within a PublicInfoProvider");
-  }
-  return context;
 };

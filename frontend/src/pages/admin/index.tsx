@@ -4,11 +4,8 @@ import {
   quoteShellArgs,
 } from "@/utils/shellQuote";
 import React, { useEffect, useState } from "react";
-import {
-  NodeDetailsProvider,
-  useNodeDetails,
-  type NodeDetail,
-} from "@/contexts/NodeDetailsContext";
+import { useNodeDetails, type NodeDetail } from "@/contexts/NodeDetailsContext";
+import { NodeDetailsProvider } from "@/contexts/NodeDetailsProvider";
 import {
   Flex,
   TextField,

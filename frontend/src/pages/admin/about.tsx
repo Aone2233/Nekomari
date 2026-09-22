@@ -85,7 +85,6 @@ export default function AboutPage() {
       "@xterm/addon-search",
       "@xterm/addon-web-links",
       "@eslint/js",
-      "@types/lodash",
       "@types/react",
       "@types/react-dom",
       "@vitejs/plugin-react",

@@ -8,15 +8,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  LoadAlertProvider,
-  useLoadAlert,
-  type LoadAlert,
-} from "@/contexts/LoadAlertContext";
-import {
-  NodeDetailsProvider,
-  useNodeDetails,
-} from "@/contexts/NodeDetailsContext";
+import { useLoadAlert, type LoadAlert } from "@/contexts/LoadAlertContext";
+import { LoadAlertProvider } from "@/contexts/LoadAlertProvider";
+import { useNodeDetails } from "@/contexts/NodeDetailsContext";
+import { NodeDetailsProvider } from "@/contexts/NodeDetailsProvider";
 import { usePingTask } from "@/contexts/PingTaskContext";
 
 import {

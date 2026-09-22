@@ -7,7 +7,8 @@
     "test": "node --test script/*.test.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
+    "audit:compiler": "node script/audit-compiler.mjs",
     "preview": "vite preview",
     "i18n:sync": "node ./script/i18n-sync.mjs",
     "i18n:sync:dry": "node ./script/i18n-sync.mjs --dry-run"
@@ -40,7 +41,6 @@
     "http-proxy-middleware": "^3.0.5",
     "i18next": "^25.1.2",
     "i18next-browser-languagedetector": "^8.1.0",
-    "lodash": "^4.17.21",
     "lucide-react": "^0.511.0",
     "monaco-editor": "^0.56.0",
     "motion": "^12.10.5",
@@ -62,7 +62,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/lodash": "^4.17.17",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.4.1",

@@ -12,7 +12,7 @@ import type {
   TouchEvent as ReactTouchEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
-import throttle from "lodash/throttle";
+import { frameThrottle } from "@/lib/frameThrottle";
 import {
   defaultXtermjsSettings,
   useXtermjsSettings,
@@ -348,7 +348,7 @@ export const useTerminalPage = () => {
   }, []);
 
   useEffect(() => {
-    const throttledDrag = throttle(handleDrag, 16);
+    const throttledDrag = frameThrottle(handleDrag);
     const onMouseMove = (event: MouseEvent) => {
       if (draggingRef.current) {
         throttledDrag(event.clientX);
@@ -360,15 +360,21 @@ export const useTerminalPage = () => {
       }
     };
 
+    const endDrag = () => {
+      throttledDrag.flush();
+      stopDragging();
+    };
     document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", stopDragging);
+    document.addEventListener("mouseup", endDrag);
     document.addEventListener("touchmove", onTouchMove);
-    document.addEventListener("touchend", stopDragging);
+    document.addEventListener("touchend", endDrag);
+    document.addEventListener("touchcancel", endDrag);
     return () => {
       document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", stopDragging);
+      document.removeEventListener("mouseup", endDrag);
       document.removeEventListener("touchmove", onTouchMove);
-      document.removeEventListener("touchend", stopDragging);
+      document.removeEventListener("touchend", endDrag);
+      document.removeEventListener("touchcancel", endDrag);
       throttledDrag.cancel();
     };
   }, [handleDrag, stopDragging]);
