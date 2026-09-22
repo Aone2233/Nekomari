@@ -480,6 +480,8 @@ const DashboardContent = () => {
     try {
       const result = await call<unknown, Record<string, any>>(
         "common:getNodesLatestStatus",
+        // Ping statistics come from public:getPingMetricStats; only `online` is read here.
+        { include_ping: false },
       );
       setLatest(result ?? null);
     } catch (e) {

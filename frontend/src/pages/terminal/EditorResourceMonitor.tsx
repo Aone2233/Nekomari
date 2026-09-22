@@ -5,6 +5,7 @@ import { useNodeList } from "@/contexts/NodeListContext";
 import { useRPC2Call } from "@/contexts/RPC2Context";
 import { getOSImage } from "@/utils/osImageHelper";
 import { formatBytes } from "@/utils/unitHelper";
+import { isNodeNotFoundError } from "./latestStatusError";
 
 interface RawLatestStatus {
   online?: boolean;
@@ -93,24 +94,40 @@ const EditorResourceMonitor = ({ uuid }: EditorResourceMonitorProps) => {
       const sequence = ++requestSequence;
 
       try {
+        // Ask for this node only: the server answers from the single-node fast
+        // path instead of assembling a fleet-wide map, and the ping rollups this
+        // component never reads are skipped.
         const result = await call<
-          Record<string, never>,
-          Record<string, RawLatestStatus>
-        >("common:getNodesLatestStatus");
+          { uuid: string; include_ping: boolean },
+          RawLatestStatus | null
+        >("common:getNodesLatestStatus", { uuid, include_ping: false });
         if (stopped || sequence !== requestSequence) return;
 
-        const record = result?.[uuid];
         setSample({
-          online: record?.online === true,
-          cpuUsage: normalizePercent(record?.cpu ?? 0),
-          ramUsed: record?.ram ?? 0,
-          diskUsed: record?.disk ?? 0,
-          networkDown: record?.net_in ?? 0,
-          networkUp: record?.net_out ?? 0,
+          online: result?.online === true,
+          cpuUsage: normalizePercent(result?.cpu ?? 0),
+          ramUsed: result?.ram ?? 0,
+          diskUsed: result?.disk ?? 0,
+          networkDown: result?.net_in ?? 0,
+          networkUp: result?.net_out ?? 0,
         });
         setLoadError(false);
-      } catch {
-        if (!stopped && sequence === requestSequence) setLoadError(true);
+      } catch (error) {
+        if (stopped || sequence !== requestSequence) return;
+        if (isNodeNotFoundError(error)) {
+          // The node has no report yet; render it as offline, not as a failure.
+          setSample({
+            online: false,
+            cpuUsage: 0,
+            ramUsed: 0,
+            diskUsed: 0,
+            networkDown: 0,
+            networkUp: 0,
+          });
+          setLoadError(false);
+          return;
+        }
+        setLoadError(true);
       } finally {
         running = false;
       }

@@ -28,6 +28,7 @@ import { usePublicInfo } from "@/contexts/PublicInfoContext";
 import Tips from "../ui/tips";
 import { CircleFadingArrowUp } from "lucide-react";
 import { useRPC2Call } from "@/contexts/RPC2Context";
+import { invalidateSettingsCache } from "@/lib/api";
 import { resolveI18nText } from "@/utils/i18nText";
 import type { PluginInfo } from "@/types/plugin";
 import {
@@ -389,6 +390,8 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
   };
 
   function logout() {
+    // Session boundary: do not let a later render reuse this session's settings.
+    void invalidateSettingsCache();
     window.open("/api/logout", "_self");
   }
   return (

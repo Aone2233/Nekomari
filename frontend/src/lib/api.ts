@@ -151,6 +151,11 @@ export async function updateSettings(
   const restart = settingsRestartFrom(responseData);
   if (restart) {
     waitForMigrationGuide(restart.guidePath);
+  } else {
+    // Keep the shared settings cache coherent, so a save made through this helper
+    // (or through updateSettingsWithToast) is visible to every useSettings()
+    // consumer without a reload.
+    publishSettingsPatch(settings);
   }
   return restart;
 }
@@ -185,95 +190,222 @@ export async function updateSingleSetting<K extends keyof SettingsResponse>(
   return updateSettings(updatedSettings);
 }
 
+const DEFAULT_SETTINGS: SettingsResponse = {
+  sitename: "",
+  description: "",
+  cors_origin_check_enabled: true,
+  geo_ip_enabled: false,
+  geo_ip_provider: "",
+  o_auth_provider: "",
+  o_auth_enabled: false,
+  ssrf_protection_enabled: false,
+  custom_head: "",
+  CreatedAt: "",
+  UpdatedAt: "",
+};
+
+type SettingsStoreState = {
+  settings: SettingsResponse;
+  // "idle" means nothing has been loaded yet, so consumers still report loading.
+  status: "idle" | "loading" | "ready" | "error";
+  error: string | null;
+};
+
+// One module-level store for every useSettings() consumer: consumers mounting
+// together share a single in-flight request, and a consumer mounting after the
+// first load reuses the cached value instead of refetching.
+// See docs/OPTIMIZATION-REVIEW-2026-09-22.md (C7b).
+let settingsStoreState: SettingsStoreState = {
+  settings: DEFAULT_SETTINGS,
+  status: "idle",
+  error: null,
+};
+
+let settingsRequest: Promise<SettingsResponse> | null = null;
+const settingsSubscribers = new Set<() => void>();
+
+const getSettingsSnapshot = () => settingsStoreState;
+
+const subscribeToSettings = (onStoreChange: () => void) => {
+  settingsSubscribers.add(onStoreChange);
+  return () => {
+    settingsSubscribers.delete(onStoreChange);
+  };
+};
+
+const publishSettings = (next: SettingsStoreState) => {
+  settingsStoreState = next;
+  settingsSubscribers.forEach((onStoreChange) => onStoreChange());
+};
+
+const toSettingsErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : "Failed to fetch settings";
+
+const publishSettingsValue = (settings: SettingsResponse) => {
+  publishSettings({
+    settings,
+    // A store that has never loaded must keep reporting loading, otherwise
+    // consumers would render the defaults as if they were real settings.
+    status: settingsStoreState.status === "idle" ? "idle" : "ready",
+    error: null,
+  });
+};
+
+const publishSettingsPatch = (patch: Partial<SettingsResponse>) => {
+  publishSettingsValue({ ...settingsStoreState.settings, ...patch });
+};
+
+/**
+ * Fetch settings once for every consumer. Concurrent callers share the request
+ * already in flight, and the result stays cached for later mounts.
+ */
+const requestSettings = (): Promise<SettingsResponse> => {
+  if (settingsRequest) {
+    return settingsRequest;
+  }
+
+  publishSettings({ ...settingsStoreState, status: "loading", error: null });
+
+  settingsRequest = getSettings()
+    .then((data) => {
+      publishSettings({ settings: data, status: "ready", error: null });
+      return data;
+    })
+    .catch((error: unknown) => {
+      publishSettings({
+        ...settingsStoreState,
+        status: "error",
+        error: toSettingsErrorMessage(error),
+      });
+      throw error;
+    })
+    .finally(() => {
+      settingsRequest = null;
+    });
+
+  return settingsRequest;
+};
+
+const ensureSettingsLoaded = () => {
+  if (settingsStoreState.status === "ready" || settingsRequest) {
+    return;
+  }
+  void requestSettings().catch(() => {
+    // The failure is already published as `error`.
+  });
+};
+
+/**
+ * Drop the cached settings and reload them for every consumer. Call this at a
+ * session boundary (login/logout) so a later render cannot reuse the settings of
+ * the previous session.
+ */
+export function invalidateSettingsCache(): Promise<void> {
+  settingsStoreState = {
+    settings: DEFAULT_SETTINGS,
+    status: "idle",
+    error: null,
+  };
+  return requestSettings().then(
+    () => undefined,
+    () => undefined
+  );
+}
+
 /**
  * Hook for managing settings state and API calls
  */
 export function useSettings() {
-  const [settings, setSettings] = React.useState<SettingsResponse>({
-    sitename: "",
-    description: "",
-    cors_origin_check_enabled: true,
-    geo_ip_enabled: false,
-    geo_ip_provider: "",
-    o_auth_provider: "",
-    o_auth_enabled: false,
-    ssrf_protection_enabled: false,
-    custom_head: "",
-    CreatedAt: "",
-    UpdatedAt: "",
-  });
+  const store = React.useSyncExternalStore(
+    subscribeToSettings,
+    getSettingsSnapshot,
+    getSettingsSnapshot
+  );
 
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-
-  // Fetch settings on mount
+  // A mount only loads when nothing has been loaded yet; a cached value is reused.
   React.useEffect(() => {
-    const fetchSettings = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await getSettings();
-        setSettings(data);
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to fetch settings"
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchSettings();
+    ensureSettingsLoaded();
   }, []);
 
+  const setSettings = React.useCallback(
+    (value: React.SetStateAction<SettingsResponse>) => {
+      const nextSettings =
+        typeof value === "function"
+          ? (value as (previous: SettingsResponse) => SettingsResponse)(
+              settingsStoreState.settings
+            )
+          : value;
+      publishSettingsValue(nextSettings);
+    },
+    []
+  );
+
   // Update a single setting
-  const updateSetting = async <K extends keyof SettingsResponse>(
-    key: K,
-    value: SettingsResponse[K]
-  ) => {
-    try {
-      const restart = await updateSingleSetting(key, value, settings);
-      if (!restart) {
-        setSettings((prev) => ({ ...prev, [key]: value }));
+  const updateSetting = React.useCallback(
+    async <K extends keyof SettingsResponse>(
+      key: K,
+      value: SettingsResponse[K]
+    ) => {
+      try {
+        const restart = await updateSingleSetting(
+          key,
+          value,
+          settingsStoreState.settings
+        );
+        if (!restart) {
+          publishSettingsPatch({ [key]: value });
+        }
+        return restart;
+      } catch (err) {
+        publishSettings({
+          ...settingsStoreState,
+          status: "error",
+          error: toSettingsErrorMessage(err),
+        });
+        throw err;
       }
-      return restart;
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : `Failed to update ${String(key)}`
-      );
-      throw err;
-    }
-  };
+    },
+    []
+  );
 
   // Update multiple settings
-  const updateMultipleSettings = async (
-    newSettings: Partial<SettingsResponse>
-  ) => {
-    try {
-      const updatedSettings = { ...settings, ...newSettings };
-      const restart = await updateSettings(updatedSettings);
-      if (!restart) {
-        setSettings(updatedSettings);
+  const updateMultipleSettings = React.useCallback(
+    async (newSettings: Partial<SettingsResponse>) => {
+      try {
+        const updatedSettings = {
+          ...settingsStoreState.settings,
+          ...newSettings,
+        };
+        const restart = await updateSettings(updatedSettings);
+        if (!restart) {
+          publishSettingsValue(updatedSettings);
+        }
+        return restart;
+      } catch (err) {
+        publishSettings({
+          ...settingsStoreState,
+          status: "error",
+          error: toSettingsErrorMessage(err),
+        });
+        throw err;
       }
-      return restart;
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to update settings"
-      );
-      throw err;
-    }
-  };
+    },
+    []
+  );
+
+  // Refetch for every consumer, not just the caller. Errors still reach the caller.
+  const refetch = React.useCallback(async () => {
+    const data = await getSettings();
+    publishSettings({ settings: data, status: "ready", error: null });
+  }, []);
 
   return {
-    settings,
-    loading,
-    error,
+    settings: store.settings,
+    loading: store.status === "idle" || store.status === "loading",
+    error: store.error,
     setSettings,
     updateSetting,
     updateMultipleSettings,
-    refetch: async () => {
-      const data = await getSettings();
-      setSettings(data);
-    },
+    refetch,
   };
 }

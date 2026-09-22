@@ -49,6 +49,22 @@ function localKomariThemePlugin(): Plugin {
   };
 }
 
+// The code editor is opened on demand (React.lazy in pages/terminal), and Monaco
+// ships one lazily-loaded chunk per language definition. None of it belongs in the
+// service-worker precache: it is ~3.4 MB a first visit should not have to download.
+// See docs/OPTIMIZATION-REVIEW-2026-09-22.md (B2).
+const monacoDefinitionsDir = path.resolve(
+  __dirname,
+  "node_modules/monaco-editor/esm/vs/languages/definitions",
+);
+// One chunk per definition directory, named after the directory (e.g. chunk-abap-<hash>.js).
+const monacoLanguageChunkGlobs = fs.existsSync(monacoDefinitionsDir)
+  ? fs
+      .readdirSync(monacoDefinitionsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => `**/chunk-${entry.name}-*.js`)
+  : [];
+
 export default defineConfig(({ mode }) => {
   const buildTime = new Date().toISOString();
 
@@ -95,7 +111,16 @@ export default defineConfig(({ mode }) => {
           // HTML is rendered dynamically with theme, plugin, and site settings.
           // Cache only immutable assets so every navigation reaches the server.
           globPatterns: ["**/*.{js,css,ico,png,svg}"],
-          maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+          // Keep the on-demand code editor out of the precache. The app shell, the
+          // CSS and the icons are still precached; the editor chunks are fetched
+          // normally when a session actually opens a file.
+          globIgnores: [
+            "**/chunk-FileEditorDialog-*.js",
+            "**/FileEditorDialog-*.css",
+            "**/editor.worker-*.js",
+            ...monacoLanguageChunkGlobs,
+          ],
+          maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
           navigateFallback: null,
           runtimeCaching: [
             {

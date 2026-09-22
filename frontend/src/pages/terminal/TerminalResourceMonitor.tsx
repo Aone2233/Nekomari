@@ -6,6 +6,7 @@ import { useRPC2Call } from "@/contexts/RPC2Context";
 import { useNodeList } from "@/contexts/NodeListContext";
 import { getOSImage } from "@/utils/osImageHelper";
 import { formatBytes } from "@/utils/unitHelper";
+import { isNodeNotFoundError } from "./latestStatusError";
 
 interface RawLatestStatus {
   online?: boolean;
@@ -161,15 +162,32 @@ const TerminalResourceMonitor = ({
       const sequence = ++requestSequence;
 
       try {
+        // Ask only for the nodes this monitor shows, and skip the ping rollups it
+        // never reads. A single node uses the server's single-node fast path, which
+        // answers with that record directly instead of a uuid-keyed map.
+        const singleNode = selectedServers.length === 1;
         const result = await call<
-          Record<string, never>,
-          Record<string, RawLatestStatus>
-        >("common:getNodesLatestStatus");
+          { uuid?: string; uuids?: string[]; include_ping: boolean },
+          RawLatestStatus | Record<string, RawLatestStatus> | null
+        >(
+          "common:getNodesLatestStatus",
+          singleNode
+            ? { uuid: selectedServers[0], include_ping: false }
+            : { uuids: selectedServers, include_ping: false },
+        );
         if (stopped || sequence !== requestSequence) return;
+
+        const statusByUuid: Record<string, RawLatestStatus | undefined> =
+          singleNode
+            ? {
+                [selectedServers[0]]:
+                  (result as RawLatestStatus | null) ?? undefined,
+              }
+            : ((result as Record<string, RawLatestStatus> | null) ?? {});
 
         const next: Record<string, ResourceSample> = {};
         for (const uuid of selectedServers) {
-          const record = result?.[uuid];
+          const record = statusByUuid[uuid];
           next[uuid] = {
             online: record?.online === true,
             cpuUsage: normalizePercent(record?.cpu ?? 0),
@@ -190,10 +208,29 @@ const TerminalResourceMonitor = ({
           return changed ? next : previous;
         });
         setLoadError(false);
-      } catch {
-        if (!stopped && sequence === requestSequence) {
-          setLoadError(true);
+      } catch (error) {
+        if (stopped || sequence !== requestSequence) return;
+        if (isNodeNotFoundError(error)) {
+          // The node has no report yet; render it as offline, not as a failure.
+          setSamples(
+            Object.fromEntries(
+              selectedServers.map((uuid) => [
+                uuid,
+                {
+                  online: false,
+                  cpuUsage: 0,
+                  ramUsed: 0,
+                  diskUsed: 0,
+                  networkDown: 0,
+                  networkUp: 0,
+                },
+              ]),
+            ),
+          );
+          setLoadError(false);
+          return;
         }
+        setLoadError(true);
       } finally {
         running = false;
       }
