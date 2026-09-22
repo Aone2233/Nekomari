@@ -32,8 +32,37 @@ permissions:
   contents: write
 
 jobs:
+  # 版本号只在这里解析一次。
+  #
+  # 此前 build / build-agent-darwin 直接用 github.ref_name 注入版本：tag push 时它
+  # 就是 tag，但手动触发（workflow_dispatch）时它是分支名 —— 于是手动发的版本会在
+  # 服务端横幅里自称 "main"，更糟的是把 "main" 写进探针的
+  # agent/update.CurrentVersion，而那个字符串决定探针认为「有没有新版本」。
+  # 现在四个 job 共用这一个输出，并且构建后会断言产物里确实带着它。
+  resolve:
+    name: resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ github.event.inputs.tag }}"
+          else
+            tag="${{ github.ref_name }}"
+          fi
+          case "$tag" in
+            v*) ;;
+            *) echo "refusing to release with tag '$tag' (expected v*)" >&2; exit 1 ;;
+          esac
+          echo "resolved tag: $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
   build:
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: resolve
     runs-on: ${{ matrix.runner }}
 
     strategy:
@@ -119,7 +148,7 @@ jobs:
           # 决定日志级别。此前只有 CurrentVersion 被注入，于是每个正式版都跑在
           # Debug 级别，且 /api/version 一直报 hash: unknown。
           go build -trimpath \
-            -ldflags="-s -w -X github.com/Aone2233/nekomari/utils.CurrentVersion=${{ github.ref_name }} -X github.com/Aone2233/nekomari/utils.VersionHash=${GITHUB_SHA:0:7}" \
+            -ldflags="-s -w -X github.com/Aone2233/nekomari/utils.CurrentVersion=${{ needs.resolve.outputs.tag }} -X github.com/Aone2233/nekomari/utils.VersionHash=${GITHUB_SHA:0:7}" \
             -o nekomari-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} .
 
       - name: Build agent
@@ -132,8 +161,25 @@ jobs:
         run: |
           # 文件名是探针自更新所依赖的契约，见文件头说明 2)
           go build -trimpath \
-            -ldflags="-s -w -X github.com/Aone2233/nekomari/agent/update.CurrentVersion=${{ github.ref_name }}" \
+            -ldflags="-s -w -X github.com/Aone2233/nekomari/agent/update.CurrentVersion=${{ needs.resolve.outputs.tag }}" \
             -o komari-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} .
+
+      # 注入错版本号不会让构建失败，只会让产物自称 main。把这个失败模式变成红灯：
+      # 探针的版本字符串直接决定它认不认新版本，错了就是一次静默的自更新失效。
+      - name: Verify the injected version
+        shell: bash
+        run: |
+          want='${{ needs.resolve.outputs.tag }}'
+          for f in \
+            "nekomari-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" \
+            "agent/komari-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          do
+            if ! grep -aq -- "$want" "$f"; then
+              echo "::error file=$f::$f does not contain the version $want"
+              exit 1
+            fi
+            echo "$f carries $want"
+          done
 
       # 把探针产物平铺到仓库根目录再上传。
       # 否则它会带着 agent/ 这一层目录进 artifact，而 download-artifact 的
@@ -165,6 +211,7 @@ jobs:
   # 产物，那个选项才真的可用。
   build-agent-darwin:
     name: build agent darwin/${{ matrix.goarch }}
+    needs: resolve
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -191,8 +238,19 @@ jobs:
           CGO_ENABLED: '0'
         run: |
           go build -trimpath \
-            -ldflags="-s -w -X github.com/Aone2233/nekomari/agent/update.CurrentVersion=${{ github.ref_name }}" \
+            -ldflags="-s -w -X github.com/Aone2233/nekomari/agent/update.CurrentVersion=${{ needs.resolve.outputs.tag }}" \
             -o komari-agent-darwin-${{ matrix.goarch }} .
+
+      - name: Verify the injected version
+        shell: bash
+        run: |
+          want='${{ needs.resolve.outputs.tag }}'
+          f="agent/komari-agent-darwin-${{ matrix.goarch }}"
+          if ! grep -aq -- "$want" "$f"; then
+            echo "::error file=$f::$f does not contain the version $want"
+            exit 1
+          fi
+          echo "$f carries $want"
 
       - name: Stage release asset
         shell: bash
@@ -207,7 +265,7 @@ jobs:
 
   release:
     name: create release
-    needs: [build, build-agent-darwin]
+    needs: [resolve, build, build-agent-darwin]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -219,15 +277,6 @@ jobs:
       - name: List artifacts
         run: ls -la dist
 
-      - name: Determine tag
-        id: tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Generate checksums
         working-directory: dist
         run: sha256sum * | tee SHA256SUMS.txt
@@ -235,12 +284,12 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: ${{ steps.tag.outputs.tag }}
+          tag_name: ${{ needs.resolve.outputs.tag }}
+          name: ${{ needs.resolve.outputs.tag }}
           generate_release_notes: true
           files: dist/**
           body: |
-            ## Nekomari ${{ steps.tag.outputs.tag }}
+            ## Nekomari ${{ needs.resolve.outputs.tag }}
 
             Self-hosted server monitoring — a maintained continuation of
             [Komari](https://github.com/komari-monitor/komari), forked from `1.5.0-fix1`.
@@ -284,7 +333,7 @@ jobs:
             ```bash
             docker run -d --name nekomari -p 25774:25774 \
               -v nekomari-data:/app/data \
-              ghcr.io/aone2233/nekomari:${{ steps.tag.outputs.tag }}
+              ghcr.io/aone2233/nekomari:${{ needs.resolve.outputs.tag }}
             ```
 
             Multi-arch (`linux/amd64`, `linux/arm64`), anonymously pullable. The binary
@@ -313,24 +362,15 @@ jobs:
   # 放在 release 之后：产物必须先存在于 Release，才能像用户那样下载它们。
   verify:
     name: verify the release deploys
-    needs: release
+    needs: [resolve, release]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Determine tag
-        id: tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Deploy the published artifacts and check they work
         run: |
           # Give the Release a moment to become downloadable, then run the same
           # script a user would: no source tree, no local build, only the assets.
           sleep 20
-          bash deploy/deploy-verify.sh "" 25799 "${{ steps.tag.outputs.tag }}"
+          bash deploy/deploy-verify.sh "" 25799 "${{ needs.resolve.outputs.tag }}"

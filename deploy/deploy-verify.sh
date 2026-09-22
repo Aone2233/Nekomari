@@ -79,9 +79,18 @@ else
   bad "no SHA256SUMS.txt to verify against"
 fi
 
-step "3. the server reports its version"
+step "3. the published binaries report their version"
 v=$("./nekomari-linux-amd64" --help 2>&1 | head -1)
-case "$v" in *"$VERSION"*) ok "banner shows $VERSION";; *) bad "banner: $v";; esac
+case "$v" in *"$VERSION"*) ok "server banner shows $VERSION";; *) bad "banner: $v";; esac
+# The agent has no --version (it answers "unknown flag"), so look at the injected
+# string instead. This is the assertion that catches a version stamped as "main"
+# (a manual release used to do exactly that -- see the resolve job in release.yml):
+# that string is what the agent's self-updater compares against.
+if grep -aq -- "$VERSION" komari-agent-linux-amd64; then
+  ok "agent binary carries $VERSION"
+else
+  bad "agent binary does not carry $VERSION"
+fi
 
 step "4. first run serves the install guide"
 ./nekomari-linux-amd64 server -l "127.0.0.1:${PORT}" > server.log 2>&1 &
@@ -128,6 +137,13 @@ if [ -n "$tok" ]; then
          | sed -n 's/.*"uuid":"\([^"]*\)".*/\1/p')
   rec=$(curl -fsS -b cookie.txt "http://127.0.0.1:${PORT}/api/recent/${uuid}" 2>/dev/null)
   case "$rec" in *'"cpu"'*) ok "node is reporting metrics";; *) bad "no live report (uuid=${uuid:-none})";; esac
+  # End to end: the version the agent reports is the string its self-updater uses to
+  # decide whether a newer release exists, so a wrong one is a silent update failure.
+  av=$(curl -fsS -b cookie.txt -X POST "http://127.0.0.1:${PORT}/api/rpc2" \
+         -H 'Content-Type: application/json' \
+         -d '{"jsonrpc":"2.0","method":"admin:listClients","params":{},"id":1}' 2>/dev/null \
+       | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
+  case "$av" in "$VERSION") ok "agent reports $VERSION";; *) bad "agent reports version '${av:-none}', expected $VERSION";; esac
   kill $AG 2>/dev/null; AG=""
 fi
 
