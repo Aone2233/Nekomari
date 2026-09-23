@@ -44,6 +44,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -147,6 +148,8 @@ interface PendingEncodingReopen {
   path: string;
   encoding: RemoteTextEncoding;
 }
+
+type StatusMenuKind = "spaces" | "language" | "encoding";
 
 const editorIconButton =
   "inline-flex h-7 w-7 shrink-0 items-center justify-center border-0 bg-transparent text-[#bdbdbd] transition-colors hover:bg-[#3a3d41] hover:text-white disabled:opacity-40";
@@ -352,25 +355,34 @@ const FileEditorDialog = ({
   const [showExplorer, setShowExplorer] = useState(true);
   const [showOutline, setShowOutline] = useState(true);
   const [outlineCollapsed, setOutlineCollapsed] = useState<Set<string>>(new Set());
+  const [outlinePath, setOutlinePath] = useState(activePath);
   const [showMinimap, setShowMinimap] = useState(true);
   const [wordWrap, setWordWrap] = useState(false);
   const [tabSize, setTabSize] = useState(2);
   const [tabContextPath, setTabContextPath] = useState<string | null>(null);
   const [textContextMenu, setTextContextMenu] = useState<ContextMenuPosition | null>(null);
-  const [statusMenuKind, setStatusMenuKind] = useState<"spaces" | "language" | "encoding" | null>(null);
+  const [statusMenuKind, setStatusMenuKind] = useState<StatusMenuKind | null>(null);
+  const [statusContextMenuItems, setStatusContextMenuItems] = useState<ContextMenuItemConfig[]>([]);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [quickOpenQuery, setQuickOpenQuery] = useState("");
   const [quickOpenSuggestions, setQuickOpenSuggestions] = useState<string[]>([]);
+  const [quickOpenWasActive, setQuickOpenWasActive] = useState(false);
   const [positionOpen, setPositionOpen] = useState(false);
   const [positionLine, setPositionLine] = useState("1");
   const [positionColumn, setPositionColumn] = useState("1");
   const quickOpenTokenRef = useRef(0);
   const [officePreviewSrc, setOfficePreviewSrc] = useState<string | null>(null);
   const [officePreviewError, setOfficePreviewError] = useState<string | null>(null);
+  const [officePreviewPath, setOfficePreviewPath] = useState<string | null>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [explorerWidth, setExplorerWidth] = useState(230);
   const [outlineWidth, setOutlineWidth] = useState(220);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
+  const [editorState, setEditorState] = useState({
+    hasSelection: false,
+    canUndo: false,
+    canRedo: false,
+  });
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const programmaticEditorValueRef = useRef<string | null>(null);
   const documentsRef = useRef<EditorDocument[]>([]);
@@ -381,9 +393,16 @@ const FileEditorDialog = ({
   const openChangeRef = useRef(onOpenChange);
   const saveActiveRef = useRef<() => void>(() => {});
   const saveAllRef = useRef<() => void>(() => {});
-  documentsRef.current = documents;
-  activePathRef.current = activePath;
-  openChangeRef.current = onOpenChange;
+  // Keep the "latest value" refs in sync with the committed render output so
+  // the stable callbacks below (tree handlers, beforeunload, Monaco commands)
+  // always observe current state. Refs must not be written during render, and
+  // a layout effect still runs before any subsequent event handler can read
+  // them, so this is equivalent to the previous render-phase assignment.
+  useLayoutEffect(() => {
+    documentsRef.current = documents;
+    activePathRef.current = activePath;
+    openChangeRef.current = onOpenChange;
+  }, [activePath, documents, onOpenChange]);
   const dockRowRef = useRef<HTMLDivElement | null>(null);
   const tabStripRef = useRef<HTMLDivElement | null>(null);
   const dockResizeRef = useRef<{
@@ -418,11 +437,17 @@ const FileEditorDialog = ({
     [activeDocument],
   );
   const outlineTree = useMemo(() => buildOutlineTree(outline), [outline]);
+  // Drop the stale suggestion list when the quick-open dialog closes. Adjusting
+  // state during render is React's documented pattern for this and avoids the
+  // cascading render an effect would cause; TerminalDialog renders nothing while
+  // closed, so the value is unobservable either way.
+  const quickOpenActive = open && quickOpenOpen;
+  if (quickOpenWasActive !== quickOpenActive) {
+    setQuickOpenWasActive(quickOpenActive);
+    setQuickOpenSuggestions([]);
+  }
   useEffect(() => {
-    if (!open || !quickOpenOpen) {
-      setQuickOpenSuggestions([]);
-      return;
-    }
+    if (!open || !quickOpenOpen) return;
     const normalized = normalizeRemotePath(quickOpenQuery || "/");
     const directory = normalized.endsWith("/")
       ? normalized
@@ -453,24 +478,34 @@ const FileEditorDialog = ({
     return () => window.clearTimeout(timer);
   }, [fileService, open, quickOpenOpen, quickOpenQuery, uuid]);
 
-  useEffect(() => {
+  // Collapsed outline sections belong to the document that was active when they
+  // were collapsed, so they are dropped when the active document changes. This
+  // adjusts state during render instead of from an effect, which would cause a
+  // cascading render.
+  if (outlinePath !== activePath) {
+    setOutlinePath(activePath);
     setOutlineCollapsed(new Set());
-  }, [activePath]);
+  }
 
   const openFile = useCallback(
-    async (file: RemoteFileInfo, line = 1, depth = 0) => {
-      if (file.is_dir) return;
-      if (file.is_symlink && file.target) {
+    async (input: RemoteFileInfo, line = 1) => {
+      // Follow symlink chains iteratively. The previous form recursed into
+      // openFile, which made the callback reference itself and prevented the
+      // memoized value from ever updating. `depth` still caps the chain at the
+      // same number of hops (0..4).
+      let file = input;
+      for (let depth = 0; ; depth += 1) {
+        if (file.is_dir) return;
+        if (!(file.is_symlink && file.target)) break;
+        if (depth > 4) return;
         const targetPath = resolveSymlinkTargetPath(file);
         if (!targetPath || openingPathsRef.current.has(targetPath)) return;
-        if (depth > 4) return;
         try {
-          const target = await fileService.stat(targetPath);
-          await openFile(target, line, depth + 1);
+          file = await fileService.stat(targetPath);
         } catch (error) {
           toast.error(error instanceof Error ? error.message : t("file_manager.load_failed", "Failed to load file"));
+          return;
         }
-        return;
       }
       if (openingPathsRef.current.has(file.path)) return;
       const existing = documentsRef.current.find((document) => document.path === file.path);
@@ -904,7 +939,9 @@ const FileEditorDialog = ({
   const buildTabContextMenuItems = useCallback(
     (path: string | null): ContextMenuItemConfig[] => {
       if (!path) return [];
-      const current = documentsRef.current;
+      // Read the rendered state rather than documentsRef: this builder runs
+      // during render, where refs must not be read.
+      const current = documents;
       const document = current.find((item) => item.path === path);
       const index = current.findIndex((item) => item.path === path);
       if (!document || index < 0) return [];
@@ -964,7 +1001,7 @@ const FileEditorDialog = ({
         },
       ];
     },
-    [copyDocumentPath, downloadDocument, requestCloseDocument, requestCloseMode, saveDocument, t],
+    [copyDocumentPath, documents, downloadDocument, requestCloseDocument, requestCloseMode, saveDocument, t],
   );
 
   const switchDocument = useCallback((direction: number) => {
@@ -976,20 +1013,33 @@ const FileEditorDialog = ({
   }, []);
 
   const switchDocumentRef = useRef<(direction: number) => void>(() => {});
-  const editorStateRef = useRef({ hasSelection: false, canUndo: false, canRedo: false });
-  saveActiveRef.current = () => void saveActive();
-  saveAllRef.current = () => void saveAll();
-  switchDocumentRef.current = switchDocument;
+  // Same "latest value" mirror as above: the Monaco commands registered in
+  // handleEditorMount read these refs on keypress, long after commit.
+  useLayoutEffect(() => {
+    saveActiveRef.current = () => void saveActive();
+    saveAllRef.current = () => void saveAll();
+    switchDocumentRef.current = switchDocument;
+  }, [saveActive, saveAll, switchDocument]);
 
   const updateEditorState = useCallback(() => {
     const editor = editorRef.current;
     if (!editor) return;
     const model = editor.getModel();
-    editorStateRef.current = {
+    const next = {
       hasSelection: !editor.getSelection()?.isEmpty(),
       canUndo: typeof model?.canUndo === "function" ? model.canUndo() : false,
       canRedo: typeof model?.canRedo === "function" ? model.canRedo() : false,
     };
+    // Kept in state (not a ref) because the text context menu renders these
+    // flags. Bail out when nothing changed so selection/content events that
+    // Monaco fires in bursts do not schedule needless re-renders.
+    setEditorState((current) =>
+      current.hasSelection === next.hasSelection &&
+      current.canUndo === next.canUndo &&
+      current.canRedo === next.canRedo
+        ? current
+        : next,
+    );
   }, []);
 
   const handleEditorMount = useCallback<OnMount>((editor) => {
@@ -1058,7 +1108,7 @@ const FileEditorDialog = ({
   }, [positionColumn, positionLine]);
 
   const buildTextContextMenuItems = useCallback((): ContextMenuItemConfig[] => {
-    const { hasSelection, canUndo, canRedo } = editorStateRef.current;
+    const { hasSelection, canUndo, canRedo } = editorState;
     return [
       {
         key: "cut",
@@ -1103,30 +1153,21 @@ const FileEditorDialog = ({
         onSelect: () => runEditorCommand("editor.action.selectAll"),
       },
     ];
-  }, [runEditorCommand, t]);
+  }, [editorState, runEditorCommand, t]);
 
-  const openStatusMenu = useCallback((kind: "spaces" | "language" | "encoding", event: ReactMouseEvent<HTMLButtonElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    openContextMenu({
-      clientX: rect.left,
-      clientY: rect.bottom + 2,
-      preventDefault: () => {},
-    });
-    setStatusMenuKind(kind);
-  }, [openContextMenu]);
-
+  // These four are reached from buildStatusContextMenuItems, which renders
+  // during render, so they read the rendered state instead of the mirror refs.
   const setActiveLanguage = useCallback((language: string) => {
-    const path = activePathRef.current;
-    if (!path) return;
+    if (!activePath) return;
     setDocuments((current) =>
-      current.map((document) => (document.path === path ? { ...document, language } : document)),
+      current.map((document) => (document.path === activePath ? { ...document, language } : document)),
     );
     const model = editorRef.current?.getModel();
     if (model) monaco.editor.setModelLanguage(model, language);
-  }, []);
+  }, [activePath]);
 
   const reopenDocumentWithEncoding = useCallback((path: string, encoding: RemoteTextEncoding) => {
-    const document = documentsRef.current.find((item) => item.path === path);
+    const document = documents.find((item) => item.path === path);
     if (!document || document.kind !== "text" || !document.sourceBytes) return;
     try {
       const content = decodeRemoteTextBytes(document.sourceBytes, encoding);
@@ -1137,7 +1178,7 @@ const FileEditorDialog = ({
             : item,
         ),
       );
-      if (activePathRef.current === path) {
+      if (activePath === path) {
         programmaticEditorValueRef.current = content;
         editorRef.current?.getModel()?.setValue(content);
         window.queueMicrotask(() => {
@@ -1149,25 +1190,23 @@ const FileEditorDialog = ({
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t("file_manager.editor.encoding_failed", "Unable to decode with this encoding"));
     }
-  }, [t]);
+  }, [activePath, documents, t]);
 
   const requestReopenWithEncoding = useCallback((encoding: RemoteTextEncoding) => {
-    const path = activePathRef.current;
-    if (!path) return;
-    const document = documentsRef.current.find((item) => item.path === path);
+    if (!activePath) return;
+    const document = documents.find((item) => item.path === activePath);
     if (!document || document.kind !== "text") return;
     if (document.content !== document.savedContent) {
-      setPendingEncodingReopen({ path, encoding });
+      setPendingEncodingReopen({ path: activePath, encoding });
       return;
     }
-    reopenDocumentWithEncoding(path, encoding);
-  }, [reopenDocumentWithEncoding]);
+    reopenDocumentWithEncoding(activePath, encoding);
+  }, [activePath, documents, reopenDocumentWithEncoding]);
 
   const saveWithEncoding = useCallback(async (encoding: RemoteTextEncoding) => {
-    const path = activePathRef.current;
-    if (!path) return;
-    await saveDocument(path, encoding);
-  }, [saveDocument]);
+    if (!activePath) return;
+    await saveDocument(activePath, encoding);
+  }, [activePath, saveDocument]);
 
   const confirmReopenWithEncoding = useCallback(() => {
     const pending = pendingEncodingReopen;
@@ -1176,8 +1215,8 @@ const FileEditorDialog = ({
     reopenDocumentWithEncoding(pending.path, pending.encoding);
   }, [pendingEncodingReopen, reopenDocumentWithEncoding]);
 
-  const buildStatusContextMenuItems = useCallback((): ContextMenuItemConfig[] => {
-    if (statusMenuKind === "spaces") {
+  const buildStatusContextMenuItems = useCallback((kind: StatusMenuKind): ContextMenuItemConfig[] => {
+    if (kind === "spaces") {
       return [2, 4, 8].map((size) => ({
         key: `spaces-${size}`,
         label: `${size} spaces`,
@@ -1185,7 +1224,7 @@ const FileEditorDialog = ({
         onSelect: () => setTabSize(size),
       }));
     }
-    if (statusMenuKind === "language") {
+    if (kind === "language") {
       return supportedLanguages.map((language) => ({
         key: language,
         label: language,
@@ -1195,7 +1234,7 @@ const FileEditorDialog = ({
         onSelect: () => setActiveLanguage(language),
       }));
     }
-    if (statusMenuKind === "encoding") {
+    if (kind === "encoding") {
       const encodingChoices = (action: "reopen" | "save"): ContextMenuItemConfig[] =>
         REMOTE_TEXT_ENCODINGS.map((encoding) => ({
           key: `${action}-${encoding.value}`,
@@ -1233,7 +1272,25 @@ const FileEditorDialog = ({
     return [];
     // activeDocument 已经覆盖了 activeDocument?.encoding / ?.language：
     // 那两个属性只能随 activeDocument 的引用变化而变化，单独列出来是多余的。
-  }, [activeDocument, requestReopenWithEncoding, saveWithEncoding, statusMenuKind, setActiveLanguage, tabSize, t]);
+  }, [activeDocument, requestReopenWithEncoding, saveWithEncoding, setActiveLanguage, tabSize, t]);
+
+  // The status menu items are snapshotted when the menu opens. Building them
+  // during render would read the refs captured by the callbacks above, which
+  // the compiler audit rejects; nothing can change them while the menu is open
+  // because every entry closes it.
+  const openStatusMenu = useCallback(
+    (kind: StatusMenuKind, event: ReactMouseEvent<HTMLButtonElement>) => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      openContextMenu({
+        clientX: rect.left,
+        clientY: rect.bottom + 2,
+        preventDefault: () => {},
+      });
+      setStatusContextMenuItems(buildStatusContextMenuItems(kind));
+      setStatusMenuKind(kind);
+    },
+    [buildStatusContextMenuItems, openContextMenu],
+  );
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -1382,15 +1439,21 @@ const FileEditorDialog = ({
     );
   };
 
-  useEffect(() => {
-    if (!open || activeDocument?.kind !== "office") {
-      setOfficePreviewSrc(null);
-      setOfficePreviewError(null);
-      return;
-    }
-    let cancelled = false;
+  // A resolved preview only belongs to the document it was fetched for, so it
+  // is dropped as soon as the previewed document changes. Adjusting state
+  // during render avoids the extra render an effect would schedule and also
+  // stops the previous document's preview from being rendered for the new one.
+  const officePreviewKey =
+    open && activeDocument?.kind === "office" ? activeDocument.path : null;
+  if (officePreviewPath !== officePreviewKey) {
+    setOfficePreviewPath(officePreviewKey);
     setOfficePreviewSrc(null);
     setOfficePreviewError(null);
+  }
+
+  useEffect(() => {
+    if (!open || activeDocument?.kind !== "office") return;
+    let cancelled = false;
     void fetchOfficePreviewUrl(uuid, activeDocument.path)
       .then((url) => {
         if (!cancelled) setOfficePreviewSrc(url);
@@ -1662,7 +1725,7 @@ const FileEditorDialog = ({
               <FileContextMenu
                 open={statusMenuKind !== null}
                 position={contextMenuOpen ? contextMenuPosition : null}
-                items={buildStatusContextMenuItems()}
+                items={statusContextMenuItems}
                 onOpenChange={(open) => {
                   if (!open) {
                     closeContextMenu();
@@ -1934,7 +1997,7 @@ const FileEditorDialog = ({
             : pendingClose?.kind === "tabs"
               ? t("file_manager.editor.unsaved_all", {
                   count: pendingClose.paths.filter((path) =>
-                    documentsRef.current.some(
+                    documents.some(
                       (document) =>
                         document.path === path &&
                         document.content !== document.savedContent,
