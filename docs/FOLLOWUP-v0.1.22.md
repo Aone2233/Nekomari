@@ -1,8 +1,10 @@
-# v0.1.22 candidate: frontend state and browser review
+# v0.1.22: frontend state and browser review
 
-Baseline: v0.1.21 on main. This batch changes the frontend and its CI coverage;
-server, agent, protocol and shared package source remain unchanged. Release and
-production rollout evidence belong in `DEPLOY-OC424.md` after those gates pass.
+Baseline: v0.1.21 on main. This batch changed the frontend and its CI coverage;
+server, agent, protocol and shared package source remained unchanged. PR #10
+merged as `5f717037ccb2e7124747d0b097aa8b9ed2d954be` and was released and
+deployed on 2026-09-23. Exact-commit CI, release assets, image verification and
+production rollout evidence are recorded in `DEPLOY-OC424.md`.
 
 ## Implemented
 
