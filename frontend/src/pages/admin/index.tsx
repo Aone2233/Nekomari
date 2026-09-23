@@ -2402,13 +2402,16 @@ function EditButton({ node }: { node: NodeDetail }) {
   const [traffic_limit_type, setTrafficLimitType] = useState("sum");
   // 编辑态由 node 派生：node 的对应字段变化时在渲染期间同步一次，
   // 避免在 effect 中同步 setState（同一渲染批次内完成，不再多画一帧旧值）。
-  const [syncedNode, setSyncedNode] = useState({
-    hidden: node.hidden,
-    traffic_limit: node.traffic_limit,
-    traffic_limit_type: node.traffic_limit_type,
-  });
+  // 哨兵必须从 null 起步：下面三个 state 的初值是 false/0/"sum" 而非 node 的字段值，
+  // 所以原 effect 在挂载时那次运行是有实际写入的，不能被跳过。
+  const [syncedNode, setSyncedNode] = useState<{
+    hidden: boolean;
+    traffic_limit: number;
+    traffic_limit_type: string;
+  } | null>(null);
 
   if (
+    syncedNode === null ||
     syncedNode.hidden !== node.hidden ||
     syncedNode.traffic_limit !== node.traffic_limit ||
     syncedNode.traffic_limit_type !== node.traffic_limit_type

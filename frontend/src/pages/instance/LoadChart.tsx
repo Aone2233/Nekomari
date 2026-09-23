@@ -1129,7 +1129,10 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
     return Array.from(new Set(keys)).sort();
   }, [charts, isRealtime]);
 
-  const rangeSignature = queryStart && queryEnd ? `${queryStart}|${queryEnd}` : `h${queryHours ?? 1}`;
+  // 必须与 metricRangeParams 的 useMemo 依赖完全一致：它依赖 queryRangeSignature
+  // （= start|end|customQueryRevision），而 customQueryRevision 会在重新应用同一区间时
+  // 自增。若只取 start|end，就会出现“依赖变了、触发重取，但守卫不触发、不重置”的错配。
+  const rangeSignature = queryRangeSignature || `h${queryHours ?? 1}`;
   const metricRequestKey = uuid && metricKeys.length > 0
     ? `${uuid}|${metricKeys.join(",")}|${rangeSignature}|${aggregation}`
     : "";

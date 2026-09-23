@@ -1616,7 +1616,9 @@ const MiniMetricChart = ({
   // 缓存命中时原先在 effect 中同步写入状态；改为在渲染期间按 cacheKey 变化同步一次，
   // 复刻 effect 同步段的两个分支（命中直接用缓存，未命中则进入加载态），
   // 异步请求仍由下方 effect 完成。
-  const [syncedCacheKey, setSyncedCacheKey] = useState(cacheKey);
+  // 哨兵从 null 起步，使首次渲染必定执行一次：缓存命中时下方 effect 会直接 return
+  // 而不写状态，若跳过挂载这次运行，图表会一直停在加载态。
+  const [syncedCacheKey, setSyncedCacheKey] = useState<string | null>(null);
   if (syncedCacheKey !== cacheKey) {
     setSyncedCacheKey(cacheKey);
     const cached = miniChartCache.get(cacheKey);
