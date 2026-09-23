@@ -349,8 +349,8 @@ no coverage to fixtures with red-proofs — the tree's fixture is the first
 coverage that file has ever had, and the picker's asserts the pagination bug that
 prompted it. And `docs/TESTING.md` records exactly which fixture covers what, so
 the remaining gap is visible rather than assumed. `docs/STRUCTURAL-REVIEW-2026-09-23.md`
-measures the gap: 45 of 194 source files are reachable from a test entry point,
-and 21 of the 30 files over 500 lines are not.
+measures the gap: 52 of 189 source files are reachable from a test entry point,
+and 19 of the 30 files over 500 lines are not.
 
 ## Remaining inventory
 

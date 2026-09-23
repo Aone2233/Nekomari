@@ -29,23 +29,34 @@ open without verifying.
 
 ## Measured margin
 
-### Test reachability — 23 % of the source is reachable from a test
+### Test reachability — 28 % of the source is reachable from a test
 
 Measured by walking the import graph from every test entry point
 (`script/*.test.mjs`, `script/*.browser.tsx`) through relative and `@/` imports:
 
 | | Files | KB |
 |---|---:|---:|
-| Source files under `src/` | 194 | 1 702 |
-| Reachable from a test entry point | **45** | 468 |
-| Not reachable | **149** | 1 233 |
+| Source files under `src/` | 189 | 1 665 |
+| Reachable from a test entry point | **52** | 537 |
+| Not reachable | **137** | 1 129 |
 
-**Reachability is an upper bound, not coverage.** Two examples from the
+**Correction to an earlier version of this review.** It reported 45 of 194 files
+reachable, from a walk of the `import` graph alone. That method is wrong for this
+repository: several unit tests do not import the module under test at all — they
+read it with `readFileSync` and transpile it into a `vm` context, which is the
+house pattern for testing a TypeScript module in Node (`chunkUpload`,
+`frameThrottle`, `rpc2`, `compiler-static`). An import-graph walk scores every one
+of those as untested. Following path literals as well recovers five files,
+including `lib/chunkUpload.ts`, which has 500 lines of tests that the first
+measurement credited to nobody. The counts above include that fix.
+
+**Reachability is still an upper bound, not coverage.** Two examples from the
 migration make the gap concrete: `RemoteFileTree.tsx` is reachable because
 `FileEditorDialog` imports it, but the file-manager fixture never opens the
 tree; and `dashboard.tsx` is reachable because a fixture mounts it, but that
 fixture never renders `MiniMetricChart`. Both were changed during the migration
-and neither change is exercised by a passing test.
+and neither change is exercised by a passing test. (The first of those has since
+been fixed by its own fixture.)
 
 ### Compound risk — large *and* untested
 
@@ -54,7 +65,7 @@ Size alone is not risk and lack of tests alone is not risk; together they are:
 | | Count | Lines |
 |---|---:|---:|
 | Files over 500 lines | 30 | — |
-| …of which no test entry point reaches | **21** | **18 607** |
+| …of which no test entry point reaches | **19** | **17 141** |
 
 The largest untested files are the ones the migration touched most:
 
@@ -64,13 +75,16 @@ The largest untested files are the ones the migration touched most:
 | 1 799 | `pages/instance/LoadChart.tsx` |
 | 1 196 | `pages/admin/settings/metrics.tsx` |
 | 961 | `pages/database_migration.tsx` |
-| 933 | `components/admin/AdminPanelBar.tsx` |
-| 933 | `pages/terminal/useTerminalPage.ts` |
 | 931 | `pages/admin/themes.tsx` |
+| 916 | `components/admin/AdminPanelBar.tsx` |
 | 816 | `components/admin/SettingCard.tsx` |
+| 783 | `pages/admin/market/plugins.tsx` |
 
 `pages/admin/index.tsx` is the outlier in both dimensions at once: the largest
-file in the frontend, and one that no test reaches.
+file in the frontend, and one that no test reaches. Worth noting alongside it is
+`components/NodeTable.tsx` (511 lines), which nothing reaches either — it is
+rendered by the public landing page through `components/NodeDisplay.tsx`, so the
+most-visited page in the panel is outside the test graph too.
 
 ### Bundle
 
@@ -152,9 +166,10 @@ by construction.
 4. **Test hooks have started appearing in production JSX** (`data-log-id` on log
    rows, added so a fixture can address them). Cheap and inert, but worth a
    convention rather than ad-hoc attributes.
-5. **The frontend has 6 unit-test files and 5 browser fixtures for 194 source
+5. **The frontend has 7 unit-test files and 7 browser fixtures for 189 source
    files.** The unit tests are genuinely useful (chunk upload, RPC2, frame
-   throttling, terminal search effects) but they cover libraries and hooks
+   throttling, terminal search effects, the release-feed cache) but they cover
+   libraries and hooks
    rather than pages, and the pages are where the risk is.
 
 ## Recommendations, in order
