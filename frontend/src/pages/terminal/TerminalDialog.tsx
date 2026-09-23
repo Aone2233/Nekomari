@@ -58,6 +58,14 @@ export function TerminalDialog({
   const [activeField, setActiveField] = useState<string | null>(null);
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const firstFieldKey = fields[0]?.key ?? null;
+  // Sentinel for the open/field reset below. It starts at `null` (not at the
+  // current values) because the effect's mount invocation was NOT a no-op: a
+  // dialog can be mounted already open, and the state it seeds
+  // (`activeField: null`, `activeSuggestion: -1`) only matches the effect's
+  // write when there is no first field. `open` is part of the guard because it
+  // is part of the effect's dependency set — closing and reopening the same
+  // dialog must reset the selection again.
+  const [resetKey, setResetKey] = useState<{ open: boolean; firstFieldKey: string | null } | null>(null);
 
   const activeSuggestions = useMemo(() => {
     if (!activeField) return [];
@@ -69,10 +77,26 @@ export function TerminalDialog({
     ? 0
     : activeSuggestion;
 
-  useEffect(() => {
-    if (!open) return;
+  // Reset the field selection while rendering when the dialog opens or its
+  // field set changes. This is React's documented "adjust state during render"
+  // pattern and replaces the synchronous setState the effect used to perform;
+  // the only semantic difference is that the effect painted one frame with the
+  // stale selection before its reset committed, and this removes that frame.
+  // This also runs while the dialog is closed, where the effect returned early;
+  // that is deliberate and unobservable, because closing and reopening runs this
+  // reset again before anything can read the selection.
+  if (resetKey === null || resetKey.open !== open || resetKey.firstFieldKey !== firstFieldKey) {
+    setResetKey({ open, firstFieldKey });
     setActiveField(firstFieldKey);
     setActiveSuggestion(-1);
+  }
+
+  // `firstFieldKey` stays in this dependency list even though the focus timer
+  // does not read it: the reset above used to live in this same effect, so
+  // changing the first field's key (with the field count unchanged) re-armed the
+  // focus timer. Dropping it would change where focus lands.
+  useEffect(() => {
+    if (!open) return;
     const timer = window.setTimeout(() => {
       (fields.length ? firstInputRef.current : confirmRef.current)?.focus();
     }, 0);
