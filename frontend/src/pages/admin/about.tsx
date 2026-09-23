@@ -56,7 +56,6 @@ export default function AboutPage() {
       "@radix-ui/react-label",
       "@radix-ui/react-slot",
       "@radix-ui/themes",
-      "@tanstack/react-table",
       "@types/uuid",
       "class-variance-authority",
       "clsx",

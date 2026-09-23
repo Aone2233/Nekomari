@@ -6,6 +6,19 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.25] — 2026-09-23
+
+- Cache the GitHub release check across admin pages, including failed attempts,
+  so navigation no longer repeats a third-party request on every page.
+- Recover the admin node list after a transient request failure. A successful
+  refresh now clears the error; non-2xx or malformed responses report an error
+  without overwriting the last valid state. Late responses from older polls
+  cannot replace newer results. Mounted browser regressions cover offline,
+  HTTP 503, malformed entries, recovery and out-of-order completion in CI.
+- Remove the unused `@tanstack/react-table` dependency and its license-list
+  entry. Correct the v0.1.24 structural-review counts and the deployment
+  runbook's recorded image version.
+
 ## [v0.1.24] — 2026-09-23
 
 The advisory React Compiler audit reaches **zero findings**, down from 77 at the
@@ -48,8 +61,9 @@ render-time adjustment pattern is easy to get wrong.
   to fail; a mounted file manager regression covering rename/delete refresh and
   stale responses; and an anonymous GHCR pull requirement in the Docker workflow.
 - Add [the structural review](./docs/STRUCTURAL-REVIEW-2026-09-23.md), which
-  measures the frontend's margin: 45 of 194 source files are reachable from a test
-  entry point, and 21 of the 30 files over 500 lines are not.
+  measures the frontend's margin: 52 of 189 source files are reachable from a test
+  entry point, and 19 of the 30 files over 500 lines are not. These corrected
+  counts include tests that load source through `readFileSync` rather than imports.
 - `@tanstack/react-table` has no importer left under `src/` but stays in
   `package.json`: the lock file cannot be regenerated in the environment this was
   prepared in, and shipping `package.json` without a matching lock would break
