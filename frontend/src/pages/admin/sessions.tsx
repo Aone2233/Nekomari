@@ -31,6 +31,11 @@ type Resp = {
 export default function Sessions() {
   const [t] = useTranslation();
   const [sessions, setSessions] = React.useState<Resp | null>(null);
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
   React.useEffect(() => {
     fetch("/api/admin/session/get")
       .then((response) => {
@@ -202,7 +207,7 @@ export default function Sessions() {
                           </label>
                           <label className="text-sm">
                             {new Date(s.latest_online).toLocaleString()}
-                            {" "}({formatDuration((Date.now() - new Date(s.latest_online).getTime()),t)})
+                            {" "}({formatDuration(now - new Date(s.latest_online).getTime(),t)})
                           </label>
                           <label className="text-base font-bold">
                             {t("sessions.created_at")}
@@ -230,7 +235,7 @@ export default function Sessions() {
                   <TableCell>{s.latest_ip}</TableCell>
                   <TableCell>{new Date(s.expires).toLocaleString()}</TableCell>
                   <TableCell>
-                    {new Date(s.latest_online).toLocaleString()}{" "}({formatDuration((Date.now() - new Date(s.latest_online).getTime()),t)})
+                    {new Date(s.latest_online).toLocaleString()}{" "}({formatDuration(now - new Date(s.latest_online).getTime(),t)})
                   </TableCell>
                   <TableCell>
                     <Dialog.Root>

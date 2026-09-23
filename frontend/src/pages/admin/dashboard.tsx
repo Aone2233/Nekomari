@@ -59,6 +59,7 @@ import {
   pingTaskId,
   pingTaskName,
 } from "@/utils/metricSeries";
+import { DAY_MS, daysUntilExpiry, getExpiringNodes } from "./expiry";
 
 const formatSpeed = (bytes: number): string => {
   if (bytes === 0) return "0 B/s";
@@ -132,9 +133,6 @@ const formatPeakTime = (t: TFunction, timestamp: number): string => {
   }
   return `${date.toLocaleDateString()} ${time}`;
 };
-
-const EXPIRING_SOON_DAYS = 7;
-const DAY_MS = 24 * 3600 * 1000;
 
 const latencyColor = (ms: number): "green" | "yellow" | "red" =>
   ms < 100 ? "green" : ms <= 280 ? "yellow" : "red";
@@ -423,6 +421,12 @@ const DashboardContent = () => {
   const [pingTasks, setPingTasks] = useState<PublicPingTask[]>([]);
   const [renewingUuid, setRenewingUuid] = useState<string | null>(null);
   const [renewedUuids, setRenewedUuids] = useState<Set<string>>(new Set());
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const onlineSet = useMemo(() => {
     const out = new Set<string>();
@@ -461,21 +465,10 @@ const DashboardContent = () => {
     [nodeList],
   );
 
-  const expiringNodes = useMemo(() => {
-    const now = Date.now();
-    const deadline = now + EXPIRING_SOON_DAYS * DAY_MS;
-    return (nodeList ?? [])
-      .filter((node) => {
-        if (!node.expired_at) return false;
-        if (renewedUuids.has(node.uuid)) return false;
-        const ts = new Date(node.expired_at).getTime();
-        return ts >= now && ts <= deadline;
-      })
-      .sort(
-        (a, b) =>
-          new Date(a.expired_at).getTime() - new Date(b.expired_at).getTime(),
-      );
-  }, [nodeList, renewedUuids]);
+  const expiringNodes = useMemo(
+    () => getExpiringNodes(nodeList, renewedUuids, now),
+    [nodeList, renewedUuids, now],
+  );
 
   const fetchLatest = useCallback(async () => {
     try {
@@ -993,9 +986,7 @@ const DashboardContent = () => {
             ) : (
               <Flex direction="column" gap="3">
                 {expiringNodes.map((node) => {
-                  const daysLeft = Math.ceil(
-                    (new Date(node.expired_at).getTime() - Date.now()) / DAY_MS,
-                  );
+                  const daysLeft = daysUntilExpiry(node.expired_at, now);
                   return (
                     <Flex
                       key={node.uuid}
