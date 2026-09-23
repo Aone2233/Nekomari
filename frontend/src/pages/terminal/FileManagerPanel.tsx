@@ -146,7 +146,7 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
   const [pathDraft, setPathDraft] = useState("");
   const [files, setFiles] = useState<RemoteFileInfo[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const selectedPathsRef = useRef<Set<string>>(new Set());
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
   const lastSelectedIndexRef = useRef(-1);
   const [loading, setLoading] = useState(false);
   const [action, setAction] = useState<FileAction | null>(null);
@@ -171,7 +171,6 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
   const [contextTarget, setContextTarget] = useState<RemoteFileInfo | null>(null);
   const [dragTarget, setDragTarget] = useState<DragTarget | null>(null);
   const [marqueeRange, setMarqueeRange] = useState<{ start: number; end: number } | null>(null);
-  const marqueeActiveRef = useRef(false);
   const [internalDrag, setInternalDrag] = useState<string[] | null>(null);
   const internalDragPathsRef = useRef<string[] | null>(null);
 
@@ -183,11 +182,11 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
   const listRef = useRef<HTMLDivElement | null>(null);
   const marqueeStartRef = useRef<number | null>(null);
 
-  const selectedFiles = files.filter((file) => selectedPathsRef.current.has(file.path));
+  const selectedFiles = files.filter((file) => selectedPaths.has(file.path));
   const selectedFile = selectedFiles.length === 1 ? selectedFiles[0] : null;
 
   const setSelectedOnly = useCallback((path: string | null) => {
-    selectedPathsRef.current = new Set(path ? [path] : []);
+    setSelectedPaths(new Set(path ? [path] : []));
     setSelectedPath(path);
     lastSelectedIndexRef.current = path ? files.findIndex((file) => file.path === path) : -1;
   }, [files]);
@@ -199,22 +198,22 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
       const [start, end] = index < lastSelectedIndexRef.current
         ? [index, lastSelectedIndexRef.current]
         : [lastSelectedIndexRef.current, index];
-      const next = new Set(toggle ? selectedPathsRef.current : []);
+      const next = new Set(toggle ? selectedPaths : []);
       for (let i = start; i <= end; i++) next.add(files[i].path);
-      selectedPathsRef.current = next;
+      setSelectedPaths(next);
       setSelectedPath(file.path);
       return;
     }
     if (toggle) {
-      const next = new Set(selectedPathsRef.current);
+      const next = new Set(selectedPaths);
       if (!next.delete(file.path)) next.add(file.path);
-      selectedPathsRef.current = next;
+      setSelectedPaths(next);
       setSelectedPath(next.size ? file.path : null);
       lastSelectedIndexRef.current = index;
       return;
     }
     setSelectedOnly(file.path);
-  }, [files, selectedPath, setSelectedOnly]);
+  }, [files, selectedPath, selectedPaths, setSelectedOnly]);
 
   const updateMarqueeSelection = useCallback((clientY: number) => {
     const container = listRef.current;
@@ -223,7 +222,6 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
     const currentY = clientY - rect.top + container.scrollTop;
     const startIndex = marqueeStartRef.current;
     if (Math.abs(currentY - startIndex) < 3) return;
-    marqueeActiveRef.current = true;
     const endIndex = currentY;
     const next = new Set<string>();
     container.querySelectorAll<HTMLElement>("[data-file-path]").forEach((element) => {
@@ -235,7 +233,7 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
         if (path) next.add(path);
       }
     });
-    selectedPathsRef.current = next;
+    setSelectedPaths(next);
     setSelectedPath(next.size ? String(next.values().next().value) : null);
     setMarqueeRange({ start: Math.min(startIndex, endIndex), end: Math.max(startIndex, endIndex) });
   }, []);
@@ -246,12 +244,10 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
     if (!container) return;
     const rect = container.getBoundingClientRect();
     marqueeStartRef.current = event.clientY - rect.top + container.scrollTop;
-    marqueeActiveRef.current = false;
     setMarqueeRange(null);
     const handleMove = (moveEvent: MouseEvent) => updateMarqueeSelection(moveEvent.clientY);
     const handleUp = () => {
       marqueeStartRef.current = null;
-      marqueeActiveRef.current = false;
       setMarqueeRange(null);
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
@@ -289,7 +285,7 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
         setCurrentPath(normalized);
         setPathDraft(normalized);
         if (uuid) pathCacheRef.current.set(uuid, normalized);
-        selectedPathsRef.current = new Set();
+        setSelectedPaths(new Set());
         setSelectedPath(null);
         setSearchResult(null);
       } catch (error) {
@@ -309,7 +305,7 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
       setCurrentPath(cachedPath);
       setPathDraft(cachedPath);
       setFiles([]);
-      selectedPathsRef.current = new Set();
+      setSelectedPaths(new Set());
       setSelectedPath(null);
       setSearchResult(null);
       void loadDirectory(cachedPath);
@@ -318,7 +314,7 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
     setCurrentPath("");
     setPathDraft("");
     setFiles([]);
-    selectedPathsRef.current = new Set();
+    setSelectedPaths(new Set());
     setSelectedPath(null);
     setSearchResult(null);
     void loadDirectory("/");
@@ -407,7 +403,7 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
         setClipboardSource(remaining.length > 0 ? { ...clipboardSource, paths: remaining } : null);
       }
       await refresh();
-      selectedPathsRef.current = new Set();
+      setSelectedPaths(new Set());
       setSelectedPath(null);
       toast.success(t("file_manager.action_success", "File operation completed"));
     } catch (error) {
@@ -496,7 +492,7 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
         await fileService.mkdir(path);
       }
       await refresh();
-      selectedPathsRef.current = new Set([path]);
+      setSelectedPaths(new Set([path]));
       setSelectedPath(path);
       toast.success(t("file_manager.action_success", "File operation completed"));
     } catch (error) {
@@ -531,7 +527,7 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
           { key: "refresh", label: t("common.refresh", "Refresh"), icon: <RefreshCw size={14} />, separatorBefore: true, onSelect: () => void refresh() },
         ];
       }
-      const activeSelection = selectedPathsRef.current.has(file.path)
+      const activeSelection = selectedPaths.has(file.path)
         ? selectedFiles
         : [file];
       const multiple = activeSelection.length > 1;
@@ -563,7 +559,7 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
         { key: "delete", label: multiple ? `${t("file_manager.delete", "Delete")} (${activeSelection.length})` : t("file_manager.delete", "Delete"), icon: <Trash2 size={14} />, destructive: true, separatorBefore: true, onSelect: () => setPendingDeleteFiles(activeSelection) },
       ];
     },
-    [beginAction, beginClipboard, clipboardSource, copySelectedPaths, downloadFiles, loadDirectory, openFile, pasteClipboard, refresh, selectedFiles, startCreate, t]);
+    [beginAction, beginClipboard, clipboardSource, copySelectedPaths, downloadFiles, loadDirectory, openFile, pasteClipboard, refresh, selectedFiles, selectedPaths, startCreate, t]);
 
   const runAction = useCallback(async () => {
     if (!uuid || !action) return;
@@ -680,7 +676,7 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
 
   const startInternalDrag = (file: RemoteFileInfo): string[] => {
     const sourcePaths =
-      selectedPathsRef.current.has(file.path)
+      selectedPaths.has(file.path)
         ? selectedFiles.map((item) => item.path)
         : [file.path];
     internalDragPathsRef.current = sourcePaths;
@@ -928,12 +924,12 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
               </div>
             )}
             {files.map((file) => {
-              const selected = selectedPathsRef.current.has(file.path);
+              const selected = selectedPaths.has(file.path);
               return (
                 <div
                   key={file.path}
                   data-file-path={file.path}
-                  draggable={!marqueeActiveRef.current && marqueeRange === null && renamingPath !== file.path}
+                  draggable={marqueeRange === null && renamingPath !== file.path}
                   className={`group my-0.5 flex h-11 min-w-0 items-center gap-2 rounded-[4px] px-2 ${
                     selected ? "bg-[#37373d]" : dragTarget?.kind === "directory" && dragTarget.path === file.path ? "bg-[#20364a]" : "hover:bg-[#2a2d2e]"
                   }`}
@@ -968,7 +964,7 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
                   }}
                   onContextMenu={(event) => {
                     event.stopPropagation();
-                    if (!selectedPathsRef.current.has(file.path)) setSelectedOnly(file.path);
+                    if (!selectedPaths.has(file.path)) setSelectedOnly(file.path);
                     setContextTarget(file);
                     openContextMenu(event);
                   }}
