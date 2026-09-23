@@ -43,6 +43,9 @@ jobs:
           python script/chart-a11y.spec.py
           python script/compiler-static.browser.spec.py
           python script/admin-clock.browser.spec.py
+          python script/node-details.browser.spec.py
+          python script/admin-mutations.browser.spec.py
+          python script/offline-notification.browser.spec.py
           python script/file-manager.browser.spec.py
           python script/selector-state.browser.spec.py
           python script/number-picker.browser.spec.py

@@ -83,6 +83,30 @@ import { useSettings } from "@/lib/api";
 import { SelectOrInput } from "@/components/ui/select-or-input";
 import { useRPC2Call } from "@/contexts/RPC2Context";
 
+async function requireClientMutationSuccess(response: Response): Promise<void> {
+  const payload: unknown = await response.json().catch(() => null);
+  if (
+    response.ok &&
+    payload !== null &&
+    typeof payload === "object" &&
+    "status" in payload &&
+    payload.status === "success"
+  ) {
+    return;
+  }
+  const message =
+    payload !== null &&
+    typeof payload === "object" &&
+    "message" in payload &&
+    typeof payload.message === "string" &&
+    payload.message.trim()
+      ? payload.message
+      : response.ok
+        ? "Invalid client mutation response"
+        : `HTTP ${response.status}`;
+  throw new Error(message);
+}
+
 
 const NodeDetailsPage = () => {
   return (
@@ -1099,15 +1123,16 @@ const Header = ({
   const [dialogOpen, setDialogOpen] = useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const handleAddNode = async (name: string | undefined) => {
-    setDialogOpen(true);
     setLoading(true);
     try {
-      await fetch("/api/admin/client/add", {
+      const response = await fetch("/api/admin/client/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name || "" }),
       });
+      await requireClientMutationSuccess(response);
       refresh();
+      setDialogOpen(false);
     } catch (error) {
       toast.error(
         `${t("common.error", "Error")}: ${
@@ -1116,7 +1141,6 @@ const Header = ({
       );
     } finally {
       setLoading(false);
-      setDialogOpen(false);
     }
   };
   return (
@@ -1362,6 +1386,7 @@ const NodeTable = ({
 
     const oldIndex = localNodes.findIndex((node) => node.uuid === active.id);
     const newIndex = localNodes.findIndex((node) => node.uuid === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
     const reorderedNodes = Array.from(localNodes);
     const [reorderedItem] = reorderedNodes.splice(oldIndex, 1);
     reorderedNodes.splice(newIndex, 0, reorderedItem);
@@ -1379,13 +1404,15 @@ const NodeTable = ({
         return acc;
       }, {} as Record<string, number>);
 
-      await fetch("/api/admin/client/order", {
+      const response = await fetch("/api/admin/client/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(orderData),
       });
+      await requireClientMutationSuccess(response);
       // 不再调用 refresh，以免覆盖本地排序
     } catch {
+      setLocalNodes((current) => current === reorderedNodes ? localNodes : current);
       toast.error(t("admin.nodeTable.errorRefreshNodeList"));
     }
   };
@@ -1494,7 +1521,7 @@ const ActionButtons = ({
 };
 
 export default NodeDetailsPage;
-function DeleteButton({ node }: { node: NodeDetail }) {
+export function DeleteButton({ node }: { node: NodeDetail }) {
   const { t } = useTranslation();
   const { refresh } = useNodeDetails();
   const [open, setOpen] = React.useState(false);
@@ -1502,9 +1529,10 @@ function DeleteButton({ node }: { node: NodeDetail }) {
   const handleDelete = async () => {
     try {
       setDeleting(true);
-      await fetch(`/api/admin/client/${node.uuid}/remove`, {
+      const response = await fetch(`/api/admin/client/${node.uuid}/remove`, {
         method: "POST",
       });
+      await requireClientMutationSuccess(response);
       toast.success(`Delete ${node.name}`);
       setOpen(false);
       refresh();
@@ -2387,7 +2415,7 @@ function GenerateCommandButton({
   );
 }
 
-function EditButton({ node }: { node: NodeDetail }) {
+export function EditButton({ node }: { node: NodeDetail }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const { refresh } = useNodeDetails();
@@ -2429,7 +2457,7 @@ function EditButton({ node }: { node: NodeDetail }) {
   const save = async () => {
     try {
       setSaving(true);
-      await fetch(`/api/admin/client/${node.uuid}/edit`, {
+      const response = await fetch(`/api/admin/client/${node.uuid}/edit`, {
         method: "POST",
         body: JSON.stringify({
           name: nameRef.current?.value,
@@ -2445,11 +2473,14 @@ function EditButton({ node }: { node: NodeDetail }) {
           "Content-Type": "application/json",
         },
       });
+      await requireClientMutationSuccess(response);
       refresh();
       setOpen(false);
       toast.success(t("admin.nodeEdit.saveSuccess", "保存成功"));
     } catch (error) {
-      console.error("Error updating client:", error);
+      toast.error(
+        `${t("common.error", "Error")}: ${error instanceof Error ? error.message : String(error)}`
+      );
     } finally {
       setSaving(false);
     }
@@ -2841,7 +2872,7 @@ function DetailView({ node }: { node: NodeDetail }) {
   );
 }
 
-function BillingButton({ node }: { node: NodeDetail }) {
+export function BillingButton({ node }: { node: NodeDetail }) {
   const { t } = useTranslation();
   const { refresh } = useNodeDetails();
   const [open, setOpen] = useState(false);
@@ -2876,7 +2907,7 @@ function BillingButton({ node }: { node: NodeDetail }) {
         : null;
       const currencyValue = (formData.get("currency") as string) || "$";
 
-      await fetch(`/api/admin/client/${node.uuid}/edit`, {
+      const response = await fetch(`/api/admin/client/${node.uuid}/edit`, {
         method: "POST",
         body: JSON.stringify({
           price,
@@ -2889,6 +2920,7 @@ function BillingButton({ node }: { node: NodeDetail }) {
           "Content-Type": "application/json",
         },
       });
+      await requireClientMutationSuccess(response);
       refresh();
       setOpen(false);
     } catch (error) {

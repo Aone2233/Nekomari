@@ -140,7 +140,7 @@ true on every render. Fixed in PR #26.
 
 It was green on the audit, `tsc`, `eslint`, all 40 unit tests and all five
 browser specs. Every one of those checks passed because **no test mounts that
-page**, and it is one of the 149 unreachable files above. It was found only by
+page**, and it is one of the 137 unreachable files above. It was found only by
 building the server, running it against a fresh database, installing an account
 through the real installer, and walking the routes in Chromium.
 

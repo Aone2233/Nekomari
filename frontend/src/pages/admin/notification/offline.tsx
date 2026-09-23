@@ -36,6 +36,33 @@ const OfflinePage = () => {
     </OfflineNotificationProvider>
   );
 };
+
+type OfflineNotificationEdit = {
+  client: string;
+  enable: boolean;
+  cooldown: number;
+  grace_period: number;
+};
+
+const saveOfflineNotifications = async (payload: OfflineNotificationEdit[]) => {
+  const response = await fetch("/api/admin/notification/offline/edit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body: unknown = await response.json().catch(() => null);
+  const result = body && typeof body === "object"
+    ? body as { status?: unknown; message?: unknown }
+    : null;
+  if (!response.ok || result?.status !== "success") {
+    throw new Error(
+      typeof result?.message === "string" && result.message.trim()
+        ? result.message
+        : `Failed to update offline notifications (${response.status})`,
+    );
+  }
+};
+
 const NotificationEditForm = ({
   initialValues,
   onSubmit,
@@ -131,7 +158,7 @@ const InnerLayout = () => {
   });
 
   // 批量修改
-  const handleBatchEdit = (values: {
+  const handleBatchEdit = async (values: {
     enable: boolean;
     cooldown: number;
     grace_period: number;
@@ -143,31 +170,17 @@ const InnerLayout = () => {
       cooldown: values.cooldown,
       grace_period: values.grace_period,
     }));
-    fetch("/api/admin/notification/offline/edit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-      .then((res) => {
-        if (!res.ok) {
-          toast.error(
-            "Failed to update offline notifications: " + res.statusText
-          );
-        } else {
-          toast.success(t("common.updated_successfully"));
-        }
-        return res.json();
-      })
-      .then(() => {
-        setBatchLoading(false);
-        setBatchDialogOpen(false);
-        refresh();
-      })
-      .catch((error) => {
-        console.error("Error updating offline notifications:", error);
-        toast.error(t("common.error", { message: error.message }));
-        setBatchLoading(false);
-      });
+    try {
+      await saveOfflineNotifications(payload);
+      toast.success(t("common.updated_successfully"));
+      setBatchDialogOpen(false);
+      void refresh();
+    } catch (error) {
+      console.error("Error updating offline notifications:", error);
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBatchLoading(false);
+    }
   };
 
   if (onLoading || onNodeLoading) {
@@ -207,7 +220,12 @@ const InnerLayout = () => {
         })}
       </label>
       <Flex gap="2" align="center">
-        <Dialog.Root open={batchDialogOpen} onOpenChange={setBatchDialogOpen}>
+        <Dialog.Root
+          open={batchDialogOpen}
+          onOpenChange={(open) => {
+            if (!batchLoading || open) setBatchDialogOpen(open);
+          }}
+        >
           <Dialog.Trigger>
             <Button
               variant="soft"
@@ -233,7 +251,9 @@ const InnerLayout = () => {
               initialValues={batchForm}
               loading={batchLoading}
               onSubmit={handleBatchEdit}
-              onCancel={() => setBatchDialogOpen(false)}
+              onCancel={() => {
+                if (!batchLoading) setBatchDialogOpen(false);
+              }}
             />
           </Dialog.Content>
         </Dialog.Root>
@@ -346,6 +366,7 @@ const OfflineNotificationTable = ({
               </TableCell>
               <TableCell>
                 <ActionButtons
+                  clientId={node.uuid}
                   offlineNotifications={offlineNotification.find(
                     (n) => n.client === node.uuid
                   )}
@@ -360,8 +381,10 @@ const OfflineNotificationTable = ({
 };
 
 const ActionButtons = ({
+  clientId,
   offlineNotifications,
 }: {
+  clientId: string;
   offlineNotifications: OfflineNotification | undefined;
 }) => {
   const { t } = useTranslation();
@@ -371,7 +394,12 @@ const ActionButtons = ({
 
   return (
     <Flex gap="2" align="center">
-      <Dialog.Root open={editOpen} onOpenChange={setEditOpen}>
+      <Dialog.Root
+        open={editOpen}
+        onOpenChange={(open) => {
+          if (!editSaving || open) setEditOpen(open);
+        }}
+      >
         <Dialog.Trigger>
           <IconButton
             variant="ghost"
@@ -390,42 +418,26 @@ const ActionButtons = ({
               grace_period: offlineNotifications?.grace_period ?? 300,
             }}
             loading={editSaving}
-            onSubmit={(values) => {
+            onSubmit={async (values) => {
               setEditSaving(true);
-              fetch("/api/admin/notification/offline/edit", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify([
-                  {
-                    client: offlineNotifications?.client,
-                    ...values,
-                  },
-                ]),
-              })
-                .then((res) => {
-                  if (!res.ok) {
-                    toast.error(
-                      "Failed to save offline notification settings: " +
-                        res.statusText
-                    );
-                  }
-                  toast.success(t("common.updated_successfully"));
-                  return res.json();
-                })
-                .then(() => {
-                  setEditOpen(false);
-                  refresh();
-                  setEditSaving(false);
-                })
-                .catch((error) => {
-                  console.error(
-                    "Error saving offline notification settings:",
-                    error
-                  );
-                  toast.error(t("common.error", { message: error.message }));
-                });
+              try {
+                await saveOfflineNotifications([{
+                  client: clientId,
+                  ...values,
+                }]);
+                toast.success(t("common.updated_successfully"));
+                setEditOpen(false);
+                void refresh();
+              } catch (error) {
+                console.error("Error saving offline notification settings:", error);
+                toast.error(error instanceof Error ? error.message : String(error));
+              } finally {
+                setEditSaving(false);
+              }
             }}
-            onCancel={() => setEditOpen(false)}
+            onCancel={() => {
+              if (!editSaving) setEditOpen(false);
+            }}
           />
         </Dialog.Content>
       </Dialog.Root>
