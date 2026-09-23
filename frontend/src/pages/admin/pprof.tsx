@@ -243,6 +243,46 @@ export default function PprofPage() {
     [readProfilePreview],
   );
 
+  // Pure request: resolves to the summary, or throws a display-ready error.
+  const requestSummary = React.useCallback(async (): Promise<PprofSummary> => {
+    const response = await fetch("/api/admin/pprof/summary", {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    if (!response.ok) {
+      throw new Error(await responseError(response, t("pprof.summary_load_failed")));
+    }
+
+    const parsed = pprofSummaryResponseSchema.safeParse(await response.json());
+    if (!parsed.success) {
+      throw new Error(t("pprof.invalid_summary"));
+    }
+
+    return parsed.data.data;
+  }, [t]);
+
+  const applySummary = React.useCallback(
+    (data: PprofSummary) => {
+      setSummary(data);
+      setSummaryError(null);
+      void loadHeapPreview(
+        data.profiles.find((profile) => profile.name === "heap"),
+      );
+      setCaptureSeconds((current) => {
+        const options = captureDurations(data);
+        return options.includes(current)
+          ? current
+          : data.duration.default_seconds;
+      });
+    },
+    [loadHeapPreview],
+  );
+
+  const applySummaryFailure = React.useCallback((cause: unknown) => {
+    setSummary(null);
+    setSummaryError(cause instanceof Error ? cause.message : String(cause));
+  }, []);
+
   const loadSummary = React.useCallback(async () => {
     setSummaryLoading(true);
     setSummaryError(null);
@@ -251,40 +291,36 @@ export default function PprofPage() {
     setHeapPreviewError(null);
     setHeapPreviewLoading(false);
     try {
-      const response = await fetch("/api/admin/pprof/summary", {
-        cache: "no-store",
-        credentials: "same-origin",
-      });
-      if (!response.ok) {
-        throw new Error(await responseError(response, t("pprof.summary_load_failed")));
-      }
-
-      const parsed = pprofSummaryResponseSchema.safeParse(await response.json());
-      if (!parsed.success) {
-        throw new Error(t("pprof.invalid_summary"));
-      }
-
-      setSummary(parsed.data.data);
-      void loadHeapPreview(
-        parsed.data.data.profiles.find((profile) => profile.name === "heap"),
-      );
-      setCaptureSeconds((current) => {
-        const options = captureDurations(parsed.data.data);
-        return options.includes(current)
-          ? current
-          : parsed.data.data.duration.default_seconds;
-      });
+      const data = await requestSummary();
+      applySummary(data);
     } catch (cause) {
-      setSummary(null);
-      setSummaryError(cause instanceof Error ? cause.message : String(cause));
+      applySummaryFailure(cause);
     } finally {
       setSummaryLoading(false);
     }
-  }, [loadHeapPreview, t]);
+  }, [applySummary, applySummaryFailure, requestSummary]);
 
   React.useEffect(() => {
-    void loadSummary();
-  }, [loadSummary]);
+    let active = true;
+    // Drop any heap preview still in flight for the previous summary.
+    heapPreviewRequestRef.current++;
+    const load = async () => {
+      try {
+        const data = await requestSummary();
+        if (!active) return;
+        applySummary(data);
+      } catch (cause) {
+        if (!active) return;
+        applySummaryFailure(cause);
+      } finally {
+        if (active) setSummaryLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [applySummary, applySummaryFailure, requestSummary]);
 
   const downloadProfile = async (profile: PprofProfile) => {
     setActiveAction(`${profile.name}:download`);

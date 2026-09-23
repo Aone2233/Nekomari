@@ -72,19 +72,28 @@ const MiniPingChart = ({
   const [ewmaEnabled, setEwmaEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+
+  const requestKey = uuid ? `${uuid}|${hours}` : "";
+
+  // Adjust the request-scoped state while rendering when the request changes, so
+  // the fetch effect below never has to write state synchronously.
+  if (loadedKey !== requestKey) {
+    setLoadedKey(requestKey);
+    setMetricSeries([]);
+    setTasks([]);
+    setStats([]);
+    setHiddenLines({});
+    setError(null);
+    setLoading(requestKey !== "");
+  }
 
   useEffect(() => {
     if (!uuid) {
-      setMetricSeries([]);
-      setTasks([]);
-      setStats([]);
       return;
     }
 
     let active = true;
-    setLoading(true);
-    setError(null);
-    setHiddenLines({});
 
     const taskRequest = call<unknown, PublicPingTask[]>(
       "public:getPublicPingTasks",
@@ -113,6 +122,7 @@ const MiniPingChart = ({
         setTasks(Array.isArray(taskList) ? taskList : []);
         setMetricSeries(normalizeMetricSeriesList(result?.series));
         setStats(Array.isArray(statsResult?.stats) ? statsResult.stats : []);
+        setError(null);
         setLoading(false);
       })
       .catch((requestError) => {

@@ -123,13 +123,14 @@ export default function InlineSvgIcon({
   } | null>(null);
 
   useEffect(() => {
+    // The render below only uses markup whose `src` matches the current prop, so
+    // a changed or non-SVG source already falls back to <img> without needing
+    // this effect to clear state synchronously.
     if (!isSvgUrl(src)) {
-      setInlineSvg(null);
       return;
     }
 
     const controller = new AbortController();
-    setInlineSvg(null);
     const loadSvg = async () => {
       try {
         const response = await fetch(src, { signal: controller.signal });

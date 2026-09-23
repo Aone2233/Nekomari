@@ -45,6 +45,11 @@ type DatabaseOverview = z.infer<typeof databaseOverviewSchema>;
 type DatabaseMaintenanceResult = z.infer<typeof maintenanceResultSchema>;
 type TranslationFunction = ReturnType<typeof useTranslation>["t"];
 
+type OverviewLoadResult = {
+  overview: DatabaseOverview | null;
+  error: string | null;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -199,9 +204,8 @@ export function DatabaseMaintenanceCard() {
   const [maintaining, setMaintaining] = React.useState(false);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
-  const fetchOverview = React.useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
+  // Pure request: resolves to the parsed overview, or to a display-ready error.
+  const requestOverview = React.useCallback(async (): Promise<OverviewLoadResult> => {
     const fallbackMessage = t("settings.database.load_error");
 
     try {
@@ -214,24 +218,45 @@ export function DatabaseMaintenanceCard() {
         throw new Error(t("settings.database.invalid_response"));
       }
 
-      setOverview(parsed.data);
-      setLoadError(null);
+      return { overview: parsed.data, error: null };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setOverview(null);
-      setLoadError(
-        message === fallbackMessage
-          ? fallbackMessage
-          : `${fallbackMessage}: ${message}`,
-      );
-    } finally {
-      setLoading(false);
+      return {
+        overview: null,
+        error:
+          message === fallbackMessage
+            ? fallbackMessage
+            : `${fallbackMessage}: ${message}`,
+      };
     }
   }, [t]);
 
+  const applyOverview = React.useCallback((result: OverviewLoadResult) => {
+    setOverview(result.overview);
+    setLoadError(result.error);
+  }, []);
+
   React.useEffect(() => {
-    void fetchOverview();
-  }, [fetchOverview]);
+    let active = true;
+    const load = async () => {
+      const result = await requestOverview();
+      if (!active) return;
+      applyOverview(result);
+      setLoading(false);
+    };
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [applyOverview, requestOverview]);
+
+  const fetchOverview = React.useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    const result = await requestOverview();
+    applyOverview(result);
+    setLoading(false);
+  }, [applyOverview, requestOverview]);
 
   const handleMaintenance = async () => {
     if (!overview || maintaining) return;

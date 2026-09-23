@@ -101,7 +101,6 @@ const ExecContent = () => {
     const [taskId, setTaskId] = useState<string | null>(null);
     const [polling, setPolling] = useState(false);
     const [commandFocused, setCommandFocused] = useState(false);
-    const [commandEditorHeight, setCommandEditorHeight] = useState(COMMAND_EDITOR_COLLAPSED_HEIGHT);
     const [twoFaEnabled, setTwoFaEnabled] = useState(false);
     const [twoFaCode, setTwoFaCode] = useState("");
 
@@ -140,12 +139,13 @@ const ExecContent = () => {
         ];
     }, [commandFocused, commandLineCount]);
 
+    // The editor height is measured from the DOM, so it is written straight back
+    // to the element below instead of round-tripping through React state.
     const commandEditorStyle = useMemo<CSSProperties>(() => ({
         [COMMAND_EDITOR_LINE_HEIGHT_VAR]: "1.5rem",
         [COMMAND_EDITOR_VERTICAL_PADDING_VAR]: "1.5rem",
-        height: commandEditorHeight,
         maxHeight: commandFocused ? "60vh" : COMMAND_EDITOR_COLLAPSED_HEIGHT,
-    }), [commandEditorHeight, commandFocused]);
+    }), [commandFocused]);
 
     // 清理轮询的函数
     const clearPolling = () => {
@@ -184,21 +184,27 @@ const ExecContent = () => {
             return;
         }
 
+        const editor = commandEditorRef.current;
+
         if (!commandFocused) {
             textarea.scrollTop = 0;
             if (commandLineGutterRef.current) {
                 commandLineGutterRef.current.scrollTop = 0;
             }
-            setCommandEditorHeight(COMMAND_EDITOR_COLLAPSED_HEIGHT);
+            if (editor) {
+                editor.style.height = COMMAND_EDITOR_COLLAPSED_HEIGHT;
+            }
             return;
         }
 
         textarea.style.height = "0px";
 
-        const measuredHeight = textarea.scrollHeight + getCommandEditorBorderHeight(commandEditorRef.current);
-        const collapsedHeight = getCommandEditorCollapsedHeight(textarea, commandEditorRef.current);
+        const measuredHeight = textarea.scrollHeight + getCommandEditorBorderHeight(editor);
+        const collapsedHeight = getCommandEditorCollapsedHeight(textarea, editor);
 
-        setCommandEditorHeight(`${Math.max(collapsedHeight, measuredHeight)}px`);
+        if (editor) {
+            editor.style.height = `${Math.max(collapsedHeight, measuredHeight)}px`;
+        }
         textarea.style.height = "100%";
     }, [command, commandFocused]);
 
