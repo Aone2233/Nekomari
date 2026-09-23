@@ -90,6 +90,16 @@ type LoginMethods = Pick<
 > & { mode: Mode };
 type Me = Pick<RestrictedAuthStatus, "logged_in" | "username">;
 type AuthStatus = LoginMethods & Me;
+
+// What a status refresh resolved to. `unauthenticated` mirrors the original
+// early return, which cleared the status but left the page error untouched.
+// `unauthorized` carries the original 401 handling: the auth resolved so far is
+// written, then invalidated in place, then the error message is shown.
+type MigrationRefreshResult =
+  | { kind: "unauthenticated"; auth: AuthStatus }
+  | { kind: "loaded"; auth: AuthStatus; status: MigrationStatus }
+  | { kind: "unauthorized"; auth: AuthStatus | null; message: string }
+  | { kind: "failed"; message: string };
 type APIResponse<T> = {
   status: "success" | "error";
   message?: string;
@@ -188,38 +198,78 @@ export default function DatabaseMigration() {
   const [probeActive, setProbeActive] = useState(false);
   const [reclaimStartedAt, setReclaimStartedAt] = useState<number | null>(null);
   const [reclaimNow, setReclaimNow] = useState(0);
+  const [syncedProbeKey, setSyncedProbeKey] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  // Pure request: resolves to the state the page should display, or to a
+  // display-ready error. It never writes state, so the mount effect below can
+  // call it without raising a synchronous setState.
+  const requestStatus = useCallback(async (): Promise<MigrationRefreshResult> => {
+    let resolvedAuth: AuthStatus | null = null;
     try {
       const [methods, me] = await Promise.all([
         request<LoginMethods>("/auth"),
         getMe(),
       ]);
-      setAuth({ ...methods, ...me });
+      resolvedAuth = { ...methods, ...me };
       if (!me.logged_in) {
-        setStatus(null);
-        return;
+        return { kind: "unauthenticated", auth: resolvedAuth };
       }
       const next = await request<MigrationStatus>("/status");
-      setStatus(next);
-      setPageError("");
+      return { kind: "loaded", auth: resolvedAuth, status: next };
     } catch (error) {
-      if (error instanceof MigrationRequestError && error.status === 401) {
-        setAuth((current) =>
-          current ? { ...current, logged_in: false } : current,
-        );
-      }
-      setPageError(
+      const message =
         error instanceof Error
           ? error.message
-          : t(`${COMMON_I18N}.network_error`),
-      );
+          : t(`${COMMON_I18N}.network_error`);
+      if (error instanceof MigrationRequestError && error.status === 401) {
+        return { kind: "unauthorized", auth: resolvedAuth, message };
+      }
+      return { kind: "failed", message };
     }
   }, [t]);
 
+  const applyRefreshResult = useCallback((result: MigrationRefreshResult) => {
+    switch (result.kind) {
+      case "loaded":
+        setAuth(result.auth);
+        setStatus(result.status);
+        setPageError("");
+        return;
+      case "unauthenticated":
+        setAuth(result.auth);
+        setStatus(null);
+        return;
+      case "unauthorized":
+        if (result.auth !== null) {
+          setAuth(result.auth);
+        }
+        setAuth((current) =>
+          current ? { ...current, logged_in: false } : current,
+        );
+        setPageError(result.message);
+        return;
+      case "failed":
+        setPageError(result.message);
+        return;
+    }
+  }, []);
+
+  const refresh = useCallback(async () => {
+    applyRefreshResult(await requestStatus());
+  }, [applyRefreshResult, requestStatus]);
+
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let active = true;
+    const run = async () => {
+      const result = await requestStatus();
+      if (!active) return;
+      applyRefreshResult(result);
+    };
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [applyRefreshResult, requestStatus]);
 
   useEffect(() => {
     if (
@@ -284,25 +334,37 @@ export default function DatabaseMigration() {
       status?.state === "reclaiming" ||
       status?.state === "completed");
 
-  useEffect(() => {
-    if (legacy) return;
-    if (status?.state === "failed") {
+  // Keyed on the same inputs the former probe effect reacted to. `null` is the
+  // state where that effect took its early return, so starting the sentinel at
+  // `null` keeps the mount invocation a no-op exactly as the effect had it.
+  const probeKey = legacy
+    ? null
+    : status?.state === "failed"
+      ? "failed"
+      : status?.state === "reclaiming" || status?.state === "completed"
+        ? `probe:${status.state}`
+        : null;
+
+  // Start (or stop) the reclaim probe while rendering when the status first
+  // calls for it. This is the former effect, moved into render: it replaces the
+  // one frame that effect painted with the stale probe state and is otherwise
+  // identical, including its early return on `legacy` and on a `failed` status.
+  if (syncedProbeKey !== probeKey) {
+    setSyncedProbeKey(probeKey);
+    if (probeKey === "failed") {
       setProbeActive(false);
       setReclaimStartedAt(null);
-      return;
+    } else if (probeKey !== null && !probeActive) {
+      setProbeActive(true);
+      setReclaimStartedAt(() =>
+        status?.state === "completed"
+          ? Date.now() -
+              (RECLAIM_PROGRESS_CAP - RECLAIM_START_PROGRESS) * RECLAIM_STEP_MS
+          : Date.now(),
+      );
+      setReclaimNow(() => Date.now());
     }
-    const startsProbe =
-      status?.state === "reclaiming" || status?.state === "completed";
-    if (!startsProbe || probeActive) return;
-    setProbeActive(true);
-    setReclaimStartedAt(
-      status?.state === "completed"
-        ? Date.now() -
-            (RECLAIM_PROGRESS_CAP - RECLAIM_START_PROGRESS) * RECLAIM_STEP_MS
-        : Date.now(),
-    );
-    setReclaimNow(Date.now());
-  }, [legacy, status?.state, probeActive]);
+  }
 
   useEffect(() => {
     if (!probeActive) return;
