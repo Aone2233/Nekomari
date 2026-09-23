@@ -22,23 +22,27 @@ export default function SignOnSettings() {
   const [providerLoading, setProviderLoading] = React.useState(false);
   const [providerError, setProviderError] = React.useState("");
   const [syncedProviderDefsKey, setSyncedProviderDefsKey] = React.useState<
-    [string, unknown] | null
-  >(null);
+    [string, unknown] | null | undefined
+  >(undefined);
   const [syncedProviderSettingsKey, setSyncedProviderSettingsKey] =
-    React.useState<[string, unknown] | null>(null);
+    React.useState<[string, unknown] | null | undefined>(undefined);
 
   // Both effects below raised the spinner synchronously before starting their
   // fetch. Each guard is keyed on that effect's whole dependency set, and its
-  // sentinel starts at `null` — the value the key takes exactly when the effect
-  // would take its early return — so the mount invocation is a no-op whenever
-  // the effect's mount invocation was one.
+  // sentinel starts at `undefined` — a value the key itself can never take — so
+  // the guard runs once on mount and then only on real changes.
+  //
+  // The sentinel must NOT be `null`: both keys are legitimately `null` for as
+  // long as `loading` is true or no provider is selected, so a `null` sentinel
+  // made `syncedKey === null` true on every render, the adjustment re-ran every
+  // render, and the page died with React's "Too many re-renders" (error #301).
   const providerDefsKey: [string, unknown] | null = loading
     ? null
     : [settings.o_auth_provider, t];
   if (
-    syncedProviderDefsKey === null ||
-    syncedProviderDefsKey[0] !== providerDefsKey?.[0] ||
-    syncedProviderDefsKey[1] !== providerDefsKey?.[1]
+    syncedProviderDefsKey === undefined ||
+    syncedProviderDefsKey?.[0] !== providerDefsKey?.[0] ||
+    syncedProviderDefsKey?.[1] !== providerDefsKey?.[1]
   ) {
     setSyncedProviderDefsKey(providerDefsKey);
     if (providerDefsKey !== null) {
@@ -73,9 +77,9 @@ export default function SignOnSettings() {
     ? [currentProvider, t]
     : null;
   if (
-    syncedProviderSettingsKey === null ||
-    syncedProviderSettingsKey[0] !== providerSettingsKey?.[0] ||
-    syncedProviderSettingsKey[1] !== providerSettingsKey?.[1]
+    syncedProviderSettingsKey === undefined ||
+    syncedProviderSettingsKey?.[0] !== providerSettingsKey?.[0] ||
+    syncedProviderSettingsKey?.[1] !== providerSettingsKey?.[1]
   ) {
     setSyncedProviderSettingsKey(providerSettingsKey);
     if (providerSettingsKey !== null) {
