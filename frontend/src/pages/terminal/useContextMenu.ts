@@ -8,10 +8,19 @@ export function useContextMenu() {
   return {
     contextMenuPosition,
     contextMenuOpen,
-    openContextMenu: (event: { clientX: number; clientY: number; preventDefault?: () => void }) => {
+    // `buildItems` runs inside the animation frame that opens the menu, not
+    // during render: a caller whose item list is expensive, or whose items
+    // close over a ref, must not build them for a menu that stays shut.
+    openContextMenu: (
+      event: { clientX: number; clientY: number; preventDefault?: () => void },
+      buildItems?: () => void,
+    ) => {
       event.preventDefault?.();
       setContextMenuPosition({ x: event.clientX, y: event.clientY });
-      requestAnimationFrame(() => setContextMenuOpen(true));
+      requestAnimationFrame(() => {
+        buildItems?.();
+        setContextMenuOpen(true);
+      });
     },
     closeContextMenu: () => setContextMenuOpen(false),
     setContextMenuOpen,

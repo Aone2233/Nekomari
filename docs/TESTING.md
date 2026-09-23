@@ -37,6 +37,8 @@ python script/compiler-static.browser.spec.py
 python script/admin-clock.browser.spec.py
 python script/file-manager.browser.spec.py
 python script/selector-state.browser.spec.py
+python script/number-picker.browser.spec.py
+python script/remote-file-tree.browser.spec.py
 ```
 
 | Spec | Fixture mounts | Covers |
@@ -46,12 +48,17 @@ python script/selector-state.browser.spec.py
 | `admin-clock.browser.spec.py` | `pages/admin/sessions`, `pages/admin/dashboard` | time-dependent labels sharing one live clock without refetching, expiry boundaries and renewed exclusion, and a mounted dashboard moving its expiry window and urgency |
 | `file-manager.browser.spec.py` | `pages/terminal/FileManagerPanel`, `pages/terminal/FileEditorDialog` | rename/delete refreshing the real directory, ctrl-deselect keeping only the remaining file selected, a stale directory response not replacing a newer node, a delayed read updating its own tab, and a post-reconnect refresh ignoring a prior connection's response |
 | `selector-state.browser.spec.py` | `components/SelectorDialog`, `components/NodeSelectorDialog` | cancel/confirm and external value updates, an uncontrolled node dialog's open/cancel/confirm, and a parent-controlled open without a trigger |
+| `number-picker.browser.spec.py` | `components/ui/number-picker`, and the real `pages/admin/log` | one `onChange` per valid keystroke, an out-of-range draft kept then clamped on blur, a `defaultValue` change re-syncing without reporting, an unrelated parent render reporting nothing, and the log page's pagination: page 2 stays page 2, and editing the limit returns to page 1 exactly once |
+| `remote-file-tree.browser.spec.py` | `pages/terminal/RemoteFileTree` | the root listing exactly once on mount, the directory memo (expanding lists once and re-expanding does not re-list), refresh forcing a re-list, reveal expanding and listing its ancestor chain, a root-path change dropping the memo, and selection and context-menu targeting |
 
 Two limits are worth knowing before trusting a green run. The fixtures mount
 components directly rather than routing to a page, so a page-level wiring bug is
-invisible to them; and `file-manager` never opens the file tree, so
-`RemoteFileTree` and every admin page have **no** browser coverage at all —
-changes there rest on the type checker, lint, the unit tests and the build.
+invisible to them — a page can loop on mount and every fixture stays green, which
+is exactly what happened to `pages/admin/settings/sign-on`. And `file-manager`
+never opens the file tree, so `remote-file-tree` is what covers the tree now;
+every admin page other than `dashboard` and `log` still has **no** browser
+coverage, and changes there rest on the type checker, lint, the unit tests and
+the build.
 
 `npm run audit:compiler` is an advisory migration inventory and exits nonzero
 while the remaining React Compiler recommendations are unresolved. It is not a

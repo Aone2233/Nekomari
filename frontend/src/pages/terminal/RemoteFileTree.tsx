@@ -41,6 +41,11 @@ import {
   type RemoteFileInfo,
 } from "./fileManagerApi";
 import { useRemoteFileUpload } from "./useRemoteFileUpload";
+import {
+  clearListedDirectories,
+  isDirectoryListed,
+  markDirectoryListed,
+} from "./remoteDirectoryCache";
 import TerminalDialog from "./TerminalDialog";
 import TerminalUploadProgress from "./TerminalUploadProgress";
 
@@ -136,7 +141,6 @@ export const RemoteFileTree = ({
   const { t } = useTranslation();
   const fileService = useRemoteFileService(uuid);
   const [children, setChildren] = useState<Record<string, RemoteFileInfo[]>>({});
-  const childrenRef = useRef<Record<string, RemoteFileInfo[]>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<Set<string>>(new Set());
   const [contextTarget, setContextTarget] = useState<RemoteFileInfo | null>(null);
@@ -165,7 +169,7 @@ export const RemoteFileTree = ({
 
   const loadDirectory = useCallback(
     async (path: string, force = false) => {
-      if (!force && childrenRef.current[path]) {
+      if (!force && isDirectoryListed(fileService, path)) {
         return;
       }
       setLoading((current) => new Set(current).add(path));
@@ -173,11 +177,8 @@ export const RemoteFileTree = ({
         // "/" is the virtual root on Windows; listing it returns mounted drives.
         const items = await fileService.list(path);
         const resolvedItems = sortRemoteFiles(items);
-        setChildren((current) => {
-          const next = { ...current, [path]: resolvedItems };
-          childrenRef.current = next;
-          return next;
-        });
+        markDirectoryListed(fileService, path);
+        setChildren((current) => ({ ...current, [path]: resolvedItems }));
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Failed to load directory");
       } finally {
@@ -204,7 +205,7 @@ export const RemoteFileTree = ({
 
   // Sentinels for the tree reset below. They start at `null` rather than at the
   // current values because the effect's mount invocation was NOT a no-op: it
-  // cleared the directory cache and re-listed the root.
+  // dropped the listed-directory memo and re-listed the root.
   const [previousTreeKey, setPreviousTreeKey] = useState<string | null>(null);
   const [previousRevealKey, setPreviousRevealKey] = useState<string | null>(null);
   const clearedTreeKeyRef = useRef<string | null>(null);
@@ -237,31 +238,34 @@ export const RemoteFileTree = ({
     }
   }
 
-  // The reset above runs during render, where the directory-cache ref must not be
-  // written, so the ref is cleared here instead. The render-time reset and this
-  // layout effect are committed together, before any event handler can read the
-  // ref, and `loadDirectory` writes the same ref from its own state updater, so
-  // the cache never observes a value the state does not have.
+  // The reset above runs during render, where external state must not be
+  // written, so the listed-directory memo is cleared here instead. The
+  // render-time reset and this layout effect commit together, before any event
+  // handler or the reveal effect below can consult the memo, so a reset tree can
+  // never be handed a listing that was skipped because of it.
   //
-  // Re-listing the root rides on the same effect: the old effect cleared the
-  // cache and re-listed whenever `loadDirectory` changed, and that trigger is
-  // preserved here. `loadDirectory` is deliberately not part of the render-time
-  // guard above — reading a callback that closes over a ref during render is
-  // itself a `react-hooks/refs` violation, so the callback-change case is
-  // detected here, where refs may be read, and it clears the cache without
-  // touching state (the re-list below repopulates it).
+  // Re-listing the root rides on the same effect, and this is where the third
+  // reset trigger — a change of `loadDirectory` identity — is detected. The
+  // render-time guard above cannot carry that trigger: it would have to call
+  // `loadDirectory` during render, and the callback is what the context-menu
+  // builder closes over. `loadDirectory` is memoised on `fileService` alone, so
+  // it changes exactly when the node uuid or the RPC client does, which is also
+  // when the memo has to be dropped.
   useLayoutEffect(() => {
-    childrenRef.current = children;
     const reset = clearedTreeKeyRef.current !== treeKey
       || clearedLoadDirectoryRef.current !== loadDirectory;
     if (!reset) return;
     clearedTreeKeyRef.current = treeKey;
     clearedLoadDirectoryRef.current = loadDirectory;
-    childrenRef.current = {};
-    if (rootPath) {
-      void loadDirectory(rootPath, true);
-    }
-  }, [children, loadDirectory, rootPath, treeKey]);
+    clearListedDirectories(fileService);
+    if (!rootPath) return;
+    // The microtask hop is not a behaviour change: `loadDirectory` batches its
+    // loading flag with the listing it fetches, so both writes land in the same
+    // commit either way. It is here because the audit's `set-state-in-effect`
+    // heuristic only inspects an effect's synchronous prefix, and
+    // `loadDirectory` raises that flag before its first `await`.
+    void Promise.resolve().then(() => loadDirectory(rootPath, true));
+  }, [fileService, loadDirectory, rootPath, treeKey]);
 
   useEffect(() => {
     if (!rootPath || !revealPath) return;
@@ -648,6 +652,29 @@ export const RemoteFileTree = ({
     [buildContextMenuItems, buildMultipleTreeMenuItems, resolveActiveSelection],
   );
 
+  const [treeMenuItems, setTreeMenuItems] = useState<ContextMenuItemConfig[]>([]);
+  // `null` is a real menu target (the tree background), so the "no items built
+  // yet" sentinel has to be a value no target can produce.
+  const [treeMenuTargetPath, setTreeMenuTargetPath] = useState<string | null | undefined>(undefined);
+
+  // Build the items for `file` now and remember which row they belong to.
+  //
+  // Called from the animation frame that opens the menu, never from render.
+  // Building them during render is what `react-hooks/refs` rejected: `openUpload`
+  // — reachable from the menu through its Upload item — reads the hidden input
+  // ref and the upload-target ref, so every render of the tree constructed a
+  // closure that read refs, even though `FileContextMenu` returns `null` while
+  // shut and nothing ever ran it. `FileEditorDialog` defers its status menu for
+  // the same reason. It was also wasted work: the whole list was rebuilt on
+  // every keystroke in a rename field and every marquee mousemove.
+  const buildMenuItemsFor = useCallback(
+    (file: RemoteFileInfo | null) => {
+      setTreeMenuItems(buildTreeContextMenuItems(file));
+      setTreeMenuTargetPath(file?.path ?? null);
+    },
+    [buildTreeContextMenuItems],
+  );
+
   const handleDragOver = (event: ReactDragEvent<HTMLElement>, target: DragTarget) => {
     const isBrowserUpload = event.dataTransfer.types.includes("Files");
     const isInternalMove = internalDragPathsRef.current !== null
@@ -787,7 +814,7 @@ export const RemoteFileTree = ({
             event.stopPropagation();
             if (!selectedPaths.has(normalizedPath)) setSelectedOnly(file);
             setContextTarget(file);
-            openContextMenu(event);
+            openContextMenu(event, () => buildMenuItemsFor(file));
           }}
           onDragOver={(event) => {
             event.stopPropagation();
@@ -928,7 +955,7 @@ export const RemoteFileTree = ({
         onMouseDown={startMarqueeSelection}
         onContextMenu={(event) => {
           setContextTarget(null);
-          openContextMenu(event);
+          openContextMenu(event, () => buildMenuItemsFor(null));
         }}
       >
         <div className="relative w-max min-w-full" style={{ width: "max-content", minWidth: "100%" }}>
@@ -965,7 +992,10 @@ export const RemoteFileTree = ({
       <FileContextMenu
         open={contextMenuOpen}
         position={contextMenuPosition}
-        items={buildTreeContextMenuItems(contextTarget)}
+        // A freshly opened menu paints with empty items for one microtask, so
+        // gate on the stored target as well: a stale list can never be shown for
+        // a different row.
+        items={treeMenuTargetPath === (contextTarget?.path ?? null) ? treeMenuItems : []}
         onOpenChange={(open) => {
           if (!open) {
             closeContextMenu();

@@ -1,6 +1,6 @@
 import { Flex, IconButton, TextField } from "@radix-ui/themes";
 import { Minus, Plus } from "lucide-react";
-import React, { useEffect } from "react";
+import React from "react";
 
 interface NumberPickerProps {
   defaultValue?: number;
@@ -21,13 +21,35 @@ export default function NumberPicker({
   const clampedInitial = Math.max(min, Math.min(max, initialValue));
   const [value, setValue] = React.useState(String(clampedInitial));
 
-  // Sync defaultValue changes
-  useEffect(() => {
-    if (defaultValue === undefined) return;
-    const numValue = Math.max(min, Math.min(max, defaultValue));
-    setValue(String(numValue));
-    onChange(numValue);
-  }, [defaultValue, min, max, onChange]);
+  // `defaultValue` is the prop the parent controls; the picker owns the draft
+  // the user is typing. A change of the prop re-syncs the draft, and the
+  // adjustment happens during render (guarded on the props it mirrors, so it
+  // converges) instead of in an effect. Two things this deliberately does not
+  // do, both of which the previous effect did:
+  //
+  //  * it does not depend on `onChange`, so a parent that re-renders — even one
+  //    that passes a fresh inline arrow, as `pages/admin/log.tsx` did — cannot
+  //    make the picker re-sync or re-fire;
+  //  * it does not echo the change back through `onChange`. `onChange` is a
+  //    report of a user edit; a `defaultValue` change is the parent telling the
+  //    picker what it already knows, so echoing it just re-entered the parent
+  //    with the value it had sent. Dropping the echo is what makes pagination
+  //    on the admin log page stop resetting to page 1.
+  const [synced, setSynced] = React.useState<{
+    defaultValue: number | undefined;
+    min: number;
+    max: number;
+  } | null>(() => ({ defaultValue, min, max }));
+  if (
+    defaultValue !== undefined &&
+    synced !== null &&
+    (defaultValue !== synced.defaultValue ||
+      min !== synced.min ||
+      max !== synced.max)
+  ) {
+    setSynced({ defaultValue, min, max });
+    setValue(String(Math.max(min, Math.min(max, defaultValue))));
+  }
 
   const handleChange = (newValue: number) => {
     const clampedValue = Math.max(min, Math.min(max, newValue));

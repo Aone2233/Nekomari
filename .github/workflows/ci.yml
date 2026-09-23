@@ -45,6 +45,8 @@ jobs:
           python script/admin-clock.browser.spec.py
           python script/file-manager.browser.spec.py
           python script/selector-state.browser.spec.py
+          python script/number-picker.browser.spec.py
+          python script/remote-file-tree.browser.spec.py
 
   build-and-test:
     name: build & test (${{ matrix.os }})
