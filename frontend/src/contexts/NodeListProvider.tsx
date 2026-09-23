@@ -25,10 +25,12 @@ export const NodeListProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, []);
 
-  const refresh = React.useCallback(() => {
+  // 只负责发起请求并在响应到达后应用结果：函数体内没有同步的 setState，
+  // 所以挂载 effect 可以直接调用它。refresh 保留原有的同步写入（error），
+  // 供外部调用方使用。
+  const loadNodes = React.useCallback(() => {
     const refreshSeq = ++refreshSeqRef.current;
     // setIsLoading(true);
-    setError(null);
     // 通过 RPC2 获取节点基本信息
     call<{ uuid?: string }, Record<string, any>>("common:getNodes")
       .then((result) => {
@@ -97,9 +99,16 @@ export const NodeListProvider: React.FC<{ children: React.ReactNode }> = ({
       });
   }, [call]);
 
+  const refresh = React.useCallback(() => {
+    setError(null);
+    loadNodes();
+  }, [loadNodes]);
+
   React.useEffect(() => {
-    refresh();
-  }, [refresh]);
+    // 挂载加载：refresh() 的同步写入 setError(null) 与初始状态一致（error 初值 null），
+    // 因此这里直接发起同一次请求；所有状态写入都发生在响应之后。
+    loadNodes();
+  }, [loadNodes]);
 
   const contextValue = React.useMemo(
     () => ({ nodeList, isLoading, error, refresh }),
