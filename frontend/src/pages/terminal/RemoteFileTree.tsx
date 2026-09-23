@@ -140,7 +140,7 @@ export const RemoteFileTree = ({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<Set<string>>(new Set());
   const [contextTarget, setContextTarget] = useState<RemoteFileInfo | null>(null);
-  const selectedPathsRef = useRef<Set<string>>(new Set());
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
   const [, setSelectedPath] = useState<string | null>(null);
   const lastSelectedPathRef = useRef<string | null>(null);
   const internalDragPathsRef = useRef<string[] | null>(null);
@@ -161,7 +161,6 @@ export const RemoteFileTree = ({
   const uploadTargetRef = useRef(rootPath);
   const treeScrollRef = useRef<HTMLDivElement | null>(null);
   const marqueeStartRef = useRef<number | null>(null);
-  const marqueeActiveRef = useRef(false);
   const { contextMenuPosition, contextMenuOpen, openContextMenu, closeContextMenu } = useContextMenu();
 
   const loadDirectory = useCallback(
@@ -227,7 +226,7 @@ export const RemoteFileTree = ({
   }, [loadDirectory, refreshToken, revealPath, rootPath]);
 
   const setSelectedOnly = useCallback((file: RemoteFileInfo) => {
-    selectedPathsRef.current = new Set([file.path]);
+    setSelectedPaths(new Set([file.path]));
     setSelectedPath(file.path);
     lastSelectedPathRef.current = file.path;
   }, []);
@@ -236,7 +235,6 @@ export const RemoteFileTree = ({
     const container = treeScrollRef.current;
     if (!container || marqueeStartRef.current === null) return;
     if (Math.abs(clientY - (marqueeStartRef.current + container.getBoundingClientRect().top - container.scrollTop)) < 3) return;
-    marqueeActiveRef.current = true;
     const rect = container.getBoundingClientRect();
     const currentY = clientY - rect.top + container.scrollTop;
     const startY = marqueeStartRef.current;
@@ -250,7 +248,7 @@ export const RemoteFileTree = ({
         if (path && path !== rootPath) next.add(path);
       }
     });
-    selectedPathsRef.current = next;
+    setSelectedPaths(next);
     setSelectedPath(next.size ? String(next.values().next().value) : null);
     setMarqueeRange({ top: Math.min(startY, currentY), bottom: Math.max(startY, currentY) });
   }, [rootPath]);
@@ -261,12 +259,10 @@ export const RemoteFileTree = ({
     if (!container) return;
     const rect = container.getBoundingClientRect();
     marqueeStartRef.current = event.clientY - rect.top + container.scrollTop;
-    marqueeActiveRef.current = false;
     setMarqueeRange(null);
     const handleMove = (moveEvent: MouseEvent) => updateMarqueeSelection(moveEvent.clientY);
     const handleUp = () => {
       marqueeStartRef.current = null;
-      marqueeActiveRef.current = false;
       setMarqueeRange(null);
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
@@ -285,25 +281,25 @@ export const RemoteFileTree = ({
       const anchorIndex = orderedPaths.indexOf(lastSelectedPathRef.current);
       if (index >= 0 && anchorIndex >= 0) {
         const [start, end] = index < anchorIndex ? [index, anchorIndex] : [anchorIndex, index];
-        const next = new Set(toggle ? selectedPathsRef.current : []);
+        const next = new Set(toggle ? selectedPaths : []);
         for (let pathIndex = start; pathIndex <= end; pathIndex++) {
           next.add(orderedPaths[pathIndex]);
         }
-        selectedPathsRef.current = next;
+        setSelectedPaths(next);
         setSelectedPath(file.path);
         return;
       }
     }
     if (toggle) {
-      const next = new Set(selectedPathsRef.current);
+      const next = new Set(selectedPaths);
       if (!next.delete(file.path)) next.add(file.path);
-      selectedPathsRef.current = next;
+      setSelectedPaths(next);
       setSelectedPath(next.size ? file.path : null);
       lastSelectedPathRef.current = file.path;
       return;
     }
     setSelectedOnly(file);
-  }, [rootPath, setSelectedOnly]);
+  }, [rootPath, selectedPaths, setSelectedOnly]);
 
   const toggleDirectory = useCallback(
     (path: string) => {
@@ -540,12 +536,12 @@ export const RemoteFileTree = ({
   );
 
   const resolveActiveSelection = useCallback((file: RemoteFileInfo): RemoteFileInfo[] => {
-    if (!selectedPathsRef.current.has(file.path)) return [file];
-    const selected = Array.from(selectedPathsRef.current)
+    if (!selectedPaths.has(file.path)) return [file];
+    const selected = Array.from(selectedPaths)
       .map((path) => findTreeFile(rootPath, path, children))
       .filter((item): item is RemoteFileInfo => Boolean(item));
     return selected.length > 0 ? selected : [file];
-  }, [children, rootPath]);
+  }, [children, rootPath, selectedPaths]);
 
   const moveSelectedPaths = useCallback(async (sourcePaths: string[], destination: string) => {
     const movedPaths = sourcePaths.filter((source) => {
@@ -573,7 +569,7 @@ export const RemoteFileTree = ({
         setClipboardSource(remaining.length > 0 ? { ...clipboardSource, paths: remaining } : null);
       }
       await Promise.all(refreshPaths.map((path) => loadDirectory(path, true)));
-      selectedPathsRef.current = new Set();
+      setSelectedPaths(new Set());
       setSelectedPath(null);
       toast.success(t("file_manager.action_success", "File operation completed"));
       onChanged?.();
@@ -651,7 +647,7 @@ export const RemoteFileTree = ({
 
   const startInternalDrag = (file: RemoteFileInfo) => {
     const sourcePaths =
-      selectedPathsRef.current.has(file.path)
+      selectedPaths.has(file.path)
         ? resolveActiveSelection(file).map((item) => item.path)
       : [file.path];
     internalDragPathsRef.current = sourcePaths;
@@ -660,13 +656,13 @@ export const RemoteFileTree = ({
   };
 
   const renameSelected = useCallback(() => {
-    if (selectedPathsRef.current.size !== 1) return;
-    const selectedPath = String(selectedPathsRef.current.values().next().value);
+    if (selectedPaths.size !== 1) return;
+    const selectedPath = String(selectedPaths.values().next().value);
     const selectedFile = findTreeFile(rootPath, selectedPath, children);
     if (!selectedFile) return;
     setRenamingPath(selectedPath);
     setRenameValue(selectedFile.name);
-  }, [children, rootPath]);
+  }, [children, rootPath, selectedPaths]);
 
   const submitInlineRename = useCallback(async () => {
     const file = findTreeFile(rootPath, renamingPath ?? "", children);
@@ -707,11 +703,11 @@ export const RemoteFileTree = ({
         <button
           type="button"
           data-tree-path={normalizedPath}
-          draggable={!marqueeActiveRef.current && marqueeRange === null && renamingPath !== file.path}
+          draggable={marqueeRange === null && renamingPath !== file.path}
           className={`my-0.5 flex h-6 w-full items-center gap-1 rounded-[4px] border-0 pr-1 text-left text-xs transition-colors ${
             activePath === file.path
               ? "bg-[#37373d] text-white"
-              : selectedPathsRef.current.has(file.path)
+              : selectedPaths.has(file.path)
                 ? "bg-[#264f78] text-white"
               : isContextTarget
                 ? "bg-[#2a2d2e] text-[#eeeeee]"
@@ -744,7 +740,7 @@ export const RemoteFileTree = ({
           }}
           onContextMenu={(event) => {
             event.stopPropagation();
-            if (!selectedPathsRef.current.has(normalizedPath)) setSelectedOnly(file);
+            if (!selectedPaths.has(normalizedPath)) setSelectedOnly(file);
             setContextTarget(file);
             openContextMenu(event);
           }}
