@@ -2,11 +2,16 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -17,9 +22,11 @@ import (
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/pkg/rpc"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 	agentruntime "github.com/Aone2233/nekomari/web/agent"
 	"github.com/Aone2233/nekomari/web/api"
+	"github.com/Aone2233/nekomari/web/upload"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/pquerna/otp/totp"
@@ -62,6 +69,124 @@ func TestSecurityAndResourceRegressions(t *testing.T) {
 	r.GET("/asset.js", func(c *gin.Context) { c.Status(200) })
 	srv := httptest.NewServer(r)
 	defer srv.Close()
+
+	t.Run("UploadStatsHTTPRequiresAdmin", func(t *testing.T) {
+		const apiKey = "test-only-upload-stats-key"
+		const agentToken = "test-only-upload-stats-agent-token"
+		previousKey, err := config.GetAs[string](config.ApiKeyKey, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := config.Set(config.ApiKeyKey, apiKey); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := config.Set(config.ApiKeyKey, previousKey); err != nil {
+				t.Error(err)
+			}
+		})
+		if err := db.Create(&models.Client{UUID: "upload-stats-agent", Name: "test agent", Token: agentToken}).Error; err != nil {
+			t.Fatal(err)
+		}
+		agentContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+		agentContext.Request = httptest.NewRequest(http.MethodPost, "/api/rpc2?Authorization="+url.QueryEscape(agentToken), nil)
+		if principal := api.IdentifyPrincipal(agentContext); principal.Type != rpc.PrincipalAgent || principal.ClientUUID != "upload-stats-agent" {
+			t.Fatalf("fixture token was not recognized as an agent: %+v", principal)
+		}
+		root := filepath.Join(t.TempDir(), "upload-root")
+		store := &upload.Store{Root: root, MaxSize: 1024, FreeSpace: func(string) (int64, error) { return 1 << 60, nil }}
+		previousStore := upload.DefaultStore
+		upload.DefaultStore = store
+		t.Cleanup(func() { upload.DefaultStore = previousStore })
+		uploadSession, err := store.Init(upload.PurposeTheme, "example.zip", 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.CleanupExpired(); err != nil {
+			t.Fatal(err)
+		}
+		metadata := filepath.Join(uploadSession.Directory, "upload.json")
+		if err := os.Remove(metadata); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(metadata, 0700); err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		store.RunCleanup(ctx)
+		want := store.Stats()
+		if !strings.Contains(want.LastError, root) || want.LastScan.IsZero() {
+			t.Fatalf("test fixture lacks sensitive error and successful scan: %+v", want)
+		}
+
+		for _, tc := range []struct {
+			name   string
+			target string
+			cookie *http.Cookie
+			bearer string
+			admin  bool
+		}{
+			{name: "anonymous", target: "/api/rpc2"},
+			{name: "agent token", target: "/api/rpc2?Authorization=" + url.QueryEscape(agentToken)},
+			{name: "admin session", target: "/api/rpc2", cookie: &http.Cookie{Name: "session_token", Value: session}, admin: true},
+			{name: "admin API key", target: "/api/rpc2", bearer: "Bearer " + apiKey, admin: true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodPost, tc.target, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"admin:getUploadStats","params":{}}`))
+				req.Header.Set("Content-Type", "application/json")
+				if tc.cookie != nil {
+					req.AddCookie(tc.cookie)
+				}
+				if tc.bearer != "" {
+					req.Header.Set("Authorization", tc.bearer)
+				}
+				w := httptest.NewRecorder()
+				r.ServeHTTP(w, req)
+				if w.Code != http.StatusOK {
+					t.Fatalf("HTTP status = %d: %s", w.Code, w.Body.String())
+				}
+				var response struct {
+					Version string            `json:"jsonrpc"`
+					ID      int               `json:"id"`
+					Result  json.RawMessage   `json:"result"`
+					Error   *rpc.JsonRpcError `json:"error"`
+				}
+				if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+					t.Fatal(err)
+				}
+				if response.Version != rpc.RPC_VERSION || response.ID != 1 {
+					t.Fatalf("invalid JSON-RPC envelope: %s", w.Body.String())
+				}
+				if !tc.admin {
+					if response.Error == nil || response.Error.Code != rpc.PermissionDenied || len(response.Result) != 0 {
+						t.Fatalf("unauthorized caller accessed stats: %s", w.Body.String())
+					}
+					if strings.Contains(w.Body.String(), root) {
+						t.Fatalf("unauthorized caller received a store path: %s", w.Body.String())
+					}
+					return
+				}
+				if response.Error != nil || len(response.Result) == 0 {
+					t.Fatalf("admin did not receive stats: %s", w.Body.String())
+				}
+				var fields map[string]json.RawMessage
+				if err := json.Unmarshal(response.Result, &fields); err != nil {
+					t.Fatal(err)
+				}
+				if _, ok := fields["last_scan_duration_ns"]; !ok {
+					t.Fatalf("admin result lacks scan duration in nanoseconds: %s", response.Result)
+				}
+				var got upload.CleanupStats
+				if err := json.Unmarshal(response.Result, &got); err != nil {
+					t.Fatal(err)
+				}
+				if got.LastError != want.LastError || got.LastScanDurationNS != want.LastScanDurationNS || !got.LastScan.Equal(want.LastScan) {
+					t.Fatalf("admin snapshot mismatch: got=%+v want=%+v", got, want)
+				}
+			})
+		}
+	})
 
 	t.Run("ExistingFactorCannotBeReplaced", func(t *testing.T) {
 		old, _ := totp.Generate(totp.GenerateOpts{Issuer: "test", AccountName: "old"})
