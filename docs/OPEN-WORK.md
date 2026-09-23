@@ -15,12 +15,10 @@ without re-deriving anything.
 | LuminaPlus IP panel | **Fixed and released** in v0.1.8 — `classification.source` was missing |
 | Family mixing within one ping task | **Fixed** — tasks split per family, verified single-family |
 
-Production runs `ghcr.io/aone2233/nekomari:v0.1.20`, and all nine agents run the
-v0.1.19 binaries. The two versions differ deliberately: the agent source is
-byte-identical between v0.1.19 and v0.1.20 (`git diff -- agent/ protocol/ pkg/` is
-empty), so the fleet has no reason to move — v0.1.19 was itself a Go 1.27.1 compiler
-refresh over v0.1.16, not a behaviour change. The dated current-state record is in
-`docs/DEPLOY-OC424.md`; the open items below are all unreleased.
+Production runs `ghcr.io/aone2233/nekomari:v0.1.25`; the dated current-state
+record and rollback procedure are in `docs/DEPLOY-OC424.md`. This file tracks
+the older 2026-09-18 batch and its remaining decisions, rather than the entire
+release backlog. See `docs/FOLLOWUP-v0.1.25.md` for the current follow-up.
 
 ## Released
 
