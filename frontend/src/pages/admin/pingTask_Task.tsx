@@ -122,9 +122,18 @@ export const TaskView = ({ pingTasks }: { pingTasks: PingTask[] }) => {
 
   const [localTasks, setLocalTasks] = React.useState(processedTasks);
 
-  React.useEffect(() => {
+  // 任务列表变化时把本地（可拖拽排序的）副本同步回派生值。改成渲染期调整
+  // （React 官方推荐的 "adjust state during render"）：effect 里同步 setState
+  // 会被 react-hooks/set-state-in-effect 报告。哨兵以 null 起步，因为 effect
+  // 的挂载调用并非空操作——它会把 localTasks 重写为 processedTasks。
+  // processedTasks 已被 useMemo 记忆在 [pingTasks, nodeDetail] 上，以它作为
+  // 守卫即覆盖原 effect 的整个依赖集。
+  const [previousProcessedTasks, setPreviousProcessedTasks] =
+    React.useState<typeof processedTasks | null>(null);
+  if (previousProcessedTasks !== processedTasks) {
+    setPreviousProcessedTasks(processedTasks);
     setLocalTasks(processedTasks);
-  }, [processedTasks]);
+  }
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
