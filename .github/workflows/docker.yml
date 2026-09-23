@@ -222,19 +222,42 @@ jobs:
       # 无凭证请求同样返回 401，必须先换匿名 token。用 401 当私有信号会把公开
       # 镜像误判成私有（我一开始就是这么误判的）。
       - name: Verify the image is anonymously pullable
-        if: always()
         run: |
-          set +e
+          set -euo pipefail
           REPO_LOWER=$(echo "${{ github.repository_owner }}/${{ matrix.package }}" | tr '[:upper:]' '[:lower:]')
-          TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:${REPO_LOWER}:pull&service=ghcr.io"             | python3 -c 'import sys,json; print(json.load(sys.stdin).get("token",""))')
-          if [ -z "$TOKEN" ]; then
-            echo "::warning::could not obtain an anonymous token; cannot verify pullability"
-            exit 0
-          fi
-          CODE=$(curl -s -o /dev/null -w '%{http_code}'             -H "Authorization: Bearer $TOKEN"             -H "Accept: application/vnd.oci.image.index.v1+json"             "https://ghcr.io/v2/${REPO_LOWER}/manifests/${{ steps.tag.outputs.tag }}")
-          echo "anonymous manifest fetch for ${REPO_LOWER}: HTTP $CODE"
-          if [ "$CODE" != "200" ]; then
-            echo "::warning::${REPO_LOWER} is not anonymously pullable (HTTP $CODE)."
-            echo "::warning::Set it public under Package settings -> Change visibility,"
-            echo "::warning::otherwise users must 'docker login ghcr.io' before pulling."
-          fi
+          LAST_REASON="anonymous token unavailable"
+          # 新推送的 manifest 可能尚未在匿名端点可见；每个矩阵镜像独立重试。
+          for ATTEMPT in 1 2 3 4 5 6 7 8; do
+            if TOKEN_RESPONSE=$(curl --fail --silent --show-error --connect-timeout 10 --max-time 30 \
+              "https://ghcr.io/token?scope=repository:${REPO_LOWER}:pull&service=ghcr.io"); then
+              if TOKEN=$(printf '%s' "$TOKEN_RESPONSE" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data.get("token") or data.get("access_token") or "")' 2>/dev/null) \
+                && [ -n "$TOKEN" ]; then
+                if CODE=$(curl --silent --show-error --connect-timeout 10 --max-time 30 \
+                  -o /dev/null -w '%{http_code}' \
+                  -H "Authorization: Bearer $TOKEN" \
+                  -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
+                  "https://ghcr.io/v2/${REPO_LOWER}/manifests/${{ steps.tag.outputs.tag }}"); then
+                  if [ "$CODE" = "200" ]; then
+                    echo "anonymous manifest fetch for ${REPO_LOWER}:${{ steps.tag.outputs.tag }}: HTTP 200"
+                    exit 0
+                  fi
+                  LAST_REASON="manifest returned HTTP $CODE"
+                else
+                  LAST_REASON="manifest request failed (curl exit $?)"
+                fi
+              else
+                LAST_REASON="anonymous token response contained no valid token"
+              fi
+            else
+              LAST_REASON="anonymous token request failed (curl exit $?)"
+            fi
+            if [ "$ATTEMPT" -lt 8 ]; then
+              DELAY=$((2 ** ATTEMPT))
+              if [ "$DELAY" -gt 12 ]; then DELAY=12; fi
+              echo "::notice::${REPO_LOWER} attempt ${ATTEMPT}/8: ${LAST_REASON}; retrying in ${DELAY}s"
+              sleep "$DELAY"
+            fi
+          done
+          echo "::error::${REPO_LOWER}:${{ steps.tag.outputs.tag }} is not anonymously pullable after 8 attempts: ${LAST_REASON}"
+          echo "::error::If HTTP 401/403 persists, make the GHCR package public under Package settings -> Change visibility; otherwise check registry publication and network access."
+          exit 1
