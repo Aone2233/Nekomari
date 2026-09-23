@@ -355,6 +355,7 @@ const FileEditorDialog = ({
   const [showExplorer, setShowExplorer] = useState(true);
   const [showOutline, setShowOutline] = useState(true);
   const [outlineCollapsed, setOutlineCollapsed] = useState<Set<string>>(new Set());
+  const [outlinePath, setOutlinePath] = useState(activePath);
   const [showMinimap, setShowMinimap] = useState(true);
   const [wordWrap, setWordWrap] = useState(false);
   const [tabSize, setTabSize] = useState(2);
@@ -365,12 +366,14 @@ const FileEditorDialog = ({
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [quickOpenQuery, setQuickOpenQuery] = useState("");
   const [quickOpenSuggestions, setQuickOpenSuggestions] = useState<string[]>([]);
+  const [quickOpenWasActive, setQuickOpenWasActive] = useState(false);
   const [positionOpen, setPositionOpen] = useState(false);
   const [positionLine, setPositionLine] = useState("1");
   const [positionColumn, setPositionColumn] = useState("1");
   const quickOpenTokenRef = useRef(0);
   const [officePreviewSrc, setOfficePreviewSrc] = useState<string | null>(null);
   const [officePreviewError, setOfficePreviewError] = useState<string | null>(null);
+  const [officePreviewPath, setOfficePreviewPath] = useState<string | null>(null);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [explorerWidth, setExplorerWidth] = useState(230);
   const [outlineWidth, setOutlineWidth] = useState(220);
@@ -434,11 +437,17 @@ const FileEditorDialog = ({
     [activeDocument],
   );
   const outlineTree = useMemo(() => buildOutlineTree(outline), [outline]);
+  // Drop the stale suggestion list when the quick-open dialog closes. Adjusting
+  // state during render is React's documented pattern for this and avoids the
+  // cascading render an effect would cause; TerminalDialog renders nothing while
+  // closed, so the value is unobservable either way.
+  const quickOpenActive = open && quickOpenOpen;
+  if (quickOpenWasActive !== quickOpenActive) {
+    setQuickOpenWasActive(quickOpenActive);
+    setQuickOpenSuggestions([]);
+  }
   useEffect(() => {
-    if (!open || !quickOpenOpen) {
-      setQuickOpenSuggestions([]);
-      return;
-    }
+    if (!open || !quickOpenOpen) return;
     const normalized = normalizeRemotePath(quickOpenQuery || "/");
     const directory = normalized.endsWith("/")
       ? normalized
@@ -469,9 +478,14 @@ const FileEditorDialog = ({
     return () => window.clearTimeout(timer);
   }, [fileService, open, quickOpenOpen, quickOpenQuery, uuid]);
 
-  useEffect(() => {
+  // Collapsed outline sections belong to the document that was active when they
+  // were collapsed, so they are dropped when the active document changes. This
+  // adjusts state during render instead of from an effect, which would cause a
+  // cascading render.
+  if (outlinePath !== activePath) {
+    setOutlinePath(activePath);
     setOutlineCollapsed(new Set());
-  }, [activePath]);
+  }
 
   const openFile = useCallback(
     async (input: RemoteFileInfo, line = 1) => {
@@ -1425,15 +1439,21 @@ const FileEditorDialog = ({
     );
   };
 
-  useEffect(() => {
-    if (!open || activeDocument?.kind !== "office") {
-      setOfficePreviewSrc(null);
-      setOfficePreviewError(null);
-      return;
-    }
-    let cancelled = false;
+  // A resolved preview only belongs to the document it was fetched for, so it
+  // is dropped as soon as the previewed document changes. Adjusting state
+  // during render avoids the extra render an effect would schedule and also
+  // stops the previous document's preview from being rendered for the new one.
+  const officePreviewKey =
+    open && activeDocument?.kind === "office" ? activeDocument.path : null;
+  if (officePreviewPath !== officePreviewKey) {
+    setOfficePreviewPath(officePreviewKey);
     setOfficePreviewSrc(null);
     setOfficePreviewError(null);
+  }
+
+  useEffect(() => {
+    if (!open || activeDocument?.kind !== "office") return;
+    let cancelled = false;
     void fetchOfficePreviewUrl(uuid, activeDocument.path)
       .then((url) => {
         if (!cancelled) setOfficePreviewSrc(url);
