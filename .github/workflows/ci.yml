@@ -48,6 +48,59 @@ jobs:
           python script/number-picker.browser.spec.py
           python script/remote-file-tree.browser.spec.py
 
+  # The fixtures above mount one component against stubs. This job boots the
+  # built server and walks the real panel instead, which is the only check that
+  # catches a page that loops, crashes on mount, or is wired to a route that does
+  # not exist: `pages/admin/settings/sign-on` looped on every visit while every
+  # fixture stayed green, because nothing mounts that page.
+  panel-smoke:
+    name: panel smoke (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.1'
+          cache: true
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Build the panel, the embedded theme and the server
+        run: |
+          (cd frontend && npm ci --no-audit --no-fund && npm run build)
+          (cd tools/zstdpack && go build -o zstdpack .)
+          mkdir -p web/public/defaultTheme
+          ./tools/zstdpack/zstdpack -src frontend/dist -out web/public/defaultTheme/dist.tar.zst
+          cp -f frontend/komari-theme.json web/public/defaultTheme/
+          go build -o nekomari .
+      - name: Install browser test dependencies
+        working-directory: frontend
+        run: |
+          python -m pip install -r script/requirements-browser.txt
+          python -m playwright install --with-deps chromium
+      - name: Boot the server, install an account, and walk every route
+        run: |
+          mkdir -p smoke
+          ./nekomari -d ./smoke/komari.db server -l 127.0.0.1:25774 &
+          server_pid=$!
+          trap 'kill $server_pid 2>/dev/null || true' EXIT
+          for _ in $(seq 1 60); do
+            if curl -sf -o /dev/null http://127.0.0.1:25774/; then break; fi
+            sleep 1
+          done
+          curl -sf -o /dev/null http://127.0.0.1:25774/ || { echo "server never became ready"; exit 1; }
+          curl -sf -X POST http://127.0.0.1:25774/api/install/complete \
+            -H 'Content-Type: application/json' \
+            -d '{"username":"admin","password":"E2e-verify1","sitename":"Nekomari CI","description":"CI smoke instance","metric_dsn":"./smoke/metrics.db"}'
+          cd frontend && python script/panel-smoke.spec.py http://127.0.0.1:25774
+
   build-and-test:
     name: build & test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
