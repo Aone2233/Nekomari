@@ -31,6 +31,11 @@ const LogPage = () => {
   const [limit, setLimit] = React.useState<number>(10);
   const [t] = useTranslation();
   const navigate = useNavigate();
+  // Stable identity, so the picker sees one callback for the life of the page.
+  const handleLimitChange = React.useCallback((value: number) => {
+    setLimit(value);
+    setPage(1);
+  }, []);
   React.useEffect(() => {
     const fetchLogs = async () => {
       setLoading(true);
@@ -55,7 +60,8 @@ const LogPage = () => {
     // 而 totalPages 已经按新 limit 计算 —— 数据和分页会互相矛盾。
     // 请求次数：每次 limit 变化 +1 次（NumberPicker 每敲一个合法数字发一次
     // onChange，输入 "50" 会发 2 次请求；点 +/- 按钮发 1 次；失焦时值没变则
-    // setState 同值 bail-out，不额外发请求）。
+    // setState 同值 bail-out，不额外发请求）。挂载时不再多发一次请求：
+    // picker 的 defaultValue 同步已不再回吐 onChange。
   }, [page, limit]);
 
   const totalPages = Math.ceil(total / limit);
@@ -109,10 +115,13 @@ const LogPage = () => {
             // Changing the page size returns to the first page: the current page
             // can be past the new last page, and the table would then render
             // empty while the data it asked for exists on page 1.
-            onChange={(value) => {
-              setLimit(value);
-              setPage(1);
-            }}
+            //
+            // This callback is memoised because it is the picker's only inbound
+            // contract: the picker must not re-run anything when the parent
+            // re-renders, and a fresh inline arrow here used to make its
+            // `defaultValue` effect re-fire on every render — which re-entered
+            // this handler, so `setPage(1)` undid every page the user selected.
+            onChange={handleLimitChange}
             min={1}
             max={100}
           />
@@ -131,7 +140,7 @@ const LogPage = () => {
           </TableHeader>
           <TableBody>
             {logs.map((log) => (
-              <TableRow key={log.id}>
+              <TableRow key={log.id} data-log-id={log.id}>
                 <TableCell>
                   <Dialog.Root>
                     <Dialog.Trigger>

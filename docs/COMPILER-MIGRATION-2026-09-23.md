@@ -207,14 +207,29 @@ pattern — were respectively out of scope and believed to be an error. The seco
 belief was wrong (see the probe above), and with the guarded adjustment pattern
 available this shape is fixable in-file after all.
 
-What genuinely resists, and why. After both waves only three findings remain,
-and each is recorded here rather than left as pending work:
+What genuinely resists, and why. This section used to list three findings. Two of
+them turned out to be fixable once someone looked properly, and **one of the two
+recorded diagnoses was simply wrong**:
 
-| Site | Rule | Why it resists |
-|---|---|---|
-| `NodeTable.tsx:222` | `incompatible-library` | not fixable at all: the rule `throw`s unconditionally at the `useReactTable()` call site, so relocating the call only moves the finding. Removing it means abandoning TanStack Table for hand-rolled sorting/filtering/faceting/selection. The compiler is not enabled globally, so there is no runtime impact today. |
-| `number-picker.tsx:28` | `set-state-in-effect` | the effect mirrors `defaultValue` into state **and** calls `onChange`, a real prop-change side effect on the parent, so it cannot become pure derivation. Its only call site passes an inline arrow, so the effect also re-runs on every parent render. |
-| `RemoteFileTree.tsx:968` | `refs` | the `childrenRef.current[path]` cache read is reachable from render through `buildTreeContextMenuItems → buildContextMenuItems → loadDirectory`. Reading the `children` state instead makes `loadDirectory` unstable, and the reset effect keyed on `[loadDirectory, refreshToken, rootPath]` would then re-run on every children update and loop. Needs a directory-cache restructure. |
+- `RemoteFileTree.tsx` (`refs`) — **fixed.** The reason recorded here blamed
+  `childrenRef.current`, reached through `loadDirectory`. Stubbing each closure in
+  turn showed the rule was actually blaming `openUpload`; `childrenRef` was one
+  member of a larger set of ref reads on that path, and removing it was necessary
+  but not sufficient. The cache is now a module-level `WeakMap` keyed by the file
+  service — not a ref at all — and the context-menu items are built when the menu
+  opens instead of during render.
+- `number-picker.tsx` (`set-state-in-effect`) — **fixed.** The `onChange` echo
+  was not an incidental side effect to preserve; it *was* the bug. Because the
+  only call site passed an inline arrow, the effect's dependency changed on every
+  parent render, the echo re-fired, and the log page's `setPage(1)` made page 2
+  unreachable. The picker now adjusts during render without echoing, and the call
+  site memoises its handler. Memoising alone would not have fixed it.
+- `components/admin/NodeTable.tsx` (`incompatible-library`) — **removable rather
+  than fixable.** The rule `throw`s unconditionally at the `useReactTable()` call
+  site, so relocating the call only moves the finding. The component is also
+  **unreferenced**: nothing imports `components/admin/NodeTable*`, and the
+  subtree is already tree-shaken out of the bundle. Deleting it is how this one
+  clears, and that is proposed separately rather than done here.
 
 Everything else an earlier pass believed unfixable turned out to be fixable, and
 the reasons are worth keeping: the latching EULA dialog survives because its
@@ -224,15 +239,11 @@ cache in `MiniMetricChart` is handled by forcing the guard's first run. That
 first pass had concluded "almost none of these can be fixed in-file" — the
 correction was worth roughly thirty findings.
 
-Two pre-existing bugs surfaced while reading these sites, both worth their own
-change: `RemoteFileTree`'s selection highlight and `FileEditorDialog`'s
+One pre-existing bug surfaced while reading these sites and is now fixed with
+them: `RemoteFileTree`'s selection highlight and `FileEditorDialog`'s
 cut/copy/undo/redo enabled-state were read from refs during render, so they did
-not update until some unrelated re-render (both are fixed in this batch); and
-`number-picker`'s `onChange` echo re-fires on every parent render, which resets
-the admin log page to page 1 whenever any page other than 1 is selected —
-static analysis only, no fixture covers that page, and the correct fix is in
-`log.tsx` (memoise `onChange`, or move `setPage(1)` into the picker's own change
-handler) rather than in `number-picker.tsx`.
+not update until some unrelated re-render. The `number-picker` pagination bug
+described above is the second, and it has a fixture now.
 
 ## The audit can be evaded, and two shapes of finding look alike
 
@@ -277,23 +288,25 @@ actually changed** — do not trust the commit subjects.
 
 ## Status
 
-Four pull requests. Each branch was measured on its own and verified
-independently of the agents that wrote its commits.
-
 | Pull request | Scope | Findings |
 |---|---|---|
 | #21 `codex/compiler-terminal-refs` | terminal editor ref lifetimes — `refs` 12 → 1, `immutability` 2 → 0, `set-state-in-effect` 62 → 59 | 77 → **61** |
 | #23 `codex/compiler-effect-setstate` | hooks, charts and components — `set-state-in-effect` 62 → 55 | 77 → **70** |
 | #22 `codex/compiler-admin-setstate` | admin and settings pages — `set-state-in-effect` 62 → 44 | 77 → **59** |
-| `codex/compiler-wave4` | contexts, remaining admin pages, settings and database pages, terminal — `set-state-in-effect` 34 → 1 | 36 → **3** |
+| #25 `codex/compiler-wave4` | contexts, remaining admin pages, settings and database pages, terminal — `set-state-in-effect` 34 → 1 | 36 → **3** |
+| #26 `codex/fix-signon-render-loop` | the sign-on page's render loop, found by running the real panel | 3 → **3** |
+| `codex/clear-findings` | the `number-picker` contract and the tree directory cache — `set-state-in-effect` 1 → 0, `refs` 1 → 0 | 3 → **1** |
+| `codex/remove-dead-nodetable` | delete the unreferenced admin node table — `incompatible-library` 1 → 0 | 1 → **0** |
 
-The first three are merged into `main`. From the original 77 findings, **74 are
-gone**: `set-state-in-effect` 62 → 1, `refs` 12 → 1, `immutability` 2 → 0,
-`preserve-manual-memoization` 25 → 0, `purity` 4 → 0. The three that remain are
-the ones recorded above.
+#21, #22, #23, #25 and #26 are merged into `main`. From the original 77 findings,
+**76 are gone**: `set-state-in-effect` 62 → 1, `refs` 12 → 1, `immutability`
+2 → 0, `preserve-manual-memoization` 25 → 0, `purity` 4 → 0. The last two
+branches take it to 1 and then to 0 if both land — the second one by deleting
+code rather than by changing it, and it is proposed rather than assumed because
+the deleted subtree came from upstream and the fork has maintained it.
 
-Every branch passed lint, the 40 frontend tests, the production build and all
-five browser specs, and each result was re-measured after integration rather than
+Every branch passed lint, the 40 frontend tests, the production build and every
+browser spec, and each result was re-measured after integration rather than
 extrapolated from the agents' reports.
 
 ### Accepted differences, stated once
@@ -310,29 +323,39 @@ extrapolated from the agents' reports.
   `isLoading === true` on the first render, which is the same stale-frame removal
   achieved by folding the mount write into the initial state.
 - `RemoteFileTree`'s callback-change-only path holds the previous listing in
-  `children` state for one commit window while the ref cache is cleared
-  immediately; `fileService` only changes when `uuid` or the RPC client changes.
+  `children` state for one commit window while the cache is cleared immediately;
+  `fileService` only changes when `uuid` or the RPC client changes.
 - `dashboard.tsx`'s refresh button flips its disabled state one microtask later
   on mount.
+- `number-picker` no longer calls `onChange` when `defaultValue` changes
+  externally. That is a real contract change: the one call site owns its value
+  and does not depend on the echo, and a future caller that needs notification of
+  an external change would need a separate callback.
+- The tree's context menu is built when the menu opens. A row whose items were
+  already built paints immediately; a different row paints empty for one
+  microtask.
 
 ### Coverage
 
-This remains the weakest part of the evidence, and it is worth stating plainly.
-The browser specs mount components directly rather than routing to a page, and
-they do not cover `RemoteFileTree`'s tree behaviour, any admin page, the settings
-pages, the context providers, `MiniMetricChart` or `number-picker`. For all of
-those the type checker, lint, the 40 unit tests and the build are the entire
-guard, and each conversion's equivalence rests on reading the code plus the rule
-probes above. `docs/TESTING.md` now records exactly which fixture covers what, so
-the gap is visible rather than assumed. Any further work in those files should
-add a fixture first — the terminal unit is the model, since it was refactored
-only after PR #17 added mounted coverage.
+The browser specs now number seven and this is still the weakest part of the
+evidence. They mount components directly rather than routing to a page, and they
+do not cover any admin page, the settings pages, the context providers or
+`MiniMetricChart`. For those the type checker, lint, the 40 unit tests and the
+build are the entire guard, and each conversion's equivalence rests on reading
+the code plus the rule probes above.
+
+Two things changed in this batch. `number-picker` and `RemoteFileTree` went from
+no coverage to fixtures with red-proofs — the tree's fixture is the first
+coverage that file has ever had, and the picker's asserts the pagination bug that
+prompted it. And `docs/TESTING.md` records exactly which fixture covers what, so
+the remaining gap is visible rather than assumed. `docs/STRUCTURAL-REVIEW-2026-09-23.md`
+measures the gap: 45 of 194 source files are reachable from a test entry point,
+and 21 of the 30 files over 500 lines are not.
 
 ## Remaining inventory
 
-Three findings, each with a stated reason above. Nothing else is pending from the
-compiler migration. Reaching zero requires abandoning TanStack Table for the node
-table, restructuring `number-picker`'s contract with its only caller, or
-restructuring the directory cache — each larger than an advisory finding
-justifies today. The compiler is still not enabled globally, and this ledger
-deliberately does not propose enabling it.
+One finding, and one way to clear it that is a decision rather than a fix:
+delete the unreferenced `components/admin/NodeTable*` subtree (proposed in its
+own branch). Nothing else is pending from the compiler migration. The compiler is
+still not enabled globally, and this ledger deliberately does not propose
+enabling it.
