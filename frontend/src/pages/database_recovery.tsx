@@ -116,14 +116,24 @@ export default function DatabaseRecovery() {
   const [dsn, setDSN] = useState("");
   const [pageError, setPageError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [syncedLoadKey, setSyncedLoadKey] = useState<
+    ReturnType<typeof useTranslation>["t"] | null
+  >(null);
+
+  // The original mount effect cleared the previous error before its first
+  // await. Clearing it during render instead, keyed on `t` — the only input
+  // `requestRecovery` is memoised on, and therefore the only thing that makes
+  // the load effect below re-run — keeps the same clear on the same trigger
+  // while leaving the effect's call path free of synchronous setState.
+  if (syncedLoadKey !== t) {
+    setSyncedLoadKey(t);
+    setPageError("");
+  }
 
   // Pure request: resolves to the data the page should display, or to a
   // display-ready error. It never writes state, so the mount effect below can
   // call it without raising a synchronous setState.
   const requestRecovery = useCallback(async (): Promise<RecoveryLoadResult> => {
-    // The original effect cleared the previous error before its first await;
-    // keeping that here preserves the same synchronous clearing.
-    setPageError("");
     try {
       if (await normalRouterAvailable()) {
         window.location.replace("/");
