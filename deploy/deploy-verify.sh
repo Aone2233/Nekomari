@@ -5,14 +5,16 @@
 # This is the check that answers "can someone else deploy this?": download the
 # release binaries, verify them against SHA256SUMS.txt, start the server, complete
 # the first-run install through its API, connect an agent, and confirm the node
-# reports. Everything lives under one throwaway directory so cleanup is one rm -rf.
+# reports. Automatic runs use a throwaway directory; explicit workdirs retain
+# each run's artifacts for inspection.
 #
 # It deliberately avoids any running instance: its own port, its own data
 # directory. That is what makes it safe to run on a host that is already serving,
 # and safe to run in CI right after a release is published.
 #
 # Usage: deploy-verify.sh [workdir] [port] [version]
-#   workdir  default: a fresh mktemp -d
+#   workdir  optional parent for a fresh, retained run directory
+#            default: a fresh mktemp -d that is removed on exit
 #   port     default: 25799
 #   version  default: the tag in the repo's latest release
 set -uo pipefail
@@ -20,12 +22,28 @@ set -uo pipefail
 PORT="${2:-25799}"
 REPO="Aone2233/Nekomari"
 
+SRV=""; AG=""; WORK=""; OWN_WORK=0
+cleanup() {
+  [ -n "$AG" ] && kill "$AG" 2>/dev/null
+  [ -n "$SRV" ] && kill "$SRV" 2>/dev/null
+  sleep 1
+  cd /
+  if [ "$OWN_WORK" = 1 ]; then
+    [ -n "$WORK" ] && rm -rf -- "$WORK"
+  elif [ -n "$WORK" ]; then
+    printf '  workdir retained: %s\n' "$WORK"
+  fi
+}
+trap cleanup EXIT
+
 if [ -n "${1:-}" ]; then
-  WORK="$1"
-  OWN_WORK=0
+  mkdir -p -- "$1" || exit 1
+  WORK_PARENT="$(cd -- "$1" && pwd -P)" || exit 1
+  WORK="$(mktemp -d "${WORK_PARENT}/nekomari-deploy-verify.XXXXXX")" || exit 1
 else
-  WORK="$(mktemp -d "${TMPDIR:-/tmp}/nekomari-deploy-verify.XXXXXX")"
+  WORK_PARENT="$(cd -- "${TMPDIR:-/tmp}" && pwd -P)" || exit 1
   OWN_WORK=1
+  WORK="$(mktemp -d "${WORK_PARENT}/nekomari-deploy-verify.XXXXXX")" || exit 1
 fi
 
 if [ -n "${3:-}" ]; then
@@ -45,22 +63,8 @@ ok()   { printf '  PASS  %s\n' "$*"; pass=$((pass+1)); }
 bad()  { printf '  FAIL  %s\n' "$*"; fail=$((fail+1)); }
 step() { printf '\n=== %s ===\n' "$*"; }
 
-SRV=""; AG=""
-cleanup() {
-  [ -n "$AG" ] && kill "$AG" 2>/dev/null
-  [ -n "$SRV" ] && kill "$SRV" 2>/dev/null
-  sleep 1
-  cd /
-  # Remove the directory only when we created it; a caller-supplied workdir is
-  # theirs to manage. The condition was inverted in the first version, so the
-  # throwaway directory survived every run and a caller-supplied one was deleted.
-  # Always runs, including when a check above failed -- a CI job that leaves state
-  # behind on failure is worse than the failure itself.
-  [ "$OWN_WORK" = 1 ] && rm -rf "$WORK"
-}
-trap cleanup EXIT
-
-rm -rf "$WORK"; mkdir -p "$WORK/data"; cd "$WORK" || exit 1
+mkdir -- "$WORK/data" || exit 1
+cd -- "$WORK" || exit 1
 
 step "1. download the published artifacts (${VERSION})"
 for f in nekomari-linux-amd64 komari-agent-linux-amd64 SHA256SUMS.txt; do
