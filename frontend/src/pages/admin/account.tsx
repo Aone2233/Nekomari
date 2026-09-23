@@ -361,9 +361,11 @@ const TwoFactorDisabled = () => {
   const [qrcode, setQRCode] = React.useState<string | null>(null);
   const [code, setCode] = React.useState<string>("");
 
-  React.useEffect(() => {
-    if (isOpen) {
-      setIsLoading(true);
+  // 拉取二维码：每个 setState 都在 promise 的 continuation 里，函数体内没有同步
+  // setState，所以下面跟随 isOpen 的 effect 可以直接调用它。spinner 的置位改由用户
+  // 打开弹窗的点击处理器负责（effect 内不允许同步 setState），置位时机不变。
+  const fetchQRCode = React.useCallback(
+    () =>
       fetch("/api/admin/2fa/generate")
         .then((response) => {
           if (!response.ok) {
@@ -379,10 +381,16 @@ const TwoFactorDisabled = () => {
           setQRCode(url);
         })
         .catch((err) => toast.error(err.message))
-        .finally(() => setIsLoading(false));
+        .finally(() => setIsLoading(false)),
+    [i18n],
+  );
+
+  React.useEffect(() => {
+    if (isOpen) {
+      fetchQRCode();
     }
     // i18n 是模块级单例（引用恒定）：请求次数仍是「每次 isOpen 变 true 一次」。
-  }, [isOpen, i18n]);
+  }, [isOpen, fetchQRCode]);
 
   const handleEnable2fa = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -418,7 +426,16 @@ const TwoFactorDisabled = () => {
       <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
         <Dialog.Trigger>
           <div>
-            <Button className="w-full">{t("account.enable_2fa")}</Button>
+            <Button
+              className="w-full"
+              onClick={() => {
+                // 手动打开弹窗由用户操作点亮 spinner（effect 内不允许同步 setState）。
+                // 与原先 effect 在 isOpen 变 true 时置位等价：该按钮是唯一入口。
+                setIsLoading(true);
+              }}
+            >
+              {t("account.enable_2fa")}
+            </Button>
           </div>
         </Dialog.Trigger>
         <Dialog.Content>
