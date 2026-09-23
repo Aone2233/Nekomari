@@ -116,6 +116,35 @@ type ClipboardState = {
 const toolbarButton =
   "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px] border-0 bg-transparent text-[#b8b8b8] transition-colors hover:bg-[#343434] hover:text-white disabled:cursor-default disabled:opacity-35";
 
+type RemoteFileService = ReturnType<typeof useRemoteFileService>;
+
+const openRemoteFile = async (
+  fileService: RemoteFileService,
+  loadDirectory: (path: string) => Promise<void>,
+  t: (key: string, fallback: string) => string,
+  file: RemoteFileInfo,
+  line = 1,
+  depth = 0,
+): Promise<RemoteFileInfo | null> => {
+  if (depth > 4) return null;
+  if (file.is_symlink && file.target) {
+    const targetPath = resolveSymlinkTargetPath(file);
+    if (!targetPath) return null;
+    try {
+      const target = await fileService.stat(targetPath);
+      return await openRemoteFile(fileService, loadDirectory, t, target, line, depth + 1);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("file_manager.load_failed", "Failed to load file"));
+      return null;
+    }
+  }
+  if (file.is_dir) {
+    await loadDirectory(file.path);
+    return null;
+  }
+  return file;
+};
+
 const fileIcon = (file: RemoteFileInfo) => {
   if (file.is_dir) {
     return <Folder size={17} className="text-[#dcb67a]" />;
@@ -335,23 +364,9 @@ const FileManagerPanel = ({ uuid }: FileManagerPanelProps) => {
 
   const openFile = useCallback(async (file: RemoteFileInfo, line = 1, depth = 0) => {
     if (!uuid) return;
-    if (depth > 4) return;
-    if (file.is_symlink && file.target) {
-      const targetPath = resolveSymlinkTargetPath(file);
-      if (!targetPath) return;
-      try {
-        const target = await fileService.stat(targetPath);
-        await openFile(target, line, depth + 1);
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : t("file_manager.load_failed", "Failed to load file"));
-      }
-      return;
-    }
-    if (file.is_dir) {
-      await loadDirectory(file.path);
-      return;
-    }
-    setEditorFile(file);
+    const opened = await openRemoteFile(fileService, loadDirectory, t, file, line, depth);
+    if (!opened) return;
+    setEditorFile(opened);
     setEditorLine(line);
     setEditorOpen(true);
   }, [fileService, loadDirectory, t, uuid]);
