@@ -25,10 +25,43 @@ const NotificationSettings = () => {
   const [messageLoading, setMessageLoading] = React.useState(false);
   const [messageError, setMessageError] = React.useState("");
 
+  // 两个拉取 effect 在发起请求前会同步 setMessageLoading(true)。改为在渲染期间按
+  // 各自 effect 的依赖做守卫式同步：守卫覆盖的正是 effect 的依赖集，所以「依赖变化
+  // → 置 loading」的时序与原 effect 完全一致，而 effect 体内不再有同步 setState。
+  // 哨兵从 null 起步，因为挂载时 effect 的那次调用可能不是空操作（settings 已经
+  // 加载完、notification_method 指向某个 sender 时，第一个 effect 会真的发请求并
+  // 把 loading 置为 true），用当前值初始化会让守卫在首帧为 false 而丢掉这次写入。
+  const [syncedMessageInputs, setSyncedMessageInputs] = React.useState<{
+    loading: boolean;
+    method: string | undefined;
+  } | null>(null);
+  if (
+    syncedMessageInputs === null ||
+    syncedMessageInputs.loading !== loading ||
+    syncedMessageInputs.method !== settings.notification_method
+  ) {
+    setSyncedMessageInputs({ loading, method: settings.notification_method });
+    if (!loading) {
+      setMessageLoading(true);
+    }
+  }
+
+  // 第二个 effect 的依赖（currentMessageSender）单独守卫：它由第一个 effect 的响应
+  // 写入，届时上面那个守卫不会触发。同样从 null 起步，使挂载时也按原 effect 执行
+  // 一次（sender 为空时原 effect 直接 return，不改状态）。
+  const [syncedMessageSender, setSyncedMessageSender] = React.useState<
+    string | null
+  >(null);
+  if (syncedMessageSender !== currentMessageSender) {
+    setSyncedMessageSender(currentMessageSender);
+    if (currentMessageSender) {
+      setMessageLoading(true);
+    }
+  }
+
   // 拉取所有 message sender 及字段定义
   React.useEffect(() => {
     if (loading) return;
-    setMessageLoading(true);
     fetch("/api/admin/settings/message-sender")
       .then((res) => res.json())
       .then((data) => {
@@ -49,10 +82,9 @@ const NotificationSettings = () => {
       .finally(() => setMessageLoading(false));
   }, [loading, settings.notification_method, t]);
 
-  // 拉取当前 message sender 的设置
+  // 拉取当前 message sender 的设置（loading 由上面的渲染期守卫置位）
   React.useEffect(() => {
     if (!currentMessageSender) return;
-    setMessageLoading(true);
     fetch(`/api/admin/settings/message-sender?provider=${currentMessageSender}`)
       .then((res) => res.json())
       .then((data) => {
