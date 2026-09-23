@@ -264,18 +264,25 @@ const AutoDiscoverySection = ({
   const [enableMonthRotate, setEnableMonthRotate] = React.useState(false);
   const [enableInstallVersion, setEnableInstallVersion] = React.useState(false);
   const isSnapshotBackend = useIsSnapshotBackend();
-
-  React.useEffect(() => {
-    if (!showOptions || !isSnapshotBackend) {
-      return;
+  // 与原先 `useEffect(..., [showOptions, isSnapshotBackend])` 等价：任一依赖变化时
+  // 在渲染期间按同一条件同步，快照后端下强制开启指定安装版本并回填默认值。
+  const [syncedSnapshotDefaults, setSyncedSnapshotDefaults] = useState({
+    showOptions,
+    isSnapshotBackend,
+  });
+  if (
+    syncedSnapshotDefaults.showOptions !== showOptions ||
+    syncedSnapshotDefaults.isSnapshotBackend !== isSnapshotBackend
+  ) {
+    setSyncedSnapshotDefaults({ showOptions, isSnapshotBackend });
+    if (showOptions && isSnapshotBackend) {
+      setEnableInstallVersion(true);
+      setInstallOptions((prev) => ({
+        ...prev,
+        installVersion: prev.installVersion.trim() || "snapshot",
+      }));
     }
-
-    setEnableInstallVersion(true);
-    setInstallOptions((prev) => ({
-      ...prev,
-      installVersion: prev.installVersion.trim() || "snapshot",
-    }));
-  }, [showOptions, isSnapshotBackend]);
+  }
 
   const generateCommand = () => {
     const host = (function () {
@@ -1335,9 +1342,12 @@ const NodeTable = ({
   const [localNodes, setLocalNodes] = useState<NodeDetail[]>(nodes);
   const [isDragging, setIsDragging] = useState(false);
   const isSnapshotBackend = useIsSnapshotBackend();
-  React.useEffect(() => {
+  // 与原先 `useEffect(..., [nodes])` 等价：nodes 引用变化时在渲染期间重新同步一次。
+  const [syncedNodes, setSyncedNodes] = useState(nodes);
+  if (syncedNodes !== nodes) {
+    setSyncedNodes(nodes);
     setLocalNodes(nodes);
-  }, [nodes]);
+  }
   const handleDragStart = () => {
     setIsDragging(true);
     if ("vibrate" in navigator) {
@@ -1587,18 +1597,19 @@ function GenerateCommandButton({
   const [enableInterval, setEnableInterval] = React.useState(false);
   const [enableMonthRotate, setEnableMonthRotate] = React.useState(false);
   const [enableInstallVersion, setEnableInstallVersion] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!isSnapshotBackend) {
-      return;
+  // 与原先 `useEffect(..., [isSnapshotBackend])` 等价：依赖变化时在渲染期间同步。
+  const [syncedIsSnapshotBackend, setSyncedIsSnapshotBackend] =
+    React.useState(isSnapshotBackend);
+  if (syncedIsSnapshotBackend !== isSnapshotBackend) {
+    setSyncedIsSnapshotBackend(isSnapshotBackend);
+    if (isSnapshotBackend) {
+      setEnableInstallVersion(true);
+      setInstallOptions((prev) => ({
+        ...prev,
+        installVersion: prev.installVersion.trim() || "snapshot",
+      }));
     }
-
-    setEnableInstallVersion(true);
-    setInstallOptions((prev) => ({
-      ...prev,
-      installVersion: prev.installVersion.trim() || "snapshot",
-    }));
-  }, [isSnapshotBackend]);
+  }
 
   const generateCommand = () => {
     const host = function () {
@@ -2389,12 +2400,28 @@ function EditButton({ node }: { node: NodeDetail }) {
   const [saving, setSaving] = useState(false);
   const [traffic_limit, setTrafficLimit] = useState(0);
   const [traffic_limit_type, setTrafficLimitType] = useState("sum");
+  // 编辑态由 node 派生：node 的对应字段变化时在渲染期间同步一次，
+  // 避免在 effect 中同步 setState（同一渲染批次内完成，不再多画一帧旧值）。
+  const [syncedNode, setSyncedNode] = useState({
+    hidden: node.hidden,
+    traffic_limit: node.traffic_limit,
+    traffic_limit_type: node.traffic_limit_type,
+  });
 
-  React.useEffect(() => {
+  if (
+    syncedNode.hidden !== node.hidden ||
+    syncedNode.traffic_limit !== node.traffic_limit ||
+    syncedNode.traffic_limit_type !== node.traffic_limit_type
+  ) {
+    setSyncedNode({
+      hidden: node.hidden,
+      traffic_limit: node.traffic_limit,
+      traffic_limit_type: node.traffic_limit_type,
+    });
     setHidden(node.hidden);
     setTrafficLimit(node.traffic_limit || 0);
     setTrafficLimitType(node.traffic_limit_type || "sum");
-  }, [node.hidden, node.traffic_limit, node.traffic_limit_type]);
+  }
 
   const save = async () => {
     try {
