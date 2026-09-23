@@ -117,6 +117,10 @@ class ChartBrowserTest(unittest.TestCase):
         self.assertTrue(live_region.evaluate("el => !!el.closest('[data-slot=chart]')"))
         self.page.locator(".recharts-surface").focus()
         self.page.keyboard.press("ArrowRight")
+        self.page.wait_for_function(
+            """() => document.querySelector('[role="status"]')
+                ?.innerText.trim().split(/\\s+/).join(' ') === 'Tue Visits 12 Sales 6'"""
+        )
         self.assertTrue(live_region.evaluate("el => el.isConnected"))
         self.assertTrue(status.evaluate("(el, previous) => el === previous", live_region))
         self.assertIsNone(status.get_attribute("aria-live"))
