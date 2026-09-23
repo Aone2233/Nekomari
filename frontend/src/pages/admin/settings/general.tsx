@@ -126,9 +126,22 @@ const ApiCard = ({ settings }: { settings: SettingsResponse }) => {
 
   //const { settings } = useSettings();
   const { t } = useTranslation();
+  const discoveryKey = settings?.auto_discovery_key;
   const [apiValues, setApiValues] = React.useState<string>(
-    settings?.auto_discovery_key || ""
+    discoveryKey || ""
   );
+  const [previousDiscoveryKey, setPreviousDiscoveryKey] =
+    React.useState(discoveryKey);
+
+  // 服务端的 key 变化时把新值写回本地草稿。原来是 useEffect + setState，
+  // 现在用 React 的 “adjusting state when a value changes” 模式：守卫条件
+  // （同一个依赖 + 同样的 truthy 判断）与原来的 effect 完全一致。
+  if (discoveryKey !== previousDiscoveryKey) {
+    setPreviousDiscoveryKey(discoveryKey);
+    if (discoveryKey) {
+      setApiValues(discoveryKey);
+    }
+  }
 
   // 生成32位随机字符串
   const generateRandomString = () => {
@@ -146,13 +159,6 @@ const ApiCard = ({ settings }: { settings: SettingsResponse }) => {
     const newApiKey = generateRandomString();
     setApiValues(newApiKey);
   };
-
-  // 初始化API值
-  React.useEffect(() => {
-    if (settings?.auto_discovery_key) {
-      setApiValues(settings.auto_discovery_key);
-    }
-  }, [settings?.auto_discovery_key]);
 
   return (
     <SettingCardShortTextInput
