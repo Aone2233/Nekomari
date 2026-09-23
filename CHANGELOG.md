@@ -15,6 +15,12 @@ Nekomari's own.
   without overwriting the last valid state. Late responses from older polls
   cannot replace newer results. Mounted browser regressions cover offline,
   HTTP 503, malformed entries, recovery and out-of-order completion in CI.
+- Keep the admin node mutation and offline-notification dialogs open after
+  rejected HTTP or RPC saves, preserving the user's draft and showing the
+  server's error instead of claiming success. Mounted browser regressions
+  cover failed requests followed by a successful retry.
+  Single-node offline notification editing now sends the node ID even if no
+  notification configuration exists yet.
 - Remove the unused `@tanstack/react-table` dependency and its license-list
   entry. Correct the v0.1.24 structural-review counts and the deployment
   runbook's recorded image version.
