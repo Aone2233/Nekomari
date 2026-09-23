@@ -25,9 +25,8 @@ tests down to 79 — and it hid two `agent/unlock` tests that had been failing s
 the commit that added them.
 
 Frontend checks run from `frontend` after `npm ci`: `npm test`, `npm run lint`
-and `npm run build`. The separate frontend browser job starts Vite on loopback
-and uses Chromium to check animated chart data, dark/light colors, keyboard
-focus, accessible naming and mounted price transitions. To run it locally:
+and `npm run build`. A separate CI job starts Vite on loopback and drives
+Chromium against five mounted fixtures. To run them locally:
 
 ```bash
 cd frontend
@@ -35,11 +34,31 @@ python -m pip install -r script/requirements-browser.txt
 python -m playwright install chromium
 python script/chart-a11y.spec.py
 python script/compiler-static.browser.spec.py
+python script/admin-clock.browser.spec.py
+python script/file-manager.browser.spec.py
+python script/selector-state.browser.spec.py
 ```
+
+| Spec | Fixture mounts | Covers |
+|---|---|---|
+| `chart-a11y.spec.py` | `components/ui/chart` | keyboard focus name/outline/tooltip, the live region updating on a keyboard tooltip, theme-resolved series and legend colors, a decorative legend icon, series labels naming the chart, and an animated series update reaching new data |
+| `compiler-static.browser.spec.py` | `components/PriceTags` | a free-to-paid transition reads the clock on the paid mount |
+| `admin-clock.browser.spec.py` | `pages/admin/sessions`, `pages/admin/dashboard` | time-dependent labels sharing one live clock without refetching, expiry boundaries and renewed exclusion, and a mounted dashboard moving its expiry window and urgency |
+| `file-manager.browser.spec.py` | `pages/terminal/FileManagerPanel`, `pages/terminal/FileEditorDialog` | rename/delete refreshing the real directory, ctrl-deselect keeping only the remaining file selected, a stale directory response not replacing a newer node, a delayed read updating its own tab, and a post-reconnect refresh ignoring a prior connection's response |
+| `selector-state.browser.spec.py` | `components/SelectorDialog`, `components/NodeSelectorDialog` | cancel/confirm and external value updates, an uncontrolled node dialog's open/cancel/confirm, and a parent-controlled open without a trigger |
+
+Two limits are worth knowing before trusting a green run. The fixtures mount
+components directly rather than routing to a page, so a page-level wiring bug is
+invisible to them; and `file-manager` never opens the file tree, so
+`RemoteFileTree` and every admin page have **no** browser coverage at all —
+changes there rest on the type checker, lint, the unit tests and the build.
 
 `npm run audit:compiler` is an advisory migration inventory and exits nonzero
 while the remaining React Compiler recommendations are unresolved. It is not a
-release gate; the configured `npm run lint` has zero allowed warnings.
+release gate; the configured `npm run lint` has zero allowed warnings. Read its
+counts from the JSON formatter rather than the default `stylish` output, which
+interleaves each finding's primary and related locations and so overstates the
+total by roughly 5%.
 
 ## Environment-dependent tests
 
