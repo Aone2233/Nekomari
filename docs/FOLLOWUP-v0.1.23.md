@@ -26,24 +26,28 @@ unchanged.
   passed. The OC424 arm64 image executable matched the published arm64 binary
   before deployment. PR #16 subsequently made anonymous image pullability a
   failing Docker workflow gate; this workflow change is after the v0.1.23 tag.
+- PR #17 subsequently added a mounted file manager/editor Chromium fixture to
+  CI. Four cases cover rename/delete refresh, stale responses when switching
+  nodes, a delayed editor read and manual refresh after reconnect. The RPCs
+  use a fixture, so this is frontend state coverage rather than a live agent
+  end-to-end test. This work is also after the v0.1.23 tag.
+- PR #18 fixed the release verifier's caller-provided work directory lifecycle.
+  Its work products now live in a fresh child directory; temporary directories
+  are cleaned on failure while caller data is retained. Shell syntax and
+  failure paths were tested. This fix is after the v0.1.23 tag.
 
 ## Next changes, in priority order
 
-1. Mount the real file manager/editor in browser regressions covering file
-   operations, stale responses, node switches and reconnects. Wire them into
-   CI before changing ref and state lifetimes. Then work through the remaining
-   React Compiler diagnostics in small, tested batches rather than enabling
-   the compiler wholesale.
-2. Fix the release deployment verifier's caller-provided work directory
-   lifecycle: its current cleanup can remove that directory. Keep caller data
-   outside automatic cleanup and test both supplied and temporary paths.
-3. Exercise chart keyboard and announced status with an actual screen reader
+1. Use the mounted file manager/editor regression to fix selection state and
+   then ref lifetimes in small, tested batches. Recheck the remaining React
+   Compiler diagnostics before enabling the compiler globally.
+2. Exercise chart keyboard and announced status with an actual screen reader
    on dashboard data and role/theme combinations. The isolated browser fixture
    alone cannot establish the experience of an assistive-technology user.
-4. Use the admin-only upload statistics under representative concurrent
+3. Use the admin-only upload statistics under representative concurrent
    uploads to measure scan duration and lock contention before changing the
    shared reservation or upload-lock design.
-5. Validate OAuth admission with a controlled real provider and production-like
+4. Validate OAuth admission with a controlled real provider and production-like
    redirects. Measure editor bundle load and interaction before adding more
    lazy chunks; the current build still warns about the large editor chunk.
 

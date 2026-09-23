@@ -61,15 +61,18 @@ remaining work.
   07:14:51 UTC (`origin=0.002s`, `public_max=0.285s`, 5/5 samples). These are
   spot checks, not a long-term latency or load measurement.
 
-Rollback: restore this backup's `docker-compose.yml` into `/opt/nekomari` and
-start the retained v0.1.22 image. If data restoration is needed, stop the
-panel, preserve the current data separately, and restore the archive before
-restarting. Never extract an archive over a running database.
+Rollback: restore the retained
+`/opt/nekomari/docker-compose.yml.bak-pre-v0.1.23` into `/opt/nekomari` and
+start the retained v0.1.22 image. Recheck the version, both database
+`quick_check` results and recent metrics from all registered nodes. If data
+restoration is needed, stop the panel, preserve the current data separately,
+verify `data.tar` against the SHA256 above, and restore it before restarting.
+Never extract an archive over a running database.
 
 ## Previous rollout: 2026-09-23 (v0.1.22)
 
-Panel upgraded from v0.1.21 at 05:51:40 UTC. Origin and public version APIs
-report `v0.1.22`, hash `5f71703`. See [the follow-up review](FOLLOWUP-v0.1.22.md)
+Panel upgraded from v0.1.21 at 05:51:40 UTC. At that rollout, origin and public
+version APIs reported `v0.1.22`, hash `5f71703`. See [the follow-up review](FOLLOWUP-v0.1.22.md)
 for the code changes and remaining work.
 
 - PR #10 merged as `5f717037ccb2e7124747d0b097aa8b9ed2d954be`.
