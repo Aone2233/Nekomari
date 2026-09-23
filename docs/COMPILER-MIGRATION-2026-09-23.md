@@ -207,17 +207,22 @@ pattern — were respectively out of scope and believed to be an error. The seco
 belief was wrong (see the probe above), and with the guarded adjustment pattern
 available this shape is fixable in-file after all.
 
-What genuinely resists, and why:
+What genuinely resists, and why. After both waves only three findings remain,
+and each is recorded here rather than left as pending work:
 
-| Site | What the effect does | Why it resists |
+| Site | Rule | Why it resists |
 |---|---|---|
-| `admin/_layout.tsx:19` | drives the blocking EULA dialog's `open` | `open` is locally mutated **and latching** — once closed nothing re-opens it while settings are unchanged. A latch is not a function of the current dependency, so the guarded pattern does not reproduce it. |
-| `dashboard.tsx:567` | `setRefreshing(true)` on the initial-load effect | a spinner flag on an effect-triggered load, not a seed; moving it to the click handler changes the button's state during initial load |
-| `dashboard.tsx:1620` | `MiniMetricChart` reads a module-level cache synchronously | the cache is not a subscribable store, so `useSyncExternalStore` does not apply without converting it into one |
-| `metrics.tsx:553`, `sign-on.tsx:29`, `:53` | spinner flags raised synchronously by refetch loaders | observable during effect-triggered refetches (language switch, provider switch); deriving means re-encoding the loader's dependency identity in state |
-| `number-picker.tsx:28` | mirrors `defaultValue` into `value` **and** calls `onChange` | a genuine prop-change side effect on the parent, so it cannot become pure derivation. Its only call site passes an inline arrow, so the effect also re-runs on every parent render. |
-| `NodeTable.tsx:222` | `useReactTable()` | not fixable at all: the rule `throw`s unconditionally at the hook call site (see Status). |
-| `RemoteFileTree.tsx:927` | ref read reachable from render | needs a directory-cache restructure, not a state-shape change (see Status). |
+| `NodeTable.tsx:222` | `incompatible-library` | not fixable at all: the rule `throw`s unconditionally at the `useReactTable()` call site, so relocating the call only moves the finding. Removing it means abandoning TanStack Table for hand-rolled sorting/filtering/faceting/selection. The compiler is not enabled globally, so there is no runtime impact today. |
+| `number-picker.tsx:28` | `set-state-in-effect` | the effect mirrors `defaultValue` into state **and** calls `onChange`, a real prop-change side effect on the parent, so it cannot become pure derivation. Its only call site passes an inline arrow, so the effect also re-runs on every parent render. |
+| `RemoteFileTree.tsx:968` | `refs` | the `childrenRef.current[path]` cache read is reachable from render through `buildTreeContextMenuItems → buildContextMenuItems → loadDirectory`. Reading the `children` state instead makes `loadDirectory` unstable, and the reset effect keyed on `[loadDirectory, refreshToken, rootPath]` would then re-run on every children update and loop. Needs a directory-cache restructure. |
+
+Everything else an earlier pass believed unfixable turned out to be fixable, and
+the reasons are worth keeping: the latching EULA dialog survives because its
+guard fires only when its dependencies change; the "spinner flag on a refetch"
+family survives because the guard keys on the request signature; and the module
+cache in `MiniMetricChart` is handled by forcing the guard's first run. That
+first pass had concluded "almost none of these can be fixed in-file" — the
+correction was worth roughly thirty findings.
 
 Two pre-existing bugs surfaced while reading these sites, both worth their own
 change: `RemoteFileTree`'s selection highlight and `FileEditorDialog`'s
@@ -229,63 +234,105 @@ static analysis only, no fixture covers that page, and the correct fix is in
 `log.tsx` (memoise `onChange`, or move `setPage(1)` into the picker's own change
 handler) rather than in `number-picker.tsx`.
 
+## The audit can be evaded, and two shapes of finding look alike
+
+Wave 4 established something that changes how these results should be read.
+Probing the rule with synthetic components showed:
+
+| Probe | Result |
+|---|---|
+| effect calls a local `useCallback` that writes state **before** its first `await` | flagged |
+| the same callback reached through one extra local async wrapper | **clean** |
+| effect calls a local async function whose only write is **after** its `await` | flagged |
+| the same logic rewritten as an explicit promise chain | **clean** |
+
+Two consequences:
+
+- **A "fix" can clear the diagnostic without changing behaviour.** Moving a
+  synchronous write into a function the effect reaches through a wrapper makes
+  the finding disappear while the cascading render stays exactly where it was.
+  One site in this batch was written that way; it was caught in review, not by
+  the audit, because the audit cannot see the difference. **Reviewing one of
+  these changes therefore means checking the effect's call path for a synchronous
+  `setState`, not just confirming that the number went down.**
+- **The rule also produces false positives on a very common shape.** An effect
+  that calls an async loader is flagged even when every write is after an
+  `await`, so nothing cascades. Several Wave 4 sites were already correct and
+  were cleared by making the async boundary explicit (a promise chain) or by
+  deferring the call one microtask. Those changes are behaviour-preserving and
+  their commit messages say so, but they are *not* performance fixes, and they
+  are recorded here as what they are.
+
+A third lesson, from a different direction: a guard must cover its effect's
+**whole** dependency set. One first version omitted `t`, so a language switch
+refetched both notification endpoints with no loading indicator — the same shape
+as the `customQueryRevision` gap in `LoadChart`. A guard whose key is a subset
+fires *less* often than its effect, which is the dangerous direction; firing more
+often would be the other.
+
+Finally, a process lesson: an agent's own `git rebase --onto` with `--skip`
+silently dropped an entire file's fix, and the commit list still looked
+plausible. **Diff each branch against its base and check that every file in scope
+actually changed** — do not trust the commit subjects.
+
 ## Status
 
-Three pull requests, each measured against the 77-finding baseline on its own
-branch and each verified independently of the agents that wrote its commits:
+Four pull requests. Each branch was measured on its own and verified
+independently of the agents that wrote its commits.
 
 | Pull request | Scope | Findings |
 |---|---|---|
 | #21 `codex/compiler-terminal-refs` | terminal editor ref lifetimes — `refs` 12 → 1, `immutability` 2 → 0, `set-state-in-effect` 62 → 59 | 77 → **61** |
 | #23 `codex/compiler-effect-setstate` | hooks, charts and components — `set-state-in-effect` 62 → 55 | 77 → **70** |
 | #22 `codex/compiler-admin-setstate` | admin and settings pages — `set-state-in-effect` 62 → 44 | 77 → **59** |
+| `codex/compiler-wave4` | contexts, remaining admin pages, settings and database pages, terminal — `set-state-in-effect` 34 → 1 | 36 → **3** |
 
-Combined, the three branches retire 34 of the 62 `set-state-in-effect` findings,
-11 of the 12 `refs` findings and both `immutability` findings, leaving **36**
-findings against the original 77. All three branches pass lint, the 40 frontend
-tests, the production build and all five browser specs.
+The first three are merged into `main`. From the original 77 findings, **74 are
+gone**: `set-state-in-effect` 62 → 1, `refs` 12 → 1, `immutability` 2 → 0,
+`preserve-manual-memoization` 25 → 0, `purity` 4 → 0. The three that remain are
+the ones recorded above.
 
-Two changes carry a stated one-frame improvement (the two hooks now report the
-correct value on first render rather than `false`, and every guarded adjustment
-removes a stale frame the effect used to paint before its reset committed), and
-one carries a stated edge (an A→B→A `src` flip in `InlineSvgIcon` reuses
-already-fetched markup instead of re-showing `<img>`, rendering identical
-content). Those are the only accepted differences.
+Every branch passed lint, the 40 frontend tests, the production build and all
+five browser specs, and each result was re-measured after integration rather than
+extrapolated from the agents' reports.
 
-Two findings are recorded as **not fixable as scoped**, rather than as pending
-work:
+### Accepted differences, stated once
 
-- `NodeTable.tsx:222` (`incompatible-library`, the project's only warning).
-  Reading the rule source in `eslint-plugin-react-hooks` 7.1.1 shows the check
-  at the hook call site is followed by an **unconditional `throw`**, so it fires
-  whenever `useReactTable()` is called in a compiled component body; moving it
-  into a custom hook or a child component only relocates it. Removing it means
-  abandoning TanStack Table for hand-rolled sorting/filtering/faceting/selection.
-  The compiler is not enabled globally, so there is no runtime impact today.
-- `RemoteFileTree.tsx:927` (`refs`). Bisected to
-  `buildTreeContextMenuItems → buildContextMenuItems → loadDirectory`, whose
-  `childrenRef.current[path]` cache read is reachable from render. Reading the
-  `children` state instead makes `loadDirectory` unstable, and the reset effect
-  keyed on `[loadDirectory, refreshToken, rootPath]` would then re-run on every
-  children update and loop. The clean fix is a restructure of the directory
-  cache, which is larger than a local change.
+- The two hook rewrites report the correct value on the first render instead of
+  `false` for one frame.
+- Every guarded render-time adjustment removes a stale frame the effect used to
+  paint before its reset committed.
+- `InlineSvgIcon` reuses already-fetched markup on an A→B→A `src` flip instead of
+  re-showing `<img>`, rendering identical content.
+- `account.tsx`'s 2FA spinner now appears at click time rather than after the
+  dialog's first paint.
+- Three providers (`NodeDetails`, `Notification`, `PublicInfo`) now carry
+  `isLoading === true` on the first render, which is the same stale-frame removal
+  achieved by folding the mount write into the initial state.
+- `RemoteFileTree`'s callback-change-only path holds the previous listing in
+  `children` state for one commit window while the ref cache is cleared
+  immediately; `fileService` only changes when `uuid` or the RPC client changes.
+- `dashboard.tsx`'s refresh button flips its disabled state one microtask later
+  on mount.
 
-### Coverage gap found during review
+### Coverage
 
-`RemoteFileTree.tsx` has **no direct browser coverage**: it is rendered only by
-`FileEditorDialog`, while `file-manager.browser.tsx` mounts `FileManagerPanel`
-and `FileEditorDialog` without opening the tree. The five specs therefore guard
-`FileManagerPanel` but never exercise the tree, so those changes rest on
-reasoning rather than on a passing test. Every admin page in the
-`set-state-in-effect` sweep is in the same position, and `number-picker.tsx`
-likewise. Any further work in those files should add a fixture first — the
-terminal unit is the model here, since it was only refactored after PR #17
-added mounted coverage.
+This remains the weakest part of the evidence, and it is worth stating plainly.
+The browser specs mount components directly rather than routing to a page, and
+they do not cover `RemoteFileTree`'s tree behaviour, any admin page, the settings
+pages, the context providers, `MiniMetricChart` or `number-picker`. For all of
+those the type checker, lint, the 40 unit tests and the build are the entire
+guard, and each conversion's equivalence rests on reading the code plus the rule
+probes above. `docs/TESTING.md` now records exactly which fixture covers what, so
+the gap is visible rather than assumed. Any further work in those files should
+add a fixture first — the terminal unit is the model, since it was refactored
+only after PR #17 added mounted coverage.
 
 ## Remaining inventory
 
-After this batch lands, re-measure rather than extrapolating. The `refs` work is
-the part that still matters most, because those are the findings that reflect
-real render-phase ref access rather than advisory state-shape preferences:
-`FileEditorDialog.tsx` (10 at the baseline) is the bulk of it, and the terminal
-unit is where the mounted coverage already exists.
+Three findings, each with a stated reason above. Nothing else is pending from the
+compiler migration. Reaching zero requires abandoning TanStack Table for the node
+table, restructuring `number-picker`'s contract with its only caller, or
+restructuring the directory cache — each larger than an advisory finding
+justifies today. The compiler is still not enabled globally, and this ledger
+deliberately does not propose enabling it.
