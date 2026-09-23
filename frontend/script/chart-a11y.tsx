@@ -22,11 +22,11 @@ function DecorativeSeriesIcon() {
 const config: ChartConfig = {
   visits: {
     label: "Visits",
-    icon: DecorativeSeriesIcon,
     theme: { light: "#c2410c", dark: "#fdba74" },
   },
   sales: {
     label: "Sales",
+    icon: DecorativeSeriesIcon,
     theme: { light: "#0369a1", dark: "#7dd3fc" },
   },
 };
@@ -67,7 +67,7 @@ export function Fixture() {
           <XAxis dataKey="time" />
           <YAxis />
           <ChartTooltip content={<ChartTooltipContent />} />
-          <ChartLegend content={<ChartLegendContent hideIcon />} />
+          <ChartLegend content={<ChartLegendContent />} />
           <Line
             dataKey="visits"
             stroke="var(--color-visits)"

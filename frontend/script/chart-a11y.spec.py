@@ -110,10 +110,15 @@ class ChartBrowserTest(unittest.TestCase):
         self.assertIn("Sales", tooltip.inner_text())
 
     def test_keyboard_tooltip_updates_live_region(self):
-        self.page.locator(".recharts-surface").focus()
-        self.page.keyboard.press("ArrowRight")
         status = self.page.get_by_role("status")
         status.wait_for(timeout=1500)
+        self.assertEqual(status.inner_text(), "")
+        live_region = status.element_handle()
+        self.assertTrue(live_region.evaluate("el => !!el.closest('[data-slot=chart]')"))
+        self.page.locator(".recharts-surface").focus()
+        self.page.keyboard.press("ArrowRight")
+        self.assertTrue(live_region.evaluate("el => el.isConnected"))
+        self.assertTrue(status.evaluate("(el, previous) => el === previous", live_region))
         self.assertIsNone(status.get_attribute("aria-live"))
         self.assertEqual(status.get_attribute("aria-atomic"), "true")
         self.assertEqual(status.inner_text().split(), ["Tue", "Visits", "12", "Sales", "6"])
@@ -124,13 +129,13 @@ class ChartBrowserTest(unittest.TestCase):
         self.assertEqual(snapshot.count("12"), 1)
         self.assertEqual(snapshot.count("6"), 1)
 
-        live_region = status.element_handle()
         self.page.keyboard.press("ArrowRight")
         self.page.wait_for_function(
             """() => document.querySelector('[role="status"]')
                 ?.innerText.trim().split(/\\s+/).join(' ') === 'Wed Visits 5 Sales 9'"""
         )
         self.assertTrue(live_region.evaluate("el => el.isConnected"))
+        self.assertTrue(status.evaluate("(el, previous) => el === previous", live_region))
 
     def test_theme_changes_resolved_series_and_legend_colors(self):
         line = self.page.locator(".recharts-line-curve").first
@@ -151,6 +156,11 @@ class ChartBrowserTest(unittest.TestCase):
         self.page.wait_for_function(
             "getComputedStyle(document.querySelector('.recharts-line-curve')).stroke === 'rgb(194, 65, 12)'"
         )
+
+    def test_legend_icon_is_decorative(self):
+        legend = self.page.locator(".recharts-legend-wrapper")
+        self.assertEqual(legend.locator('svg[aria-label="Decorative marker"]').count(), 1)
+        self.assertNotIn("Decorative marker", legend.aria_snapshot())
 
     def test_series_labels_name_chart_when_no_explicit_label(self):
         self.page.get_by_role("button", name="Toggle explicit label").click()

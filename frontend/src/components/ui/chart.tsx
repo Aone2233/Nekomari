@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import * as RechartsPrimitive from "recharts";
 
 import { cn } from "@/lib/utils";
@@ -20,6 +21,7 @@ export type ChartConfig = {
 
 type ChartContextProps = {
   config: ChartConfig;
+  portalTarget: HTMLDivElement | null;
 };
 
 const ChartContext = React.createContext<ChartContextProps | null>(null);
@@ -39,6 +41,7 @@ function ChartContainer({
   className,
   children,
   config,
+  ref: forwardedRef,
   "aria-label": ariaLabel,
   ...props
 }: React.ComponentProps<"div"> & {
@@ -48,6 +51,18 @@ function ChartContainer({
   >["children"];
 }) {
   const uniqueId = React.useId();
+  const [portalTarget, setPortalTarget] = React.useState<HTMLDivElement | null>(null);
+  const setChartRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      setPortalTarget(node);
+      if (typeof forwardedRef === "function") {
+        forwardedRef(node);
+      } else if (forwardedRef) {
+        forwardedRef.current = node;
+      }
+    },
+    [forwardedRef]
+  );
   const chartId = `chart-${id || uniqueId.replace(/:/g, "")}`;
   const fallbackTitle = Object.values(config)
     .map((item) => item.label)
@@ -62,8 +77,9 @@ function ChartContainer({
       : children;
 
   return (
-    <ChartContext.Provider value={{ config }}>
+    <ChartContext.Provider value={{ config, portalTarget }}>
       <div
+        ref={setChartRef}
         data-slot="chart"
         data-chart={chartId}
         aria-label={ariaLabel}
@@ -145,7 +161,7 @@ function ChartTooltipContent({
     nameKey?: string;
     labelKey?: string;
   }) {
-  const { config } = useChart();
+  const { config, portalTarget } = useChart();
 
   const tooltipLabel = React.useMemo(() => {
     if (hideLabel || !payload?.length) {
@@ -183,24 +199,14 @@ function ChartTooltipContent({
     labelKey,
   ]);
 
-  if (!active || !payload?.length) {
-    return null;
-  }
+  const hasPayload = Boolean(active && payload?.length);
+  const nestLabel = payload?.length === 1 && indicator !== "dot";
 
-  const nestLabel = payload.length === 1 && indicator !== "dot";
-
-  return (
-    <div
-      role="status"
-      aria-atomic="true"
-      className={cn(
-        "border-border/50 bg-background grid min-w-[8rem] items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-xl",
-        className
-      )}
-    >
+  const tooltipBody = hasPayload ? (
+    <>
       {!nestLabel ? tooltipLabel : null}
       <div className="grid gap-1.5">
-        {payload.map((item, index) => {
+        {payload?.map((item, index) => {
           const key = `${nameKey || item.name || item.dataKey || "value"}`;
           const itemConfig = getPayloadConfigFromPayload(config, item, key);
           const indicatorColor = color || item.payload.fill || item.color;
@@ -276,7 +282,30 @@ function ChartTooltipContent({
           );
         })}
       </div>
-    </div>
+    </>
+  ) : null;
+
+  return (
+    <>
+      {hasPayload && (
+        <div
+          aria-hidden="true"
+          className={cn(
+            "border-border/50 bg-background grid min-w-[8rem] items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-xl",
+            className
+          )}
+        >
+          {tooltipBody}
+        </div>
+      )}
+      {portalTarget &&
+        createPortal(
+          <div role="status" aria-atomic="true" className="sr-only">
+            {tooltipBody}
+          </div>,
+          portalTarget
+        )}
+    </>
   );
 }
 
@@ -318,14 +347,18 @@ function ChartLegendContent({
         return (
           <div
             key={item.value}
-            className={cn(
-              "[&>svg]:text-muted-foreground flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3"
-            )}
+            className="flex items-center gap-1.5"
           >
             {itemConfig?.icon && !hideIcon ? (
-              <itemConfig.icon />
+              <span
+                aria-hidden="true"
+                className="text-muted-foreground inline-flex shrink-0 [&>svg]:h-3 [&>svg]:w-3"
+              >
+                <itemConfig.icon />
+              </span>
             ) : (
               <div
+                aria-hidden="true"
                 className="h-2 w-2 shrink-0 rounded-[2px]"
                 style={{
                   backgroundColor: item.color,
