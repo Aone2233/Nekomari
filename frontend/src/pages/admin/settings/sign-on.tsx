@@ -159,7 +159,19 @@ export default function SignOnSettings() {
 const ApiCard = () => {
   const { settings } = useSettings();
   const { t } = useTranslation();
-  const [apiValues, setApiValues] = React.useState<string>(settings?.api_key || "" );
+  const apiKey = settings?.api_key;
+  const [apiValues, setApiValues] = React.useState<string>(apiKey || "");
+  const [previousApiKey, setPreviousApiKey] = React.useState(apiKey);
+
+  // 服务端的 key 变化时把新值写回本地草稿。原来是 useEffect + setState，
+  // 现在用 React 的 “adjusting state when a value changes” 模式：守卫条件
+  // （同一个依赖 + 同样的 truthy 判断）与原来的 effect 完全一致。
+  if (apiKey !== previousApiKey) {
+    setPreviousApiKey(apiKey);
+    if (apiKey) {
+      setApiValues(apiKey);
+    }
+  }
 
   // 生成32位随机字符串
   const generateRandomString = () => {
@@ -176,13 +188,6 @@ const ApiCard = () => {
     const newApiKey = generateRandomString();
     setApiValues(newApiKey);
   };
-
-  // 初始化API值
-  React.useEffect(() => {
-    if (settings?.api_key) {
-      setApiValues(settings.api_key);
-    }
-  }, [settings?.api_key]);
 
   return (
     <SettingCardShortTextInput
