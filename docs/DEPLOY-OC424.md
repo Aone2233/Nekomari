@@ -9,7 +9,7 @@ restored, and the two hostname/TLS traps that cost the most time.
 |---|---|
 | Panel URL | **https://komari.orderly2233.org** |
 | Host | OC424 (`ubuntu@213.35.99.48`, Oracle Cloud, **arm64**, Ubuntu 22.04) |
-| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.21`, bound to `127.0.0.1:25774` |
+| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.22`, bound to `127.0.0.1:25774` |
 | Compose dir | `/opt/nekomari` (bind mount `./data` → `/app/data`) |
 | Reverse proxy | host **nginx** `/etc/nginx/sites-available/nekomari` |
 | TLS at origin | `/etc/nginx/ssl/{fullchain,privkey}.pem` (Cloudflare Origin cert, shared with the other vhosts) |
@@ -21,7 +21,48 @@ The container is deliberately **not** published on a public interface: UFW allow
 80/443 only from Cloudflare's ranges, so all traffic arrives via the edge, and
 nginx is the only thing that talks to the panel port.
 
-## Current rollout: 2026-09-23 (v0.1.21)
+## Current rollout: 2026-09-23 (v0.1.22)
+
+Panel upgraded from v0.1.21 at 05:51:40 UTC. Origin and public version APIs
+report `v0.1.22`, hash `5f71703`. See [the follow-up review](FOLLOWUP-v0.1.22.md)
+for the code changes and remaining work.
+
+- PR #10 merged as `5f717037ccb2e7124747d0b097aa8b9ed2d954be`.
+  Exact-commit CI `35822804305` passed the frontend browser, Ubuntu, and Windows
+  jobs before the tag was pushed at that commit.
+- Release `35823140745` passed all eight jobs, including scans and installation
+  from downloaded release artifacts with a reporting agent. Docker
+  `35823618102` passed both image jobs, with anonymous manifest fetches (HTTP 200).
+- Panel image index: `sha256:53e500db6a1811c2b488647ae3d162c56637a68b38352dd2ab2b4d9c5ed94a5e`.
+  Its arm64 executable SHA256 is
+  `d0365e582567322059f7da5e5992ab43f5a6a0cdcd43c44e3ca889d0fc8e438a`,
+  matching the published Release checksum. The agent image executable also
+  matched its published checksum; its source did not change in this release.
+- Pulled and inspected the image before stopping writes. Compose and the complete
+  data directory were backed up at
+  `/opt/nekomari-backups/pre-v0.1.22-20260923-054850` (mode 0700);
+  `data.tar` SHA256:
+  `c5ffbc69aa65815ffaaa6379eb8150479a4d6c420bb236f25b03eaf050f5f0c4`.
+  The first archive-listing pipeline exited 141 under `pipefail`, so the trap
+  restarted the unchanged v0.1.21 panel. A separate full listing and Compose
+  comparison then verified the backup before the v0.1.22 image swap.
+- Both SQLite databases passed `quick_check`; the 9 clients, 1 user, and 9 ping
+  tasks remained. All 9 current client IDs had new metric buckets between
+  05:51:55 and 05:51:59 UTC, after the new container started. Homepage returned
+  HTTP 200, while the actual admin backup and private recent-history endpoints
+  returned HTTP 401 without a session.
+- The data bind mount and loopback-only port remained intact; container restart
+  count was zero, nginx configuration passed, the probe timer was active, and
+  no ERRO/FATAL lines appeared in the initial post-upgrade window. The agent
+  fleet retains v0.1.19 because agent, protocol, and shared-package source is
+  unchanged from v0.1.21.
+
+Rollback: restore this backup's `docker-compose.yml` into `/opt/nekomari` and
+start the retained v0.1.21 image. If data restoration is needed, stop the panel,
+preserve the current data separately, and restore the archive before restarting.
+Never extract an archive over a running database.
+
+## Previous rollout: 2026-09-23 (v0.1.21)
 
 Panel upgraded from v0.1.20 at 01:40 UTC. Origin and public version APIs report
 `v0.1.21`, hash `8d0a8d1`. See [the follow-up review](FOLLOWUP-v0.1.21.md)
