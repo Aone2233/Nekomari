@@ -11,7 +11,7 @@ func init() {
 	RegisterWithGroupAndMeta("getUploadStats", rpc.RoleAdmin, adminGetUploadStats, &rpc.MethodMeta{
 		Name:    "admin:getUploadStats",
 		Summary: "Read cached upload cleanup and contention statistics without disk I/O",
-		Returns: "CleanupStats; durations are nanoseconds, timestamps are RFC3339; reservations describe last_scan, not allocated disk bytes",
+		Returns: "CleanupStats; last_scan_duration_ns is one successful reservation scan in nanoseconds, timestamps are RFC3339; reservations describe last_scan, not allocated disk bytes",
 	})
 }
 

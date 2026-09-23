@@ -31,6 +31,10 @@ type CleanupStats struct {
 	ReservedBytes    int64         `json:"reserved_bytes"`
 	OldestSessionAge time.Duration `json:"oldest_session_age"`
 	LastScan         time.Time     `json:"last_scan"`
+	// LastScanDurationNS measures the most recent successful reservation scan,
+	// excluding time spent waiting for the store lock. Fast scans can measure
+	// zero on clocks with coarse resolution.
+	LastScanDurationNS int64 `json:"last_scan_duration_ns"`
 	// LastSuccess is the last cleanup pass that completed without error.
 	LastSuccess time.Time `json:"last_success"`
 	// LastError is the most recent cleanup failure, empty after a success.
@@ -73,12 +77,13 @@ type scanResult struct {
 }
 
 // recordScan publishes the accounting of a successful scan.
-func (s *Store) recordScan(result scanResult) {
+func (s *Store) recordScan(result scanResult, duration time.Duration) {
 	s.statsMu.Lock()
 	defer s.statsMu.Unlock()
 	s.stats.Sessions = result.sessions
 	s.stats.ReservedBytes = result.reserved
 	s.stats.LastScan = time.Now().UTC()
+	s.stats.LastScanDurationNS = duration.Nanoseconds()
 	s.oldestSession = result.oldest
 }
 
@@ -86,10 +91,11 @@ func (s *Store) recordScan(result scanResult) {
 // upload directories are eligible for deletion; unknown entries fail admission
 // and are reported rather than removed.
 func (s *Store) scan() (scanResult, error) {
+	started := time.Now()
 	var result scanResult
 	entries, err := os.ReadDir(s.Root)
 	if os.IsNotExist(err) {
-		s.recordScan(result)
+		s.recordScan(result, time.Since(started))
 		return result, nil
 	}
 	if err != nil {
@@ -130,7 +136,7 @@ func (s *Store) scan() (scanResult, error) {
 			result.oldest = info.ModTime()
 		}
 	}
-	s.recordScan(result)
+	s.recordScan(result, time.Since(started))
 	return result, nil
 }
 
