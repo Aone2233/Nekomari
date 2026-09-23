@@ -44,6 +44,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -381,9 +382,16 @@ const FileEditorDialog = ({
   const openChangeRef = useRef(onOpenChange);
   const saveActiveRef = useRef<() => void>(() => {});
   const saveAllRef = useRef<() => void>(() => {});
-  documentsRef.current = documents;
-  activePathRef.current = activePath;
-  openChangeRef.current = onOpenChange;
+  // Keep the "latest value" refs in sync with the committed render output so
+  // the stable callbacks below (tree handlers, beforeunload, Monaco commands)
+  // always observe current state. Refs must not be written during render, and
+  // a layout effect still runs before any subsequent event handler can read
+  // them, so this is equivalent to the previous render-phase assignment.
+  useLayoutEffect(() => {
+    documentsRef.current = documents;
+    activePathRef.current = activePath;
+    openChangeRef.current = onOpenChange;
+  }, [activePath, documents, onOpenChange]);
   const dockRowRef = useRef<HTMLDivElement | null>(null);
   const tabStripRef = useRef<HTMLDivElement | null>(null);
   const dockResizeRef = useRef<{
@@ -977,9 +985,13 @@ const FileEditorDialog = ({
 
   const switchDocumentRef = useRef<(direction: number) => void>(() => {});
   const editorStateRef = useRef({ hasSelection: false, canUndo: false, canRedo: false });
-  saveActiveRef.current = () => void saveActive();
-  saveAllRef.current = () => void saveAll();
-  switchDocumentRef.current = switchDocument;
+  // Same "latest value" mirror as above: the Monaco commands registered in
+  // handleEditorMount read these refs on keypress, long after commit.
+  useLayoutEffect(() => {
+    saveActiveRef.current = () => void saveActive();
+    saveAllRef.current = () => void saveAll();
+    switchDocumentRef.current = switchDocument;
+  }, [saveActive, saveAll, switchDocument]);
 
   const updateEditorState = useCallback(() => {
     const editor = editorRef.current;
