@@ -192,7 +192,6 @@ function ChartTooltipContent({
   return (
     <div
       role="status"
-      aria-live="assertive"
       aria-atomic="true"
       className={cn(
         "border-border/50 bg-background grid min-w-[8rem] items-start gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs shadow-xl",
@@ -211,16 +210,22 @@ function ChartTooltipContent({
               // v3 widened payload dataKey to include functions, so it is no longer a valid key.
               key={index}
               className={cn(
-                "[&>svg]:text-muted-foreground flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5",
+                "flex w-full flex-wrap items-stretch gap-2",
                 indicator === "dot" && "items-center"
               )}
             >
               <>
                 {itemConfig?.icon ? (
-                  <itemConfig.icon />
+                  <span
+                    aria-hidden="true"
+                    className="text-muted-foreground inline-flex shrink-0 [&>svg]:h-2.5 [&>svg]:w-2.5"
+                  >
+                    <itemConfig.icon />
+                  </span>
                 ) : (
                   !hideIndicator && (
                     <div
+                      aria-hidden="true"
                       className={cn(
                         "shrink-0 rounded-[2px] border-(--color-border) bg-(--color-bg)",
                         {

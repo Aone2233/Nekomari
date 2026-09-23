@@ -11,9 +11,18 @@ import {
 } from "../src/components/ui/chart";
 import "../src/global.css";
 
+function DecorativeSeriesIcon() {
+  return (
+    <svg role="img" aria-label="Decorative marker" viewBox="0 0 10 10">
+      <circle cx="5" cy="5" r="4" fill="currentColor" />
+    </svg>
+  );
+}
+
 const config: ChartConfig = {
   visits: {
     label: "Visits",
+    icon: DecorativeSeriesIcon,
     theme: { light: "#c2410c", dark: "#fdba74" },
   },
   sales: {
@@ -58,7 +67,7 @@ export function Fixture() {
           <XAxis dataKey="time" />
           <YAxis />
           <ChartTooltip content={<ChartTooltipContent />} />
-          <ChartLegend content={<ChartLegendContent />} />
+          <ChartLegend content={<ChartLegendContent hideIcon />} />
           <Line
             dataKey="visits"
             stroke="var(--color-visits)"
