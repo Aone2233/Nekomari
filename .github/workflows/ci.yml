@@ -37,11 +37,12 @@ jobs:
           npm ci --no-audit --no-fund
           python -m pip install -r script/requirements-browser.txt
           python -m playwright install --with-deps chromium
-      - name: Test chart rendering, keyboard access and price transitions
+      - name: Test chart rendering, keyboard access and time-sensitive labels
         working-directory: frontend
         run: |
           python script/chart-a11y.spec.py
           python script/compiler-static.browser.spec.py
+          python script/admin-clock.browser.spec.py
 
   build-and-test:
     name: build & test (${{ matrix.os }})
