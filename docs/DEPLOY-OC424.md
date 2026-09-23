@@ -9,7 +9,7 @@ restored, and the two hostname/TLS traps that cost the most time.
 |---|---|
 | Panel URL | **https://komari.orderly2233.org** |
 | Host | OC424 (`ubuntu@213.35.99.48`, Oracle Cloud, **arm64**, Ubuntu 22.04) |
-| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.22`, bound to `127.0.0.1:25774` |
+| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.23`, bound to `127.0.0.1:25774` |
 | Compose dir | `/opt/nekomari` (bind mount `./data` → `/app/data`) |
 | Reverse proxy | host **nginx** `/etc/nginx/sites-available/nekomari` |
 | TLS at origin | `/etc/nginx/ssl/{fullchain,privkey}.pem` (Cloudflare Origin cert, shared with the other vhosts) |
@@ -21,10 +21,58 @@ The container is deliberately **not** published on a public interface: UFW allow
 80/443 only from Cloudflare's ranges, so all traffic arrives via the edge, and
 nginx is the only thing that talks to the panel port.
 
-## Current rollout: 2026-09-23 (v0.1.22)
+## Current rollout: 2026-09-23 (v0.1.23)
 
-Panel upgraded from v0.1.21 at 05:51:40 UTC. Origin and public version APIs
-report `v0.1.22`, hash `5f71703`. See [the follow-up review](FOLLOWUP-v0.1.22.md)
+Panel upgraded from v0.1.22 at approximately 07:12 UTC. Origin and public
+version APIs reported `v0.1.23`, hash `7c82708`. See
+[the follow-up review](FOLLOWUP-v0.1.23.md) for the frontend changes and
+remaining work.
+
+- The tag and merged main pointed to
+  `7c82708ee45a5b5a6ae08dc06220ec7e8aab5f2f`. Exact-commit CI
+  `35829087706` passed all three jobs before release. Release `35829551439`
+  passed all eight jobs, including downloaded-artifact deployment with an
+  agent; Docker `35830057800` passed both image jobs and their startup smoke
+  tests. Both package manifests independently returned HTTP 200 with anonymous
+  tokens. The Release published eight binaries and `SHA256SUMS.txt`.
+- The panel image index was
+  `sha256:1b6116b7663b16724097541733fc7881a152ca4f12aa4ff102065e5113616182`.
+  Its arm64 `/app/nekomari` SHA256 matched the published arm64 binary:
+  `f5e2088a4062aa5118f3fe7f8f0882c9bb6bb21b35fbe81c0d59434fe80d77fa`.
+  The image revision label matched the tagged commit. The agent, protocol,
+  internal and shared-package source did not change, so the v0.1.19 agent
+  fleet was left intact.
+- Pulled and inspected the image before stopping writes. The stopped panel's
+  Compose file and complete bound data were backed up under
+  `/opt/nekomari-backups/pre-v0.1.23-20260923-071131` (mode 0700).
+  `data.tar` SHA256 was verified before and after deployment:
+  `8c24fbefc02979aec004beb710e4484797bd818746074d28e9d890bbc08c0501`.
+  Archive listing included `data/komari.db` and `data/metrics.db`; the
+  previous Compose file and image were retained for rollback.
+- After the image swap, both SQLite databases passed `quick_check`, and the
+  panel remained healthy with zero restarts. The 9 registered clients all
+  had fresh metric buckets (approximately 8-12 seconds old at 07:14 UTC).
+  The public homepage returned HTTP 200; the actual admin backup-download
+  and client-list routes returned HTTP 401 without a session from both origin
+  and public paths. nginx configuration passed; no ERROR/FATAL lines appeared
+  in the initial post-upgrade logs.
+- The loopback-only port and data bind mount remained intact. The active
+  `panel-probe.timer` and a manually run probe completed successfully at
+  07:14:51 UTC (`origin=0.002s`, `public_max=0.285s`, 5/5 samples). These are
+  spot checks, not a long-term latency or load measurement.
+
+Rollback: restore the retained
+`/opt/nekomari/docker-compose.yml.bak-pre-v0.1.23` into `/opt/nekomari` and
+start the retained v0.1.22 image. Recheck the version, both database
+`quick_check` results and recent metrics from all registered nodes. If data
+restoration is needed, stop the panel, preserve the current data separately,
+verify `data.tar` against the SHA256 above, and restore it before restarting.
+Never extract an archive over a running database.
+
+## Previous rollout: 2026-09-23 (v0.1.22)
+
+Panel upgraded from v0.1.21 at 05:51:40 UTC. At that rollout, origin and public
+version APIs reported `v0.1.22`, hash `5f71703`. See [the follow-up review](FOLLOWUP-v0.1.22.md)
 for the code changes and remaining work.
 
 - PR #10 merged as `5f717037ccb2e7124747d0b097aa8b9ed2d954be`.
@@ -337,8 +385,9 @@ docker compose run --rm --entrypoint /app/nekomari nekomari disable-2fa
 docker compose up -d
 ```
 
-**2FA is now off and the password was reset** — re-enable 2FA in the panel when
-convenient.
+The password and 2FA state above describe the historical restoration. A
+read-only database check on 2026-09-23 confirmed that the current account has
+2FA enabled; do not infer current authentication state from these old commands.
 
 ## The two hostname traps
 
