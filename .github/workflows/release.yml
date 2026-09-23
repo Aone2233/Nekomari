@@ -38,27 +38,58 @@ jobs:
   # 就是 tag，但手动触发（workflow_dispatch）时它是分支名 —— 于是手动发的版本会在
   # 服务端横幅里自称 "main"，更糟的是把 "main" 写进探针的
   # agent/update.CurrentVersion，而那个字符串决定探针认为「有没有新版本」。
-  # 现在四个 job 共用这一个输出，并且构建后会断言产物里确实带着它。
+  # 现在所有 job 共用 tag 和它指向的 commit，并且构建后断言产物版本。
   resolve:
     name: resolve version
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
+      sha: ${{ steps.commit.outputs.sha }}
     steps:
       - name: Determine tag
         id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="${{ github.event.inputs.tag }}"
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
           else
-            tag="${{ github.ref_name }}"
+            tag="$GITHUB_REF_NAME"
           fi
-          case "$tag" in
-            v*) ;;
-            *) echo "refusing to release with tag '$tag' (expected v*)" >&2; exit 1 ;;
-          esac
+          if [[ ! "$tag" =~ ^v[0-9A-Za-z][0-9A-Za-z._+-]*$ ]] ||
+             ! git check-ref-format "refs/tags/$tag"; then
+            echo "refusing to release with invalid tag '$tag'" >&2
+            exit 1
+          fi
           echo "resolved tag: $tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout release tag
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Pin release commit
+        id: commit
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          tagged_sha="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+          if [ "$sha" != "$tagged_sha" ]; then
+            echo "tag $RELEASE_TAG points to $tagged_sha, checkout is $sha" >&2
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ "$sha" != "$GITHUB_SHA" ]; then
+            echo "tag $RELEASE_TAG moved since the push event ($GITHUB_SHA -> $sha)" >&2
+            exit 1
+          fi
+          echo "resolved commit: $sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
   build:
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}
@@ -84,8 +115,16 @@ jobs:
             ext: '.exe'
 
     steps:
-      - name: Checkout
+      - name: Checkout release tag
         uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ needs.resolve.outputs.tag }}
+
+      - name: Verify release commit
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
+        run: test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
 
       - name: Setup Go
         uses: actions/setup-go@v7
@@ -141,12 +180,13 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '1'
           CC: ${{ matrix.cc }}
+          RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
         run: |
           # VersionHash 必须注入：main.go 用「hash == unknown」判断是不是开发构建，
           # 决定日志级别。此前只有 CurrentVersion 被注入，于是每个正式版都跑在
           # Debug 级别，且 /api/version 一直报 hash: unknown。
           go build -trimpath \
-            -ldflags="-w -X github.com/Aone2233/nekomari/utils.CurrentVersion=${{ needs.resolve.outputs.tag }} -X github.com/Aone2233/nekomari/utils.VersionHash=${GITHUB_SHA:0:7}" \
+            -ldflags="-w -X github.com/Aone2233/nekomari/utils.CurrentVersion=${{ needs.resolve.outputs.tag }} -X github.com/Aone2233/nekomari/utils.VersionHash=${RELEASE_SHA:0:7}" \
             -o nekomari-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} .
 
       - name: Build agent
@@ -166,6 +206,8 @@ jobs:
       # 探针的版本字符串直接决定它认不认新版本，错了就是一次静默的自更新失效。
       - name: Verify the injected version
         shell: bash
+        env:
+          RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
         run: |
           want='${{ needs.resolve.outputs.tag }}'
           for f in \
@@ -178,6 +220,12 @@ jobs:
             fi
             echo "$f carries $want"
           done
+          server="nekomari-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          hash="${RELEASE_SHA:0:7}"
+          if ! grep -aq -- "$hash" "$server"; then
+            echo "::error file=$server::$server does not contain release commit $hash"
+            exit 1
+          fi
 
       # 把探针产物平铺到仓库根目录再上传。
       # 否则它会带着 agent/ 这一层目录进 artifact，而 download-artifact 的
@@ -224,8 +272,16 @@ jobs:
         goarch: [amd64, arm64]
 
     steps:
-      - name: Checkout
+      - name: Checkout release tag
         uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ needs.resolve.outputs.tag }}
+
+      - name: Verify release commit
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
+        run: test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
 
       - name: Setup Go
         uses: actions/setup-go@v7
@@ -279,6 +335,17 @@ jobs:
     needs: [resolve, build, build-agent-darwin]
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ needs.resolve.outputs.tag }}
+
+      - name: Verify release commit
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
+        run: test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+
       - name: Download all artifacts
         uses: actions/download-artifact@v8
         with:
@@ -376,8 +443,16 @@ jobs:
     needs: [resolve, release]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout release tag
         uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ needs.resolve.outputs.tag }}
+
+      - name: Verify release commit
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
+        run: test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
 
       - name: Deploy the published artifacts and check they work
         run: |

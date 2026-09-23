@@ -76,12 +76,21 @@ interface AdminPanelBarProps {
   content: ReactNode;
 }
 
+function isMenuActive(item: ExtendedMenuItem, pathname: string): boolean {
+  return (
+    item.children?.some((child) => {
+      const childPath = child.path.split("?")[0];
+      return (
+        pathname === childPath ||
+        (childPath !== "/" && pathname.startsWith(childPath + "/"))
+      );
+    }) ?? false
+  );
+}
+
 const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
   const { call } = useRPC2Call();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [openSubMenus, setOpenSubMenus] = useState<{ [key: string]: boolean }>({
-    // 默认所有子菜单关闭
-  });
   const { account } = useAccount();
   const isMobile = useIsMobile();
   const ishttps = window.location.protocol === "https:";
@@ -340,25 +349,18 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
     (item) => item.bottom,
   )?.path;
 
-  // 根据路径自动展开子菜单（包含动态扩展项；plugin-page 用 query 定位文件，
-  // 因此子菜单匹配基于 pathname 部分）
-  useEffect(() => {
-    const newState: { [key: string]: boolean } = {};
-    const combined: ExtendedMenuItem[] = mergedBaseMenuItems;
-    combined.forEach((item) => {
-      if (item.children) {
-        newState[item.path] = item.children.some((child: MenuItem) => {
-          const childPath = child.path.split("?")[0];
-          return (
-            location.pathname === childPath ||
-            (childPath !== "/" &&
-              location.pathname.startsWith(childPath + "/"))
-          );
-        });
-      }
-    });
-    setOpenSubMenus(newState);
-  }, [location.pathname, extraMenuItems, mergedBaseMenuItems]);
+  // The route determines the default expansion. Keep only manual toggles, scoped
+  // to the current route and menu so navigation resets them without an effect.
+  const [menuOverrides, setMenuOverrides] = useState<{
+    pathname: string;
+    items: ExtendedMenuItem[];
+    values: Record<string, boolean>;
+  } | null>(null);
+  const activeMenuOverrides =
+    menuOverrides?.pathname === location.pathname &&
+    menuOverrides.items === mergedBaseMenuItems
+      ? menuOverrides.values
+      : null;
 
   // 侧边栏动画变体
   const sidebarVariants: Variants = {
@@ -592,7 +594,9 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
                 {mergedBaseMenuItems.map(
                   (item: ExtendedMenuItem) => {
                     // 支持 icon 为 URL/相对路径
-                    const isOpen = openSubMenus[item.path];
+                    const isOpen =
+                      activeMenuOverrides?.[item.path] ??
+                      isMenuActive(item, location.pathname);
                     const renderIcon = (
                       icon: string,
                       labelKey: string,
@@ -651,33 +655,21 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
                             className="p-2 gap-2 border-l-[4px] border-transparent cursor-pointer hover:bg-accent-3 rounded-md"
                             align="center"
                             onClick={() => {
-                              //const currentlyOpen = openSubMenus[item.path];
-                              // 检查当前路径是否已经在该父菜单的子菜单中
-                              //const isCurrentlyInThisMenu = item.children?.some(
-                              //  (child) =>
-                              //    location.pathname === child.path ||
-                              //    location.pathname.startsWith(child.path)
-                              //);
-
-                              // 切换子菜单的展开状态
-                              setOpenSubMenus((prev) => ({
-                                ...prev,
-                                [item.path]: !prev[item.path],
-                              }));
-
-                              //// 只有在非展开状态且不在当前菜单组中时才导航到第一个子菜单项
-                              //if (
-                              //  !currentlyOpen &&
-                              //  !isCurrentlyInThisMenu &&
-                              //  item.children &&
-                              //  item.children.length > 0
-                              //) {
-                              //  //navigate(item.children[0].path);
-                              //  // 如果是移动端，关闭侧边栏
-                              //  if (isMobile) {
-                              //    setSidebarOpen(false);
-                              //  }
-                              //}
+                              setMenuOverrides((previous) => {
+                                const values =
+                                  previous?.pathname === location.pathname &&
+                                  previous.items === mergedBaseMenuItems
+                                    ? previous.values
+                                    : {};
+                                const current =
+                                  values[item.path] ??
+                                  isMenuActive(item, location.pathname);
+                                return {
+                                  pathname: location.pathname,
+                                  items: mergedBaseMenuItems,
+                                  values: { ...values, [item.path]: !current },
+                                };
+                              });
                             }}
                           >
                             {renderIcon(

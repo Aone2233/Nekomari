@@ -21,8 +21,7 @@ type LoginDialogProps = {
   onLoginSuccess?: () => void;
 };
 
-const LoginDialog = ({ trigger, autoOpen = false, showSettings = true, info, onLoginSuccess }: LoginDialogProps) => {
-  const InnerLayout = () => {
+const LoginInnerLayout = ({ trigger, autoOpen = false, showSettings = true, info, onLoginSuccess }: LoginDialogProps) => {
     const { account, loading, error, refresh } = useAccount();
     const [t] = useTranslation();
     const [username, setUsername] = React.useState("");
@@ -40,11 +39,6 @@ const LoginDialog = ({ trigger, autoOpen = false, showSettings = true, info, onL
   const onlyOAuthLogin = oauthEnabled && !passwordLoginEnabled; // 只有 OAuth
   // Validate inputs (仅在启用密码登录时需要)
   const isFormValid = passwordLoginEnabled && username.trim() !== "" && password.trim() !== "";
-    // autoOpen 只在挂载时生效：InnerLayout 是 LoginDialog 内部定义的内联组件，
-    // 每次 LoginDialog 重渲染都会产生新的组件类型 → React 重新挂载 InnerLayout →
-    // useState 的初始值 `autoOpen || false` 已经应用了新的 autoOpen。
-    // 因此这里原先的 useEffect(() => setOpen(true), [autoOpen]) 永远不会观察到
-    // autoOpen 的变化，属于死代码，已删除（删除后行为不变）。
     // Handle login
     const handleLogin = async () => {
       if (!isFormValid) {
@@ -121,15 +115,36 @@ const LoginDialog = ({ trigger, autoOpen = false, showSettings = true, info, onL
         window.location.href = "/api/oauth";
       };
       if (trigger) {
-        // 如果提供了自定义触发器，包装一层点击
+        // Keep native interactive triggers native; wrapping a button nests controls.
         if (typeof trigger === "string") {
           return (
             <Button onClick={redirect}>{trigger}</Button>
           );
         }
+        if (
+          React.isValidElement<{ onClick?: React.MouseEventHandler }>(trigger) &&
+          (trigger.type === "button" || trigger.type === "a" || trigger.type === Button)
+        ) {
+          const originalOnClick = trigger.props.onClick;
+          return React.cloneElement(trigger, {
+            onClick: (event: React.MouseEvent) => {
+              originalOnClick?.(event);
+              if (!event.defaultPrevented) {
+                event.preventDefault();
+                redirect();
+              }
+            },
+          });
+        }
         return (
           <span
             onClick={redirect}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                redirect();
+              }
+            }}
             role="button"
             tabIndex={0}
             style={{ cursor: "pointer", display: "inline-flex" }}
@@ -262,12 +277,12 @@ const LoginDialog = ({ trigger, autoOpen = false, showSettings = true, info, onL
         </Dialog.Content>
       </Dialog.Root>
     );
-  };
-  return (
-    <AccountProvider>
-      <InnerLayout />
-    </AccountProvider>
-  );
 };
+
+const LoginDialog = (props: LoginDialogProps) => (
+  <AccountProvider>
+    <LoginInnerLayout key={props.autoOpen ? "auto" : "manual"} {...props} />
+  </AccountProvider>
+);
 
 export default LoginDialog;

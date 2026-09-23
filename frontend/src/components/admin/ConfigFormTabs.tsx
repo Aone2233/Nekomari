@@ -170,11 +170,9 @@ const ConfigFormTabs = ({
   const { t } = useTranslation();
   const { nodeList } = useNodeList();
   const { call } = useRPC2Call();
-  const [activeTab, setActiveTab] = useState(0);
   const [pingTasks, setPingTasks] = useState<PingTaskResponse[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const sectionRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const lastTabRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const scrollEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressSpyRef = useRef(false);
@@ -208,6 +206,11 @@ const ConfigFormTabs = ({
     }
     return result;
   }, [items]);
+  const [tabSelection, setTabSelection] = useState<{
+    groups: Group[];
+    index: number;
+  } | null>(null);
+  const lastTabRef = useRef<{ groups: Group[]; index: number } | null>(null);
 
   const nodeOptions = useMemo<ConfigSelectionOption[]>(
     () =>
@@ -218,33 +221,33 @@ const ConfigFormTabs = ({
       })),
     [nodeList],
   );
+  const hasPingTaskFields = items.some((item) => item.type === "pingtasks");
   const pingTaskOptions = useMemo<ConfigSelectionOption[]>(
     () =>
-      pingTasks
+      (hasPingTaskFields ? pingTasks : [])
         .filter((task) => task.id !== undefined)
         .map((task) => ({
           id: String(task.id),
           name: task.name || String(task.id),
           weight: task.weight,
         })),
-    [pingTasks],
+    [pingTasks, hasPingTaskFields],
   );
-  const hasPingTaskFields = items.some((item) => item.type === "pingtasks");
 
   useEffect(() => {
-    if (!hasPingTaskFields) {
-      setPingTasks([]);
-      return;
-    }
+    if (!hasPingTaskFields) return;
+    let cancelled = false;
     void call<any, PingTaskResponse[]>("admin:getAllPingTasks")
-      .then((result) => setPingTasks(Array.isArray(result) ? result : []))
-      .catch(() => setPingTasks([]));
+      .then((result) => {
+        if (!cancelled) setPingTasks(Array.isArray(result) ? result : []);
+      })
+      .catch(() => {
+        if (!cancelled) setPingTasks([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [call, hasPingTaskFields]);
-
-  useEffect(() => {
-    setActiveTab(0);
-    lastTabRef.current = 0;
-  }, [groups]);
 
   useEffect(
     () => () => {
@@ -255,7 +258,10 @@ const ConfigFormTabs = ({
     [],
   );
 
-  const currentTab = Math.min(activeTab, Math.max(groups.length - 1, 0));
+  const currentTab = Math.min(
+    tabSelection?.groups === groups ? tabSelection.index : 0,
+    Math.max(groups.length - 1, 0),
+  );
   const hasTabs = groups.length > 1;
 
   const updateActiveFromScroll = useCallback(() => {
@@ -274,11 +280,13 @@ const ConfigFormTabs = ({
     ) {
       current = sections.length - 1;
     }
-    if (current !== lastTabRef.current) {
-      lastTabRef.current = current;
-      setActiveTab(current);
+    const previous =
+      lastTabRef.current?.groups === groups ? lastTabRef.current.index : 0;
+    if (current !== previous) {
+      lastTabRef.current = { groups, index: current };
+      setTabSelection({ groups, index: current });
     }
-  }, [groups.length]);
+  }, [groups]);
 
   const resumeSpy = useCallback(() => {
     suppressSpyRef.current = false;
@@ -309,8 +317,8 @@ const ConfigFormTabs = ({
     const index = Number(value);
     if (Number.isNaN(index)) return;
     suppressSpyRef.current = true;
-    setActiveTab(index);
-    lastTabRef.current = index;
+    setTabSelection({ groups, index });
+    lastTabRef.current = { groups, index };
     const el = sectionRefs.current[index];
     const container = scrollRef.current;
     if (el && container) {

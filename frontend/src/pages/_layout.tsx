@@ -5,9 +5,7 @@ import { Outlet } from "react-router-dom";
 import { usePublicInfo } from "@/contexts/PublicInfoContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-const IndexLayout = () => {
-  // 使用我们的LiveDataContext
-  const InnerLayout = () => {
+const IndexInnerLayout = () => {
     const { publicInfo } = usePublicInfo();
     const isMobile = useIsMobile();
     const bgUrlDesktop = publicInfo?.theme_settings?.backgroundImageUrlDesktop;
@@ -42,13 +40,12 @@ const IndexLayout = () => {
         </div>
       </>
     );
-  };
-
-  return (
-    <LiveDataProvider>
-      <InnerLayout />
-    </LiveDataProvider>
-  );
 };
+
+const IndexLayout = () => (
+  <LiveDataProvider>
+    <IndexInnerLayout />
+  </LiveDataProvider>
+);
 
 export default IndexLayout;
