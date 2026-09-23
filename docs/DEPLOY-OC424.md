@@ -9,7 +9,7 @@ restored, and the two hostname/TLS traps that cost the most time.
 |---|---|
 | Panel URL | **https://komari.orderly2233.org** |
 | Host | OC424 (`ubuntu@213.35.99.48`, Oracle Cloud, **arm64**, Ubuntu 22.04) |
-| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.20`, bound to `127.0.0.1:25774` |
+| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.21`, bound to `127.0.0.1:25774` |
 | Compose dir | `/opt/nekomari` (bind mount `./data` → `/app/data`) |
 | Reverse proxy | host **nginx** `/etc/nginx/sites-available/nekomari` |
 | TLS at origin | `/etc/nginx/ssl/{fullchain,privkey}.pem` (Cloudflare Origin cert, shared with the other vhosts) |
@@ -21,7 +21,41 @@ The container is deliberately **not** published on a public interface: UFW allow
 80/443 only from Cloudflare's ranges, so all traffic arrives via the edge, and
 nginx is the only thing that talks to the panel port.
 
-## Current rollout: 2026-09-22 (v0.1.20)
+## Current rollout: 2026-09-23 (v0.1.21)
+
+Panel upgraded from v0.1.20 at 01:40 UTC. Origin and public version APIs report
+`v0.1.21`, hash `8d0a8d1`. See [the follow-up review](FOLLOWUP-v0.1.21.md)
+for scope, validation limits and the remaining compiler/chart work.
+
+- PR #8 merged as `8d0a8d124b48538702355686916b26eb8d6b877e`. Exact-commit
+  CI `35751946083` passed before the immutable release tag was pushed.
+- Release `35806607898` passed all eight binary vulnerability scans and the
+  downloaded-artifact installation/agent-report test. Docker `35807060048`
+  passed both startup smoke tests and anonymous manifest fetches (HTTP 200).
+- Image: `sha256:63bce6b943230d3d52d0d2dc29149e73aeb1f8da6cc72e33751b9031fab8a6e8`.
+  The arm64 binary downloaded from the Release and the executable inside the
+  image both match published SHA256
+  `22f1151a7badd2d577e46305da128699f26acfd32c14b1db47d846ac38e56f2e`.
+  An independent binary scan found no affected symbols.
+- Pulled and checked the image before stopping writes. Complete data and Compose
+  backup: `/opt/nekomari-backups/pre-v0.1.21-20260923-014038` (mode 0700).
+  Validated the archive listing; `data.tar` SHA256:
+  `da296fea3aba7033b23e8f230226a716b8950c9050c29893b27392155c77c4ea`.
+- Both databases pass `quick_check`; 9 clients, 1 user and 9 ping tasks remain.
+  Public homepage returns HTTP 200. Data still binds to `/opt/nekomari/data`,
+  the port stays loopback-only, restart count is zero, and no ERRO/FATAL lines
+  were observed in the initial post-upgrade window. The probe timer is active.
+  By 01:43 UTC, all 9 current client IDs had metric buckets newer than the
+  container's 01:40:42 UTC start time; the latest rollup reached 01:42 UTC.
+- Agent/protocol/shared-package source is unchanged from v0.1.20. The nine
+  agents retain v0.1.19; this rollout does not require fleet restarts.
+
+Rollback: restore this backup's `docker-compose.yml` into `/opt/nekomari` and
+start the retained v0.1.20 image. If data restoration is needed, stop the panel,
+preserve the current data separately, and restore the archive before restarting.
+Never extract an archive over a running database.
+
+## Previous rollout: 2026-09-22 (v0.1.20)
 
 Panel upgraded from v0.1.19 to v0.1.20 at 15:02 UTC. Runtime API reports hash
 `5f82c78`. **The agents did not move with it and do not need to**: `git diff
