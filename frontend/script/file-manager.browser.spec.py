@@ -118,6 +118,40 @@ class FileManagerBrowserTest(unittest.TestCase):
         finally:
             page.close()
 
+    def test_ctrl_deselect_keeps_only_the_remaining_file_selected(self):
+        page = self.open_page()
+        try:
+            alpha = page.locator('[data-file-path="/alpha.txt"]')
+            drafts = page.locator('[data-file-path="/drafts"]')
+            alpha.click()
+            drafts.click(modifiers=["Control"])
+            self.assertIn("bg-[#37373d]", alpha.get_attribute("class"))
+            self.assertIn("bg-[#37373d]", drafts.get_attribute("class"))
+
+            drafts.click(modifiers=["Control"])
+            self.assertIn("bg-[#37373d]", alpha.get_attribute("class"))
+            self.assertNotIn("bg-[#37373d]", drafts.get_attribute("class"))
+            self.assertTrue(page.get_by_title("Rename", exact=True).first.is_enabled())
+
+            alpha.click(button="right")
+            menu = page.get_by_role("menu")
+            menu.wait_for()
+            self.assertEqual(menu.get_by_role("menuitem", name="Delete", exact=True).count(), 1)
+            self.assertEqual(menu.get_by_role("menuitem", name="Rename", exact=True).count(), 1)
+            menu.get_by_role("menuitem", name="Delete", exact=True).click()
+            dialog = page.get_by_role("alertdialog", name="Delete")
+            dialog.get_by_text("Delete alpha.txt?").wait_for()
+            dialog.get_by_role("button", name="Delete").click()
+            alpha.wait_for(state="detached")
+            self.assertEqual(
+                [entry["params"] for entry in page.evaluate("fileFixture.calls()")
+                 if entry["method"] == "admin:fileDelete"],
+                [{"uuid": "A", "path": "/alpha.txt"}],
+            )
+            self.assertEqual(drafts.count(), 1)
+        finally:
+            page.close()
+
     def test_old_directory_response_cannot_replace_new_node(self):
         page = self.open_page()
         try:
