@@ -74,34 +74,48 @@ file in the frontend, and one that no test reaches.
 
 ### Bundle
 
-| Artifact | Size |
-|---|---:|
-| `dist/` total | 9.05 MB |
-| `chunk-FileEditorDialog-*.js` (on demand, **not** precached) | 3.09 MB |
-| `index-*.css` | 782 KB |
-| `entry-index-*.js` | 774 KB |
-| `chunk-index-*.js` | 705 KB |
-| `chunk-encoding-indexes-*.js` | 530 KB |
-| `editor.worker-*.js` | 274 KB |
-| Service worker precache | 449 entries, 5.2 MB |
+Raw sizes are what the build prints, but gzip is what a visitor transfers, and
+for the stylesheet the two tell different stories. Measured with `zlib.gzipSync`:
+
+| Artifact | Raw | Gzip |
+|---|---:|---:|
+| `dist/` total | 9.05 MB | — |
+| `chunk-FileEditorDialog-*.js` (on demand, **not** precached) | 3.09 MB | ~800 KB |
+| `index-*.css` | 763 KB | **96 KB** |
+| `entry-index-*.js` | 774 KB | — |
+| `chunk-index-*.js` | 705 KB | — |
+| `chunk-encoding-indexes-*.js` | 530 KB | — |
+| `editor.worker-*.js` | 274 KB | — |
+| Service worker precache | 449 entries, 5.2 MB | — |
+| Everything except the editor chunk (540 files) | 6.1 MB | **1.9 MB** |
 
 The editor is the single largest artifact and is correctly excluded from the
-precache. The next thing worth a look is the **782 KB stylesheet**, which is
-precached and paid for by every visitor, including sessions that never open a
-terminal or an admin page.
+precache.
+
+**Correction to an earlier version of this review.** It called the 782 KB
+stylesheet "the largest thing every visitor does pay for", which is true in raw
+bytes and misleading in practice: it compresses to 96 KB, a 12.6 % ratio, which
+is unremarkable for an app built on a component library. The 763 KB is almost
+entirely Radix Themes — 3 886 `.rt-` rules out of ~7 000 — not anything this
+repository wrote, and there is no base64 payload or Monaco CSS in it.
+
+The number that does matter is the last row: a first visit fetches **1.9 MB
+gzipped across 540 files**, because the service worker precaches every route
+chunk rather than only the shell. That is worth a look before the stylesheet is.
 
 ### CI
 
-Three jobs per pull request, all green on every PR in this session:
+Four jobs per pull request, all green on every PR in this session:
 
 | Job | Typical duration |
 |---|---:|
 | `frontend browser (ubuntu)` | ~1 min |
 | `build & test (ubuntu-latest)` | ~2.5 min |
+| `panel smoke (ubuntu)` | ~3–4 min |
 | `build & test (windows-latest)` | ~3–4 min |
 
-Total wall clock is about four minutes, which is a healthy margin for adding a
-job (see the first recommendation).
+Total wall clock is about four minutes, because they run in parallel — which is
+the margin that made the first recommendation affordable.
 
 ## The margin is thin, and here is what that cost
 
@@ -168,14 +182,21 @@ by construction.
    two files combined and is the single worst compound-risk item. The sections
    inside it (`AutoDiscoverySection`, `GenerateCommandButton`, `NodeTable`,
    `EditButton`) already look like separate components.
-4. **Take the release check off the page-load path** — cache it, or make it
-   explicit. It currently costs a third-party request and a console error per
-   admin page in restricted environments, and it is what made the first version
-   of the smoke test look like it had 25 failing routes.
-5. **Look at the 782 KB stylesheet.** It is the largest precached asset and the
-   one every visitor pays for. (For scale: deleting the unreferenced admin node
-   table subtree removed 622 bytes of it, which is what a dead component's
-   Tailwind classes were costing.)
+4. **Take the release check off the page-load path — done in PR #32.** It cost a
+   third-party request and a console error per admin page in restricted
+   environments, and it is what made the first version of the smoke test look
+   like it had 25 failing routes. Measured against a running panel, a login plus
+   ten admin pages cost **22** requests to `api.github.com`; against a
+   rate-limited network the budget is 60 per hour per IP, so that is about thirty
+   page views before the indicator stops working. It is now cached, and the same
+   walk costs **1**. Note the first attempt at this cached only successful
+   fetches, which fixed nothing where GitHub is unreachable — the case that
+   mattered — because a failed attempt wrote nothing and the next page load tried
+   again. Failures are cached too.
+5. **Look at what the service worker precaches, before the stylesheet.** A first
+   visit transfers 1.9 MB gzipped across 540 files because every route chunk is
+   precached, not just the shell. The stylesheet, at 96 KB gzipped, is not the
+   problem it looks like in raw bytes.
 
 ## What this review did not check
 
