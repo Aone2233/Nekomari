@@ -494,41 +494,100 @@ function MetricRetentionTable({
   );
   const language = i18n.resolvedLanguage || i18n.language;
 
-  const fetchMetrics = React.useCallback(
-    async (silent = false) => {
-      if (!silent) setLoading(true);
-      try {
-        const data = await call<unknown, MetricDefinition[]>(
-          "admin:listMetricDefinitions",
-          {},
-        );
-        const list = Array.isArray(data) ? data : [];
-        setMetrics(list);
+  // Pure request: resolves to the list to display, or to a display-ready error.
+  // It never writes state, so the effect below can call it without raising a
+  // synchronous setState.
+  const requestMetrics = React.useCallback(async (): Promise<
+    { metrics: MetricDefinition[] } | { error: string }
+  > => {
+    try {
+      const data = await call<unknown, MetricDefinition[]>(
+        "admin:listMetricDefinitions",
+        {},
+      );
+      return { metrics: Array.isArray(data) ? data : [] };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
+  }, [call]);
+
+  const applyMetrics = React.useCallback(
+    (result: { metrics: MetricDefinition[] } | { error: string }) => {
+      if ("metrics" in result) {
+        setMetrics(result.metrics);
         setDrafts(
           Object.fromEntries(
-            list.map((metric) => [
+            result.metrics.map((metric) => [
               metric.name,
               String(toNumber(metric.retention_days, defaultRetentionDays)),
             ]),
           ),
         );
         setLoadError(null);
-      } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        setLoadError(message);
-        if (!silent) {
-          toast.error(t("settings.metrics.fetch_metrics_failed") + ": " + message);
-        }
-      } finally {
-        if (!silent) setLoading(false);
+      } else {
+        setLoadError(result.error);
       }
     },
-    [call, defaultRetentionDays, t],
+    [defaultRetentionDays],
   );
 
+  // Explicit reload for the refresh button: raises the spinner itself, then
+  // applies the result and reports a failure. This is the former
+  // `fetchMetrics(silent = false)`; that `silent` parameter was never passed as
+  // true, so the wrapper is gone and no loader keeps a pre-await setState.
+  const reloadMetrics = React.useCallback(async () => {
+    setLoading(true);
+    const result = await requestMetrics();
+    applyMetrics(result);
+    if ("error" in result) {
+      toast.error(
+        t("settings.metrics.fetch_metrics_failed") + ": " + result.error,
+      );
+    }
+    setLoading(false);
+  }, [applyMetrics, requestMetrics, t]);
+
+  // Keyed on exactly what the load effect below closes over, so the guard fires
+  // on the same renders that effect re-runs. `t` changes identity on a
+  // language switch and `call` on a client swap; `defaultRetentionDays` is the
+  // prop whose change the original effect was already refetching for.
+  const fetchKey: [unknown, number, unknown] = [call, defaultRetentionDays, t];
+  const [syncedFetchKey, setSyncedFetchKey] = React.useState<
+    [unknown, number, unknown] | null
+  >(null);
+
+  // Raise the spinner while rendering when the refetch key changes, so the
+  // effect below never has to write state synchronously. The sentinel starts at
+  // null and the mount value of `loading` is already `true`, so the mount
+  // invocation writes nothing new — matching the effect, which on mount only
+  // re-set the value `loading` already held.
+  if (
+    syncedFetchKey === null ||
+    syncedFetchKey[0] !== fetchKey[0] ||
+    syncedFetchKey[1] !== fetchKey[1] ||
+    syncedFetchKey[2] !== fetchKey[2]
+  ) {
+    setSyncedFetchKey(fetchKey);
+    setLoading(true);
+  }
+
   React.useEffect(() => {
-    void fetchMetrics();
-  }, [fetchMetrics]);
+    let active = true;
+    const load = async () => {
+      const result = await requestMetrics();
+      if (!active) return;
+      applyMetrics(result);
+      setLoading(false);
+    };
+    void load();
+    return () => {
+      active = false;
+    };
+    // `t` is a real dependency: the original loader was memoised on it, so a
+    // language switch refetched. Keeping it here keeps the guard key above and
+    // this dependency set identical — otherwise the guard would raise a spinner
+    // for a refetch that never happened.
+  }, [applyMetrics, requestMetrics, t]);
 
   const saveRetentionChanges = React.useCallback(
     async (changes: MetricRetentionChange[]) => {
@@ -738,7 +797,7 @@ function MetricRetentionTable({
             variant="ghost"
             size="1"
             disabled={loading || saving}
-            onClick={() => void fetchMetrics()}
+            onClick={() => void reloadMetrics()}
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
             {t("common.refresh")}
