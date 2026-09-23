@@ -21,6 +21,9 @@ export interface SelectorDialogProps<T>
   className?: string;
 }
 
+const sameIds = (left: string[], right: string[]) =>
+  left.length === right.length && left.every((id, index) => id === right[index]);
+
 export function SelectorDialog<T>({
   value,
   onChange,
@@ -31,11 +34,14 @@ export function SelectorDialog<T>({
 }: SelectorDialogProps<T>) {
   const { t } = useTranslation();
   const [open, setOpen] = React.useState(false);
-  const [temporaryValue, setTemporaryValue] = React.useState(value);
-
-  React.useEffect(() => {
-    if (open) setTemporaryValue(value);
-  }, [open, value]);
+  const [selection, setSelection] = React.useState(() => ({ open, value: [...value], temp: value }));
+  const needsSync = selection.open !== open || !sameIds(selection.value, value);
+  if (needsSync) {
+    setSelection({ open, value: [...value], temp: value });
+  }
+  const temporaryValue = needsSync ? value : selection.temp;
+  const setTemporaryValue = (next: string[]) =>
+    setSelection({ open, value: [...value], temp: next });
 
   const handleConfirm = () => {
     onChange(temporaryValue);
