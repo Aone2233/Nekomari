@@ -109,6 +109,23 @@ class ChartBrowserTest(unittest.TestCase):
         self.assertIn("Visits", tooltip.inner_text())
         self.assertIn("Sales", tooltip.inner_text())
 
+    def test_keyboard_tooltip_updates_live_region(self):
+        self.page.locator(".recharts-surface").focus()
+        self.page.keyboard.press("ArrowRight")
+        status = self.page.get_by_role("status")
+        status.wait_for(timeout=1500)
+        self.assertEqual(status.get_attribute("aria-live"), "assertive")
+        self.assertEqual(status.get_attribute("aria-atomic"), "true")
+        self.assertEqual(status.inner_text().split(), ["Tue", "Visits", "12", "Sales", "6"])
+
+        live_region = status.element_handle()
+        self.page.keyboard.press("ArrowRight")
+        self.page.wait_for_function(
+            """() => document.querySelector('[role="status"]')
+                ?.innerText.trim().split(/\\s+/).join(' ') === 'Wed Visits 5 Sales 9'"""
+        )
+        self.assertTrue(live_region.evaluate("el => el.isConnected"))
+
     def test_theme_changes_resolved_series_and_legend_colors(self):
         line = self.page.locator(".recharts-line-curve").first
         color = lambda: line.evaluate("el => getComputedStyle(el).stroke")
