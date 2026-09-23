@@ -56,6 +56,13 @@ for the code changes and remaining work.
   no ERRO/FATAL lines appeared in the initial post-upgrade window. The agent
   fleet retains v0.1.19 because agent, protocol, and shared-package source is
   unchanged from v0.1.21.
+- At 06:03-06:04 UTC, all 9 client `updated_at` values had advanced past the
+  container start (earliest 05:55:26, latest 06:00:44), and all 9 current
+  client metric buckets reached 06:03:54-06:03:58 UTC. The 05:56:18 UTC probe
+  completed successfully (`origin=0.002s`, `public_max=0.092s`, 5/5 samples),
+  and the container remained healthy with zero restarts or matching database
+  error, ERRO, FATAL, or PANIC log lines. These timings are spot checks, not
+  long-term performance measurements.
 
 Rollback: restore this backup's `docker-compose.yml` into `/opt/nekomari` and
 start the retained v0.1.21 image. If data restoration is needed, stop the panel,
