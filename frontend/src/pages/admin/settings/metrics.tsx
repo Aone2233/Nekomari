@@ -319,50 +319,6 @@ function MetricRollupRetentionCard({
   onSave: (changes: Partial<SettingsResponse>) => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const [draft, setDraft] = React.useState({
-    minute: String(
-      toNumber(
-        settings[ROLLUP_RETENTION_KEYS.minute],
-        DEFAULT_ROLLUP_RETENTION.minute,
-      ),
-    ),
-    fiveMinute: String(
-      toNumber(
-        settings[ROLLUP_RETENTION_KEYS.fiveMinute],
-        DEFAULT_ROLLUP_RETENTION.fiveMinute,
-      ),
-    ),
-    hour: String(
-      toNumber(
-        settings[ROLLUP_RETENTION_KEYS.hour],
-        DEFAULT_ROLLUP_RETENTION.hour,
-      ),
-    ),
-  });
-  const [saving, setSaving] = React.useState(false);
-
-  React.useEffect(() => {
-    setDraft({
-      minute: String(
-        toNumber(
-          settings[ROLLUP_RETENTION_KEYS.minute],
-          DEFAULT_ROLLUP_RETENTION.minute,
-        ),
-      ),
-      fiveMinute: String(
-        toNumber(
-          settings[ROLLUP_RETENTION_KEYS.fiveMinute],
-          DEFAULT_ROLLUP_RETENTION.fiveMinute,
-        ),
-      ),
-      hour: String(
-        toNumber(
-          settings[ROLLUP_RETENTION_KEYS.hour],
-          DEFAULT_ROLLUP_RETENTION.hour,
-        ),
-      ),
-    });
-  }, [settings]);
 
   const current = {
     minute: toNumber(
@@ -378,6 +334,27 @@ function MetricRollupRetentionCard({
       DEFAULT_ROLLUP_RETENTION.hour,
     ),
   };
+
+  const [draft, setDraft] = React.useState(() => ({
+    minute: String(current.minute),
+    fiveMinute: String(current.fiveMinute),
+    hour: String(current.hour),
+  }));
+  const [previousSettings, setPreviousSettings] = React.useState(settings);
+  const [saving, setSaving] = React.useState(false);
+
+  // settings 变化时（本页任何一次保存都会发布新的 settings 对象）把草稿重置为
+  // 服务端值。原来是 useEffect + setState，现在用 React 的 “adjusting state
+  // when a value changes” 模式：守卫依赖（settings 对象本身）和写入的派生草稿
+  // 都与原来的 effect 一致。
+  if (settings !== previousSettings) {
+    setPreviousSettings(settings);
+    setDraft({
+      minute: String(current.minute),
+      fiveMinute: String(current.fiveMinute),
+      hour: String(current.hour),
+    });
+  }
 
   const hasChanges =
     draft.minute !== String(current.minute) ||
