@@ -11,6 +11,14 @@ import {
 } from "../src/components/ui/chart";
 import "../src/global.css";
 
+function DecorativeSeriesIcon() {
+  return (
+    <svg role="img" aria-label="Decorative marker" viewBox="0 0 10 10">
+      <circle cx="5" cy="5" r="4" fill="currentColor" />
+    </svg>
+  );
+}
+
 const config: ChartConfig = {
   visits: {
     label: "Visits",
@@ -18,6 +26,7 @@ const config: ChartConfig = {
   },
   sales: {
     label: "Sales",
+    icon: DecorativeSeriesIcon,
     theme: { light: "#0369a1", dark: "#7dd3fc" },
   },
 };

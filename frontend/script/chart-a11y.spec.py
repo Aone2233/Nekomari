@@ -109,6 +109,38 @@ class ChartBrowserTest(unittest.TestCase):
         self.assertIn("Visits", tooltip.inner_text())
         self.assertIn("Sales", tooltip.inner_text())
 
+    def test_keyboard_tooltip_updates_live_region(self):
+        status = self.page.get_by_role("status")
+        status.wait_for(timeout=1500)
+        self.assertEqual(status.inner_text(), "")
+        live_region = status.element_handle()
+        self.assertTrue(live_region.evaluate("el => !!el.closest('[data-slot=chart]')"))
+        self.page.locator(".recharts-surface").focus()
+        self.page.keyboard.press("ArrowRight")
+        self.page.wait_for_function(
+            """() => document.querySelector('[role="status"]')
+                ?.innerText.trim().split(/\\s+/).join(' ') === 'Tue Visits 12 Sales 6'"""
+        )
+        self.assertTrue(live_region.evaluate("el => el.isConnected"))
+        self.assertTrue(status.evaluate("(el, previous) => el === previous", live_region))
+        self.assertIsNone(status.get_attribute("aria-live"))
+        self.assertEqual(status.get_attribute("aria-atomic"), "true")
+        self.assertEqual(status.inner_text().split(), ["Tue", "Visits", "12", "Sales", "6"])
+        self.assertEqual(self.page.get_by_role("status").count(), 1)
+        self.assertEqual(status.locator('svg[aria-label="Decorative marker"]').count(), 1)
+        snapshot = status.aria_snapshot()
+        self.assertNotIn("Decorative marker", snapshot)
+        self.assertEqual(snapshot.count("12"), 1)
+        self.assertEqual(snapshot.count("6"), 1)
+
+        self.page.keyboard.press("ArrowRight")
+        self.page.wait_for_function(
+            """() => document.querySelector('[role="status"]')
+                ?.innerText.trim().split(/\\s+/).join(' ') === 'Wed Visits 5 Sales 9'"""
+        )
+        self.assertTrue(live_region.evaluate("el => el.isConnected"))
+        self.assertTrue(status.evaluate("(el, previous) => el === previous", live_region))
+
     def test_theme_changes_resolved_series_and_legend_colors(self):
         line = self.page.locator(".recharts-line-curve").first
         color = lambda: line.evaluate("el => getComputedStyle(el).stroke")
@@ -128,6 +160,11 @@ class ChartBrowserTest(unittest.TestCase):
         self.page.wait_for_function(
             "getComputedStyle(document.querySelector('.recharts-line-curve')).stroke === 'rgb(194, 65, 12)'"
         )
+
+    def test_legend_icon_is_decorative(self):
+        legend = self.page.locator(".recharts-legend-wrapper")
+        self.assertEqual(legend.locator('svg[aria-label="Decorative marker"]').count(), 1)
+        self.assertNotIn("Decorative marker", legend.aria_snapshot())
 
     def test_series_labels_name_chart_when_no_explicit_label(self):
         self.page.get_by_role("button", name="Toggle explicit label").click()
