@@ -898,27 +898,29 @@ function MigrationCard() {
   const [canceling, setCanceling] = React.useState(false);
   const [sourceDsn, setSourceDsn] = React.useState("");
 
+  // 状态刷新：每个 setState 都在 promise 的 continuation 里，函数体内没有同步
+  // setState，所以挂载/轮询的 effect 可以直接调用它。手动刷新按钮自己点亮 spinner。
   const fetchStatus = React.useCallback(
-    async (silent = false) => {
-      if (!silent) setLoadingStatus(true);
-      try {
-        const data = await call<unknown, MigrationStatusResponse>(
-          "admin:getMetricMigrationStatus",
-          {},
-        );
-        setStatusData(data);
-      } catch (e) {
-        if (!silent) {
-          toast.error(
-            t("settings.metrics.fetch_status_failed") +
-              ": " +
-              (e instanceof Error ? e.message : String(e)),
-          );
-        }
-      } finally {
-        if (!silent) setLoadingStatus(false);
-      }
-    },
+    (silent = false) =>
+      call<unknown, MigrationStatusResponse>(
+        "admin:getMetricMigrationStatus",
+        {},
+      )
+        .then((data) => {
+          setStatusData(data);
+        })
+        .catch((e: unknown) => {
+          if (!silent) {
+            toast.error(
+              t("settings.metrics.fetch_status_failed") +
+                ": " +
+                (e instanceof Error ? e.message : String(e)),
+            );
+          }
+        })
+        .finally(() => {
+          if (!silent) setLoadingStatus(false);
+        }),
     [call, t],
   );
 
@@ -1005,7 +1007,11 @@ function MigrationCard() {
             variant="ghost"
             size="1"
             disabled={loadingStatus}
-            onClick={() => void fetchStatus()}
+            onClick={() => {
+              // 手动刷新由用户操作点亮 spinner（effect 内不允许同步 setState）。
+              setLoadingStatus(true);
+              void fetchStatus();
+            }}
           >
             <RefreshCw
               size={14}
