@@ -19,6 +19,11 @@ export default function InstancePage() {
   const { onRefresh, live_data } = useLiveData();
   const { uuid } = useParams<{ uuid: string }>();
   const [recent, setRecent] = useState<Record[]>([]);
+  // Sentinel for the instance-change reset below. It starts at `null` rather than
+  // at `uuid` because the effect's mount invocation was NOT a no-op whenever the
+  // page mounts with a uuid: it clears `recent` and then fetches the history, so
+  // the guard has to force that first run.
+  const [recentUuid, setRecentUuid] = useState<string | null>(null);
   const [chartRealtimeActive, setChartRealtimeActive] = useState(true);
   const { nodeList } = useNodeList();
   const length = 30 * 5;
@@ -100,14 +105,23 @@ export default function InstancePage() {
     return result;
   }, [nodeList, onlineSet, offlineServerPosition]);
 
+  // Drop the previous instance's history while rendering when the uuid changes.
+  // This is React's documented "adjust state during render" pattern and replaces
+  // the synchronous setState the effect used to perform; the only semantic
+  // difference is that the effect painted one frame with the stale history before
+  // its reset committed, and this removes that frame. `length` is a constant here
+  // (30 * 5), so the effect's only variable dependency is the uuid.
+  if (recentUuid !== (uuid ?? null)) {
+    setRecentUuid(uuid ?? null);
+    setRecent([]);
+  }
+
   useEffect(() => {
     if (!uuid) {
-      setRecent([]);
       return;
     }
 
     const controller = new AbortController();
-    setRecent([]);
 
     fetch(`/api/recent/${uuid}`, { signal: controller.signal })
       .then((res) => res.json())

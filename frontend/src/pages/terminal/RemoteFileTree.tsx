@@ -1,5 +1,5 @@
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -202,26 +202,71 @@ export const RemoteFileTree = ({
     ),
   );
 
-  useEffect(() => {
+  // Sentinels for the tree reset below. They start at `null` rather than at the
+  // current values because the effect's mount invocation was NOT a no-op: it
+  // cleared the directory cache and re-listed the root.
+  const [previousTreeKey, setPreviousTreeKey] = useState<string | null>(null);
+  const [previousRevealKey, setPreviousRevealKey] = useState<string | null>(null);
+  const clearedTreeKeyRef = useRef<string | null>(null);
+  const clearedLoadDirectoryRef = useRef<typeof loadDirectory | null>(null);
+  const treeKey = `${rootPath}|${refreshToken}`;
+  const revealKey = `${rootPath}|${refreshToken}|${revealPath ?? ""}`;
+
+  // Reset the cached tree and the reveal expansion while rendering when the
+  // request changes. This is React's documented "adjust state during render"
+  // pattern and replaces the synchronous setState the effects used to perform;
+  // the only semantic difference is that each effect painted one frame with the
+  // stale value before its reset committed, and this removes that frame.
+  if (previousTreeKey !== treeKey) {
+    setPreviousTreeKey(treeKey);
     setChildren({});
-    childrenRef.current = {};
     setExpanded(new Set([rootPath]));
+  }
+  if (previousRevealKey !== revealKey) {
+    setPreviousRevealKey(revealKey);
+    if (rootPath && revealPath) {
+      const ancestors = remoteAncestors(revealPath).filter((path) => path !== rootPath && path !== revealPath);
+      if (ancestors.length > 0) {
+        setExpanded((current) => {
+          const next = new Set(current);
+          ancestors.forEach((path) => next.add(path));
+          next.add(revealPath);
+          return next;
+        });
+      }
+    }
+  }
+
+  // The reset above runs during render, where the directory-cache ref must not be
+  // written, so the ref is cleared here instead. The render-time reset and this
+  // layout effect are committed together, before any event handler can read the
+  // ref, and `loadDirectory` writes the same ref from its own state updater, so
+  // the cache never observes a value the state does not have.
+  //
+  // Re-listing the root rides on the same effect: the old effect cleared the
+  // cache and re-listed whenever `loadDirectory` changed, and that trigger is
+  // preserved here. `loadDirectory` is deliberately not part of the render-time
+  // guard above — reading a callback that closes over a ref during render is
+  // itself a `react-hooks/refs` violation, so the callback-change case is
+  // detected here, where refs may be read, and it clears the cache without
+  // touching state (the re-list below repopulates it).
+  useLayoutEffect(() => {
+    childrenRef.current = children;
+    const reset = clearedTreeKeyRef.current !== treeKey
+      || clearedLoadDirectoryRef.current !== loadDirectory;
+    if (!reset) return;
+    clearedTreeKeyRef.current = treeKey;
+    clearedLoadDirectoryRef.current = loadDirectory;
+    childrenRef.current = {};
     if (rootPath) {
       void loadDirectory(rootPath, true);
     }
-  }, [loadDirectory, refreshToken, rootPath]);
-
+  }, [children, loadDirectory, rootPath, treeKey]);
 
   useEffect(() => {
     if (!rootPath || !revealPath) return;
     const ancestors = remoteAncestors(revealPath).filter((path) => path !== rootPath && path !== revealPath);
     if (ancestors.length === 0) return;
-    setExpanded((current) => {
-      const next = new Set(current);
-      ancestors.forEach((path) => next.add(path));
-      next.add(revealPath);
-      return next;
-    });
     ancestors.forEach((path) => void loadDirectory(path));
   }, [loadDirectory, refreshToken, revealPath, rootPath]);
 

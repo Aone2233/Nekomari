@@ -58,6 +58,14 @@ type RecoveryStatus = {
   dsn?: string;
 };
 
+// What a recovery load resolved to. `redirect` means the normal router came
+// back, so the page is navigating away and must not write state.
+type RecoveryLoadResult =
+  | { kind: "redirect" }
+  | { kind: "unauthenticated"; auth: AuthStatus }
+  | { kind: "loaded"; auth: AuthStatus; status: RecoveryStatus }
+  | { kind: "failed"; message: string };
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -108,34 +116,71 @@ export default function DatabaseRecovery() {
   const [dsn, setDSN] = useState("");
   const [pageError, setPageError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [syncedLoadKey, setSyncedLoadKey] = useState<
+    ReturnType<typeof useTranslation>["t"] | null
+  >(null);
 
-  const load = useCallback(async () => {
+  // The original mount effect cleared the previous error before its first
+  // await. Clearing it during render instead, keyed on `t` — the only input
+  // `requestRecovery` is memoised on, and therefore the only thing that makes
+  // the load effect below re-run — keeps the same clear on the same trigger
+  // while leaving the effect's call path free of synchronous setState.
+  if (syncedLoadKey !== t) {
+    setSyncedLoadKey(t);
     setPageError("");
+  }
+
+  // Pure request: resolves to the data the page should display, or to a
+  // display-ready error. It never writes state, so the mount effect below can
+  // call it without raising a synchronous setState.
+  const requestRecovery = useCallback(async (): Promise<RecoveryLoadResult> => {
     try {
       if (await normalRouterAvailable()) {
         window.location.replace("/");
-        return;
+        return { kind: "redirect" };
       }
       const [methods, me] = await Promise.all([
         request<LoginMethods>("/auth"),
         getMe(),
       ]);
-      setAuth({ ...methods, ...me });
       if (!me.logged_in) {
-        setStatus(null);
-        return;
+        return { kind: "unauthenticated", auth: { ...methods, ...me } };
       }
       const nextStatus = await request<RecoveryStatus>("/status");
-      setStatus(nextStatus);
-      setDSN(nextStatus.dsn ?? "");
+      return { kind: "loaded", auth: { ...methods, ...me }, status: nextStatus };
     } catch (error) {
-      setPageError(
-        error instanceof Error
-          ? error.message
-          : t(`${I18N_PREFIX}.network_error`),
-      );
+      return {
+        kind: "failed",
+        message:
+          error instanceof Error
+            ? error.message
+            : t(`${I18N_PREFIX}.network_error`),
+      };
     }
   }, [t]);
+
+  const applyRecovery = useCallback((result: RecoveryLoadResult) => {
+    switch (result.kind) {
+      case "loaded":
+        setAuth(result.auth);
+        setStatus(result.status);
+        setDSN(result.status.dsn ?? "");
+        return;
+      case "unauthenticated":
+        setAuth(result.auth);
+        setStatus(null);
+        return;
+      case "failed":
+        setPageError(result.message);
+        return;
+      case "redirect":
+        return;
+    }
+  }, []);
+
+  const load = useCallback(async () => {
+    applyRecovery(await requestRecovery());
+  }, [applyRecovery, requestRecovery]);
 
   const authenticated = auth?.logged_in === true;
   const completed = status?.state === "completed";
@@ -143,8 +188,17 @@ export default function DatabaseRecovery() {
     authenticated && status?.state === "waiting" && !busy;
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let active = true;
+    const run = async () => {
+      const result = await requestRecovery();
+      if (!active) return;
+      applyRecovery(result);
+    };
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [applyRecovery, requestRecovery]);
 
   const save = async () => {
     if (!status || status.state !== "waiting" || busy) return;

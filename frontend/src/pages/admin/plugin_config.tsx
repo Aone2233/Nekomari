@@ -62,7 +62,6 @@ export default function PluginConfigPage() {
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<PluginInfo | null>(null);
-  const [autoSelectDone, setAutoSelectDone] = useState(false);
   const [configuration, setConfiguration] = useState<PluginConfiguration | null>(null);
   const [values, setValues] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
@@ -95,8 +94,13 @@ export default function PluginConfigPage() {
     }
   }, [call]);
 
+  // loadList 内部的 setState 都在 await 之后；这里让 effect 通过一次微任务再调用它，
+  // 于是 effect 体内没有任何同步 setState。调用点、依赖与 loading 时序都不变
+  // （setLoading(false) 仍然在同一个 promise 链的 finally 里）。
   useEffect(() => {
-    loadList().finally(() => setLoading(false));
+    Promise.resolve()
+      .then(() => loadList())
+      .finally(() => setLoading(false));
   }, [loadList]);
 
 
@@ -133,17 +137,29 @@ export default function PluginConfigPage() {
       setError(e instanceof Error ? e.message : String(e));
     }
   }, [call]);
-  // 从插件管理页跳转过来时（?short=xxx）自动选中对应插件。
-  useEffect(() => {
-    if (loading || autoSelectDone) return;
-    const target = searchParams.get("short");
-    if (!target || configurablePlugins.length === 0) return;
-    const plugin = configurablePlugins.find((item) => item.short === target);
+  // 从插件管理页跳转过来时（?short=xxx）自动选中对应插件。原实现在 effect 里同步写
+  // autoSelectDone 再调 selectPlugin；这里改为渲染期间按同一批依赖做守卫式同步，effect
+  // 随之删除。守卫覆盖原 effect 的整个依赖集（loading / target / configurablePlugins），
+  // 并保留它的全部前置条件：loading 中、无 target、或列表为空时不动作（原 effect 的早期
+  // return），因此「列表先空后满不会自动选中」的语义不变。
+  // 哨兵从 null 起步：挂载时列表可能已经就绪（插件列表在别处已缓存），原 effect 那次调用
+  // 会真的选中插件，用当前值初始化会让守卫在首帧为 false 而丢掉这次写入。
+  const autoSelectTarget = searchParams.get("short");
+  const [autoSelectedShort, setAutoSelectedShort] = useState<string | null>(null);
+  if (
+    !loading &&
+    autoSelectTarget &&
+    configurablePlugins.length > 0 &&
+    autoSelectedShort !== autoSelectTarget
+  ) {
+    setAutoSelectedShort(autoSelectTarget);
+    const plugin = configurablePlugins.find(
+      (item) => item.short === autoSelectTarget,
+    );
     if (plugin) {
-      setAutoSelectDone(true);
       selectPlugin(plugin);
     }
-  }, [loading, autoSelectDone, searchParams, configurablePlugins, selectPlugin]);
+  }
 
   const handleValueChange = (key: string, value: any) => {
     setValues((current) => ({ ...current, [key]: value }));

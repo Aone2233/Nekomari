@@ -73,12 +73,19 @@ const ServerRow: React.FC<{
     () => ownedTasks.filter((t) => t.id !== undefined).map((t) => String(t.id))
   );
 
-  // 若任务或服务器改变，重置选择
-  React.useEffect(() => {
+  // 若任务或服务器改变，重置选择。改成渲染期调整（React 官方推荐的
+  // "adjust state during render"）：effect 里同步 setState 会被
+  // react-hooks/set-state-in-effect 报告。哨兵以 null 起步，因为 effect
+  // 的挂载调用并非空操作——它会把选择重写为 ownedTasks 派生的值。
+  // ownedTasks 本身已被 useMemo 记忆在 [pingTasks, nodeUuid] 上，所以以它
+  // 作为守卫覆盖了原 effect 的整个依赖集。
+  const [previousOwnedTasks, setPreviousOwnedTasks] = React.useState<typeof ownedTasks | null>(null);
+  if (previousOwnedTasks !== ownedTasks) {
+    setPreviousOwnedTasks(ownedTasks);
     setSelectedIds(
       ownedTasks.filter((t) => t.id !== undefined).map((t) => String(t.id))
     );
-  }, [ownedTasks]);
+  }
 
   const handleSave = () => {
     setSaving(true);

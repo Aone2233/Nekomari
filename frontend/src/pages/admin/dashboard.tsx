@@ -564,7 +564,14 @@ const DashboardContent = () => {
   }, [refresh, fetchLatest, fetchMetrics, fetchDbSize, fetchPingStats]);
 
   useEffect(() => {
-    void fetchAll();
+    // Entering the "refreshing" state is deferred past the first await so the
+    // effect body itself performs no synchronous setState; `fetchAll` still owns
+    // the flag and still clears it in its `finally`, and `setRefreshing` is a
+    // stable setter, so the observable result is unchanged.
+    void (async () => {
+      await Promise.resolve();
+      await fetchAll();
+    })();
   }, [fetchAll]);
 
   // 由一次 queryMetrics 响应派生各指标卡数据；nodeList 就绪后

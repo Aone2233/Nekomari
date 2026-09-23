@@ -133,24 +133,38 @@ export default function ThemeMarketPage() {
     [language],
   );
 
-  const loadSources = useCallback(async () => {
-    const payload = await request<MarketSource[]>("/api/admin/theme/market/sources");
-    setSources(payload.data || []);
-  }, []);
+  // 目录/源的加载：每个 setState 都在 promise 的 continuation 里（函数体内没有同步
+  // setState），所以挂载用的 effect 可以直接调用它们。返回的 promise 与原来一致，
+  // refresh / install / uninstall / 源增删改里的 await 语义不变。
+  const loadSources = useCallback(
+    () =>
+      request<MarketSource[]>("/api/admin/theme/market/sources").then(
+        (payload) => {
+          setSources(payload.data || []);
+        },
+      ),
+    [],
+  );
 
-  const loadCatalog = useCallback(async (force = false) => {
+  const loadCatalog = useCallback((force = false) => {
     const suffix = force ? "?refresh=true" : "";
-    const [catalogPayload, installedPayload] = await Promise.all([
+    return Promise.all([
       request<{ themes: MarketTheme[]; sources: MarketSourceStatus[] }>(
         `/api/admin/theme/market/catalog${suffix}`,
       ),
       request<InstalledTheme[]>("/api/admin/theme/list"),
-    ]);
-    setThemes(catalogPayload.data?.themes || []);
-    setSourceStatuses(catalogPayload.data?.sources || []);
-    setInstalled(
-      new Map((installedPayload.data || []).map((theme) => [theme.short, theme.version])),
-    );
+    ]).then(([catalogPayload, installedPayload]) => {
+      setThemes(catalogPayload.data?.themes || []);
+      setSourceStatuses(catalogPayload.data?.sources || []);
+      setInstalled(
+        new Map(
+          (installedPayload.data || []).map((theme) => [
+            theme.short,
+            theme.version,
+          ]),
+        ),
+      );
+    });
   }, []);
 
   useEffect(() => {

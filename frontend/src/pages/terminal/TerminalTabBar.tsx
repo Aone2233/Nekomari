@@ -325,10 +325,27 @@ const TerminalTabBar = ({
     );
   }, []);
 
-  useEffect(() => {
+  // Sentinel for the overflow reset below. The effect's mount invocation was a
+  // no-op in state terms (it wrote `false` over the `false` initial state), so
+  // seeding this with `hasOverflow` would also be correct; `null` is used to
+  // keep the "first run is forced" shape uniform with the other conversions.
+  const [previousHasOverflow, setPreviousHasOverflow] = useState<boolean | null>(null);
+
+  // Drop the stale scroll affordances while rendering when the tabs stop
+  // overflowing. This is React's documented "adjust state during render"
+  // pattern and replaces the synchronous setState the effect used to perform;
+  // the only semantic difference is that the effect painted one frame with the
+  // stale affordances before its reset committed, and this removes that frame.
+  if (previousHasOverflow !== hasOverflow) {
+    setPreviousHasOverflow(hasOverflow);
     if (!hasOverflow) {
       setCanScrollLeft(false);
       setCanScrollRight(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!hasOverflow) {
       return;
     }
     const frame = requestAnimationFrame(updateScrollState);

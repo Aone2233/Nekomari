@@ -144,28 +144,38 @@ const ThemePage = () => {
   // 函数加进下面 effect 的依赖会无限循环：每次渲染都是新引用 → effect 重跑 →
   // setThemes → 重渲染 → 又是新引用。固定引用后，effect 只在 currentTheme
   // 真的变化时重跑（两个依赖在同一次提交里一起变，所以仍然只发一次请求）。
-  const fetchThemes = useCallback(async () => {
-    try {
-      const response = await fetch("/api/admin/theme/list");
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      const themeList = data.data || [];
+  //
+  // 所有 setState 都在 promise 的 continuation 里，函数体内没有同步 setState，因此
+  // 下面挂载/跟随 currentTheme 的 effect 可以直接调用它。请求次数、错误分支与
+  // themesLoading 的置位时机（同一个 finally）都保持不变。
+  const fetchThemes = useCallback(
+    () =>
+      fetch("/api/admin/theme/list")
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then((data) => {
+          const themeList = data.data || [];
 
-      // 根据 settings 中的 theme 设置活跃状态
-      const updatedThemes = themeList.map((theme: Theme) => ({
-        ...theme,
-        active: theme.short === currentTheme,
-      }));
+          // 根据 settings 中的 theme 设置活跃状态
+          const updatedThemes = themeList.map((theme: Theme) => ({
+            ...theme,
+            active: theme.short === currentTheme,
+          }));
 
-      setThemes(updatedThemes);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch themes");
-    } finally {
-      setThemesLoading(false);
-    }
-  }, [currentTheme]);
+          setThemes(updatedThemes);
+        })
+        .catch((err) => {
+          setError(err instanceof Error ? err.message : "Failed to fetch themes");
+        })
+        .finally(() => {
+          setThemesLoading(false);
+        }),
+    [currentTheme],
+  );
 
   // 上传主题
   const uploadTheme = async (file: File) => {
@@ -376,7 +386,31 @@ const ThemePage = () => {
     fetchThemes();
   }, [currentTheme, fetchThemes]);
 
-  useEffect(() => {
+  // 原 effect 在 !settingsLoading && themes.length > 0 时把每个主题的 active 标记按
+  // currentTheme 重算。改为渲染期间按同一组依赖（currentTheme / settingsLoading /
+  // themes.length）做守卫式同步，写入完全相同的派生值。守卫刻意只取 themes.length
+  // 而不是 themes 本身：只依赖数组内容时，setActiveTheme 已经写好 active 标记后，
+  // 渲染期会把同一份映射再算一次（结果相同，React 因状态不变而跳过重渲染），
+  // 不会产生额外渲染。
+  // 哨兵从 null 起步：挂载时若 settings 已就绪且主题列表非空（列表可能已被缓存），
+  // 原 effect 那次调用会真的重算 active，用当前值初始化会让守卫在首帧为 false 而丢掉
+  // 这次写入。
+  const [syncedActiveInputs, setSyncedActiveInputs] = useState<{
+    currentTheme: string | undefined;
+    settingsLoading: boolean;
+    themeCount: number;
+  } | null>(null);
+  if (
+    syncedActiveInputs === null ||
+    syncedActiveInputs.currentTheme !== currentTheme ||
+    syncedActiveInputs.settingsLoading !== settingsLoading ||
+    syncedActiveInputs.themeCount !== themes.length
+  ) {
+    setSyncedActiveInputs({
+      currentTheme,
+      settingsLoading,
+      themeCount: themes.length,
+    });
     if (!settingsLoading && themes.length > 0) {
       setThemes((prevThemes) =>
         prevThemes.map((theme) => ({
@@ -385,7 +419,7 @@ const ThemePage = () => {
         })),
       );
     }
-  }, [currentTheme, settingsLoading, themes.length]);
+  }
 
   if (loading) {
     return <Loading />;

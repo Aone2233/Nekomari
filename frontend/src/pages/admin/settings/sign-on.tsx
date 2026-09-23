@@ -21,12 +21,34 @@ export default function SignOnSettings() {
   const [providerValues, setProviderValues] = React.useState<any>({});
   const [providerLoading, setProviderLoading] = React.useState(false);
   const [providerError, setProviderError] = React.useState("");
+  const [syncedProviderDefsKey, setSyncedProviderDefsKey] = React.useState<
+    [string, unknown] | null
+  >(null);
+  const [syncedProviderSettingsKey, setSyncedProviderSettingsKey] =
+    React.useState<[string, unknown] | null>(null);
 
+  // Both effects below raised the spinner synchronously before starting their
+  // fetch. Each guard is keyed on that effect's whole dependency set, and its
+  // sentinel starts at `null` — the value the key takes exactly when the effect
+  // would take its early return — so the mount invocation is a no-op whenever
+  // the effect's mount invocation was one.
+  const providerDefsKey: [string, unknown] | null = loading
+    ? null
+    : [settings.o_auth_provider, t];
+  if (
+    syncedProviderDefsKey === null ||
+    syncedProviderDefsKey[0] !== providerDefsKey?.[0] ||
+    syncedProviderDefsKey[1] !== providerDefsKey?.[1]
+  ) {
+    setSyncedProviderDefsKey(providerDefsKey);
+    if (providerDefsKey !== null) {
+      setProviderLoading(true);
+    }
+  }
 
   // 拉取所有 provider 及字段定义
   React.useEffect(() => {
     if (loading) return;
-    setProviderLoading(true);
     fetch("/api/admin/settings/oidc")
       .then((res) => res.json())
       .then((data) => {
@@ -47,10 +69,23 @@ export default function SignOnSettings() {
       .finally(() => setProviderLoading(false));
   }, [loading, settings.o_auth_provider, t]);
 
+  const providerSettingsKey: [string, unknown] | null = currentProvider
+    ? [currentProvider, t]
+    : null;
+  if (
+    syncedProviderSettingsKey === null ||
+    syncedProviderSettingsKey[0] !== providerSettingsKey?.[0] ||
+    syncedProviderSettingsKey[1] !== providerSettingsKey?.[1]
+  ) {
+    setSyncedProviderSettingsKey(providerSettingsKey);
+    if (providerSettingsKey !== null) {
+      setProviderLoading(true);
+    }
+  }
+
   // 拉取当前 provider 的设置
   React.useEffect(() => {
     if (!currentProvider) return;
-    setProviderLoading(true);
     fetch(`/api/admin/settings/oidc?provider=${currentProvider}`)
       .then((res) => res.json())
       .then((data) => {

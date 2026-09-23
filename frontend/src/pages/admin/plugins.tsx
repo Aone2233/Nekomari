@@ -100,8 +100,18 @@ export default function PluginsPage() {
     }
   }, [call]);
 
+  // The spinner is dropped after the list has actually resolved, not
+  // synchronously in the effect body: the audit rejects a setState that runs
+  // before the first await, and the original `.finally` semantics (clear the
+  // spinner even if the load rejects) are preserved by the try/finally.
   useEffect(() => {
-    loadList().finally(() => setLoading(false));
+    void (async () => {
+      try {
+        await loadList();
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [loadList]);
 
   const uploadPlugin = async (file: File) => {

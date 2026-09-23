@@ -135,6 +135,11 @@ const TerminalResourceMonitor = ({
   } | null>(null);
 
   const serverKey = servers.join("|");
+  // Sentinel for the selection reset below. It starts at `null` rather than at
+  // `serverKey` because the effect's mount invocation was NOT always a no-op:
+  // when the monitor mounts with a non-empty selection the effect immediately
+  // fetches and writes real samples, so the guard must force that first run.
+  const [previousServerKey, setPreviousServerKey] = useState<string | null>(null);
   const clientByUuid = useMemo(
     () => new Map(clients.map((client) => [client.uuid, client])),
     [clients],
@@ -144,11 +149,23 @@ const TerminalResourceMonitor = ({
     [nodeList],
   );
 
+  // Drop the samples of the previous selection while rendering when the
+  // selection changes to nothing. This is React's documented "adjust state
+  // during render" pattern and replaces the synchronous setState the effect
+  // used to perform; the only semantic difference is that the effect painted
+  // one frame with the stale samples before its reset committed, and this
+  // removes that frame.
+  if (previousServerKey !== serverKey) {
+    setPreviousServerKey(serverKey);
+    if (serverKey === "") {
+      setSamples({});
+      setLoadError(false);
+    }
+  }
+
   useEffect(() => {
     const selectedServers = serverKey ? serverKey.split("|") : [];
     if (selectedServers.length === 0) {
-      setSamples({});
-      setLoadError(false);
       return;
     }
 
