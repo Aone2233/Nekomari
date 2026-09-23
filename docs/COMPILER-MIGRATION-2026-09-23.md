@@ -121,8 +121,45 @@ semantic difference means the site must be left alone instead.
 
 A second assumption was also corrected in the same pass: this repo's audit
 counts are easy to misread. `stylish` interleaves each finding's primary and
-related locations, so eyeballing it reads as 81 errors where the true figure is
+related location, so eyeballing it reads as 81 errors where the true figure is
 76. Counts here come from linting with the same engine and reading the JSON.
+
+### Using the guarded adjustment correctly
+
+The pattern needs a "previous value" sentinel, and the obvious spelling —
+`const [prev, setPrev] = useState(current)` — is wrong whenever the effect's
+**mount** invocation was not a no-op. The guard is then false on the first
+render, so that mount write is silently dropped. It is safe only when the mount
+run wrote back the value the state already had.
+
+Three sites in this batch were caught by exactly that mistake, and each is a
+different flavour of "the mount run mattered":
+
+| Site | Why skipping the mount run changed behaviour |
+|---|---|
+| `admin/index.tsx` `EditButton` | its state starts at `false` / `0` / `"sum"`, *not* at the node's fields, so the effect's mount run is what seeds the form. Skipping it leaves `hidden` false for a node that is hidden. |
+| `dashboard.tsx` `MiniMetricChart` | on a cache hit the fetch effect returns early without writing state, so the mount run is the only thing that can leave the loading state. Skipping it leaves the chart loading forever on any remount that hits the cache. |
+| `admin/_layout.tsx` EULA dialog | when settings are already loaded at mount, the mount run is what *opens* the dialog. Skipping it means the EULA prompt never appears on in-app navigation into the admin area. |
+
+The fix is to start the sentinel at a value the dependencies can never equal —
+`null` with an explicit `synced === null ||` term — so the adjustment runs once
+on mount and then only on real changes. Before converting a site, ask what its
+effect did on mount; if the answer is anything other than "wrote the value it
+already had", force the first run.
+
+Two related checks are worth making on every site, because they are invisible
+otherwise:
+
+- **Does the guard cover the effect's whole dependency set?** `LoadChart`'s
+  request key was built from `start|end`, but `metricRangeParams` is memoised on
+  `queryRangeSignature`, which also carries `customQueryRevision`. Re-applying an
+  identical custom range therefore refetched while the guard stayed false, so
+  the series and the loading flag were not reset.
+- **Does the guard stay false when the effect re-runs for a reason the key does
+  not capture?** Both `MiniPingChart` and `LoadChart` depend on `call`, which is
+  memoised and stable today, so a refetch without a reset is currently
+  unreachable — but it is the same shape as the `customQueryRevision` gap and
+  should be re-checked if that identity ever changes.
 
 ## Verification protocol
 
