@@ -198,31 +198,49 @@ export default function PluginMarketPage() {
     null,
   );
 
-  const loadSources = useCallback(async () => {
-    const payload = await request<MarketSource[]>(
-      "/api/admin/plugin/market/sources",
+  // 目录/源的加载：每个 setState 都在 promise 的 continuation 里（函数体内没有同步
+  // setState），所以挂载用的 effect 可以直接调用它们。返回的 promise 与原来一致，
+  // refresh / install / uninstall / 源增删改里的 await 语义不变。
+  const loadSources = useCallback(
+    () =>
+      request<MarketSource[]>("/api/admin/plugin/market/sources").then(
+        (payload) => {
+          setSources(payload.data || []);
+        },
+      ),
+    [],
+  );
+
+  const applyCatalog = (
+    catalogPayload: APIResponse<{
+      plugins: MarketPlugin[];
+      sources: SourceStatus[];
+    }>,
+    installedResult: unknown,
+    versionInfo: { version: string },
+  ) => {
+    setPlugins(catalogPayload.data?.plugins || []);
+    setSourceStatuses(catalogPayload.data?.sources || []);
+    setCurrentVersion(versionInfo.version);
+    const list = Array.isArray(installedResult) ? installedResult : [];
+    setInstalled(
+      new Map(list.map((plugin) => [plugin.short, plugin.version])),
     );
-    setSources(payload.data || []);
-  }, []);
+    setInstalledInfo(new Map(list.map((plugin) => [plugin.short, plugin])));
+  };
 
   const loadCatalog = useCallback(
-    async (force = false) => {
+    (force = false) => {
       const suffix = force ? "?refresh=true" : "";
-      const [catalogPayload, installedResult, versionInfo] = await Promise.all([
+      return Promise.all([
         request<{ plugins: MarketPlugin[]; sources: SourceStatus[] }>(
           `/api/admin/plugin/market/catalog${suffix}`,
         ),
         call<any, PluginInfo[]>("admin:listPlugins").catch(() => []),
         call<any, { version: string }>("common:getVersion"),
-      ]);
-      setPlugins(catalogPayload.data?.plugins || []);
-      setSourceStatuses(catalogPayload.data?.sources || []);
-      setCurrentVersion(versionInfo.version);
-      const list = Array.isArray(installedResult) ? installedResult : [];
-      setInstalled(
-        new Map(list.map((plugin) => [plugin.short, plugin.version])),
-      );
-      setInstalledInfo(new Map(list.map((plugin) => [plugin.short, plugin])));
+      ]).then(([catalogPayload, installedResult, versionInfo]) => {
+        applyCatalog(catalogPayload, installedResult, versionInfo);
+      });
     },
     [call],
   );
