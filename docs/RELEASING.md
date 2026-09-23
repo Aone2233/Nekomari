@@ -152,12 +152,12 @@ Both workflow build commands can be reproduced without CI:
 ```bash
 # server (add GOOS/GOARCH for a non-native target)
 go build -trimpath \
-  -ldflags="-s -w -X github.com/Aone2233/nekomari/utils.CurrentVersion=v0.1.2 -X github.com/Aone2233/nekomari/utils.VersionHash=$(git rev-parse --short HEAD)" \
+  -ldflags="-w -X github.com/Aone2233/nekomari/utils.CurrentVersion=v0.1.2 -X github.com/Aone2233/nekomari/utils.VersionHash=$(git rev-parse --short HEAD)" \
   -o nekomari-$(go env GOOS)-$(go env GOARCH) .
 
 # agent
 (cd agent && go build -trimpath \
-  -ldflags="-s -w -X github.com/Aone2233/nekomari/agent/update.CurrentVersion=v0.1.2" \
+  -ldflags="-w -X github.com/Aone2233/nekomari/agent/update.CurrentVersion=v0.1.2" \
   -o komari-agent-$(go env GOOS)-$(go env GOARCH) .)
 ```
 
