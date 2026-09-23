@@ -21,7 +21,59 @@ The container is deliberately **not** published on a public interface: UFW allow
 80/443 only from Cloudflare's ranges, so all traffic arrives via the edge, and
 nginx is the only thing that talks to the panel port.
 
-## Current rollout: 2026-09-23 (v0.1.23)
+## Current rollout: 2026-09-23 (v0.1.24)
+
+Panel upgraded from v0.1.23 at approximately 13:59 UTC. Origin and public version
+APIs both reported `v0.1.24`, hash `916b5f9`. See
+[the changelog](../CHANGELOG.md) for what the release contains.
+
+- The tag and merged main pointed to
+  `916b5f9685bf18293bac51cbf39eafaab83708fe`. Exact-commit CI `35852907478`
+  passed all four jobs — including `panel smoke`, which boots the built server and
+  walks every route — before the tag was pushed. Release `35853338867` passed all
+  its jobs, including downloaded-artifact deployment with an agent; Docker
+  `35853952243` passed. The v0.1.24 image index was
+  `sha256:158fed8b25eee1e45c37c3ddae015704ea88d26a3e1535cdf5c3dc538e9a0dc1`.
+- The image was pulled and inspected **before** writes stopped. Its arm64
+  `/app/nekomari` SHA256
+  `3a37bc90a46e1fe9349d8d0a40a3829fb7b8999a7436ea9ccf06bcc1a32c0b7e` matched the
+  published `nekomari-linux-arm64` binary byte for byte. **v0.1.24 changed no Go
+  source** (`git diff --name-only v0.1.23 v0.1.24` is frontend, docs, CI and
+  `deploy/deploy-verify.sh`), so the v0.1.19 agent fleet was left intact.
+- The stopped panel's Compose file and complete bound data were backed up under
+  `/opt/nekomari-backups/pre-v0.1.24-20260923-135858` (mode 0700). `data.tar`
+  SHA256 `5b36904df818ee1465a03b26a822d2e479dbaf14e439c9ee5520f4c05aa33423`,
+  370 entries, 494 MB, and its listing contains both `data/komari.db` and
+  `data/metrics.db`. The previous Compose file is retained as
+  `docker-compose.yml.bak-pre-v0.1.24` and the v0.1.23 image is still on the host
+  for rollback.
+- After the image swap, both SQLite databases passed `quick_check`, the container
+  came up healthy with `RestartCount=0`, and all **9 registered clients** had a
+  fresh sample (55–58 seconds old). The public homepage returned HTTP 200 and the
+  admin client-list route returned HTTP 401 without a session from both origin and
+  public paths. `nginx -t` passed and no ERROR/FATAL line appeared in the
+  post-upgrade logs.
+- The loopback-only port binding (`25774/tcp -> 127.0.0.1:25774`) and the
+  `/opt/nekomari/data -> /app/data` mount were unchanged. The active
+  `panel-probe.timer` completed successfully on a re-run.
+
+Two things worth recording rather than hiding. The backup took three attempts:
+`/opt/nekomari-backups` is root-owned, and `data/` holds root-owned files from an
+older theme-background backup, so the archive needed `sudo`; the panel was
+therefore down for about a minute rather than a few seconds. And the probe
+reported one `status-522` alert in the sample taken while the container was still
+starting — the edge could not reach an origin that was not listening yet. A
+re-run a minute later finished cleanly, so that was the restart window, not the
+release.
+
+Rollback: restore the retained `docker-compose.yml.bak-pre-v0.1.24` into
+`/opt/nekomari` and start the retained v0.1.23 image. Recheck the version, both
+database `quick_check` results and recent metrics from all nine clients. If data
+restoration is needed, stop the panel, preserve the current data separately,
+verify `data.tar` against the SHA256 above, and restore it before restarting.
+Never extract an archive over a running database.
+
+## Previous rollout: 2026-09-23 (v0.1.23)
 
 Panel upgraded from v0.1.22 at approximately 07:12 UTC. Origin and public
 version APIs reported `v0.1.23`, hash `7c82708`. See
