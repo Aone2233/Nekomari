@@ -9,7 +9,7 @@ restored, and the two hostname/TLS traps that cost the most time.
 |---|---|
 | Panel URL | **https://komari.orderly2233.org** |
 | Host | OC424 (`ubuntu@213.35.99.48`, Oracle Cloud, **arm64**, Ubuntu 22.04) |
-| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.24`, bound to `127.0.0.1:25774` |
+| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.25`, bound to `127.0.0.1:25774` |
 | Compose dir | `/opt/nekomari` (bind mount `./data` → `/app/data`) |
 | Reverse proxy | host **nginx** `/etc/nginx/sites-available/nekomari` |
 | TLS at origin | `/etc/nginx/ssl/{fullchain,privkey}.pem` (Cloudflare Origin cert, shared with the other vhosts) |
@@ -21,7 +21,53 @@ The container is deliberately **not** published on a public interface: UFW allow
 80/443 only from Cloudflare's ranges, so all traffic arrives via the edge, and
 nginx is the only thing that talks to the panel port.
 
-## Current rollout: 2026-09-23 (v0.1.24)
+## Current rollout: 2026-09-23 (v0.1.25)
+
+Panel upgraded from v0.1.24 at approximately 15:40 UTC. Origin and public
+`/api/version` both reported `v0.1.25`, hash `5373c37`. See
+[the changelog](../CHANGELOG.md) for the release contents.
+
+- Merged main and tag `v0.1.25` both point to
+  `5373c3700f125fe30b5832b1f3b199ada9140c90`. Exact-commit CI
+  `35881261635` passed build/test on Ubuntu and Windows, frontend browser
+  fixtures, and panel smoke. Release `35882032896` passed all eight jobs,
+  including verification of the downloaded release binary. Docker
+  `35882754749` passed both panel and agent image jobs; anonymous pulls worked.
+  The release has eight binary assets and `SHA256SUMS.txt`.
+- The `ghcr.io/aone2233/nekomari:v0.1.25` arm64 image was pulled and inspected
+  before the restart. Its arm64 manifest digest is
+  `sha256:80db92b6f5f5674cf07a90cb2fb04d4136c413c0074165c7a171fcdf698b9b66`;
+  its OCI revision matches the tagged commit. `/app/nekomari` SHA256
+  `d8efec5ecb34efc48ee1ca90e3e67f7cea2bf540e3b6f0f0cfe83e76ebe3202a`
+  matches the published `nekomari-linux-arm64` binary and release checksum.
+- The stopped panel's Compose file and complete bound data were backed up under
+  `/opt/nekomari-backups/pre-v0.1.25-20260923-153913` (mode 0700).
+  `data.tar` has 371 entries, approximately 520 MB, including both
+  `data/komari.db` and `data/metrics.db`; its SHA256 is
+  `462f03e6b972b4572d8df52c4944de2fd43623db3868cbf76a8def45e70276e3`.
+  The archive and checksum were checked before changing the image. The saved
+  Compose file has SHA256
+  `9c92b867d1bfd15257183bcc226d40f3f0754f7a7f8d891721bc3f03bb5f657a`;
+  the only Compose change was the image tag. The previous file remains at
+  `/opt/nekomari/docker-compose.yml.bak-pre-v0.1.25`. The server also made an
+  application upgrade backup at `data/backup/upgrade-20260923-154011.zip`.
+- The new container is healthy with `RestartCount=0`; its binding remains
+  `127.0.0.1:25774` and its data mount remains `/opt/nekomari/data:/app/data`.
+  Both SQLite databases returned `ok` from `PRAGMA quick_check`. Origin and
+  public homepage returned HTTP 200, and both unauthenticated admin client-list
+  requests returned HTTP 401. `nginx -t` passed, the post-upgrade logs had no
+  ERROR/FATAL/panic, and `panel-probe.service` completed successfully with its
+  timer enabled. All nine registered clients had a CPU usage metric sample in
+  the preceding 180 seconds, approximately 10-15 seconds old at inspection.
+
+Rollback: restore `docker-compose.yml.bak-pre-v0.1.25` and start the retained
+v0.1.24 image. Recheck the version, database `quick_check` results, and recent
+samples from all nine clients. If the data needs restoration, stop the panel,
+preserve its current data separately, verify `data.tar` against the SHA256
+above, and restore it before starting the panel. Never extract over running
+SQLite databases.
+
+## Previous rollout: 2026-09-23 (v0.1.24)
 
 Panel upgraded from v0.1.23 at approximately 13:59 UTC. Origin and public version
 APIs both reported `v0.1.24`, hash `916b5f9`. See
