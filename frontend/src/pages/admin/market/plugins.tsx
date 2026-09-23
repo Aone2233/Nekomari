@@ -211,24 +211,6 @@ export default function PluginMarketPage() {
     [],
   );
 
-  const applyCatalog = (
-    catalogPayload: APIResponse<{
-      plugins: MarketPlugin[];
-      sources: SourceStatus[];
-    }>,
-    installedResult: unknown,
-    versionInfo: { version: string },
-  ) => {
-    setPlugins(catalogPayload.data?.plugins || []);
-    setSourceStatuses(catalogPayload.data?.sources || []);
-    setCurrentVersion(versionInfo.version);
-    const list = Array.isArray(installedResult) ? installedResult : [];
-    setInstalled(
-      new Map(list.map((plugin) => [plugin.short, plugin.version])),
-    );
-    setInstalledInfo(new Map(list.map((plugin) => [plugin.short, plugin])));
-  };
-
   const loadCatalog = useCallback(
     (force = false) => {
       const suffix = force ? "?refresh=true" : "";
@@ -239,7 +221,14 @@ export default function PluginMarketPage() {
         call<any, PluginInfo[]>("admin:listPlugins").catch(() => []),
         call<any, { version: string }>("common:getVersion"),
       ]).then(([catalogPayload, installedResult, versionInfo]) => {
-        applyCatalog(catalogPayload, installedResult, versionInfo);
+        setPlugins(catalogPayload.data?.plugins || []);
+        setSourceStatuses(catalogPayload.data?.sources || []);
+        setCurrentVersion(versionInfo.version);
+        const list = Array.isArray(installedResult) ? installedResult : [];
+        setInstalled(
+          new Map(list.map((plugin) => [plugin.short, plugin.version])),
+        );
+        setInstalledInfo(new Map(list.map((plugin) => [plugin.short, plugin])));
       });
     },
     [call],
