@@ -15,6 +15,10 @@ import ColorSwitch from "../ColorSwitch";
 import LanguageSwitch from "../Language";
 import ThemeSwitch from "../ThemeSwitch";
 import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  loadGithubReleases,
+  type GithubReleaseInfo,
+} from "@/lib/releaseFeed";
 import menuConfig from "../../config/menuConfig.json";
 import type { MenuItem } from "../../types/menu";
 import { iconMap, resolvePluginIcon } from "../../utils/iconHelper";
@@ -112,15 +116,6 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
     i18n.language ||
     (typeof navigator !== "undefined" ? navigator.language : "");
   // GitHub 最新发布信息与更新检测
-  interface GithubReleaseInfo {
-    tag_name: string;
-    name?: string;
-    body?: string;
-    html_url: string;
-    published_at?: string;
-    draft?: boolean;
-    prerelease?: boolean;
-  }
   const [latestRelease, setLatestRelease] = useState<GithubReleaseInfo | null>(
     null,
   );
@@ -284,23 +279,11 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
 
     async function loadReleases() {
       try {
-        const resp = await fetch(
-          "https://api.github.com/repos/Aone2233/Nekomari/releases?per_page=100",
-          {
-            headers: {
-              Accept: "application/vnd.github+json",
-            },
-            cache: "no-cache",
-          },
-        );
-        if (!resp.ok) throw new Error(`GitHub HTTP ${resp.status}`);
-        const data: GithubReleaseInfo[] = await resp.json();
+        const releases = await loadGithubReleases();
         if (ignore) return;
-        const valid = (data || [])
-          .filter((r) => !r.draft && !r.prerelease)
-          .filter((r) =>
-            isNewerVersion(r?.tag_name || r?.name, currentVersion),
-          );
+        const valid = releases.filter((r) =>
+          isNewerVersion(r?.tag_name || r?.name, currentVersion),
+        );
         setReleasesSince(valid);
         setLatestRelease(valid.length ? valid[0] : null);
         setUpdateAvailable(valid.length > 0);
