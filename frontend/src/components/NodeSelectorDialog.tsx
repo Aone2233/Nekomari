@@ -16,6 +16,9 @@ interface NodeSelectorDialogProps {
   children?: React.ReactNode; // 新增 children 属性
 }
 
+const sameUuids = (left: string[], right: string[]) =>
+  left.length === right.length && left.every((uuid, index) => uuid === right[index]);
+
 const NodeSelectorDialog: React.FC<NodeSelectorDialogProps> = ({
   open: openProp,
   onOpenChange: onOpenChangeProp,
@@ -33,11 +36,15 @@ const NodeSelectorDialog: React.FC<NodeSelectorDialogProps> = ({
   const [autoOpen, setAutoOpen] = React.useState(false);
   const open = openProp !== undefined ? openProp : autoOpen;
   const onOpenChange = onOpenChangeProp || setAutoOpen;
-  // 临时选中，只有点击确定才提交
-  const [temp, setTemp] = React.useState<string[]>(value ?? []);
-  React.useEffect(() => {
-    if (open) setTemp(value ?? []);
-  }, [open, value]);
+  // Keep the draft tied to both the current value and the open session. A
+  // parent-controlled close/reopen must also discard any uncommitted edits.
+  const [selection, setSelection] = React.useState(() => ({ open, value: [...value], temp: value }));
+  const needsSync = selection.open !== open || !sameUuids(selection.value, value);
+  if (needsSync) {
+    setSelection({ open, value: [...value], temp: value });
+  }
+  const temp = needsSync ? value : selection.temp;
+  const setTemp = (next: string[]) => setSelection({ open, value: [...value], temp: next });
 
   const allUuids = React.useMemo(() => {
     const uuids = nodeDetail.map((n) => n.uuid);
