@@ -5,7 +5,7 @@ import { AdminNavigationProvider } from "@/contexts/AdminNavigationProvider";
 import { AccountProvider } from "@/contexts/AccountProvider";
 import { updateSettingsWithToast, useSettings } from "@/lib/api";
 import { Button, Dialog } from "@radix-ui/themes";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getEula } from "@/utils/eula";
 import { normalizeLanguage, readStoredLanguage } from "@/utils/language";
 import { useTranslation } from "react-i18next";
@@ -14,15 +14,31 @@ const AdminLayout = () => {
   const { settings, loading, error, setSettings } = useSettings();
   const lang = readStoredLanguage() || "en";
   const [open, setOpen] = useState(false);
-  useEffect(() => {
+  // 与原先 `useEffect(..., [loading, error, settings, lang])` 等价：任一依赖变化时
+  // 在渲染期间按同一条件同步。守卫只在这些依赖变化时生效，因此“关闭后不再自动重开”
+  // 的闩锁语义保持不变。
+  // 哨兵从 null 起步，使挂载时也执行一次——原 effect 在挂载时是可能 setOpen(true) 的
+  // （settings 已加载、EULA 未接受且语言为中文），跳过它会让该弹窗不再出现。
+  const [syncedEulaInputs, setSyncedEulaInputs] = useState<{
+    loading: boolean;
+    error: unknown;
+    settings: unknown;
+    lang: string;
+  } | null>(null);
+  if (
+    syncedEulaInputs === null ||
+    syncedEulaInputs.loading !== loading ||
+    syncedEulaInputs.error !== error ||
+    syncedEulaInputs.settings !== settings ||
+    syncedEulaInputs.lang !== lang
+  ) {
+    setSyncedEulaInputs({ loading, error, settings, lang });
     if (loading || error || !settings || settings.eula_accepted !== false) {
       setOpen(false);
-      return;
-    }
-    if (normalizeLanguage(lang).startsWith("zh")) {
+    } else if (normalizeLanguage(lang).startsWith("zh")) {
       setOpen(true);
     }
-  }, [loading, error, settings, lang]);
+  }
   return (
     <>
       <Dialog.Root open={open}>

@@ -319,50 +319,6 @@ function MetricRollupRetentionCard({
   onSave: (changes: Partial<SettingsResponse>) => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const [draft, setDraft] = React.useState({
-    minute: String(
-      toNumber(
-        settings[ROLLUP_RETENTION_KEYS.minute],
-        DEFAULT_ROLLUP_RETENTION.minute,
-      ),
-    ),
-    fiveMinute: String(
-      toNumber(
-        settings[ROLLUP_RETENTION_KEYS.fiveMinute],
-        DEFAULT_ROLLUP_RETENTION.fiveMinute,
-      ),
-    ),
-    hour: String(
-      toNumber(
-        settings[ROLLUP_RETENTION_KEYS.hour],
-        DEFAULT_ROLLUP_RETENTION.hour,
-      ),
-    ),
-  });
-  const [saving, setSaving] = React.useState(false);
-
-  React.useEffect(() => {
-    setDraft({
-      minute: String(
-        toNumber(
-          settings[ROLLUP_RETENTION_KEYS.minute],
-          DEFAULT_ROLLUP_RETENTION.minute,
-        ),
-      ),
-      fiveMinute: String(
-        toNumber(
-          settings[ROLLUP_RETENTION_KEYS.fiveMinute],
-          DEFAULT_ROLLUP_RETENTION.fiveMinute,
-        ),
-      ),
-      hour: String(
-        toNumber(
-          settings[ROLLUP_RETENTION_KEYS.hour],
-          DEFAULT_ROLLUP_RETENTION.hour,
-        ),
-      ),
-    });
-  }, [settings]);
 
   const current = {
     minute: toNumber(
@@ -378,6 +334,27 @@ function MetricRollupRetentionCard({
       DEFAULT_ROLLUP_RETENTION.hour,
     ),
   };
+
+  const [draft, setDraft] = React.useState(() => ({
+    minute: String(current.minute),
+    fiveMinute: String(current.fiveMinute),
+    hour: String(current.hour),
+  }));
+  const [previousSettings, setPreviousSettings] = React.useState(settings);
+  const [saving, setSaving] = React.useState(false);
+
+  // settings 变化时（本页任何一次保存都会发布新的 settings 对象）把草稿重置为
+  // 服务端值。原来是 useEffect + setState，现在用 React 的 “adjusting state
+  // when a value changes” 模式：守卫依赖（settings 对象本身）和写入的派生草稿
+  // 都与原来的 effect 一致。
+  if (settings !== previousSettings) {
+    setPreviousSettings(settings);
+    setDraft({
+      minute: String(current.minute),
+      fiveMinute: String(current.fiveMinute),
+      hour: String(current.hour),
+    });
+  }
 
   const hasChanges =
     draft.minute !== String(current.minute) ||
@@ -898,27 +875,29 @@ function MigrationCard() {
   const [canceling, setCanceling] = React.useState(false);
   const [sourceDsn, setSourceDsn] = React.useState("");
 
+  // 状态刷新：每个 setState 都在 promise 的 continuation 里，函数体内没有同步
+  // setState，所以挂载/轮询的 effect 可以直接调用它。手动刷新按钮自己点亮 spinner。
   const fetchStatus = React.useCallback(
-    async (silent = false) => {
-      if (!silent) setLoadingStatus(true);
-      try {
-        const data = await call<unknown, MigrationStatusResponse>(
-          "admin:getMetricMigrationStatus",
-          {},
-        );
-        setStatusData(data);
-      } catch (e) {
-        if (!silent) {
-          toast.error(
-            t("settings.metrics.fetch_status_failed") +
-              ": " +
-              (e instanceof Error ? e.message : String(e)),
-          );
-        }
-      } finally {
-        if (!silent) setLoadingStatus(false);
-      }
-    },
+    (silent = false) =>
+      call<unknown, MigrationStatusResponse>(
+        "admin:getMetricMigrationStatus",
+        {},
+      )
+        .then((data) => {
+          setStatusData(data);
+        })
+        .catch((e: unknown) => {
+          if (!silent) {
+            toast.error(
+              t("settings.metrics.fetch_status_failed") +
+                ": " +
+                (e instanceof Error ? e.message : String(e)),
+            );
+          }
+        })
+        .finally(() => {
+          if (!silent) setLoadingStatus(false);
+        }),
     [call, t],
   );
 
@@ -1005,7 +984,11 @@ function MigrationCard() {
             variant="ghost"
             size="1"
             disabled={loadingStatus}
-            onClick={() => void fetchStatus()}
+            onClick={() => {
+              // 手动刷新由用户操作点亮 spinner（effect 内不允许同步 setState）。
+              setLoadingStatus(true);
+              void fetchStatus();
+            }}
           >
             <RefreshCw
               size={14}

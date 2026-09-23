@@ -974,6 +974,11 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
     [t, maxMetricRetentionDays],
   );
   const [viewKey, setViewKey] = useState("real-time");
+  // Keep the selected view valid while rendering: retention can shrink and drop a
+  // view (e.g. "7d"), in which case the choice is written back to the first view.
+  if (!timeViews.some((view) => view.key === viewKey)) {
+    setViewKey(timeViews[0].key);
+  }
   const selectedView = timeViews.find((view) => view.key === viewKey) ?? timeViews[0];
   const isRealtime = selectedView.key === "real-time";
   const isCustomRange = selectedView.key === "custom";
@@ -1002,6 +1007,14 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
   const [dashboard, setDashboard] = useState<DashboardChart[]>(() =>
     parseDashboardTemplate(globalDashboardTemplate),
   );
+  const [previousGlobalDashboardTemplate, setPreviousGlobalDashboardTemplate] =
+    useState(globalDashboardTemplate);
+  // Re-seed the locally edited dashboard while rendering when the global template
+  // changes, so no effect has to write state synchronously.
+  if (globalDashboardTemplate !== previousGlobalDashboardTemplate) {
+    setPreviousGlobalDashboardTemplate(globalDashboardTemplate);
+    setDashboard(parseDashboardTemplate(globalDashboardTemplate));
+  }
   const charts = useMemo(() => normalizeDashboard(dashboard), [dashboard]);
   const [savingGlobalTemplate, setSavingGlobalTemplate] = useState(false);
   const [pingTasks, setPingTasks] = useState<PublicPingTask[]>([]);
@@ -1009,6 +1022,8 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
   const [metricSeries, setMetricSeries] = useState<MetricSeries[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previousMetricRequestKey, setPreviousMetricRequestKey] = useState("");
+  const [previousPingStatsRequestKey, setPreviousPingStatsRequestKey] = useState("");
   const chartSensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, {
@@ -1018,18 +1033,8 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
   );
 
   useEffect(() => {
-    setDashboard(parseDashboardTemplate(globalDashboardTemplate));
-  }, [globalDashboardTemplate]);
-
-  useEffect(() => {
     onRealtimeActiveChange?.(isRealtime);
   }, [isRealtime, onRealtimeActiveChange]);
-
-  useEffect(() => {
-    if (!timeViews.some((view) => view.key === viewKey)) {
-      setViewKey(timeViews[0]?.key ?? "real-time");
-    }
-  }, [timeViews, viewKey]);
 
   useEffect(() => {
     let active = true;
@@ -1124,17 +1129,35 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
     return Array.from(new Set(keys)).sort();
   }, [charts, isRealtime]);
 
+  // 必须与 metricRangeParams 的 useMemo 依赖完全一致：它依赖 queryRangeSignature
+  // （= start|end|customQueryRevision），而 customQueryRevision 会在重新应用同一区间时
+  // 自增。若只取 start|end，就会出现“依赖变了、触发重取，但守卫不触发、不重置”的错配。
+  const rangeSignature = queryRangeSignature || `h${queryHours ?? 1}`;
+  const metricRequestKey = uuid && metricKeys.length > 0
+    ? `${uuid}|${metricKeys.join(",")}|${rangeSignature}|${aggregation}`
+    : "";
+  const pingStatsRequestKey = uuid && metricKeys.some(isPingMetric)
+    ? `${uuid}|${metricKeys.join(",")}|${rangeSignature}`
+    : "";
+  // Reset the request-scoped data while rendering when the request changes, so the
+  // fetch effects below never have to write state synchronously.
+  if (previousMetricRequestKey !== metricRequestKey) {
+    setPreviousMetricRequestKey(metricRequestKey);
+    setMetricSeries([]);
+    setLoading(metricRequestKey !== "");
+    setError(null);
+  }
+  if (previousPingStatsRequestKey !== pingStatsRequestKey) {
+    setPreviousPingStatsRequestKey(pingStatsRequestKey);
+    setPingStats([]);
+  }
+
   useEffect(() => {
     if (!uuid || metricKeys.length === 0) {
-      setMetricSeries([]);
-      setLoading(false);
-      setError(null);
       return;
     }
 
     let active = true;
-    setLoading(true);
-    setError(null);
 
     call<any, QueryMetricsResponse>(
       "public:queryMetrics",
@@ -1172,7 +1195,6 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
 
   useEffect(() => {
     if (!uuid || !metricKeys.some(isPingMetric)) {
-      setPingStats([]);
       return;
     }
 

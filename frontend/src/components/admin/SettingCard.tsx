@@ -103,10 +103,15 @@ export function SettingCardSwitch({
   const switchRef = React.useRef<HTMLButtonElement>(null);
   const [disabled, setDisabled] = React.useState(false);
   const [checked, setChecked] = React.useState(defaultChecked || false);
+  const [previousDefaultChecked, setPreviousDefaultChecked] =
+    React.useState(defaultChecked);
 
-  React.useEffect(() => {
+  // Adjust the mirrored value while rendering when the prop changes, so no effect
+  // has to write state synchronously.
+  if (defaultChecked !== previousDefaultChecked) {
+    setPreviousDefaultChecked(defaultChecked);
     setChecked(Boolean(defaultChecked));
-  }, [defaultChecked]);
+  }
 
   const handleChange = (c: boolean) => {
     if (autoDisabled) setDisabled(true);
@@ -324,30 +329,27 @@ export function SettingCardShortTextInput({
   const [internalValue, setInternalValue] = React.useState(
     value !== undefined ? normalizedValue : normalizedDefaultValue
   );
-  const previousDefaultValueRef = React.useRef(normalizedDefaultValue);
+  const [previousDefaultValue, setPreviousDefaultValue] =
+    React.useState(normalizedDefaultValue);
   const currentValue = value !== undefined ? normalizedValue : internalValue;
   const inputRef = React.useRef<HTMLInputElement>(null);
   const buttonRef = React.useRef<HTMLButtonElement>(null);
   const resolvedLabel = label || t("common.save");
 
-  // 当外部value改变时，同步内部状态
-  React.useEffect(() => {
-    if (value !== undefined) {
+  // 当外部 value 或 defaultValue 改变时，在渲染期间同步内部状态，避免 effect 同步写 state。
+  if (value !== undefined) {
+    if (internalValue !== normalizedValue) {
       setInternalValue(normalizedValue);
-      previousDefaultValueRef.current = normalizedDefaultValue;
-      return;
     }
-
-    if (normalizedDefaultValue !== previousDefaultValueRef.current) {
-      const previousDefaultValue = previousDefaultValueRef.current;
-      setInternalValue((currentInternalValue) =>
-        currentInternalValue === previousDefaultValue
-          ? normalizedDefaultValue
-          : currentInternalValue
-      );
-      previousDefaultValueRef.current = normalizedDefaultValue;
+    if (previousDefaultValue !== normalizedDefaultValue) {
+      setPreviousDefaultValue(normalizedDefaultValue);
     }
-  }, [normalizedDefaultValue, normalizedValue, value]);
+  } else if (normalizedDefaultValue !== previousDefaultValue) {
+    setPreviousDefaultValue(normalizedDefaultValue);
+    if (internalValue === previousDefaultValue) {
+      setInternalValue(normalizedDefaultValue);
+    }
+  }
 
   const handleSave = () => {
     if (autoDisabled) setInternalDisabled(true);
@@ -518,13 +520,17 @@ export function SettingCardLongTextInput({
   const [disabled, setDisabled] = React.useState(false);
   const savingState = Boolean(isSaving) || disabled;
   const [value, setValue] = React.useState(defaultValue);
+  const [previousDefaultValue, setPreviousDefaultValue] = React.useState(defaultValue);
   const textAreaRef = React.useRef<HTMLTextAreaElement>(null);
   const buttonRef = React.useRef<HTMLButtonElement>(null);
   const resolvedLabel = label || t("common.save");
 
-  React.useEffect(() => {
+  // Adjust the mirrored value while rendering when the prop changes, so no effect
+  // has to write state synchronously.
+  if (defaultValue !== previousDefaultValue) {
+    setPreviousDefaultValue(defaultValue);
     setValue(defaultValue);
-  }, [defaultValue]);
+  }
 
   const handleSave = () => {
     if (autoDisabled) setDisabled(true);
@@ -639,14 +645,18 @@ export function SettingCardSelect({
   const [selectedValue, setSelectedValue] = React.useState(
     value !== undefined ? value : defaultValue
   );
+  const [previousValue, setPreviousValue] = React.useState(value);
   const buttonRef = React.useRef<HTMLButtonElement>(null);
   const resolvedLabel = label || t("common.select");
 
-  React.useEffect(() => {
+  // Adjust the mirrored value while rendering when the prop changes, so no effect
+  // has to write state synchronously.
+  if (value !== previousValue) {
+    setPreviousValue(value);
     if (value !== undefined) {
       setSelectedValue(value);
     }
-  }, [value]);
+  }
 
   const handleSave = (value: string) => {
     if (isSaving === undefined && autoDisabled) setDisabled(true);
