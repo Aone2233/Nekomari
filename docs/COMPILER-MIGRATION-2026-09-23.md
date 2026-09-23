@@ -231,24 +231,26 @@ handler) rather than in `number-picker.tsx`.
 
 ## Status
 
-Branches, as measured on each branch in isolation against the 77-finding
-baseline:
+Three pull requests, each measured against the 77-finding baseline on its own
+branch and each verified independently of the agents that wrote its commits:
 
-| Branch | Result | Findings |
+| Pull request | Scope | Findings |
 |---|---|---|
-| `codex/compiler-tree-refs` (`ad1e2e1`, `4f6ab83`) | `RemoteFileTree.tsx` 894 and `FileManagerPanel.tsx` 344 fixed; `FileManagerPanel` now reports zero | 77 → **75** |
-| `codex/compiler-effect-leaves` (7 commits, `8b1031e`…`2295d74`) | 7 of 8 fixed | 77 → **70** |
-| `codex/compiler-admin-settings` (`0bb2556`) | `metrics.tsx:926` fixed | 77 → **76** |
-| `codex/compiler-editor-refs` | in flight, 2 commits so far | — |
-| `codex/compiler-admin-cards`, `codex/compiler-admin-index` | re-dispatched after the probe correction above | — |
+| #21 `codex/compiler-terminal-refs` | terminal editor ref lifetimes — `refs` 12 → 1, `immutability` 2 → 0, `set-state-in-effect` 62 → 59 | 77 → **61** |
+| #23 `codex/compiler-effect-setstate` | hooks, charts and components — `set-state-in-effect` 62 → 55 | 77 → **70** |
+| #22 `codex/compiler-admin-setstate` | admin and settings pages — `set-state-in-effect` 62 → 44 | 77 → **59** |
 
-`codex/compiler-effect-leaves` is the batch that pays for itself: seven files
-fixed with no rule increase anywhere, and it is the branch that demonstrated the
-guarded render-time adjustment is accepted. Two of its changes carry a stated
-one-frame improvement (the two hooks now report the correct value on first
-render rather than `false`); one carries a stated edge (an A→B→A `src` flip in
-`InlineSvgIcon` reuses already-fetched markup instead of re-showing `<img>`,
-rendering identical content).
+Combined, the three branches retire 34 of the 62 `set-state-in-effect` findings,
+11 of the 12 `refs` findings and both `immutability` findings, leaving **36**
+findings against the original 77. All three branches pass lint, the 40 frontend
+tests, the production build and all five browser specs.
+
+Two changes carry a stated one-frame improvement (the two hooks now report the
+correct value on first render rather than `false`, and every guarded adjustment
+removes a stale frame the effect used to paint before its reset committed), and
+one carries a stated edge (an A→B→A `src` flip in `InlineSvgIcon` reuses
+already-fetched markup instead of re-showing `<img>`, rendering identical
+content). Those are the only accepted differences.
 
 Two findings are recorded as **not fixable as scoped**, rather than as pending
 work:
