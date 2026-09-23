@@ -28,6 +28,7 @@ import (
 	"github.com/Aone2233/nekomari/web/api"
 	"github.com/Aone2233/nekomari/web/upload"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/pquerna/otp/totp"
 	"gorm.io/gorm"
@@ -42,7 +43,7 @@ func TestSecurityAndResourceRegressions(t *testing.T) {
 		t.Fatal(err)
 	}
 	sqlDB.SetMaxOpenConns(1)
-	user, err := accounts.CreateAccount("hardening", "test-only-password")
+	user, err := accounts.CreateAccount("hardening"+strings.ReplaceAll(uuid.NewString(), "-", ""), "test-only-password")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +73,8 @@ func TestSecurityAndResourceRegressions(t *testing.T) {
 
 	t.Run("UploadStatsHTTPRequiresAdmin", func(t *testing.T) {
 		const apiKey = "test-only-upload-stats-key"
-		const agentToken = "test-only-upload-stats-agent-token"
+		agentID := uuid.NewString()
+		agentToken := "test-only-upload-stats-agent-token-" + agentID
 		previousKey, err := config.GetAs[string](config.ApiKeyKey, "")
 		if err != nil {
 			t.Fatal(err)
@@ -85,12 +87,12 @@ func TestSecurityAndResourceRegressions(t *testing.T) {
 				t.Error(err)
 			}
 		})
-		if err := db.Create(&models.Client{UUID: "upload-stats-agent", Name: "test agent", Token: agentToken}).Error; err != nil {
+		if err := db.Create(&models.Client{UUID: agentID, Name: "test agent", Token: agentToken}).Error; err != nil {
 			t.Fatal(err)
 		}
 		agentContext, _ := gin.CreateTestContext(httptest.NewRecorder())
 		agentContext.Request = httptest.NewRequest(http.MethodPost, "/api/rpc2?Authorization="+url.QueryEscape(agentToken), nil)
-		if principal := api.IdentifyPrincipal(agentContext); principal.Type != rpc.PrincipalAgent || principal.ClientUUID != "upload-stats-agent" {
+		if principal := api.IdentifyPrincipal(agentContext); principal.Type != rpc.PrincipalAgent || principal.ClientUUID != agentID {
 			t.Fatalf("fixture token was not recognized as an agent: %+v", principal)
 		}
 		root := filepath.Join(t.TempDir(), "upload-root")
@@ -311,8 +313,8 @@ func TestSecurityAndResourceRegressions(t *testing.T) {
 		}
 	})
 	t.Run("HiddenNodeRefreshesExistingConnection", func(t *testing.T) {
-		const id = "hardening-node"
-		if err := db.Create(&models.Client{UUID: id, Name: "test", Token: "test-only-token"}).Error; err != nil {
+		id := uuid.NewString()
+		if err := db.Create(&models.Client{UUID: id, Name: "test", Token: "test-only-token-" + id}).Error; err != nil {
 			t.Fatal(err)
 		}
 		agentruntime.RecordReport(v2.Report{UUID: id})
