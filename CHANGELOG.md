@@ -6,6 +6,69 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.24] — 2026-09-23
+
+The advisory React Compiler audit reaches **zero findings**, down from 77 at the
+start of this batch. Nothing here enables the compiler; the migration removed the
+diagnostics themselves, and every change kept lint, the 40 unit tests, the
+production build and the browser specs green. See
+[the migration ledger](./docs/COMPILER-MIGRATION-2026-09-23.md) for the inventory,
+the probes behind each claim about how the rules behave, and the two ways the
+render-time adjustment pattern is easy to get wrong.
+
+- Fix `/admin/settings/sign-on`, which looped on every visit (React error #301).
+  Both of the page's render-time adjustments used `null` as their "not yet run"
+  sentinel, and both keys are legitimately `null` while their effect's early-return
+  condition holds, so the guard stayed true on every render. The sentinels now
+  start at `undefined`. Found by booting the server and walking every route — the
+  audit, `tsc`, `eslint`, all 40 unit tests and all five fixtures were green on
+  that file, because nothing mounts that page.
+- Hold file-manager and file-tree selection in state instead of a ref, so a
+  selection change re-renders: the highlight, the single-item context menu and the
+  delete target had been lagging behind the actual selection. The editor's
+  cut/copy/undo/redo flags had the same defect.
+- Fix `number-picker`'s `onChange` echo, which made the admin log page's page 2
+  unreachable. The effect echoed the clamped value on every run, and the only call
+  site passed an inline arrow, so the dependency changed on every parent render and
+  the echo re-fired the page's `setPage(1)`. The picker now adjusts during render
+  without echoing, and no longer reports an external `defaultValue` change.
+- Fix `LoadChart` refetching without resetting when an identical custom range was
+  re-applied, and move the terminal file tree's directory cache out of a ref into a
+  module-level `WeakMap` keyed by the file service.
+- Delete the unreferenced `components/admin/NodeTable*` subtree, which clears the
+  last finding. Its `useReactTable()` call had been making the compiler skip the
+  whole component, which hid a second finding in the same file; the subtree was
+  already tree-shaken out of the bundle, so removing it changes no behaviour.
+- Add a real-environment smoke test to CI. It builds the panel, the embedded theme
+  and the server, boots it against a fresh database, installs an account through the
+  real installer, and walks every route the navigation exposes with Playwright,
+  failing on a same-origin console error, a same-origin 4xx/5xx, or a route that
+  renders nothing. External origins are warnings, never failures.
+- Add browser fixtures for `number-picker` and `RemoteFileTree`, both verified able
+  to fail; a mounted file manager regression covering rename/delete refresh and
+  stale responses; and an anonymous GHCR pull requirement in the Docker workflow.
+- Add [the structural review](./docs/STRUCTURAL-REVIEW-2026-09-23.md), which
+  measures the frontend's margin: 45 of 194 source files are reachable from a test
+  entry point, and 21 of the 30 files over 500 lines are not.
+- `@tanstack/react-table` has no importer left under `src/` but stays in
+  `package.json`: the lock file cannot be regenerated in the environment this was
+  prepared in, and shipping `package.json` without a matching lock would break
+  `npm ci`.
+
+## [v0.1.23] — 2026-09-23
+
+Frontend render-time state and effect-dependency fixes in theme settings,
+pagination and selector state, taking the advisory audit from 111 to 105; an admin
+upload scan-duration regression; and chart accessibility status moved into the
+mounted component tree. See
+[follow-up scope and evidence](./docs/FOLLOWUP-v0.1.23.md).
+
+## [v0.1.22] — 2026-09-23
+
+A frontend state and browser review — server, agent, protocol and shared-package
+source unchanged — taking the advisory audit from 126 to 111. See
+[follow-up scope and evidence](./docs/FOLLOWUP-v0.1.22.md).
+
 ## [v0.1.21] — 2026-09-22
 
 - Split React providers from context/hook exports and move App out of bootstrap;
