@@ -1613,17 +1613,29 @@ const MiniMetricChart = ({
   const tagsKey = JSON.stringify(tags ?? null);
   const cacheKey = `${uuid}|${metricKeys.join(",")}|${tagsKey}`;
 
-  useEffect(() => {
-    let active = true;
+  // 缓存命中时原先在 effect 中同步写入状态；改为在渲染期间按 cacheKey 变化同步一次，
+  // 复刻 effect 同步段的两个分支（命中直接用缓存，未命中则进入加载态），
+  // 异步请求仍由下方 effect 完成。
+  const [syncedCacheKey, setSyncedCacheKey] = useState(cacheKey);
+  if (syncedCacheKey !== cacheKey) {
+    setSyncedCacheKey(cacheKey);
     const cached = miniChartCache.get(cacheKey);
     if (cached) {
       setSeriesList(cached);
       setError(null);
       setLoading(false);
+    } else {
+      setLoading(true);
+      setError(null);
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+    const cached = miniChartCache.get(cacheKey);
+    if (cached) {
       return;
     }
-    setLoading(true);
-    setError(null);
     const now = new Date();
     const start = new Date(now.getTime() - 24 * 3600 * 1000);
     call<any, QueryMetricsResponse>("public:queryMetrics", {
