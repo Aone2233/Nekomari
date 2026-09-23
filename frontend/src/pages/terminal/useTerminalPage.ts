@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -26,6 +27,24 @@ import {
   type TerminalClient,
   type TerminalTab,
 } from "./terminalTypes";
+
+type SearchResults = {
+  api: TerminalSessionApi | null;
+  term: string;
+  caseSensitive: boolean;
+  regex: boolean;
+  index: number;
+  count: number;
+};
+
+const emptySearchResults: SearchResults = {
+  api: null,
+  term: "",
+  caseSensitive: false,
+  regex: false,
+  index: 0,
+  count: 0,
+};
 
 const getTabShortcutIndex = (event: KeyboardEvent) => {
   const code = event.code;
@@ -54,7 +73,10 @@ export const useTerminalPage = () => {
   const [clients, setClients] = useState<TerminalClient[]>([]);
   const [clientsLoading, setClientsLoading] = useState(true);
   const [tabs, setTabs] = useState<TerminalTab[]>([]);
-  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [selectedTabId, setActiveTabId] = useState<string | null>(null);
+  const activeTabId = tabs.some((tab) => tab.id === selectedTabId)
+    ? selectedTabId
+    : tabs[0]?.id ?? null;
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [serverMenuOpen, setServerMenuOpen] = useState(false);
@@ -70,10 +92,9 @@ export const useTerminalPage = () => {
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [searchResultIndex, setSearchResultIndex] = useState(0);
-  const [searchResultCount, setSearchResultCount] = useState(0);
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
   const [searchUseRegex, setSearchUseRegex] = useState(false);
+  const [searchResults, setSearchResults] = useState<SearchResults>(emptySearchResults);
   const [resourceMonitorServers, setResourceMonitorServers] = useState<
     string[]
   >([]);
@@ -87,9 +108,23 @@ export const useTerminalPage = () => {
   const activeTabIdRef = useRef<string | null>(null);
   const sessionApisRef = useRef(new Map<string, TerminalSessionApi>());
   const [activeApi, setActiveApi] = useState<TerminalSessionApi | null>(null);
+  const matchingSearchResults =
+    searchOpen &&
+    searchTerm &&
+    searchResults.api === activeApi &&
+    searchResults.term === searchTerm &&
+    searchResults.caseSensitive === searchCaseSensitive &&
+    searchResults.regex === searchUseRegex
+      ? searchResults
+      : null;
+  const searchResultIndex = matchingSearchResults?.index ?? 0;
+  const searchResultCount = matchingSearchResults?.count ?? 0;
 
-  tabsRef.current = tabs;
-  activeTabIdRef.current = activeTabId;
+  // Global handlers must observe committed tabs, not a discarded concurrent render.
+  useLayoutEffect(() => {
+    tabsRef.current = tabs;
+    activeTabIdRef.current = activeTabId;
+  }, [tabs, activeTabId]);
 
   const resolvedSettings: XtermjsSettings = settingsError
     ? defaultXtermjsSettings
@@ -118,7 +153,6 @@ export const useTerminalPage = () => {
 
   useEffect(() => {
     let mounted = true;
-    setClientsLoading(true);
     fetch("/api/admin/client/list")
       .then((response) => {
         if (!response.ok) {
@@ -132,7 +166,6 @@ export const useTerminalPage = () => {
         }
         const list = Array.isArray(data) ? (data as TerminalClient[]) : [];
         setClients(list);
-        setClientsLoading(false);
         const initialUuid = initialUuidRef.current;
         if (!initialUuid) {
           return;
@@ -190,18 +223,6 @@ export const useTerminalPage = () => {
   }, []);
 
   useEffect(() => {
-    if (tabs.length === 0) {
-      if (activeTabId !== null) {
-        setActiveTabId(null);
-      }
-      return;
-    }
-    if (!activeTabId || !tabs.some((tab) => tab.id === activeTabId)) {
-      setActiveTabId(tabs[0].id);
-    }
-  }, [activeTabId, tabs]);
-
-  useEffect(() => {
     if (!resolvedSettings.customCss) {
       return;
     }
@@ -250,7 +271,9 @@ export const useTerminalPage = () => {
   }, [activeTabId]);
 
   const activeApiRef = useRef<TerminalSessionApi | null>(null);
-  activeApiRef.current = activeApi;
+  useLayoutEffect(() => {
+    activeApiRef.current = activeApi;
+  }, [activeApi]);
   const searchSelectionRef = useRef(false);
   const searchSelectionResetTimerRef =
     useRef<number | null>(null);
@@ -547,6 +570,7 @@ export const useTerminalPage = () => {
     }
     setSearchOpen(false);
     activeApi?.searchAddon?.clearDecorations();
+    setSearchResults(emptySearchResults);
     activeApi?.terminal?.focus();
   }, [activeApi, resetSearchSelectionTimer, setTerminalSelectionTheme]);
 
@@ -559,13 +583,11 @@ export const useTerminalPage = () => {
       fresh = false,
     ) => {
       if (!activeApi?.searchAddon) {
-        return;
+        return false;
       }
       if (!term) {
         activeApi.searchAddon.clearDecorations();
-        setSearchResultIndex(0);
-        setSearchResultCount(0);
-        return;
+        return true;
       }
       const searchOptions = {
         caseSensitive: caseSens,
@@ -585,10 +607,7 @@ export const useTerminalPage = () => {
       setTerminalSelectionTheme(activeApi.terminal, true);
       resetSearchSelectionTimer();
       if (fresh) {
-        activeApi.searchAddon.clearDecorations();
         activeApi.terminal.clearSelection();
-        setSearchResultIndex(0);
-        setSearchResultCount(0);
       }
 
       try {
@@ -599,14 +618,14 @@ export const useTerminalPage = () => {
         }
       } catch {
         activeApi.searchAddon.clearDecorations();
-        setSearchResultIndex(0);
-        setSearchResultCount(0);
+        return false;
       } finally {
         searchSelectionResetTimerRef.current = window.setTimeout(() => {
           searchSelectionRef.current = false;
           searchSelectionResetTimerRef.current = null;
         }, 0);
       }
+      return true;
     },
     [activeApi, resetSearchSelectionTimer, setTerminalSelectionTheme],
   );
@@ -614,16 +633,23 @@ export const useTerminalPage = () => {
   const handleSearchTermChange = useCallback(
     (term: string) => {
       setSearchTerm(term);
+      if (!term) {
+        performSearch(term, searchCaseSensitive, searchUseRegex);
+      }
     },
-    [],
+    [performSearch, searchCaseSensitive, searchUseRegex],
   );
 
   const handleFindNext = useCallback(() => {
-    performSearch(searchTerm, searchCaseSensitive, searchUseRegex, "next");
+    if (!performSearch(searchTerm, searchCaseSensitive, searchUseRegex, "next")) {
+      setSearchResults(emptySearchResults);
+    }
   }, [performSearch, searchCaseSensitive, searchTerm, searchUseRegex]);
 
   const handleFindPrevious = useCallback(() => {
-    performSearch(searchTerm, searchCaseSensitive, searchUseRegex, "prev");
+    if (!performSearch(searchTerm, searchCaseSensitive, searchUseRegex, "prev")) {
+      setSearchResults(emptySearchResults);
+    }
   }, [performSearch, searchCaseSensitive, searchTerm, searchUseRegex]);
 
   const handleToggleCaseSensitive = useCallback(() => {
@@ -633,6 +659,31 @@ export const useTerminalPage = () => {
   const handleToggleUseRegex = useCallback(() => {
     setSearchUseRegex((value) => !value);
   }, []);
+
+  // Subscribe before searching so a synchronous result event belongs to the new query.
+  useEffect(() => {
+    if (!searchOpen || !searchTerm || !activeApi?.searchAddon) {
+      return;
+    }
+    activeApi.searchAddon.clearDecorations();
+    const disposable = activeApi.searchAddon.onDidChangeResults((event) => {
+      setSearchResults({
+        api: activeApi,
+        term: searchTerm,
+        caseSensitive: searchCaseSensitive,
+        regex: searchUseRegex,
+        index: event.resultIndex,
+        count: event.resultCount,
+      });
+    });
+    return () => disposable.dispose();
+  }, [
+    activeApi,
+    searchCaseSensitive,
+    searchOpen,
+    searchTerm,
+    searchUseRegex,
+  ]);
 
   // Re-run an existing query once the target terminal becomes available.
   useEffect(() => {
@@ -648,20 +699,6 @@ export const useTerminalPage = () => {
     searchTerm,
     searchUseRegex,
   ]);
-
-  // Subscribe to search result count changes
-  useEffect(() => {
-    if (!activeApi?.searchAddon) {
-      return;
-    }
-    const disposable = activeApi.searchAddon.onDidChangeResults((event) => {
-      setSearchResultIndex(event.resultIndex);
-      setSearchResultCount(event.resultCount);
-    });
-    return () => {
-      disposable.dispose();
-    };
-  }, [activeApi]);
 
   // Reorder tabs
   const reorderTab = useCallback(

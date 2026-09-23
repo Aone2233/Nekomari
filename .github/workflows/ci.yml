@@ -17,6 +17,32 @@ permissions:
   contents: read
 
 jobs:
+  frontend-browser:
+    name: frontend browser (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Install browser test dependencies
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          python -m pip install -r script/requirements-browser.txt
+          python -m playwright install --with-deps chromium
+      - name: Test chart rendering, keyboard access and price transitions
+        working-directory: frontend
+        run: |
+          python script/chart-a11y.spec.py
+          python script/compiler-static.browser.spec.py
+
   build-and-test:
     name: build & test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

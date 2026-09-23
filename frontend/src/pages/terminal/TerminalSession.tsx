@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import { Terminal } from "@xterm/xterm";
 import type { ITerminalOptions } from "@xterm/xterm";
@@ -53,7 +53,9 @@ const TerminalSession = ({
   const toastId = useId();
   const { t } = useTranslation();
 
-  activeRef.current = active;
+  useLayoutEffect(() => {
+    activeRef.current = active;
+  }, [active]);
 
   useEffect(() => {
     disconnectMessageRef.current = disconnectMessage;

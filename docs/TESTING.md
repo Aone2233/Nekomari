@@ -24,6 +24,23 @@ a `-run` allowlist, which silently excluded every test not named in it — 552 r
 tests down to 79 — and it hid two `agent/unlock` tests that had been failing since
 the commit that added them.
 
+Frontend checks run from `frontend` after `npm ci`: `npm test`, `npm run lint`
+and `npm run build`. The separate frontend browser job starts Vite on loopback
+and uses Chromium to check animated chart data, dark/light colors, keyboard
+focus, accessible naming and mounted price transitions. To run it locally:
+
+```bash
+cd frontend
+python -m pip install -r script/requirements-browser.txt
+python -m playwright install chromium
+python script/chart-a11y.spec.py
+python script/compiler-static.browser.spec.py
+```
+
+`npm run audit:compiler` is an advisory migration inventory and exits nonzero
+while the remaining React Compiler recommendations are unresolved. It is not a
+release gate; the configured `npm run lint` has zero allowed warnings.
+
 ## Environment-dependent tests
 
 Some upstream tests exercise the real network and therefore depend on the host

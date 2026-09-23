@@ -19,15 +19,15 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 // 命令剪贴板面板
-const CommandClipboardPanel = ({
-  showHeader = true,
-  ...props
-}: {
+type CommandClipboardPanelProps = {
   showHeader?: boolean;
   [key: string]: any;
-}) => {
-  // 剪贴板列表布局
-  const InnerLayout = () => {
+};
+
+const CommandClipboardLayout = ({
+  showHeader = true,
+  ...props
+}: CommandClipboardPanelProps) => {
     const { t } = useTranslation();
     const { commands, loading, error } = useCommandClipboard();
     if (loading) {
@@ -63,25 +63,26 @@ const CommandClipboardPanel = ({
           <LanguageSwitch />
         </Flex>
 
-        {commands
+        {[...commands]
           .sort((a, b) => b.weight - a.weight)
           .map((item) => (
             <CommandCard key={item.id} {...item} />
           ))}
       </Flex>
     );
-  };
-  return (
-    <CommandClipboardProvider>
-      <InnerLayout />
-    </CommandClipboardProvider>
-  );
 };
+
+const CommandClipboardPanel = (props: CommandClipboardPanelProps) => (
+  <CommandClipboardProvider>
+    <CommandClipboardLayout {...props} />
+  </CommandClipboardProvider>
+);
 
 // 新增命令按钮与表单
 const AddButton = () => {
   const { t } = useTranslation();
   const [isOpen, setOpen] = React.useState(false);
+  const [defaultName, setDefaultName] = React.useState("");
   const [adding, setAdding] = React.useState(false);
   const { addCommand } = useCommandClipboard();
   const handleAddCommand = async (event: React.FormEvent) => {
@@ -109,7 +110,13 @@ const AddButton = () => {
     }
   };
   return (
-    <Dialog.Root open={isOpen} onOpenChange={setOpen}>
+    <Dialog.Root
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (open) setDefaultName(Math.random().toString(36).substring(7));
+        setOpen(open);
+      }}
+    >
       <Dialog.Trigger>
         <IconButton aria-label={t("command_clipboard.add")}>
           <PlusIcon size="16" />
@@ -123,7 +130,7 @@ const AddButton = () => {
             <TextField.Root
               id="name"
               name="name"
-              defaultValue={Math.random().toString(36).substring(7)}
+              defaultValue={defaultName}
             />
             <label htmlFor="text">{t("common.content")}</label>
             <TextArea id="text" name="text" />

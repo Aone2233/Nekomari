@@ -1,16 +1,10 @@
+import * as React from "react";
 import { Badge, Flex } from "@radix-ui/themes";
 import { useTranslation } from "react-i18next";
 
-const PriceTags = ({
-  price = 0,
-  billing_cycle = 30,
-  currency = "￥",
-  expired_at = Date.now() + 30 * 24 * 60 * 60 * 1000,
-  tags = "",
-  ip4 = "",
-  ip6 = "",
-  ...props
-}: {
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type PriceTagsProps = {
   expired_at?: string | number;
   price?: number;
   billing_cycle?: number;
@@ -18,9 +12,9 @@ const PriceTags = ({
   tags?: string;
   ip4?: any;
   ip6?: any;
-} & React.ComponentProps<typeof Flex>) => {
-  const [t] = useTranslation();
+} & React.ComponentProps<typeof Flex>;
 
+const PriceTags = ({ price = 0, tags = "", ...props }: PriceTagsProps) => {
   if (price == 0) {
     return (
       <Flex gap="1" {...props} wrap="wrap" className="km-price-tags">
@@ -28,6 +22,30 @@ const PriceTags = ({
       </Flex>
     );
   }
+
+  return <PaidPriceTags price={price} tags={tags} {...props} />;
+};
+
+const PaidPriceTags = ({
+  price,
+  billing_cycle = 30,
+  currency = "￥",
+  expired_at,
+  tags = "",
+  ip4 = "",
+  ip6 = "",
+  ...props
+}: PriceTagsProps) => {
+  const [t] = useTranslation();
+  const [now, setNow] = React.useState(() => Date.now());
+
+  React.useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const expiry = expired_at === undefined ? now + 30 * DAY_MS : expired_at;
+  const diffDays = Math.ceil((new Date(expiry).getTime() - now) / DAY_MS);
 
   return (
     <Flex gap="1" {...props} wrap="wrap" className="km-price-tags">
@@ -76,42 +94,17 @@ const PriceTags = ({
         </label>
       </Badge>
       <Badge
-        color={(() => {
-          const expiredDate = new Date(expired_at);
-          const now = new Date();
-          const diffTime = expiredDate.getTime() - now.getTime();
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-          if (diffDays <= 0 || diffDays <= 7) {
-            return "red";
-          } else if (diffDays <= 15) {
-            return "orange";
-          } else {
-            return "green";
-          }
-        })()}
+        color={diffDays <= 7 ? "red" : diffDays <= 15 ? "orange" : "green"}
         size="1"
         variant="soft"
         className="text-sm"
       >
         <label className="text-xs">
-          {(() => {
-            const expiredDate = new Date(expired_at);
-            const now = new Date();
-            const diffTime = expiredDate.getTime() - now.getTime();
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-            if (diffDays <= 0) {
-              return t("common.expired");
-            } else if (diffDays > 36500) {
-              // 100 years approximately
-              return t("common.long_term");
-            } else {
-              return t("common.expired_in", {
-                days: diffDays,
-              });
-            }
-          })()}
+          {diffDays <= 0
+            ? t("common.expired")
+            : diffDays > 36500
+              ? t("common.long_term")
+              : t("common.expired_in", { days: diffDays })}
         </label>
       </Badge>
       <CustomTags tags={tags} />
