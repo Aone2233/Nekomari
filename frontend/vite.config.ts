@@ -171,6 +171,15 @@ export default defineConfig(({ mode }) => {
       assetsDir: "assets",
       outDir: "dist",
       chunkSizeWarningLimit: 800,
+      // 产出 .vite/manifest.json：面板据此【精确】知道哪些文件是内容哈希的，
+      // 从而只对它们发长期缓存头（没有它时 Cloudflare 会套用自己 4 小时的默认值，
+      // 每个 POP 每 4 小时都要回源重取一次这些永远不变的文件）。
+      //
+      // 为什么不能靠文件名猜：assets/ 下并非全都带哈希（实际产物里 pwa-icon.webp
+      // 与 edit_117847723_p0.webp 就没有），而 Vite 的 base64url 哈希本身可以含 '-'
+      // （index-Kbf1m-l1.js）。靠模式匹配会把 logo-v2Final1.png 这类普通文件名误判成
+      // 哈希文件，代价是用户看到过期的资源。清单是构建自己写的，没有猜测。
+      manifest: true,
       rollupOptions: {
         output: {
           // go embed ignore files start with '_'
