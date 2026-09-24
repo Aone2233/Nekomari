@@ -13,6 +13,7 @@ for the incident that rule came from.
 
 | Script | What it does |
 |---|---|
+| `agent-footprint.sh` | Measures what the agent costs the host it runs on: resident memory, CPU over a window, the agent's own socket byte counters, disk writes, threads, file descriptors and its effective capabilities. Takes `[unit] [system\|user] [window-seconds]` and works for a user unit with the agent running as another account. Redacts the agent token out of `ExecStart`. Results and the resulting minimum-spec recommendation are in `docs/AGENT-FOOTPRINT.md`. |
 | `deploy-verify.sh` | Proves a **published release** actually deploys: downloads the assets, checks `SHA256SUMS.txt`, starts the server on its own port and data directory, completes the first-run install via the API, connects an agent, confirms the node reports. Cleans up after itself. Runs in CI as the `verify` job. |
 | `verify-image.sh` | Pulls a published container image and proves the binary inside it actually starts. Listing tags needs `read:packages`, but that is not the question — the question is whether the binary executes on the image's own base, which is what broke in v0.1.1 (glibc binary in a musl base). |
 | `verify-settings-persist.sh` | Runs a real upgrade (old image → new image) against a **copy** of production data and diffs the settings. Evidence that an update does not reset anything, rather than an assurance. |
