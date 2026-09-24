@@ -12,7 +12,7 @@ import (
 
 // WritePingRecord 将 ping 记录写入 metric store
 func WritePingRecord(ctx context.Context, rec models.PingRecord) error {
-	if len(rec.Client) > 128 || len(rec.PingType) > 12 || len(rec.Role) > 12 {
+	if len(rec.Client) > 128 || len(rec.PingType) > 12 || len(rec.Role) > 12 || len(rec.Family) > 8 {
 		return fmt.Errorf("ping record exceeds field limits")
 	}
 	s := GetStore()
@@ -50,6 +50,13 @@ func writePingRecords(ctx context.Context, records []models.PingRecord) error {
 		// 这就是路径归因（主机 vs 网关）能在同一张图里并列的前提。
 		if rec.Role != "" {
 			tags["role"] = rec.Role
+		}
+		// family 标签让「实际走 IPv4」与「实际走 IPv6」成为两条可分辨的序列。
+		// 目标是域名时由各节点自行解析，双栈域名可能落到不同族 —— 没有这个标签，
+		// 两条路径的延迟与丢包会被合成一条曲线，读起来像是目标在抖。
+		// 空值不写标签，与 protocol/role 一样保持与历史数据的兼容。
+		if rec.Family != "" {
+			tags["family"] = rec.Family
 		}
 		loss := 0.0
 		if rec.Value < 0 {
@@ -189,6 +196,7 @@ func pingRecordFromPoint(p metric.AggregatePoint) models.PingRecord {
 		TaskId:   taskIDVal,
 		PingType: p.Tags["protocol"], // dual 任务靠它区分 icmp/tcp 两条序列
 		Role:     p.Tags["role"],     // 路径归因靠它区分主目标/参考点
+		Family:   p.Tags["family"],   // 双栈域名靠它区分实际走的是 v4 还是 v6
 		Time:     p.Bucket.UTC(),
 		Value:    int(p.Value),
 	}

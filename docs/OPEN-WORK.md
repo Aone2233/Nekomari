@@ -30,9 +30,9 @@ Everything in this batch is now in a release; nothing is waiting on `main`.
 
 ## Decisions waiting
 
-### 1. A ping task can still measure two different network paths
+### 1. A ping task can still measure two different network paths — **resolved**
 
-**Mitigated, not fixed.** Tasks 11 and 12 targeted dual-stack hostnames. HK04 has both
+**Mitigated, then fixed.** Tasks 11 and 12 targeted dual-stack hostnames. HK04 has both
 families and dials IPv6; the two v4-only probes dial IPv4. One task, two paths, plotted
 as comparable series — HK04 read 12.6% loss and the others 0.0%, because those numbers
 describe different routes to the same hostname.
@@ -41,21 +41,20 @@ describe different routes to the same hostname.
 (13 tasks, `混族任务数: 0`). The two v4-only tasks now have v4-only probes, and the two
 new IPv6 tasks use the dual-stack probes.
 
-**Still open:** the underlying gap. The scheduler decides per node, but a task is still
-reported as if every node measured the same thing, so a mixed task can be created again
-by anyone who does not know to avoid it.
+**Resolved: option C is implemented.** The agent now reports the address family it
+actually used, and the panel splits both the series and the statistics per family, so a
+mixed task can no longer be read as one comparable line. Full account, including what is
+and is not guaranteed, in entry 4 of `SILENT-FAILURES.md`.
 
-Options for the durable fix:
+The options are kept for the record:
 
 - **A** — split each dual-stack task into one per family, with probes that can only
-  reach that family. *Done for the existing tasks; no code, so nothing prevents a new
+  reach that family. *Done for the existing tasks; no code, so nothing prevented a new
   mixed one.*
 - **B** — keep one task and restrict it to probes of a single family.
 - **C** — have the agent report the address it actually used, and let the panel split
-  the series per family. This is the real fix and also closes entry 4 of
-  `SILENT-FAILURES.md`; it needs protocol and frontend work.
-
-C is the durable answer.
+  the series per family. *Implemented — the durable answer, and it also closes entry 4
+  of `SILENT-FAILURES.md`.*
 
 ### 2. The IP panel — resolved
 

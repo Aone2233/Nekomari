@@ -34,6 +34,7 @@ import {
   metricTags,
   normalizeMetricSeriesList,
   pingMetricStatKey,
+  pingSeriesFamily,
   pingTaskId,
   pingTaskName,
   trimMetricChartBoundaryRows,
@@ -146,7 +147,7 @@ const MiniPingChart = ({
   const statsMap = useMemo(() => {
     const map = new Map<string, PingMetricStat>();
     for (const stat of stats) {
-      map.set(pingMetricStatKey(stat.entity_id, stat.task_id), stat);
+      map.set(pingMetricStatKey(stat.entity_id, stat.task_id, stat.family), stat);
     }
     return map;
   }, [stats]);
@@ -268,7 +269,13 @@ const MiniPingChart = ({
             {built.series.map((item) => {
               const hidden = hiddenLines[item.dataKey] === true;
               const stat = item.taskId
-                ? statsMap.get(pingMetricStatKey(uuid, item.taskId))
+                ? statsMap.get(
+                    pingMetricStatKey(
+                      uuid,
+                      item.taskId,
+                      pingSeriesFamily(item.tags),
+                    ),
+                  )
                 : undefined;
               return (
                 <div

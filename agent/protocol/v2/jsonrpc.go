@@ -113,13 +113,24 @@ type reportParams struct {
 }
 
 func BuildPingResultPayload(taskID uint, pingType string, value int, finishedAt time.Time) interface{} {
-	return BuildPingResultPayloadWithRole(taskID, pingType, "", value, finishedAt)
+	return BuildPingResultPayloadWithRoleAndFamily(taskID, pingType, "", "", value, finishedAt)
 }
 
 // BuildPingResultPayloadWithRole 在基础负载上附加 role。
 // role 为空表示测的是主目标；"reference" 表示测的是参考点（路径归因用）。
 // 空 role 不写入字段，保持与旧服务端/旧数据的兼容。
 func BuildPingResultPayloadWithRole(taskID uint, pingType, role string, value int, finishedAt time.Time) interface{} {
+	return BuildPingResultPayloadWithRoleAndFamily(taskID, pingType, role, "", value, finishedAt)
+}
+
+// BuildPingResultPayloadWithRoleAndFamily 在基础负载上附加 role 与 family。
+//
+// family 是本次测量【实际使用】的地址族（"ipv4"/"ipv6"）。为什么需要它：目标是
+// 域名时由各节点自行解析，双栈域名在不同节点上可能落到不同族，两条路径的延迟与
+// 丢包不可比。面板靠这个字段把它们拆成两条序列，而不是混成一条曲线。
+//
+// 空 family 不写入字段：旧服务端会忽略它，旧 agent 也不会发它，两侧都保持兼容。
+func BuildPingResultPayloadWithRoleAndFamily(taskID uint, pingType, role, family string, value int, finishedAt time.Time) interface{} {
 	params := map[string]interface{}{
 		"task_id":     taskID,
 		"ping_type":   pingType,
@@ -128,6 +139,9 @@ func BuildPingResultPayloadWithRole(taskID uint, pingType, role string, value in
 	}
 	if role != "" {
 		params["role"] = role
+	}
+	if family != "" {
+		params["family"] = family
 	}
 	return Request{
 		JSONRPC: Version,

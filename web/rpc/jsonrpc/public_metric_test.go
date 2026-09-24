@@ -486,3 +486,119 @@ func TestLoadPublicMetricPointsReturnsOnlyRawAfterRestart(t *testing.T) {
 		t.Fatalf("post-restart exact point changed: %#v", got.points[0])
 	}
 }
+
+// TestPingStatGroupKeyKeepsLegacyShape 钉住向后兼容：族为空时分组键必须【原样】
+// 等于 task_id。旧 agent 不上报族，历史数据也没有 family 标签 —— 这条不变量一旦
+// 破掉，所有既有部署的统计会立刻按一个新维度重算。
+func TestPingStatGroupKeyKeepsLegacyShape(t *testing.T) {
+	if got := pingStatGroupKey("7", ""); got != "7" {
+		t.Fatalf("empty family changed the group key: %q", got)
+	}
+	if taskID, family := splitPingStatGroupKey("7"); taskID != "7" || family != "" {
+		t.Fatalf("legacy key split into (%q, %q)", taskID, family)
+	}
+	if taskID, family := splitPingStatGroupKey(pingStatGroupKey("7", "ipv6")); taskID != "7" || family != "ipv6" {
+		t.Fatalf("round trip lost data: (%q, %q)", taskID, family)
+	}
+}
+
+// TestPublicPingStatsSplitByAddressFamily 是这次改动的核心断言：同一个任务下，
+// 实际走 IPv4 与走 IPv6 的点必须产出【两条】统计，而不是被算成一个数字。
+//
+// 改动前它们会被合成一条：实测中 HK04（双栈、解析到 IPv6）读 12.6% 丢包，另外两个
+// v4-only 节点读 0.0%，而这三个数字描述的根本不是同一条路。合并之后图上只有一条
+// 曲线，看起来像目标自己在抖。
+func TestPublicPingStatsSplitByAddressFamily(t *testing.T) {
+	base := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
+	taskMap := map[string]models.PingTask{
+		"7": {Id: 7, Name: "dual-stack hostname", Type: "icmp", Interval: 60},
+	}
+
+	points := []metric.AggregatePoint{
+		{EntityID: "node-a", Bucket: base, Count: 2, Value: 20, Tags: map[string]string{"task_id": "7", "family": "ipv4"}},
+		{EntityID: "node-a", Bucket: base, Count: 2, Value: 30, Tags: map[string]string{"task_id": "7", "family": "ipv4"}},
+		{EntityID: "node-a", Bucket: base, Count: 2, Value: 0, Tags: map[string]string{"task_id": "7", "family": "ipv6"}},
+	}
+	lossPoints := []metric.AggregatePoint{
+		{EntityID: "node-a", Bucket: base, Count: 2, Value: 0, Tags: map[string]string{"task_id": "7", "family": "ipv4"}},
+		{EntityID: "node-a", Bucket: base, Count: 2, Value: 1, Tags: map[string]string{"task_id": "7", "family": "ipv6"}},
+	}
+
+	groups := publicPingMetricAggregateGroups{
+		Avg:           groupPingMetricAggregatePointsByEntity(points)["node-a"],
+		Loss:          groupPingMetricAggregatePointsByEntity(lossPoints)["node-a"],
+		Min:           map[string][]metric.AggregatePoint{},
+		Max:           map[string][]metric.AggregatePoint{},
+		Last:          map[string][]metric.AggregatePoint{},
+		P50:           map[string][]metric.AggregatePoint{},
+		P99:           map[string][]metric.AggregatePoint{},
+		StdDev:        map[string][]metric.AggregatePoint{},
+		LossAvailable: true,
+	}
+
+	stats := publicPingStatsFromAggregateGroups("node-a", groups, taskMap, nil)
+	if len(stats) != 2 {
+		t.Fatalf("two address families must produce two stats, got %d: %#v", len(stats), stats)
+	}
+
+	byFamily := make(map[string]publicPingMetricTaskStats, len(stats))
+	for _, stat := range stats {
+		byFamily[stat.Family] = stat
+		if stat.TaskID != "7" {
+			t.Fatalf("task id lost while splitting: %#v", stat)
+		}
+		if stat.Tags["task_id"] != "7" || stat.Tags["family"] != stat.Family {
+			t.Fatalf("tags do not identify the series: %#v", stat.Tags)
+		}
+	}
+
+	v4, ok := byFamily["ipv4"]
+	if !ok {
+		t.Fatalf("no ipv4 stat: %#v", stats)
+	}
+	v6, ok := byFamily["ipv6"]
+	if !ok {
+		t.Fatalf("no ipv6 stat: %#v", stats)
+	}
+
+	if v4.Total != 4 || v4.Loss != 0 {
+		t.Fatalf("ipv4 stat should be all-ok: %#v", v4)
+	}
+	if v6.Total != 2 || v6.Loss != 100 {
+		t.Fatalf("ipv6 stat should be all-loss: %#v", v6)
+	}
+	if v4.Avg == nil || v6.Avg == nil || *v4.Avg == *v6.Avg {
+		t.Fatalf("the two families must not share an average: v4=%#v v6=%#v", v4.Avg, v6.Avg)
+	}
+}
+
+// TestPublicPingStatsStayMergedWithoutFamily 钉住另一半：没有族信息时，同一任务的
+// 点仍然合成一条统计，与改动前逐字一致。
+func TestPublicPingStatsStayMergedWithoutFamily(t *testing.T) {
+	base := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
+	points := []metric.AggregatePoint{
+		{EntityID: "node-a", Bucket: base, Count: 2, Value: 20, Tags: map[string]string{"task_id": "7"}},
+		{EntityID: "node-a", Bucket: base, Count: 2, Value: 30, Tags: map[string]string{"task_id": "7"}},
+	}
+	groups := publicPingMetricAggregateGroups{
+		Avg:    groupPingMetricAggregatePointsByEntity(points)["node-a"],
+		Loss:   map[string][]metric.AggregatePoint{},
+		Min:    map[string][]metric.AggregatePoint{},
+		Max:    map[string][]metric.AggregatePoint{},
+		Last:   map[string][]metric.AggregatePoint{},
+		P50:    map[string][]metric.AggregatePoint{},
+		P99:    map[string][]metric.AggregatePoint{},
+		StdDev: map[string][]metric.AggregatePoint{},
+	}
+
+	stats := publicPingStatsFromAggregateGroups("node-a", groups, nil, nil)
+	if len(stats) != 1 {
+		t.Fatalf("without family information the points must stay merged, got %d: %#v", len(stats), stats)
+	}
+	if stats[0].Family != "" {
+		t.Fatalf("family should stay empty: %#v", stats[0])
+	}
+	if stats[0].Total != 4 {
+		t.Fatalf("merged total changed: %#v", stats[0])
+	}
+}

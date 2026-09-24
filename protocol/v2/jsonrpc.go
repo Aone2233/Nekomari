@@ -238,6 +238,11 @@ type PingResultParams struct {
 	FinishedAt time.Time `json:"finished_at"`
 	// Role 为空表示主目标；"reference" 表示这是参考点的结果。
 	Role string `json:"role,omitempty"`
+	// Family 是本次测量实际使用的地址族（"ipv4"/"ipv6"）。
+	// 目标是域名时由各节点自行解析，双栈域名可能落到不同族；面板靠它把
+	// 「同一任务、不同路径」拆成两条序列。旧 agent 不发该字段，此时为空，
+	// 行为与改动前完全一致。
+	Family string `json:"family,omitempty"`
 }
 
 type TaskResultParams struct {

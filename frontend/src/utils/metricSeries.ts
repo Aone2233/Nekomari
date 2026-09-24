@@ -150,8 +150,36 @@ export const comparePingTaskOrder = (
   return leftId.localeCompare(rightId, undefined, { numeric: true });
 };
 
-export const pingMetricStatKey = (entityId: string, taskId: string) =>
-  `${entityId}:${taskId}`;
+/**
+ * Identifies one ping statistic.
+ *
+ * The address family is part of the identity because a dual-stack hostname is
+ * measured over IPv4 by some nodes and IPv6 by others — two paths whose latency
+ * and loss are not comparable. Without it the two would collide in the map and
+ * one family's numbers would silently replace the other's.
+ *
+ * An empty family keeps the legacy key, so nothing changes for deployments whose
+ * agents do not report one.
+ */
+export const pingMetricStatKey = (
+  entityId: string,
+  taskId: string,
+  family?: string,
+) => {
+  const normalized = family?.trim();
+  return normalized
+    ? `${entityId}:${taskId}:${normalized}`
+    : `${entityId}:${taskId}`;
+};
+
+/**
+ * The family a series was measured over, taken from its tags. Returns undefined
+ * when the series carries none, so callers fall back to the legacy key.
+ */
+export const pingSeriesFamily = (tags?: MetricTags) => {
+  const family = tags?.family?.trim();
+  return family || undefined;
+};
 
 export type MetricChartRow = Record<string, string | number | null>;
 
