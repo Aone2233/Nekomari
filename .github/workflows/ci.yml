@@ -50,6 +50,8 @@ jobs:
           python script/selector-state.browser.spec.py
           python script/number-picker.browser.spec.py
           python script/remote-file-tree.browser.spec.py
+          python script/load-chart.browser.spec.py
+          python script/metrics-settings.browser.spec.py
 
   # The fixtures above mount one component against stubs. This job boots the
   # built server and walks the real panel instead, which is the only check that
@@ -103,6 +105,8 @@ jobs:
             -H 'Content-Type: application/json' \
             -d '{"username":"admin","password":"E2e-verify1","sitename":"Nekomari CI","description":"CI smoke instance","metric_dsn":"./smoke/metrics.db"}'
           cd frontend && python script/panel-smoke.spec.py http://127.0.0.1:25774
+          # The cd above leaves this shell inside frontend for the rest of the step.
+          python script/admin-write-paths.spec.py http://127.0.0.1:25774
 
   build-and-test:
     name: build & test (${{ matrix.os }})

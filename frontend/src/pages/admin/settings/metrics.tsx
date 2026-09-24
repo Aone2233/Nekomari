@@ -934,18 +934,27 @@ function MigrationCard() {
   const [canceling, setCanceling] = React.useState(false);
   const [sourceDsn, setSourceDsn] = React.useState("");
 
+  // 只有最新一次刷新可以发布结果。轮询每 2 秒发一次，手动刷新又可以在两次轮询
+  // 之间发出，旧响应后到就会把新状态覆盖回去：迁移进行中进度条和已迁移点数会
+  // 往回跳（实测 running 10/10 被 2 秒前的 2/10 覆盖）。与 NodeDetailsProvider
+  // 的 requestSequence 是同一个模式。
+  const requestSequence = React.useRef(0);
+
   // 状态刷新：每个 setState 都在 promise 的 continuation 里，函数体内没有同步
   // setState，所以挂载/轮询的 effect 可以直接调用它。手动刷新按钮自己点亮 spinner。
   const fetchStatus = React.useCallback(
-    (silent = false) =>
-      call<unknown, MigrationStatusResponse>(
+    (silent = false) => {
+      const sequence = ++requestSequence.current;
+      return call<unknown, MigrationStatusResponse>(
         "admin:getMetricMigrationStatus",
         {},
       )
         .then((data) => {
+          if (sequence !== requestSequence.current) return;
           setStatusData(data);
         })
         .catch((e: unknown) => {
+          if (sequence !== requestSequence.current) return;
           if (!silent) {
             toast.error(
               t("settings.metrics.fetch_status_failed") +
@@ -955,8 +964,12 @@ function MigrationCard() {
           }
         })
         .finally(() => {
-          if (!silent) setLoadingStatus(false);
-        }),
+          // 过期请求也不该关掉当前这次刷新的 spinner。
+          if (sequence === requestSequence.current && !silent) {
+            setLoadingStatus(false);
+          }
+        });
+    },
     [call, t],
   );
 
