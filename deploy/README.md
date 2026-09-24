@@ -118,6 +118,17 @@ real credentials.
 |---|---|
 | `cloudflare_dns.py` | Lists, shows or points a hostname at the origin. Reuses the token `cloudflared tunnel login` wrote, so no separate secret is needed. |
 | `retire-monitor-dns.py` | Removes the DNS record fronting the retired CF-Server-Monitor worker. Documents why it cannot finish the job: worker-managed records are read-only through the DNS API. |
+| `update-cloudflare-ips.sh` | Regenerates the Cloudflare range list that the vhost's `geo` block includes, from Cloudflare's published lists. `--check` compares without writing. `--ufw` additionally brings UFW's 80/443 allowlist in line with the same list — **it only adds**: missing ranges are added, and ranges Cloudflare no longer publishes are printed with the command to remove them rather than deleted, because silently dropping firewall rules is worse than leaving one extra. |
+
+The vhost trusts `CF-Connecting-IP` only when the connection really came from
+Cloudflare, and UFW admits 80/443 only from the same ranges. The two are
+complementary: the `geo` block stops a forged header, the firewall stops the
+direct connection that would carry it. **Keep both halves in step** — v4 and v6
+are separate rule sets, and a half-configured pair fails quietly. When only the v4
+rules exist, nothing breaks while the origin record is an A record, but the day an
+AAAA is added those origin fetches are dropped before nginx and show up as
+intermittent 522s with nothing in the origin's logs. `--ufw` exists because that
+gap was found in production.
 
 ## CI maintenance
 

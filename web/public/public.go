@@ -3,6 +3,7 @@ package public
 import (
 	"bytes"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Aone2233/nekomari/internal/config"
@@ -46,6 +48,57 @@ type assetSource struct {
 	close func()
 }
 
+// hashedAssetCache 按主题缓存构建清单的解析结果（themeID -> 产物路径集合）。
+//
+// 用 sync.Map 是因为请求是并发的，而清单在进程生命周期内不变（换主题或换版本会重新
+// 加载主题），所以每个主题只解析一次。
+var hashedAssetCache sync.Map
+
+// hashedAssetsFromManifest 解析 Vite 的构建清单，返回它列出的产物路径集合
+// （清单里的 "file" 字段，例如 "assets/chunk-x-Ab12Cd34.js"）。
+//
+// 为什么用清单而不是按文件名猜：assets/ 下并非全都带哈希 —— 实际产物里
+// pwa-icon.webp 与 edit_117847723_p0.webp 就没有；而 Vite 的 base64url 哈希
+// 本身可以含 '-'（index-Kbf1m-l1.js 的哈希是 Kbf1m-l1）。按模式匹配会把
+// logo-v2Final1.png 这类普通文件名误判成哈希文件，代价是用户长期看到过期资源。
+// 清单是构建自己写的，列出的就是它生成的每一个文件，没有猜测。
+//
+// 解析失败或没有清单（第三方主题可能没有）时返回 nil：调用方据此不发长期缓存头，
+// 退回改动前的行为 —— 少缓存是安全的，缓存错不是。
+func hashedAssetsFromManifest(data []byte) map[string]struct{} {
+	var manifest map[string]struct {
+		File string `json:"file"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return nil
+	}
+	if len(manifest) == 0 {
+		return nil
+	}
+	out := make(map[string]struct{}, len(manifest))
+	for _, entry := range manifest {
+		if entry.File != "" {
+			out[entry.File] = struct{}{}
+		}
+	}
+	return out
+}
+
+// isHashedAsset 判断 name（相对主题根，例如 "dist/assets/a.js"）是否是清单里
+// 列出的构建产物。
+//
+// 先去前导 "/"：路由参数 /themes/:id/*path 拿到的路径是带前导斜杠的
+// （openAsset 也做了同样的处理），不归一化就会永远匹配不上，长期缓存头静默失效。
+func isHashedAsset(name string, hashedAssets map[string]struct{}) bool {
+	if len(hashedAssets) == 0 {
+		return false
+	}
+	normalized := strings.TrimPrefix(filepath.ToSlash(name), "/")
+	normalized = strings.TrimPrefix(normalized, DistDir+"/")
+	_, ok := hashedAssets[normalized]
+	return ok
+}
+
 // serveAsset 用 http.ServeContent 输出一个静态资源。
 //
 // 为什么不再用 c.Data：那会整份读进内存，而且没有 Last-Modified/ETag/Range，
@@ -54,7 +107,7 @@ type assetSource struct {
 //
 // Content-Type 仍然沿用解析时算出的结果：扩展名没有已知类型时显式把头部置空，
 // 阻止 ServeContent 改成嗅探内容 —— 保持原有的响应行为。
-func serveAsset(c *gin.Context, source assetSource, name string) {
+func serveAsset(c *gin.Context, source assetSource, name string, hashedAssets map[string]struct{}) {
 	if source.close != nil {
 		defer source.close()
 	}
@@ -66,6 +119,16 @@ func serveAsset(c *gin.Context, source assetSource, name string) {
 	}
 	// 与 web/filemanager 的下载路径同一个形状：长度-纳秒时间。
 	header.Set("ETag", fmt.Sprintf("\"%x-%x\"", source.size, source.modTime.UnixNano()))
+	// 构建产物（文件名带内容哈希）可以长期缓存：内容变了文件名就变了。
+	// 没有这一行时源站不发任何 Cache-Control，Cloudflare 会套用自己的默认值
+	// （实测 4 小时），于是每个 POP 每 4 小时都要回源重取一次这些永远不变的文件 ——
+	// 白白制造回源流量，而回源正是最容易出问题的那一段。
+	//
+	// 其余资源（index.html、sw.js、以及 public/ 下那些没有哈希的图标）保持原样：
+	// index.html 必须能立刻更新，sw.js 缓存久了会拖住整个应用的下一次部署。
+	if isHashedAsset(name, hashedAssets) {
+		header.Set("Cache-Control", "public, max-age=31536000, immutable")
+	}
 	http.ServeContent(c.Writer, c.Request, name, source.modTime, source.reader)
 }
 
@@ -265,6 +328,27 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		return assetSource{}, false
 	}
 
+	// themeHashedAssets 返回某个主题的构建产物集合，供 serveAsset 决定是否发长期缓存头。
+	// 读不到清单（第三方主题可能没有 .vite/manifest.json）时返回 nil，等于退回原行为。
+	themeHashedAssets := func(themeID string) map[string]struct{} {
+		if cached, ok := hashedAssetCache.Load(themeID); ok {
+			assets, _ := cached.(map[string]struct{})
+			return assets
+		}
+		var assets map[string]struct{}
+		manifestPath := path.Join(DistDir, ".vite", "manifest.json")
+		if source, ok := openAsset(themeID, manifestPath); ok {
+			if source.close != nil {
+				defer source.close()
+			}
+			if data, err := io.ReadAll(source.reader); err == nil {
+				assets = hashedAssetsFromManifest(data)
+			}
+		}
+		hashedAssetCache.Store(themeID, assets)
+		return assets
+	}
+
 	// 核心逻辑：获取文件内容（供 index.html 改写与 favicon 等需要完整内容的分支使用）
 	// 返回: content, contentType, exists
 	readAsset := func(themeID string, relativePath string) ([]byte, string, bool) {
@@ -403,7 +487,7 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 
 		source, exists := openAsset(themeID, filePath)
 		if exists {
-			serveAsset(c, source, filePath)
+			serveAsset(c, source, filePath, themeHashedAssets(themeID))
 			return
 		}
 		c.Status(http.StatusNotFound)
@@ -463,7 +547,7 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 
 		source, exists := openAsset(currentTheme, distPath)
 		if exists {
-			serveAsset(c, source, distPath)
+			serveAsset(c, source, distPath, themeHashedAssets(currentTheme))
 			return
 		}
 
