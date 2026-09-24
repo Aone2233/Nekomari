@@ -1,0 +1,29 @@
+#!/sbin/openrc-run
+# Nekomari agent as an OpenRC service (Alpine and other non-systemd hosts).
+#
+# The bundled installer is systemd-only, so this is the OpenRC equivalent: the
+# binary plus the flags from /etc/conf.d/nekomari-agent, supervised so it comes
+# back after a crash or a network blip. Host-specific settings, including the
+# node token, live in that conf.d file (mode 0600) rather than here.
+
+name="Nekomari monitoring agent"
+description="Reports this host to the Nekomari panel"
+
+command="/opt/nekomari-agent/komari-agent"
+command_args="-e ${NEKOMARI_ENDPOINT} -t ${NEKOMARI_TOKEN} ${NEKOMARI_EXTRA_ARGS}"
+command_user="root"
+pidfile="/run/${RC_SVCNAME}.pid"
+
+# supervise-daemon instead of start-stop-daemon --background, so the agent is
+# restarted on exit rather than left down until someone notices.
+supervisor="supervise-daemon"
+respawn_delay=5
+respawn_max=0
+
+output_log="/var/log/nekomari-agent.log"
+error_log="/var/log/nekomari-agent.log"
+
+depend() {
+	need net
+	after firewall
+}
