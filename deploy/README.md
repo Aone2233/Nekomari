@@ -207,6 +207,7 @@ Per-host configuration that does not fit the generic installer.
 | `oc424.service` | The reference panel host. Uses the restored node's own token rather than `--auto-discovery`, so the panel keeps that node's group, tags and history. |
 | `macwan.service` | Runs as a **user** unit: that host has no passwordless sudo. Also documents that `PrivateTmp` and `NoNewPrivileges` must stay unset or a file capability stops working. |
 | `tender-guard.service` | The NOSLA Tokyo node. Runs as a non-root `komari` user with `AmbientCapabilities=CAP_NET_RAW` (a *file* capability would be defeated by `NoNewPrivileges`/`PrivateTmp`), carries its own node token rather than `--auto-discovery`, and sets `--month-rotate` to its own billing day. |
+| `nekomari-agent.openrc` | The OpenRC equivalent for hosts without systemd — first used by JPKD2 (Alpine 3.19, LXC). Takes the endpoint, token and flags from `/etc/conf.d/nekomari-agent` (mode 0600) and supervises with `supervise-daemon`. The generic installer is systemd-only, so this is what to copy on Alpine, and it pairs with `--prefer-ip-version 4` on a host with no IPv6. |
 | `pzyc.sh` | Cannot fetch release assets (the CDN resets TLS), so it installs a separately fetched, checksum-verified binary. Takes its token from `NEKOMARI_AGENT_TOKEN`. |
 | `macwan-webhook-sink.service` | An artificial notification channel used to prove alerts are really dispatched. |
 

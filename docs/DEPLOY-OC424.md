@@ -9,7 +9,7 @@ restored, and the two hostname/TLS traps that cost the most time.
 |---|---|
 | Panel URL | **https://komari.orderly2233.org** |
 | Host | OC424 (`ubuntu@213.35.99.48`, Oracle Cloud, **arm64**, Ubuntu 22.04) |
-| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.25`, bound to `127.0.0.1:25774` |
+| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.26`, bound to `127.0.0.1:25774` |
 | Compose dir | `/opt/nekomari` (bind mount `./data` → `/app/data`) |
 | Reverse proxy | host **nginx** `/etc/nginx/sites-available/nekomari` |
 | TLS at origin | `/etc/nginx/ssl/{fullchain,privkey}.pem` (Cloudflare Origin cert, shared with the other vhosts) |
@@ -21,7 +21,86 @@ The container is deliberately **not** published on a public interface: UFW allow
 80/443 only from Cloudflare's ranges, so all traffic arrives via the edge, and
 nginx is the only thing that talks to the panel port.
 
-## Current rollout: 2026-09-23 (v0.1.25)
+## Current rollout: 2026-09-24 (v0.1.26)
+
+Panel moved from v0.1.25 to v0.1.26 at approximately 15:17 UTC, and **the agents moved
+with it** — the first time since v0.1.19 that a release changes agent behaviour rather
+than just the compiler, and the reason is the address-family reporting: the panel can
+only split a ping task by the family a probe measured once the probes actually report
+it. Leaving the fleet on v0.1.19 would have shipped the panel half of that feature with
+no effect. See [the changelog](../CHANGELOG.md) for the release contents.
+
+- Exact release commit: `8eb3c8c45b49ea64388a7300f31dcd0a1cb0612b` (also `v0.1.26`).
+  Exact-commit CI `36016959500` passed on Ubuntu and Windows before the tag.
+- Release `36017582275` passed every job, including the eight binary scans and the
+  downloaded-artifact deployment test. Docker `36018344028` passed both image jobs.
+- Panel image `sha256:229190fb9b631d9adb34f509989013ece4592a56df0eae84b0938860a7abcc1e`,
+  pulled **before** the container was stopped so the downtime was the recreate alone.
+- Pre-upgrade backup `/opt/nekomari-backups/pre-v0.1.26-20260924-151656` (mode 0700),
+  `data.tar` 372 entries, SHA256
+  `38d9f62cda160207e924c10f04165af0d99ea48f5eff0b27b67bf10e18155f22`.
+- Verified: `/api/version` → `{"hash":"8eb3c8c","version":"v0.1.26"}`; container healthy
+  with `RestartCount=0`; both URLs answered 200.
+
+Agents, all nine, staged-binary rollout as before with the previous binary kept as
+`<bin>.bak-pre-v0.1.26`:
+
+| Node | Binary | Unit | Before | After |
+|---|---|---|---|---|
+| 甲骨文 OC424 | `/home/ubuntu/nekomari-agent/komari-agent-linux-arm64` | `komari-agent-oc424-original-node.service` | `d79f378a…` | `4d76f5ec…` |
+| 华纳云 HN-JP1, HK04, AkkoCloud, PYZC, MegaBox, CloudLeadInno | `/opt/nekomari-agent/komari-agent-linux-amd64` | `nekomari-agent.service` | `a6930033…` | `8479da5d…` |
+| NOSLA 东京 | `/opt/komari/agent` | `komari-agent.service` | `a6930033…` | `8479da5d…` |
+| MAC Server | `/home/macos/nekomari-agent/komari-agent-linux-amd64` | user `nekomari-agent.service` | `a6930033…` | `8479da5d…` |
+
+MAC again needed the capability dance (the install drops `cap_net_raw`, and there is no
+passwordless sudo): restored through the privileged container and confirmed with
+`getcap`. CloudLeadInno again went through the MAC-WAN hop.
+
+The acceptance check for the feature, not just for the install: after the rollout the
+metric store holds ping series that **carry a family tag** — 32 of 115 `ping.loss`
+series at inspection, split `family:ipv4` 30 / `family:ipv6` 2 — where before the
+upgrade no series had one. Historical series keep their old identity, which is the
+compatibility half of the design.
+
+One lesson worth recording: `clients.updated_at` and `clients.version` are refreshed by
+the **basic-info upload**, which runs every `--info-report-interval` (10 minutes), so a
+node can be running the new binary for several minutes while the panel still shows the
+old version. NOSLA looked like a failed upgrade for exactly that long. Read the running
+binary's hash, not the panel's version column, when the question is whether the upgrade
+landed.
+
+### A tenth node: JPKD2
+
+Added 2026-09-24: a Leaseweb Japan container (KDDI egress), **Alpine 3.19, LXC, 300 MiB
+RAM, 1.3 GiB disk, IPv4 only, behind NAT**. It is the first node that is not a systemd
+host and the first that needed an IPv4 preference, so both are recorded here.
+
+- The panel client was created through `admin:addClient` and its metadata filled with
+  `admin:editClient`. Since it is the only node whose SSH is reachable only from
+  MAC-WAN, the binary was copied there and then to the node.
+- **No systemd.** Alpine uses OpenRC, and the repo's installer is systemd-only, so the
+  service is `deploy/hosts/nekomari-agent.openrc` — `supervise-daemon` with a
+  `/etc/conf.d/nekomari-agent` (mode 0600) holding the endpoint, the token and the
+  flags. `rc-update add nekomari-agent default` plus `rc-service nekomari-agent start`.
+- **IPv4 only.** DNS returns AAAA before A for the panel, and the container has no IPv6,
+  so the default Happy-Eyeballs order spent its 15-second timeout on the unreachable
+  family: `curl https://komari.orderly2233.org` returned `000` while `curl -4` returned
+  `200` in 0.8 s. The agent's `--prefer-ip-version 4` is what fixes it, and it is the
+  flag to reach for on any v4-only host.
+- **No `setcap`** on Alpine, so the agent runs as root there rather than as a dedicated
+  user with `AmbientCapabilities=CAP_NET_RAW` (the NOSLA pattern). Worth revisiting if
+  that node ever shares the host with anything else.
+- The first basic-info upload failed with a Cloudflare **522** and the WebSocket dropped
+  a few times in its first minutes; both settled without intervention, and the node has
+  reported steadily since. The panel shows `AMD EPYC Processor`, `Alpine Linux v3.19`,
+  `lxc`, `300 MiB` and `1.29 GiB`, matching the provider's plan.
+- **The agent token is visible in `ps`** — every unit in this fleet passes `-t <token>`
+  on the command line, so any local user can read it. That is a fleet-wide property
+  rather than a JPKD2 one, and it is the reason a token that leaked during this
+  deployment was rotated twice rather than once. Moving the token to a config file or an
+  environment file is worth doing on its own.
+
+## Previous rollout: 2026-09-23 (v0.1.25)
 
 Panel upgraded from v0.1.24 at approximately 15:40 UTC. Origin and public
 `/api/version` both reported `v0.1.25`, hash `5373c37`. See
