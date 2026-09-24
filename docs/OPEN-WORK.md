@@ -15,10 +15,12 @@ without re-deriving anything.
 | LuminaPlus IP panel | **Fixed and released** in v0.1.8 — `classification.source` was missing |
 | Family mixing within one ping task | **Fixed** — tasks split per family, verified single-family |
 
-Production runs `ghcr.io/aone2233/nekomari:v0.1.25`; the dated current-state
+Production runs `ghcr.io/aone2233/nekomari:v0.1.26`; the dated current-state
 record and rollback procedure are in `docs/DEPLOY-OC424.md`. This file tracks
 the older 2026-09-18 batch and its remaining decisions, rather than the entire
-release backlog. See `docs/FOLLOWUP-v0.1.25.md` for the current follow-up.
+release backlog. **`docs/ROADMAP.md` is the consolidated list of what is left** —
+correctness, performance, visualization and the decisions waiting on the owner;
+`docs/FOLLOWUP-v0.1.25.md` is the per-release record that fed into it.
 
 ## Released
 
