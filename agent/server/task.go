@@ -142,7 +142,30 @@ func resolveIP(target string) (string, error) {
 	return addrs[0], nil // 返回第一个解析的 IP
 }
 
-func icmpPing(target string, timeout time.Duration) (int64, error) {
+// addressFamilyOf 返回一个 IP 字面量所属的地址族，供上报使用。
+//
+// 为什么需要它：目标是域名时，解析结果由各节点自己的解析器决定，双栈域名在不同
+// 节点上可能落到不同族。两条路径的延迟与丢包不可比，如果都按「同一个任务」汇总，
+// 图上就会出现一条把两条路径混在一起的曲线（实测 HK04 读 12.6% 丢包、另外两个
+// v4-only 节点读 0.0%，而它们描述的根本不是同一条路）。
+//
+// 空字符串表示无法判断：解析失败，或拿到的是域名。
+func addressFamilyOf(ip string) string {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return ""
+	}
+	// To4 对 "::ffff:1.2.3.4" 这类 IPv4-mapped 地址也返回非 nil，
+	// 那实际上是 IPv4 目标，按 IPv4 上报。
+	if parsed.To4() != nil {
+		return "ipv4"
+	}
+	return "ipv6"
+}
+
+// 三个 ping 实现都返回实际使用的地址族：族取自它们【真正拨向】的那个 IP，
+// 而不是事后再解析一次 —— 双栈域名两次解析可能给出不同的结果。
+func icmpPing(target string, timeout time.Duration) (int64, string, error) {
 	host, _, err := net.SplitHostPort(target)
 	if err != nil {
 		host = target
@@ -154,28 +177,29 @@ func icmpPing(target string, timeout time.Duration) (int64, error) {
 	// 先解析 IP 地址
 	ip, err := resolveIP(host)
 	if err != nil {
-		return -1, err
+		return -1, "", err
 	}
+	family := addressFamilyOf(ip)
 
 	pinger, err := ping.NewPinger(ip)
 	if err != nil {
-		return -1, err
+		return -1, family, err
 	}
 	pinger.Count = 1
 	pinger.Timeout = timeout
 	pinger.SetPrivileged(true)
 	err = pinger.Run()
 	if err != nil {
-		return -1, err
+		return -1, family, err
 	}
 	stats := pinger.Statistics()
 	if stats.PacketsRecv == 0 {
-		return -1, errors.New("no packets received")
+		return -1, family, errors.New("no packets received")
 	}
-	return stats.AvgRtt.Milliseconds(), nil
+	return stats.AvgRtt.Milliseconds(), family, nil
 }
 
-func tcpPing(target string, timeout time.Duration) (int64, error) {
+func tcpPing(target string, timeout time.Duration) (int64, string, error) {
 	host, port, err := net.SplitHostPort(target)
 	if err != nil {
 		// No port, assume port 80
@@ -188,20 +212,27 @@ func tcpPing(target string, timeout time.Duration) (int64, error) {
 
 	ip, err := resolveIP(host)
 	if err != nil {
-		return -1, err
+		return -1, "", err
 	}
+	family := addressFamilyOf(ip)
 
 	targetAddr := net.JoinHostPort(ip, port)
 	start := time.Now()
 	conn, err := net.DialTimeout("tcp", targetAddr, timeout)
 	if err != nil {
-		return -1, err
+		return -1, family, err
 	}
 	defer conn.Close()
-	return time.Since(start).Milliseconds(), nil
+	// 连接已经建立，以对端地址为准：这就是本次测量真正走过的族。
+	if remote, ok := conn.RemoteAddr().(*net.TCPAddr); ok && remote != nil {
+		if actual := addressFamilyOf(remote.IP.String()); actual != "" {
+			family = actual
+		}
+	}
+	return time.Since(start).Milliseconds(), family, nil
 }
 
-func httpPing(target string, timeout time.Duration) (int64, error) {
+func httpPing(target string, timeout time.Duration) (int64, string, error) {
 	// Handle raw IPv6 address for URL
 	if strings.Contains(target, ":") && !strings.Contains(target, "[") {
 		// check if it's a valid IP to avoid wrapping hostnames
@@ -214,6 +245,9 @@ func httpPing(target string, timeout time.Duration) (int64, error) {
 		target = "http://" + target
 	}
 
+	// dialedFamily 由 DialContext 写入：它是本次请求真正连上的那个地址的族。
+	// transport 每次调用都新建，所以这里没有并发共享。
+	var dialedFamily string
 	transport := &http.Transport{
 		DisableKeepAlives: true,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -226,6 +260,7 @@ func httpPing(target string, timeout time.Duration) (int64, error) {
 			if err != nil {
 				return nil, err
 			}
+			dialedFamily = addressFamilyOf(ip)
 			return net.DialTimeout(network, net.JoinHostPort(ip, port), timeout)
 		},
 	}
@@ -239,13 +274,13 @@ func httpPing(target string, timeout time.Duration) (int64, error) {
 	resp, err := client.Get(target)
 	latency := time.Since(start).Milliseconds()
 	if err != nil {
-		return -1, err
+		return -1, dialedFamily, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
-		return latency, nil
+		return latency, dialedFamily, nil
 	}
-	return latency, errors.New("http status not ok")
+	return latency, dialedFamily, errors.New("http status not ok")
 }
 
 // auto 类型的协议解析（新增）
@@ -329,7 +364,7 @@ func probeAutoProtocol(pingTarget string) (string, string) {
 	}
 
 	var r autoProbeResult
-	if _, err := icmpPing(pingTarget, autoProbeTimeout); err == nil {
+	if _, _, err := icmpPing(pingTarget, autoProbeTimeout); err == nil {
 		r.icmpOK = true
 	} else if isPermissionErr(err) {
 		// 本地没有发 ICMP 的权限 —— 与「目标不答 ICMP」是两回事，
@@ -338,7 +373,7 @@ func probeAutoProtocol(pingTarget string) (string, string) {
 	}
 	if !r.icmpOK {
 		for _, port := range []string{"443", "80"} {
-			if _, err := tcpPing(net.JoinHostPort(pingTarget, port), autoProbeTimeout); err == nil {
+			if _, _, err := tcpPing(net.JoinHostPort(pingTarget, port), autoProbeTimeout); err == nil {
 				r.openPort = port
 				break
 			}
@@ -396,21 +431,22 @@ func runReferenceProbe(conn *ws.SafeConn, taskID uint, pingType, reference strin
 
 	value := -1
 	var latency int64
+	var family string
 	var err error
 	switch kind {
 	case "tcp":
-		latency, err = tcpPing(reference, timeout)
+		latency, family, err = tcpPing(reference, timeout)
 	case "http":
-		latency, err = httpPing(reference, timeout)
+		latency, family, err = httpPing(reference, timeout)
 	default:
-		latency, err = icmpPing(reference, timeout)
+		latency, family, err = icmpPing(reference, timeout)
 	}
 	if err == nil {
 		value = int(latency)
 	} else {
 		log.Printf("reference probe task %d [%s] target=%s failed: %v", taskID, kind, reference, err)
 	}
-	uploadPingResult(conn, kind, v2.BuildPingResultPayloadWithRole(taskID, kind, "reference", value, time.Now()))
+	uploadPingResult(conn, kind, v2.BuildPingResultPayloadWithRoleAndFamily(taskID, kind, "reference", family, value, time.Now()))
 }
 
 // runPingTask 是单个目标的实际测量逻辑（原 NewPingTask 主体）。
@@ -435,14 +471,24 @@ func runPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget string) {
 
 	timeout := 3 * time.Second // 默认超时时间
 
+	// family 由 measure 写入。measureWithRetries 返回的延迟总是来自最后一次成功的
+	// measure 调用（首次够快就用首次，否则用那次重试），所以这里记下的族与最终上报
+	// 的延迟同源，不会出现「报了 A 的延迟、写了 B 的族」。
+	var family string
 	measure := func() (int64, error) {
 		switch pingType {
 		case "icmp":
-			return icmpPing(pingTarget, timeout)
+			latency, used, err := icmpPing(pingTarget, timeout)
+			family = used
+			return latency, err
 		case "tcp":
-			return tcpPing(pingTarget, timeout)
+			latency, used, err := tcpPing(pingTarget, timeout)
+			family = used
+			return latency, err
 		case "http":
-			return httpPing(pingTarget, timeout)
+			latency, used, err := httpPing(pingTarget, timeout)
+			family = used
+			return latency, err
 		default:
 			return -1, errors.New("unsupported ping type")
 		}
@@ -453,7 +499,7 @@ func runPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget string) {
 		pingResult = int(latency)
 	}
 	finishedAt := time.Now()
-	wsPayload := v2.BuildPingResultPayload(taskID, pingType, pingResult, finishedAt)
+	wsPayload := v2.BuildPingResultPayloadWithRoleAndFamily(taskID, pingType, "", family, pingResult, finishedAt)
 	// https://github.com/komari-monitor/komari/commit/eb87a4fc330b7d1c407fa4ff70177615a4f50a1f
 	// -1 代表丢包，服务端计算
 	//if pingResult == -1 {
@@ -546,7 +592,7 @@ func dualTCPTarget(target string) string {
 	}
 	for _, port := range []string{"443", "80"} {
 		cand := net.JoinHostPort(target, port)
-		if _, err := tcpPing(cand, autoProbeTimeout); err == nil {
+		if _, _, err := tcpPing(cand, autoProbeTimeout); err == nil {
 			return cand
 		}
 	}
@@ -572,12 +618,13 @@ func runDualPing(conn *ws.SafeConn, taskID uint, pingTarget string, timeout time
 	for _, leg := range legs {
 		value := -1
 		var latency int64
+		var family string
 		var err error
 		switch leg.kind {
 		case "icmp":
-			latency, err = icmpPing(leg.target, timeout)
+			latency, family, err = icmpPing(leg.target, timeout)
 		case "tcp":
-			latency, err = tcpPing(leg.target, timeout)
+			latency, family, err = tcpPing(leg.target, timeout)
 		}
 		if err == nil {
 			value = int(latency)
@@ -585,7 +632,7 @@ func runDualPing(conn *ws.SafeConn, taskID uint, pingTarget string, timeout time
 			log.Printf("dual ping task %d [%s] target=%s failed: %v", taskID, leg.kind, leg.target, err)
 		}
 		// -1 表示丢包，由服务端统一换算丢包率
-		uploadPingResult(conn, leg.kind, v2.BuildPingResultPayload(taskID, leg.kind, value, time.Now()))
+		uploadPingResult(conn, leg.kind, v2.BuildPingResultPayloadWithRoleAndFamily(taskID, leg.kind, "", family, value, time.Now()))
 	}
 }
 

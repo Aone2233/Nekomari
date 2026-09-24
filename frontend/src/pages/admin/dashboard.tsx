@@ -56,6 +56,7 @@ import {
   metricSeriesColor,
   normalizeMetricSeriesList,
   pingMetricStatKey,
+  pingSeriesFamily,
   pingTaskId,
   pingTaskName,
 } from "@/utils/metricSeries";
@@ -699,7 +700,14 @@ const DashboardContent = () => {
         })),
       );
       if (p95 != null) {
-        map.set(pingMetricStatKey(series.entity_id, taskId), p95);
+        map.set(
+          pingMetricStatKey(
+            series.entity_id,
+            taskId,
+            pingSeriesFamily(series.tags),
+          ),
+          p95,
+        );
       }
     }
     return map;
@@ -718,9 +726,11 @@ const DashboardContent = () => {
       const nodeName =
         nodeNameMap.get(stat.entity_id) ?? stat.entity_id.slice(0, 8);
       const p95 =
-        pingP95Map.get(pingMetricStatKey(stat.entity_id, stat.task_id)) ?? null;
+        pingP95Map.get(
+          pingMetricStatKey(stat.entity_id, stat.task_id, stat.family),
+        ) ?? null;
       return {
-        key: pingMetricStatKey(stat.entity_id, stat.task_id),
+        key: pingMetricStatKey(stat.entity_id, stat.task_id, stat.family),
         entityId: stat.entity_id,
         taskId: stat.task_id,
         label: `${nodeName} · ${taskName}`,

@@ -134,7 +134,7 @@ branches has fired. Recorded because the failure mode would be invisible if it e
 does, not because it is happening — the same check is worth repeating after any
 change to the geoip configuration.
 
-### 4. A probe knows which address it measured, and never says
+### 4. A probe knows which address it measured, and never says — **fixed**
 
 Found while investigating reported jitter on a dual-stack target. Task 11/12 point at
 `tj-cm-dualstack.ip.zstaticcdn.com` and `tj-ct-dualstack.ip.zstaticcdn.com`, which
@@ -155,14 +155,27 @@ The address-family filter added in v0.1.4 does not cover this. It skips a node t
 different family than its peers*. Both are the same underlying gap: the scheduler
 decides per node, but the task is reported as if every node measured the same thing.
 
-**The information exists and is discarded.** The agent resolves the target, connects
-to a specific address, and reports only a latency. Nothing carries which address or
-family that number came from, so no chart, alert or API consumer can separate them.
-Reporting it would let the panel split the series per family and make the comparison
-honest — and would make the mixed case visible instead of merely puzzling.
+**The information existed and was discarded.** The agent resolved the target,
+connected to a specific address, and reported only a latency.
 
-Immediate mitigation, no code required: split such a task into one per family, each
-with probes that can only reach that family.
+**Fixed.** The three ping implementations already resolved the address before dialing,
+so they now return the family of the address they actually used — for TCP that is the
+connected peer's address, not a second lookup. It travels as an optional `family`
+field on `agent.pingResult`, is stored as a `family` tag on the ping series next to
+`protocol` and `role`, and is returned per statistic by `public:getPingMetricStats`.
+The panel's chart and statistic keys include it, so the two paths render as two series
+and two numbers instead of one mixed line.
+
+Every layer is additive: an empty family writes no tag, keeps the legacy statistic key
+and groups exactly as before, so an agent that does not report one — and all historical
+data — behave as they did. Two tests pin that (`TestPublicPingStatsStayMergedWithoutFamily`,
+`TestPingStatGroupKeyKeepsLegacyShape`) and one pins the split
+(`TestPublicPingStatsSplitByAddressFamily`, which reports a single 33.3 % mixed loss
+statistic when the split is removed).
+
+This does not by itself stop someone creating a mixed task. It makes the mixture
+*visible* rather than misleading, which is the durable half: the two paths can no
+longer be averaged into one number that describes neither.
 
 ## How to look for more
 

@@ -96,8 +96,14 @@ type publicPingMetricStatsParams struct {
 }
 
 type publicPingMetricTaskStats struct {
-	EntityID        string            `json:"entity_id"`
-	TaskID          string            `json:"task_id"`
+	EntityID string `json:"entity_id"`
+	TaskID   string `json:"task_id"`
+	// Family 是这一组统计实际使用的地址族（"ipv4"/"ipv6"）。
+	// 目标是域名时由各节点自行解析，双栈域名可能落到不同族；不区分就会把
+	// 两条不同路径的延迟与丢包算成一个数字（实测过 HK04 读 12.6% 丢包、
+	// 两个 v4-only 节点读 0.0%，而它们描述的不是同一条路）。
+	// 空值表示该组没有族信息（旧 agent 或无法判断），此时与改动前一致。
+	Family          string            `json:"family,omitempty"`
 	Name            string            `json:"name,omitempty"`
 	Type            string            `json:"type,omitempty"`
 	Interval        int               `json:"interval,omitempty"`
@@ -863,6 +869,29 @@ func loadPublicPingMetricAggregateGroups(ctx context.Context, store *metric.Stor
 	return result, nil
 }
 
+// pingStatGroupSep 分隔「任务」与「实际地址族」两个分组维度。
+// 用控制字符是因为 task_id 与 family 都不会包含它，拼接不会产生歧义。
+const pingStatGroupSep = "\x1f"
+
+// pingStatGroupKey 把任务与实际地址族组成一个分组键。
+//
+// family 为空时【原样返回 task_id】—— 这是关键：旧 agent 不上报族，历史数据也
+// 没有 family 标签，此时分组键与改动前逐字一致，统计结果不会发生变化。
+func pingStatGroupKey(taskID, family string) string {
+	if family == "" {
+		return taskID
+	}
+	return taskID + pingStatGroupSep + family
+}
+
+// splitPingStatGroupKey 还原分组键。没有分隔符时族为空。
+func splitPingStatGroupKey(key string) (taskID, family string) {
+	if index := strings.Index(key, pingStatGroupSep); index >= 0 {
+		return key[:index], key[index+len(pingStatGroupSep):]
+	}
+	return key, ""
+}
+
 func groupPingMetricAggregatePointsByEntity(points []metric.AggregatePoint) map[string]map[string][]metric.AggregatePoint {
 	out := make(map[string]map[string][]metric.AggregatePoint)
 	for _, point := range points {
@@ -870,12 +899,15 @@ func groupPingMetricAggregatePointsByEntity(points []metric.AggregatePoint) map[
 		if taskID == "" {
 			continue
 		}
+		// 同一个任务下，实际走 v4 与走 v6 的点必须落在不同的组里，
+		// 否则两条路径会被算成一个延迟和一个丢包率。
+		key := pingStatGroupKey(taskID, strings.TrimSpace(point.Tags["family"]))
 		byTask := out[point.EntityID]
 		if byTask == nil {
 			byTask = make(map[string][]metric.AggregatePoint)
 			out[point.EntityID] = byTask
 		}
-		byTask[taskID] = append(byTask[taskID], point)
+		byTask[key] = append(byTask[key], point)
 	}
 	return out
 }
@@ -892,45 +924,55 @@ func pingMetricGroupsHaveData(groups map[string][]metric.AggregatePoint) bool {
 }
 
 func publicPingStatsFromAggregateGroups(entityID string, groups publicPingMetricAggregateGroups, taskMap map[string]models.PingTask, taskFilter map[string]bool) []publicPingMetricTaskStats {
-	taskIDs := make(map[string]struct{})
+	groupKeys := make(map[string]struct{})
 	for _, group := range []map[string][]metric.AggregatePoint{
 		groups.Avg, groups.Min, groups.Max, groups.Last, groups.P50, groups.P99, groups.StdDev, groups.Loss,
 	} {
-		for taskID := range group {
-			taskIDs[taskID] = struct{}{}
+		for key := range group {
+			groupKeys[key] = struct{}{}
 		}
 	}
 
-	out := make([]publicPingMetricTaskStats, 0, len(taskIDs))
-	for taskID := range taskIDs {
+	out := make([]publicPingMetricTaskStats, 0, len(groupKeys))
+	for key := range groupKeys {
+		// 分组键是「任务 + 实际地址族」；族为空时它就是纯 task_id。
+		taskID, family := splitPingStatGroupKey(key)
 		if len(taskFilter) > 0 && !taskFilter[taskID] {
 			continue
 		}
 
-		total := aggregatePointCount(groups.Avg[taskID])
+		total := aggregatePointCount(groups.Avg[key])
 		if total == 0 {
-			total = aggregatePointCount(groups.Loss[taskID])
+			total = aggregatePointCount(groups.Loss[key])
 		}
 		if total == 0 {
 			continue
 		}
 
-		lossRate, valid, approximate := publicPingLossRate(groups.Avg[taskID], groups.Loss[taskID], total, groups.LossAvailable)
-		avg, _ := weightedAggregateValue(groups.Avg[taskID], true)
-		p50, _ := weightedAggregateValue(groups.P50[taskID], true)
-		p99, _ := weightedAggregateValue(groups.P99[taskID], true)
-		stddev, _ := weightedAggregateValue(groups.StdDev[taskID], false)
-		minimum := positiveAggregateMin(groups.Min[taskID])
-		maximum := positiveAggregateMax(groups.Max[taskID])
-		latest := latestPositiveAggregate(groups.Last[taskID])
+		lossRate, valid, approximate := publicPingLossRate(groups.Avg[key], groups.Loss[key], total, groups.LossAvailable)
+		avg, _ := weightedAggregateValue(groups.Avg[key], true)
+		p50, _ := weightedAggregateValue(groups.P50[key], true)
+		p99, _ := weightedAggregateValue(groups.P99[key], true)
+		stddev, _ := weightedAggregateValue(groups.StdDev[key], false)
+		minimum := positiveAggregateMin(groups.Min[key])
+		maximum := positiveAggregateMax(groups.Max[key])
+		latest := latestPositiveAggregate(groups.Last[key])
 		if latest == nil {
-			latest = latestPositiveAggregate(groups.Avg[taskID])
+			latest = latestPositiveAggregate(groups.Avg[key])
+		}
+
+		tags := map[string]string{"task_id": taskID}
+		if family != "" {
+			// 与 metricstore 写入 ping 序列时用的是同一个标签名，
+			// 前端因此能直接按它把统计与曲线对上。
+			tags["family"] = family
 		}
 
 		stat := publicPingMetricTaskStats{
 			EntityID:        entityID,
 			TaskID:          taskID,
-			Tags:            map[string]string{"task_id": taskID},
+			Family:          family,
+			Tags:            tags,
 			Total:           total,
 			Valid:           valid,
 			Loss:            lossRate,
@@ -956,7 +998,11 @@ func publicPingStatsFromAggregateGroups(entityID string, groups publicPingMetric
 	}
 
 	sort.Slice(out, func(i, j int) bool {
-		return out[i].TaskID < out[j].TaskID
+		if out[i].TaskID != out[j].TaskID {
+			return out[i].TaskID < out[j].TaskID
+		}
+		// 同一任务内按族排序，保证输出顺序稳定（Go 的 map 遍历是随机的）。
+		return out[i].Family < out[j].Family
 	})
 	return out
 }

@@ -52,6 +52,16 @@ export type PublicPingTask = {
 export type PingMetricStat = {
   entity_id: string;
   task_id: string;
+  /**
+   * The address family this statistic was actually measured over ("ipv4"/"ipv6").
+   *
+   * A hostname is resolved by each node independently, so a dual-stack target can
+   * be measured over IPv4 by one node and IPv6 by another. Those are two different
+   * paths with different latency and loss, and the backend now reports them as two
+   * statistics instead of one mixed number. Empty when the agent did not report a
+   * family, which is the pre-change behaviour.
+   */
+  family?: string;
   name?: string;
   type?: string;
   interval?: number;

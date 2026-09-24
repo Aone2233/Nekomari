@@ -15,6 +15,11 @@ type PingRecord struct {
 	PingType string `json:"ping_type" gorm:"type:varchar(12);not null;default:'';index"`
 	// Role 区分本条结果测的是主目标（空/""）还是参考点（"reference"）。
 	Role string `json:"role" gorm:"type:varchar(12);not null;default:'';index"`
+	// Family 记录本条结果【实际使用】的地址族（"ipv4"/"ipv6"）。
+	// 目标是域名时由各节点自行解析，双栈域名在不同节点上可能落到不同族 ——
+	// 那种情况下同一任务的两条曲线描述的是两条不同的路径，不能当作可比数据。
+	// 空值表示未上报（旧 agent）或无法判断，此时保持改动前的行为。
+	Family string `json:"family" gorm:"type:varchar(8);not null;default:'';index"`
 }
 
 // PingTask 表示一次延迟监测任务配置。

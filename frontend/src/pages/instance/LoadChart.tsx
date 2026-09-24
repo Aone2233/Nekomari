@@ -81,6 +81,7 @@ import {
   metricTagsKey,
   normalizeMetricSeriesList,
   pingMetricStatKey,
+  pingSeriesFamily,
   pingTaskId,
   pingTaskName,
   type MetricChartRow,
@@ -1227,7 +1228,7 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
   ]);
 
   const pingStatsMap = useMemo(
-    () => new Map(pingStats.map((stat) => [pingMetricStatKey(stat.entity_id, stat.task_id), stat])),
+    () => new Map(pingStats.map((stat) => [pingMetricStatKey(stat.entity_id, stat.task_id, stat.family), stat])),
     [pingStats],
   );
 
@@ -1627,7 +1628,13 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
                       const taskId = pingTaskId(item.tags);
                       const stat =
                         isPingMetric(item.metricKey) && uuid && taskId
-                          ? chartPingStatsMap?.get(pingMetricStatKey(uuid, taskId))
+                          ? chartPingStatsMap?.get(
+                              pingMetricStatKey(
+                                uuid,
+                                taskId,
+                                pingSeriesFamily(item.tags),
+                              ),
+                            )
                           : undefined;
                       return (
                         <div
