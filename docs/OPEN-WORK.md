@@ -80,7 +80,7 @@ spike minutes, and it spikes on every task it runs (max 635/576/349 ms against
 p50 3/9/13 ms). So it is local to that host, not the target. MAC-WAN is both the
 probe host and the backup host, which may be relevant. Not investigated.
 
-### 4. Nomao's agent is still running after its node was deleted
+### 4. Nomao's agent is still running after its node was deleted — **resolved**
 
 Found while reading the post-deploy logs: the panel logs a `401` on
 `/api/clients/v2/rpc` from `2604:abc0:50::11:601e` roughly every 25 seconds, forever.
@@ -89,17 +89,35 @@ That address is **Nomao** (`deploy/verify-cf-probe-retired.sh` carries it, and
 so its token no longer resolves and the agent retries with a credential that can never
 work.
 
-Confirmed on the host (reachable from OC424 over IPv6): `nekomari-agent.service` is
-`active (running)` with `-t JOrbiMyxnxU5mRituvBmzl`, started Sep 17. There is also an
+Confirmed on the host at the time (reachable from OC424 over IPv6):
+`nekomari-agent.service` was `active (running)`, started Sep 17. There was also an
 older, **not loaded** `komari-agent.service` unit file pointing at `/opt/komari-agent`
-with an upstream `--auto-discovery` flag; it is not the source of the traffic.
+with an upstream `--auto-discovery` flag; it was not the source of the traffic.
 
 Deleting a node in the panel does not tell the host to stop reporting. Anything that
 removes a node should be paired with stopping its agent, or the panel logs a permanent
 401 stream that looks like an authentication problem rather than a leftover.
 
-**Waiting on a decision:** stop and remove the agent on Nomao, or leave it in case the
-node comes back.
+**Resolved — the agent was already gone, and the leftovers are now removed.** Checked
+on 2026-09-24 before deleting anything:
+
+- The host is the one the fleet scripts manage — it carries
+  `/root/cf-probe-retired-20260917-174111`, the backup directory
+  `deploy/verify-cf-probe-retired.sh` creates.
+- No agent is installed or running: no `nekomari-agent` or `komari-agent` unit is
+  loaded or enabled, no process matches, and nothing holds a connection to the panel.
+  Only two **inert** unit backups remained, `komari-agent.service.bak-20260915-213543`
+  and `nekomari-agent.service.bak-month-rotate`; both were removed and
+  `daemon-reload` was run. Their contents were deliberately not read — a unit file of
+  this kind carries an agent token, and `SECRETS.md` forbids putting one in a document
+  or a transcript.
+- The 401 stream had already stopped: **zero** `401` responses in the panel's last
+  three hours and **zero** log lines mentioning that address in the last 24, across a
+  container that had been up for about 22 hours. So it ended before the current
+  container started, not as a result of this cleanup.
+
+Nothing else on that host referenced komari: no agent directory, no binary in
+`/usr/local/bin`.
 
 ### 5. Password hashing — done in v0.1.13
 
@@ -141,6 +159,22 @@ re-runnable: it removes the container, pulls with `--pull always`, and mounts
 and `auto-discovery.json` (the node's identity after registration). The command also
 forces `--disable-auto-update`, since the agent cannot replace its own binary inside
 a container.
+
+## Planned — agreed, not started
+
+### The service worker precaches every route chunk, not just the shell
+
+Measured on the built panel: a first visit transfers **1.9 MB gzipped across 540
+files**, because the precache glob covers every route chunk rather than the shell.
+The editor is already excluded and loaded on demand, and the 763 KB stylesheet is not
+the problem it looks like — it gzips to 96 KB, and 3 886 of its ~7 000 rules are Radix
+Themes'. See `STRUCTURAL-REVIEW-2026-09-23.md` for the full table.
+
+**Agreed direction: measure before changing.** Narrowing the precache trades offline
+coverage and repeat-visit speed for first-load bytes, so the first step is to measure
+what a first visit actually fetches and what the cache holds, not to guess which
+chunks are "rarely used". Only then decide which routes stay precached and which fall
+back to runtime caching.
 
 ## Tooling added
 
