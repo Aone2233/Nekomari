@@ -6,6 +6,40 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.26] — 2026-09-24
+
+- **A ping task now reports the address family it actually measured.** A hostname is
+  resolved by each node independently, so a dual-stack target can be measured over
+  IPv4 by one node and IPv6 by another. Those are two different paths with different
+  latency and loss, and the panel reported them as one task with one number — measured
+  on the live fleet, HK04 read **12.6 % loss** while the two v4-only probes read
+  **0.0 %**, describing different routes to the same hostname. The agent now returns
+  the family of the address it used, the metric store tags it beside `protocol` and
+  `role`, and the statistics group by task + family so the two render as two series.
+  Every layer is additive, and an empty family keeps the historical series identity:
+  nothing changes for an existing deployment or a third-party theme until that
+  deployment's own agents are upgraded. This closes option C of `docs/OPEN-WORK.md`
+  and entry 4 of `docs/SILENT-FAILURES.md`.
+- Close the Cloudflare IPv6 firewall gap, and cache build artifacts properly in CI.
+- **Admin write paths gained a server-backed regression.** A node edit and an
+  offline-notification save are driven against a real panel rather than a stub: the
+  first attempt is forced to fail, the dialog and the draft must survive it, the retry
+  must succeed, and persistence is proven with a fresh server read plus a page reload.
+- **The two largest uncovered frontend paths gained mounted state regressions**
+  (`pages/instance/LoadChart.tsx` and `pages/admin/settings/metrics.tsx`), each
+  covering a stale response overtaking a newer one and an unmount/remount.
+- **Fixed: the metrics migration status could move backwards.** The two-second status
+  poll applied whatever came back with no sequence guard, so an older poll landing late
+  rewound the rendered progress — measured at 10/10 replaced by 2/10, with the migrated
+  points counter following it. The same window was open to the manual Refresh button.
+  It now carries the `requestSequence` guard already used by the node-details provider.
+- [docs/AGENT-FOOTPRINT.md](./docs/AGENT-FOOTPRINT.md) records what the agent costs the
+  host it runs on, measured across the fleet: **15.8-24.3 MiB resident, 0.05-0.18 % of
+  one core, 4-7 MB/day outbound, 7-11 threads and a single socket.** It also records
+  that the agent has no inbound listener anywhere, which is why a NAT'd host needs
+  outbound 443 and DNS and nothing else, and that ICMP tasks are the only ones needing
+  privileges (`CAP_NET_RAW`, best granted with systemd `AmbientCapabilities`).
+
 ## [v0.1.25] — 2026-09-23
 
 - Cache the GitHub release check across admin pages, including failed attempts,
