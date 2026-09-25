@@ -155,6 +155,76 @@ clean and the other is not, the difference is in the target's TCP path, not in t
 node doing the measuring. Checking a task's `type` field is the first thing to do
 when a node "looks jittery".
 
+## The cacheable shell (v0.1.28) and the Cloudflare rule it needs
+
+The panel's SPA shell used to be served with no caching headers at all, so
+Cloudflare classified it `DYNAMIC` and fetched it from the Singapore origin on
+**every** page open — measured at ~580 ms of TTFB from the education network while
+the origin itself rendered the same bytes in **1 ms**. The hashed assets had cache
+headers (v0.1.16) and returned in ~77 ms.
+
+`web/public/public.go` now serves the shell with an `ETag` and
+`public, max-age=60, must-revalidate`, and no longer rewrites `<html lang>` from the
+language cookie — that rewrite was the only per-visitor input, and it was redundant
+because the frontend sets `documentElement.lang` itself
+(`frontend/src/utils/language.ts`). Same URL, same bytes, for everyone.
+
+**The headers alone do not cache anything.** Cloudflare decides what is cacheable by
+extension by default, and `/` and `/admin/...` have no extension. A **Cache Rule** is
+what turns "cacheable" into "cached".
+
+### Adding the rule (dashboard)
+
+1. Cloudflare dashboard → pick the zone → **Caching → Cache Rules** → *Create rule*.
+   (Older layouts: **Rules → Cache Rules**.)
+2. **When incoming requests match** → *Custom filter expression*, and start with the
+   narrowest expression that captures the win:
+
+   ```
+   http.request.uri.path eq "/"
+   ```
+
+   Once that reports `HIT`, widen it to the SPA entry paths:
+
+   ```
+   (http.request.uri.path eq "/") or (http.request.uri.path starts_with "/admin")
+   ```
+
+3. **Then → Cache eligibility: Eligible for cache.**
+4. **Edge TTL: Respect origin** — the origin sends `max-age=60`, which is the 60
+   seconds chosen deliberately (short enough that a settings change lands within a
+   minute). **Browser TTL: Respect origin** as well.
+5. Leave **Cache Key** at its default. Do *not* add a cookie to it: the shell no
+   longer varies by cookie, and adding one would fragment the cache per visitor.
+6. Save, then verify from the network you care about:
+
+   ```
+   curl -s -D - -o /dev/null https://komari.orderly2233.org/ | grep -i cf-cache-status
+   ```
+
+   Run it twice. Every request within 60 seconds after the first should say `HIT`,
+   and TTFB should drop from ~0.58 s to ~0.08 s.
+
+### The one thing not to do
+
+**Never let the expression match `/api/`.** Every dynamic endpoint lives under it
+(`/api/rpc2`, `/api/login`, `/api/public`, …) and caching those at the edge would
+serve one user's authenticated response to another. `/assets/` needs no rule — it is
+already cached by extension and immutable. If the rule is ever widened, re-run the
+check above against an `/api/` path and confirm it still reports `DYNAMIC`.
+
+### Rolling back
+
+Disable the rule, or set *Cache eligibility: Bypass cache*. The origin's headers are
+harmless on their own: without a rule they do nothing at all, which is exactly the
+state before v0.1.28.
+
+### When a change does not appear
+
+The shell is cached for up to 60 seconds, so a sitename or theme change can lag by
+that much. Purging `/` in **Caching → Configuration → Purge Cache** makes it
+immediate.
+
 ## Previous rollout: 2026-09-23 (v0.1.25)
 
 Panel upgraded from v0.1.24 at approximately 15:40 UTC. Origin and public
