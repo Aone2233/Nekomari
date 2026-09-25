@@ -70,6 +70,7 @@ func EstablishWebSocketConnection() {
 					conn, err = connectWebSocket(websocketEndpoint)
 					if err == nil {
 						log.Println("WebSocket connected using v2 protocol")
+						wsConnectFailures.reset()
 						done := make(chan struct{})
 						readDone = done
 						go handleWebSocketMessages(conn, done)
@@ -78,7 +79,9 @@ func EstablishWebSocketConnection() {
 						log.Println("Failed to connect to WebSocket:", err)
 					}
 					retry++
-					time.Sleep(time.Duration(flags.ReconnectInterval) * time.Second)
+					// 退避而不是固定间隔：连不上时每次尝试都注定失败，而固定间隔
+					// 会让每个节点在整段故障期间持续敲、持续写日志。
+					time.Sleep(reconnectBackoff(wsConnectFailures.fail()))
 				}
 
 				if retry > flags.MaxRetries {
@@ -148,8 +151,13 @@ func runPostFallback(websocketEndpoint string, interval float64) (*ws.SafeConn, 
 
 	reportTicker := time.NewTicker(time.Duration(interval * float64(time.Second)))
 	defer reportTicker.Stop()
-	reconnectTicker := time.NewTicker(time.Duration(flags.ReconnectInterval) * time.Second)
-	defer reconnectTicker.Stop()
+	// 重连用计时器而不是固定 ticker：间隔随连续失败次数增长。
+	reconnectTimer := time.NewTimer(reconnectBackoff(wsConnectFailures.current() + 1))
+	defer reconnectTimer.Stop()
+
+	// 报告失败也限流：面板不可达时它每 interval 秒失败一次，不做限流会变成
+	// 每 5 秒一行日志 —— 那本身就是第二场事故。
+	postFailed := false
 
 	for {
 		select {
@@ -158,22 +166,34 @@ func runPostFallback(websocketEndpoint string, interval float64) (*ws.SafeConn, 
 			ackIDs := snapshotV2AckEventIDs()
 			resp, err := postV2Request(v2.BuildReportRequest(reportID, monitoring.GenerateReport(), ackIDs))
 			if err != nil {
-				log.Println("Failed to POST v2 report:", err)
+				if !postFailed {
+					postFailed = true
+					log.Println("Failed to POST v2 report (repeats suppressed until it recovers):", err)
+				}
 				continue
+			}
+			if postFailed {
+				postFailed = false
+				log.Println("v2 POST fallback is reporting again")
 			}
 			clearV2AckEventIDs(ackIDs)
 			processV2ResponseEvents(resp)
-		case <-reconnectTicker.C:
+		case <-reconnectTimer.C:
 			conn, err := connectWebSocket(websocketEndpoint)
 			if err == nil {
+				wsConnectFailures.reset()
 				return conn, nil
 			}
 			log.Println("POST fallback WebSocket recovery failed:", err)
+			reconnectTimer.Reset(reconnectBackoff(wsConnectFailures.fail()))
 		}
 	}
 }
 
 func runV2PullLoop(ctx context.Context) {
+	// 拉取失败也限流：面板不可达时这个循环每几秒失败一次，不做限流就是每几秒
+	// 一行日志。与报告路径同理。
+	pullFailed := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -191,15 +211,20 @@ func runV2PullLoop(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			log.Println("Failed to POST v2 pull:", err)
-			timer := time.NewTimer(time.Duration(flags.ReconnectInterval) * time.Second)
+			if !pullFailed {
+				pullFailed = true
+				log.Println("Failed to POST v2 pull (repeats suppressed until it recovers):", err)
+			}
 			select {
 			case <-ctx.Done():
-				timer.Stop()
 				return
-			case <-timer.C:
+			case <-time.After(reconnectBackoff(v2PullFailures.fail())):
 			}
 			continue
+		}
+		if pullFailed {
+			pullFailed = false
+			log.Println("v2 pull is working again")
 		}
 		clearV2AckEventIDs(ackIDs)
 		processV2ResponseEvents(resp)
