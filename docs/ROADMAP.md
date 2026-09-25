@@ -196,9 +196,14 @@ probe itself, ordered by how much they remove rather than how clever they are.
 Note the cost: any of these makes the fleet move, per the cadence rule in
 `docs/RELEASING.md`, so they are worth batching into one release.
 
-### E1. ICMP does not need root, but the agent demands it
+**E1, E3 and E4 are implemented** (PR #49) and merged; they ship with the next
+agent release, at which point the fleet moves. **E2 is still a design question** —
+it needs a representation that crosses agent → panel → store → frontend, and the
+representation is worth choosing before writing it.
 
-`icmpPing` calls `pinger.SetPrivileged(true)` unconditionally
+### E1. ICMP does not need root, but the agent demands it — **implemented**
+
+`icmpPing` called `pinger.SetPrivileged(true)` unconditionally
 (`agent/server/task.go:190`), which asks pro-bing for a **raw** socket — and a raw
 socket needs root or `CAP_NET_RAW`. The kernel also offers an unprivileged ICMP
 socket (`SOCK_DGRAM`, gated by `net.ipv4.ping_group_range`), which pro-bing uses
@@ -219,7 +224,25 @@ Acceptance: ICMP tasks work on a host whose process has no `CAP_NET_RAW` and who
 `ping_group_range` permits the process's group, with the raw path kept as the
 fallback for hosts where it does not.
 
-### E2. A denied ICMP probe is reported as packet loss
+**Implemented** — with the order reversed from that draft, and the reason is worth
+keeping. It is raw first and unprivileged as the fallback: every existing node's
+history comes from the raw socket, and the two sockets are not guaranteed
+byte-identical at the edges, so a node that already has the privilege keeps the
+path it has. The goal was never "use less privilege everywhere"; it was "a node
+without the privilege works instead of reporting a permanent phantom loss".
+
+Verified live on NOSLA as the agent's own unprivileged user, on a host where a raw
+socket is refused outright:
+
+```
+raw socket:        PermissionError: [Errno 1] Operation not permitted
+agent's icmpPing:  非特权回退生效：ICMP 往返 1 ms（ipv4）
+```
+
+The opt-in test (`NEKOMARI_LIVE_PROBE=1`) skips itself where the raw socket works,
+so it can only pass where it proves something.
+
+### E2. A denied ICMP probe is reported as packet loss — **still a design question**
 
 Only the `auto` protocol path consults `isPermissionErr`
 (`agent/server/task.go:369`), which falls back to TCP when the local permission is
@@ -237,7 +260,7 @@ E1 removes the cause on most hosts; E2 is what makes the remaining ones
 self-describing. Acceptance: a locally-denied ICMP probe is distinguishable from
 target loss in the panel, not only in the journal.
 
-### E3. Reconnects have no backoff
+### E3. Reconnects have no backoff — **implemented**
 
 The WebSocket loop retries on a fixed `--reconnect-interval` (default 5 s) with
 `--max-retries` (default 3) inner attempts, forever, and logs each attempt. A
@@ -252,7 +275,7 @@ Acceptance: bounded exponential backoff with jitter, reset on a successful
 connect, so a single blip still recovers in seconds. It should also cut those two
 nodes' log volume by an order of magnitude.
 
-### E4. The traffic ledger swallows its own save errors
+### E4. The traffic ledger swallows its own save errors — **implemented**
 
 `monitoring/netstatic/static.go` discards the result of `saveToFileLocked()` in
 both the periodic rewrite (L344) and the immediate flush (L595). A full disk or an
