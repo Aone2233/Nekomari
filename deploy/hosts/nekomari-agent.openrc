@@ -14,6 +14,11 @@ command_args="-e ${NEKOMARI_ENDPOINT} -t ${NEKOMARI_TOKEN} ${NEKOMARI_EXTRA_ARGS
 command_user="root"
 pidfile="/run/${RC_SVCNAME}.pid"
 
+# The agent writes its traffic ledger (net_static.json) relative to its working
+# directory. Without this it lands in whatever directory supervise-daemon happens
+# to start from -- and a ledger at "/" is both hard to find and easy to lose.
+directory="/opt/nekomari-agent"
+
 # supervise-daemon instead of start-stop-daemon --background, so the agent is
 # restarted on exit rather than left down until someone notices.
 supervisor="supervise-daemon"
