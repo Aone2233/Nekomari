@@ -189,7 +189,82 @@ authenticated admin smoke test against the real panel. Both were proposed in the
 v0.1.19 review and remain open; the theme half could reuse
 `deploy/theme-contract-check.mjs`.
 
-## E. Decisions waiting on you
+## E. Agent-side improvements
+
+Reviewed 2026-09-25 against `agent/`. These are the things worth changing in the
+probe itself, ordered by how much they remove rather than how clever they are.
+Note the cost: any of these makes the fleet move, per the cadence rule in
+`docs/RELEASING.md`, so they are worth batching into one release.
+
+### E1. ICMP does not need root, but the agent demands it
+
+`icmpPing` calls `pinger.SetPrivileged(true)` unconditionally
+(`agent/server/task.go:190`), which asks pro-bing for a **raw** socket — and a raw
+socket needs root or `CAP_NET_RAW`. The kernel also offers an unprivileged ICMP
+socket (`SOCK_DGRAM`, gated by `net.ipv4.ping_group_range`), which pro-bing uses
+with `SetPrivileged(false)` and which is enough to measure echo latency.
+
+Nothing is lost by using it: the agent sets no TTL, traffic class, mark or source
+address on the pinger, which are the options the unprivileged socket cannot
+carry. Measured on NOSLA as the agent's own user: a raw socket answers
+`PermissionError: [Errno 1] Operation not permitted` while a `SOCK_DGRAM` ICMP
+socket opens fine.
+
+So this is a deployment constraint the agent imposes on itself. It is why eight of
+ten nodes run the agent as root, and why JPKD2 runs as root specifically — Alpine
+ships no `setcap`, so the file-capability route is closed there even though the
+agent's own capability handling would otherwise allow a dedicated user.
+
+Acceptance: ICMP tasks work on a host whose process has no `CAP_NET_RAW` and whose
+`ping_group_range` permits the process's group, with the raw path kept as the
+fallback for hosts where it does not.
+
+### E2. A denied ICMP probe is reported as packet loss
+
+Only the `auto` protocol path consults `isPermissionErr`
+(`agent/server/task.go:369`), which falls back to TCP when the local permission is
+what failed. A task typed explicitly as `icmp` calls `icmpPing` directly on every
+dispatch path and turns the error into `-1`, which the panel converts to packet
+loss — indistinguishable from the target not answering. The node's journal has the
+truth; the panel does not.
+
+The comment on `isPermissionErr` states the principle exactly: *"把工具的限制误读成
+目标的事实，会得出相反的结论"*. This is the same misreading, one layer down.
+MAC Server's documented 15.2% phantom loss came from precisely this, and it was
+fixed by restoring the capability rather than by making the agent honest.
+
+E1 removes the cause on most hosts; E2 is what makes the remaining ones
+self-describing. Acceptance: a locally-denied ICMP probe is distinguishable from
+target loss in the panel, not only in the journal.
+
+### E3. Reconnects have no backoff
+
+The WebSocket loop retries on a fixed `--reconnect-interval` (default 5 s) with
+`--max-retries` (default 3) inner attempts, forever, and logs each attempt. A
+panel outage therefore has every node retrying every few seconds for as long as it
+lasts. At ten nodes that is harmless; it is the shape that stops being harmless
+when the fleet grows.
+
+Measured churn over 24 hours: 华纳云 HN-JP1 logged 166 WebSocket lines and NOSLA
+181, against 10-18 on every other node.
+
+Acceptance: bounded exponential backoff with jitter, reset on a successful
+connect, so a single blip still recovers in seconds. It should also cut those two
+nodes' log volume by an order of magnitude.
+
+### E4. The traffic ledger swallows its own save errors
+
+`monitoring/netstatic/static.go` discards the result of `saveToFileLocked()` in
+both the periodic rewrite (L344) and the immediate flush (L595). A full disk or an
+unwritable file therefore stops persisting traffic accounting silently, and the
+first symptom is wrong traffic numbers — after a restart, or after the plan limit
+is hit. The panel's own upload-cleanup path was changed to log once per failure
+burst for the same reason.
+
+Acceptance: the failure is logged (rate-limited, so a persistent error does not
+become its own outage) and visible in the agent's output.
+
+## F. Decisions waiting on you
 
 1. **Mixed-family ping tasks.** The panel now *shows* the mix; it still does not
    *prevent* one. The durable fix (option C) made it visible; option B — restrict
@@ -215,7 +290,7 @@ v0.1.19 review and remain open; the theme half could reuse
    invisible in everyone else's noise. Full measurements in
    `docs/DEPLOY-OC424.md`.
 
-## F. Not on this list on purpose
+## G. Not on this list on purpose
 
 - **Increasing SQLite concurrency** (see B5) — no evidence.
 - **Splitting the editor chunk or trimming the CSS** — the editor is already out
