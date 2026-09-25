@@ -25,6 +25,34 @@ platform, creates the GitHub Release and attaches the artifacts plus
 You can also run it manually from the Actions tab (`workflow_dispatch`) by
 supplying a tag name.
 
+## Does the fleet move with this release?
+
+**Only when the agent source changes.** A panel-only release leaves the agents
+alone, and that has been the default for most of this project's releases. The
+check is one command, run before the rollout is planned:
+
+```bash
+git diff --stat <previous-tag>..<tag> -- agent/ protocol/ pkg/
+```
+
+Empty output means the agents stay where they are, and the rollout covers the
+panel only. Anything in `agent/` means the fleet has to move too, because the
+release changes what a probe does rather than only how it was compiled —
+v0.1.26 is the example: it makes a probe report the address family it measured,
+and the panel half of that change does nothing while the agents still run the
+old binary.
+
+Two consequences worth remembering when the fleet does move:
+
+- A node can be running the new binary for several minutes while the panel still
+  shows the old version, because `clients.version` is refreshed by the
+  **basic-info upload** on the `--info-report-interval` (10 minutes by default).
+  Read the running binary's hash, not the panel's version column, when the
+  question is whether the upgrade landed.
+- A binary-level compile refresh with no source change (v0.1.19) is *not* a
+  reason to move the fleet: the agent source was byte-identical, so only the
+  version string differed.
+
 ## Container images
 
 CI and release builds pin Go 1.27.1 independently of the `go.mod` minimum.

@@ -195,16 +195,24 @@ v0.1.19 review and remain open; the theme half could reuse
    *prevent* one. The durable fix (option C) made it visible; option B — restrict
    a task to one family at creation — was never implemented. Do you want creation
    blocked, warned, or left alone?
-2. **Nomao's orphaned agent.** `docs/OPEN-WORK.md` records a node whose agent
-   still retries every 25 seconds against a deleted node. Stop it, or leave it in
-   case the node returns?
-3. **Release cadence.** Ten releases in three days. Whether the fleet should keep
-   moving with every panel release, or only when the agent source changes, is a
-   policy choice — the last four panel-only releases left the agents alone, which
-   worked well until v0.1.26 needed them.
-4. **The `MAC Server` jitter.** `deploy/ping-spike-shape.py` showed MAC Server's
-   latency spikes are local to that host, not the target. Never investigated;
-   worth a look only if that node's data matters to you.
+2. ~~**Nomao's orphaned agent.**~~ **Closed.** The agent was already gone when
+   checked on 2026-09-24: no unit, no binary, no `/opt/komari*`, and the panel has
+   logged no request from that address since. `docs/OPEN-WORK.md` entry 4 carries
+   the full record.
+3. ~~**Release cadence.**~~ **Decided: the fleet moves only when the agent source
+   changes.** A panel-only release leaves the agents alone — which is what the four
+   releases before v0.1.26 did, and v0.1.26 is the exception that proves the rule,
+   because it changed agent behaviour and the fleet had to move. The check before
+   every rollout is `git diff --stat <previous-tag>..<tag> -- agent/ protocol/ pkg/`:
+   empty means the agents stay. Recorded in `docs/RELEASING.md`.
+4. **The `MAC Server` jitter.** Investigated 2026-09-24 and the premise turned out
+   to be mis-framed; the measurements are in `docs/DEPLOY-OC424.md`. MAC has the
+   *best* baseline in the fleet — p50 3 ms on the education-network task against
+   OC424's 68 ms — with rare ~300 ms outliers that correlate with no other node's
+   (r ≈ 0.05, and the other nodes are uniformly slow rather than spiky). It is not
+   the LAN link either: 60 pings over the wired NIC peaked at 0.78 ms to the
+   gateway and 1.14 ms to 1.1.1.1. Still unexplained, but it is a handful of
+   minutes out of 360, not a persistent defect.
 
 ## F. Not on this list on purpose
 
