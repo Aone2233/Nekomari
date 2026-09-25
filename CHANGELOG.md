@@ -6,6 +6,41 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v0.1.27] — 2026-09-25
+
+**This release moves the fleet**, because the agent changed (per the cadence rule in
+`docs/RELEASING.md`): the agent gains ICMP without root, reconnect backoff, and a
+traffic ledger that reports its own save failures. The panel half adds the
+mixed-family task refusal.
+
+- **The agent no longer needs root or `CAP_NET_RAW` for ICMP.** It asked pro-bing for
+  a raw socket unconditionally; the kernel's unprivileged ICMP socket is enough to
+  measure echo latency, and nothing is lost by using it because the agent sets no TTL,
+  traffic class, mark or source address. It now falls back to that socket when the raw
+  one cannot be opened. The order is raw first on purpose: every existing node's
+  history comes from the raw socket, so a node that already has the privilege keeps
+  the path it has — the point is that a node *without* it works instead of reporting a
+  permanent phantom loss. Verified on a host where the raw socket is refused outright:
+  the agent measured 1 ms over the fallback.
+- **Reconnect and retry attempts back off.** Every retry used the fixed
+  `--reconnect-interval` (5 s) forever — the WebSocket loop, the POST fallback's
+  recovery attempts, the POST report loop and the task pull loop — each retrying and
+  logging every few seconds for the whole outage. Now 5 s doubling to a 2-minute cap
+  with ±25 % jitter, reset on success, and failure logs folded to one line per burst
+  plus one on recovery. The jitter matters as much as the backoff: a fleet that lost
+  the panel together would otherwise return in lockstep.
+- **The traffic ledger reports its save failures.** `saveToFileLocked()` was discarded
+  in both the periodic rewrite and the immediate flush, so a full disk stopped
+  persisting traffic accounting silently and the first symptom was wrong numbers after
+  a restart.
+- **A ping task whose probes would measure different address families is refused.**
+  A hostname is resolved per node, so one dual-stack target could be measured over
+  IPv4 by one node and IPv6 by another — two different paths reported as one number
+  (measured: 12.6 % loss against 0.0 %). An address literal is always allowed; a
+  hostname only when every probe is known to use the same family, and `default_on` is
+  refused for hostnames because every future node would decide for itself. Enforced on
+  create and on edit.
+
 ## [v0.1.26] — 2026-09-24
 
 - **A ping task now reports the address family it actually measured.** A hostname is
