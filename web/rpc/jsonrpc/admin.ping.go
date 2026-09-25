@@ -58,6 +58,12 @@ func adminAddPingTask(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.Jso
 	if !params.DefaultOn && len(params.Clients) == 0 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "clients is required when default_on is false", nil)
 	}
+	// A hostname target with probes that can land on different address families
+	// reports two different paths as one number; refuse it at creation. See
+	// utils.ValidatePingTaskTargetFamily for the rule and the evidence.
+	if err := utils.ValidatePingTaskTargetFamily(params.Target, params.DefaultOn, params.Clients); err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
+	}
 	taskID, err := tasks.AddPingTask(params.Clients, params.DefaultOn, params.Name, params.Target, params.TaskType, params.Interval, params.Reference)
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
@@ -90,6 +96,10 @@ func adminEditPingTask(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.Js
 	for _, task := range params.Tasks {
 		if task == nil {
 			return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request data", nil)
+		}
+		// An edit is another way to create the mixture, so the same rule applies.
+		if err := utils.ValidatePingTaskTargetFamily(task.Target, task.DefaultOn, task.Clients); err != nil {
+			return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
 		}
 	}
 	if err := tasks.EditPingTask(params.Tasks); err != nil {

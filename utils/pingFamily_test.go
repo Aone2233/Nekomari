@@ -154,3 +154,52 @@ func TestFilterClientsByTargetFamily(t *testing.T) {
 		}
 	})
 }
+
+// TestValidatePingTaskTargetFamily pins the rule that keeps a task from measuring
+// two address families. The case that motivated it is real: a dual-stack hostname
+// target measured by one dual-stack node and two v4-only probes reported 12.6%
+// loss against their 0.0%, describing neither path.
+func TestValidatePingTaskTargetFamily(t *testing.T) {
+	byUUID := map[string]models.Client{
+		"v4":    {UUID: "v4", Name: "v4-only", IPv4: "1.2.3.4"},
+		"v6":    {UUID: "v6", Name: "v6-only", IPv6: "2001:db8::1"},
+		"dual":  {UUID: "dual", Name: "dual-stack", IPv4: "1.2.3.4", IPv6: "2001:db8::1"},
+		"fresh": {UUID: "fresh", Name: "just-joined"},
+	}
+
+	for _, tc := range []struct {
+		name      string
+		target    string
+		defaultOn bool
+		clients   []string
+		wantErr   bool
+	}{
+		// An IP literal settles the family by itself, so nothing can mix.
+		{name: "ipv4 literal, mixed probes", target: "1.1.1.1:443", clients: []string{"v4", "dual"}},
+		{name: "ipv6 literal, mixed probes", target: "[2001:db8::1]:443", clients: []string{"v6", "dual"}},
+
+		// A hostname is resolved per node, so only a uniform probe set is safe.
+		{name: "hostname, one probe", target: "www.example.com:443", clients: []string{"dual"}},
+		{name: "hostname, two v4-only probes", target: "www.example.com:443", clients: []string{"v4", "v4"}},
+		{name: "hostname, no probes yet", target: "www.example.com", clients: nil},
+
+		{name: "hostname, dual-stack probe among others", target: "www.example.com:443", clients: []string{"v4", "dual"}, wantErr: true},
+		{name: "hostname, v4-only and v6-only disagree", target: "www.example.com:443", clients: []string{"v4", "v6"}, wantErr: true},
+		{name: "hostname, a node that has not reported", target: "www.example.com:443", clients: []string{"v4", "fresh"}, wantErr: true},
+		{name: "hostname, default_on lets future nodes mix", target: "www.example.com:443", defaultOn: true, clients: []string{"v4"}, wantErr: true},
+		{name: "ipv4 literal, default_on is fine", target: "1.1.1.1:443", defaultOn: true, clients: []string{"v4"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := checkPingTaskTargetFamily(tc.target, tc.defaultOn, tc.clients, byUUID)
+			if tc.wantErr && err == nil {
+				t.Fatal("accepted a task whose probes can land on different families")
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("refused a task that cannot mix families: %v", err)
+			}
+			if tc.wantErr && err != nil && len(err.Error()) < 40 {
+				t.Fatalf("refusal must explain itself, got %q", err)
+			}
+		})
+	}
+}

@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -178,4 +179,110 @@ func filterClientsByTargetFamily(candidates []string, byUUID map[string]models.C
 		skipped = append(skipped, uuid)
 	}
 	return keep, skipped
+}
+
+func (f targetAddressFamily) String() string {
+	switch f {
+	case familyIPv4:
+		return "ipv4"
+	case familyIPv6:
+		return "ipv6"
+	default:
+		return "unknown"
+	}
+}
+
+// clientTargetFamily 判断某个节点在测同一个域名时会用哪个地址族。
+//
+// 单栈节点是确定的。双栈节点由它自己在探测时决定（本地解析结果说了算），面板这边
+// 无法得知，所以返回 familyAny 表示「不确定」。还没上报过地址的节点同样不确定 ——
+// 把刚接入的节点当成单栈会得出错误结论。
+func clientTargetFamily(client models.Client) targetAddressFamily {
+	hasV4 := strings.TrimSpace(client.IPv4) != ""
+	hasV6 := strings.TrimSpace(client.IPv6) != ""
+	switch {
+	case hasV4 && hasV6:
+		return familyAny
+	case hasV4:
+		return familyIPv4
+	case hasV6:
+		return familyIPv6
+	default:
+		return familyAny
+	}
+}
+
+// ValidatePingTaskTargetFamily 是给写入路径用的入口：先取一次节点地址族，再判断。
+//
+// 只查一次表：任务的探针数量是个位数，而这里只需要 uuid / name / ipv4 / ipv6 四列。
+// 规则与理由见 checkPingTaskTargetFamily。
+func ValidatePingTaskTargetFamily(target string, defaultOn bool, clientUUIDs []string) error {
+	byUUID, err := loadClientAddresses()
+	if err != nil {
+		return err
+	}
+	return checkPingTaskTargetFamily(target, defaultOn, clientUUIDs, byUUID)
+}
+
+// checkPingTaskTargetFamily 判断一个任务会不会把两个地址族混在一起。
+//
+// 为什么要在创建时就拦下：一个域名由每个节点各自解析，所以同一个任务里双栈目标可能
+// 被一个节点用 IPv4 测、被另一个节点用 IPv6 测。那是两条不同的路径，延迟和丢包都不
+// 可比，而面板会把它当成一个任务的一个数字来画。线上实测过：一个节点读到 12.6% 丢包，
+// 两个只有 IPv4 的探针读到 0.0% —— 那个数字描述的不是其中任何一条路径。v0.1.26 先让
+// 它【可见】（按 family 拆成两条序列），这里再进一步：不让它被建出来。
+//
+// 规则：
+//   - 目标是 IPv4/IPv6 字面量：地址族由目标决定，没有混合的余地，永远允许。
+//   - 目标是域名：只有当所有探针【确知】会用同一族时才允许 —— 也就是只有一个探针
+//     （一条路径，谈不上混合），或者所有探针都是单栈且相同。双栈节点、以及还没上报过
+//     地址的节点，在多于一个探针的任务里一律拒绝，因为它们的族要到探测时才定。
+//   - default_on 让【将来】加入的节点自动带上这个任务，所以域名目标即使现在只有一个
+//     探针也要拒绝：混合会在下一个节点加入时出现。
+func checkPingTaskTargetFamily(target string, defaultOn bool, clientUUIDs []string, byUUID map[string]models.Client) error {
+	if pingTargetFamily(target) != familyAny {
+		return nil
+	}
+
+	// default_on 让每个【将来】加入的节点都自动带上这个任务。域名由节点自己解析，
+	// 所以那个混合不是现在发生，而是每加入一个节点就可能出现一次；既然规则是不让
+	// 混合任务存在，这一条也得拦住。
+	if defaultOn {
+		return fmt.Errorf(
+			"target %q is a hostname and this task is enabled for every node that joins (%s), so once a node with a different address family is added the same task measures two different paths. Use an IPv4 or IPv6 literal as the target, or clear the default-on flag",
+			target, "default_on")
+	}
+
+	if len(clientUUIDs) < 2 {
+		return nil
+	}
+
+	decided := familyAny
+	decidedBy := ""
+	for _, uuid := range clientUUIDs {
+		client, ok := byUUID[uuid]
+		if !ok {
+			continue
+		}
+		name := client.Name
+		if name == "" {
+			name = uuid
+		}
+		family := clientTargetFamily(client)
+		if family == familyAny {
+			return fmt.Errorf(
+				"target %q is a hostname, so every node resolves it on its own, and %q is dual-stack or has not reported its addresses yet: which family it measures is only decided at probe time. A task whose probes can land on different families reports two different paths as one number. Use an IPv4 or IPv6 literal as the target, or run this task on a single node",
+				target, name)
+		}
+		if decided == familyAny {
+			decided, decidedBy = family, name
+			continue
+		}
+		if decided != family {
+			return fmt.Errorf(
+				"target %q is a hostname, so every node resolves it on its own: %q would measure it over %s while %q would use %s. Those are two different paths, and the panel would plot them as one task. Use an IPv4 or IPv6 literal as the target, or split the task per family",
+				target, decidedBy, decided, name, family)
+		}
+	}
+	return nil
 }
