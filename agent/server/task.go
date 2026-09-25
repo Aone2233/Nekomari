@@ -181,22 +181,52 @@ func icmpPing(target string, timeout time.Duration) (int64, string, error) {
 	}
 	family := addressFamilyOf(ip)
 
+	// 优先用裸 socket（与改动前一致），拿不到权限时退回内核的非特权 ping socket。
+	//
+	// 为什么要这条退路：裸 socket 需要 root 或 CAP_NET_RAW，而内核另外提供一种非特权
+	// ICMP socket（SOCK_DGRAM，由 net.ipv4.ping_group_range 控制），测回显延迟完全够用。
+	// 没有它，一个不想给 agent root、又装不了 setcap 的节点（Alpine 就是）就没法做 ICMP
+	// 任务 —— 只能选择以 root 运行，或者接受面板上一条恒定的假丢包。
+	//
+	// 顺序是「先裸后非特权」而不是反过来：车队里已有节点的历史曲线都来自裸 socket，
+	// 而两种 socket 的测量在边界上未必逐字相同。在没有权限问题的节点上保持原路径，
+	// 就不会为了少用一个已经在手的权限，去动几年的历史可比性。
+	latency, replied, err := runICMP(ip, timeout, true)
+	if err != nil {
+		// 裸 socket 连开都没开起来（权限、或平台不支持）。这才值得再试一次 —— 目标
+		// 不回包时 Run 不返回错误，所以这里不会把一次超时变成两次探测。
+		latency, replied, err = runICMP(ip, timeout, false)
+		if err != nil {
+			return -1, family, err
+		}
+	}
+	if !replied {
+		return -1, family, errors.New("no packets received")
+	}
+	return latency, family, nil
+}
+
+// runICMP 发一次回显并返回平均 RTT（毫秒）。
+//
+// 返回值区分两种失败：err 非空表示 socket 根本没建起来；err 为空而 replied 为 false
+// 表示 socket 正常、目标没回包。上层要靠这个区别决定要不要换一种 socket 再试一次 ——
+// 把「目标不回」也当成「本地没权限」会让每次丢包都多探一轮。
+func runICMP(ip string, timeout time.Duration, privileged bool) (latency int64, replied bool, err error) {
 	pinger, err := ping.NewPinger(ip)
 	if err != nil {
-		return -1, family, err
+		return -1, false, err
 	}
 	pinger.Count = 1
 	pinger.Timeout = timeout
-	pinger.SetPrivileged(true)
-	err = pinger.Run()
-	if err != nil {
-		return -1, family, err
+	pinger.SetPrivileged(privileged)
+	if err := pinger.Run(); err != nil {
+		return -1, false, err
 	}
 	stats := pinger.Statistics()
 	if stats.PacketsRecv == 0 {
-		return -1, family, errors.New("no packets received")
+		return -1, false, nil
 	}
-	return stats.AvgRtt.Milliseconds(), family, nil
+	return stats.AvgRtt.Milliseconds(), true, nil
 }
 
 func tcpPing(target string, timeout time.Duration) (int64, string, error) {

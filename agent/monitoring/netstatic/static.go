@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -194,6 +195,32 @@ func saveToFileLocked() error {
 	return nil
 }
 
+// saveFailureLogged 记录「当前这一轮失败是否已经打过日志」。
+//
+// 保存是每秒级的，磁盘满或文件不可写会一直失败；不做限流的话，一次写不进去会变成
+// 每秒一行日志，把 journal 写爆 —— 那本身就是一场事故。
+var saveFailureLogged bool
+
+// persistLocked 写盘并记录失败，调用方需持有 mu。
+//
+// 为什么不能像以前那样直接丢弃返回值：流量统计会静默停止持久化，而第一个症状是
+// 重启之后数字不对（或者到套餐上限时才发现），那时已经无从追查是哪一天开始没写进去的。
+// 这里只记「每轮失败一条 + 恢复一条」，和面板侧上传清理路径的处理方式一致。
+func persistLocked() {
+	err := saveToFileLocked()
+	if err == nil {
+		if saveFailureLogged {
+			saveFailureLogged = false
+			log.Println("netstatic: traffic ledger is being persisted again after a previous failure")
+		}
+		return
+	}
+	if !saveFailureLogged {
+		saveFailureLogged = true
+		log.Println("netstatic: cannot persist the traffic ledger, traffic history is not being saved (repeats suppressed until it recovers):", err)
+	}
+}
+
 // shouldRewriteFileLocked 判断这次周期保存是否需要整体重写文件。
 // store 没变过就不写；变过也要等离上次落盘至少 DefaultRewriteInterval 秒，
 // 避免每 SaveInterval 都把 31 天的全量数据重新序列化一遍。
@@ -341,7 +368,7 @@ func startGoroutinesLocked() {
 				flushCacheLocked(uint64(t.Unix()))
 				purgeExpiredLocked()
 				if shouldRewriteFileLocked(uint64(t.Unix())) {
-					_ = saveToFileLocked()
+					persistLocked()
 				}
 				mu.Unlock()
 			case <-stopCh:
@@ -592,7 +619,7 @@ func SetNewConfig(newCfg NetStaticConfig) error {
 		}
 	}
 	// 立即写盘
-	_ = saveToFileLocked()
+	persistLocked()
 	// 同时做一次过期清理
 	purgeExpiredLocked()
 	return nil
