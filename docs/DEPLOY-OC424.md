@@ -100,6 +100,61 @@ host and the first that needed an IPv4 preference, so both are recorded here.
   deployment was rotated twice rather than once. Moving the token to a config file or an
   environment file is worth doing on its own.
 
+## The MAC Server "jitter" — resolved 2026-09-25 (it was never MAC)
+
+`docs/OPEN-WORK.md` carried this for a week as "the 教育网 jitter is MAC Server
+alone". Measured properly, that framing was wrong in both directions, and the
+answer is that MAC was faithfully reporting a **target's TCP behaviour**.
+
+What the panel's own data says, over six hours, per node, for the same tasks —
+these are minute maxima of `ping.latency_ms`:
+
+| Task | Node | p50 | p95 | max |
+|---|---|---:|---:|---:|
+| 3 — 教育网 `1.51.3.134:443` (TCP) | **MAC Server** | **3 ms** | **5 ms** | 317 ms |
+| 3 — same | 甲骨文 OC424 | 68 ms | 72 ms | 310 ms |
+| 3 — same | CloudLeadInno | 178 ms | 206 ms | 240 ms |
+| 17 — 电信 `14.17.70.70` (ICMP) | **MAC Server** | **38 ms** | 70 ms | 344 ms |
+| 17 — same | AkkoCloud | 166 ms | 168 ms | 220 ms |
+| 17 — same | MegaBox | 153 ms | 160 ms | 208 ms |
+| 1 — Cloudflare `1.1.1.1:443` (TCP) | **MAC Server** | — | — | **2 ms** |
+| 1 — same | CloudLeadInno | — | — | 24 ms |
+
+So MAC has the **best baseline in the fleet**, by a wide margin, while the other
+nodes are uniformly slow rather than spiky — their p95 sits directly on their p50.
+MAC's outliers also correlate with no other node's (Pearson r ≈ 0.05 against
+AkkoCloud on task 17, −0.03 against OC424 on task 3).
+
+It is not the host's link either. Sixty pings over the wired NIC:
+
+```
+gateway 192.168.100.1   min/avg/max = 0.357/0.621/0.778 ms
+1.1.1.1                 min/avg/max = 0.659/0.954/1.138 ms
+```
+
+The wireless interface on the same host is the spiky one
+(`1.430/4.491/28.023 ms`), and it is not the one carrying traffic — the wired
+route has the lower metric.
+
+**What it actually is.** The decisive test ran TCP connects and ICMP side by side
+from MAC to the *same address*, `1.51.3.134`:
+
+| Probe | Over 50 ms | Worst |
+|---|---:|---:|
+| TCP connect to `:443`, ~900 attempts | **27** | **586 ms** |
+| ICMP to the same host, ~900 pings in parallel | **0** | < 50 ms |
+
+The panel's task is a TCP probe, so it is reporting that endpoint's intermittent
+SYN handling — 240-590 ms — and nothing about MAC. MAC is simply the node where it
+is visible: with a 3 ms baseline a 250 ms handshake is a 100× outlier, while the
+same handshake disappears inside OC424's 68 ms p50 and CloudLeadInno's 178 ms.
+
+The general lesson is worth more than the specific answer: **a TCP probe and an
+ICMP probe to the same host are not interchangeable measurements.** When one is
+clean and the other is not, the difference is in the target's TCP path, not in the
+node doing the measuring. Checking a task's `type` field is the first thing to do
+when a node "looks jittery".
+
 ## Previous rollout: 2026-09-23 (v0.1.25)
 
 Panel upgraded from v0.1.24 at approximately 15:40 UTC. Origin and public
