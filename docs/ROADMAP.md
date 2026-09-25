@@ -260,6 +260,45 @@ E1 removes the cause on most hosts; E2 is what makes the remaining ones
 self-describing. Acceptance: a locally-denied ICMP probe is distinguishable from
 target loss in the panel, not only in the journal.
 
+**Recommended design: report it as a node capability, not as a per-sample value.**
+
+The failure is not a property of a measurement. It is a property of the *node and
+protocol* pair: this host cannot send ICMP, and no number of samples will change
+that. Encoding it in the sample — a distinct value, or a tag on the series — keeps
+the panel plotting something meaningless and needs the same four layers anyway
+(agent → protocol → store → stats/frontend). Meanwhile "can this node do ICMP at
+all?" is a fact the panel can state once, explain, and act on.
+
+*Phase 1 — the node says what it can do.* The agent already learns this at probe
+time; make it a startup fact and carry it in the basic-info upload that already
+carries `version` and the addresses (every `--info-report-interval`, 10 minutes by
+default). One probe at startup answers it: can I open a raw ICMP socket, can I open
+the ping socket. The panel stores it on the client and shows it where it matters —
+a badge on the node ("ICMP unavailable: no `CAP_NET_RAW` and
+`net.ipv4.ping_group_range` excludes this user"), and a warning on ICMP-typed tasks
+that include that node. The user gets a cause and a fix instead of a flat 100 %
+loss line.
+
+*Phase 2 — the scheduler stops assigning impossible probes.* The scheduler already
+filters nodes by target family (`filterClientsByTargetFamily`), and it already
+carries the rule that makes this safe: **only skip when the fact is known**. The
+same shape extends to protocol capability — don't send an `icmp` task to a node
+whose reported capability says it cannot send ICMP, and it generalizes for free
+(a node behind a proxy that blocks HTTP, and so on). The caveat is the same one the
+family filter documents: an old agent, or one that has not reported yet, must not
+be skipped. And the UI has to say *why* a node is excluded, or it just looks
+broken.
+
+*Phase 0, if you want relief before either lands:* when the agent is denied ICMP on
+an explicitly-typed task, log it once per task rather than once per probe. It does
+not fix the panel, but it stops the journal from being a wall of identical lines
+and points at the cause the first time.
+
+Worth noting the population this now covers is small: after E1, ICMP fails only
+where the raw socket *and* the ping socket are both unavailable. That is an argument
+for Phase 1 alone — one field, no scheduler change — rather than for the full
+program.
+
 ### E3. Reconnects have no backoff — **implemented**
 
 The WebSocket loop retries on a fixed `--reconnect-interval` (default 5 s) with
