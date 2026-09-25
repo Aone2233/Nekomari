@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"io/fs"
 	"mime"
@@ -165,44 +166,33 @@ func init() {
 	}
 }
 
-func normalizeHTMLLanguage(language string) string {
-	language = strings.TrimSpace(strings.ReplaceAll(language, "_", "-"))
-	if len(language) < 2 || len(language) > 32 {
-		return ""
+// shellCacheControl 是 SPA 外壳的缓存策略：够短，能被边缘缓存，过期后走校验。
+const shellCacheControl = "public, max-age=60, must-revalidate"
+
+// writeShell 是 SPA 外壳唯一的出口：补 ETag 与一条短缓存。
+//
+// 为什么现在可以缓存：去掉原来按 language cookie 改写 `<html lang>` 那一步之后（见
+// serveIndex 里的注释），这个响应只依赖站点级设置 —— 主题、站名、描述、自定义
+// head/body、favicon 版本。同一条 URL 对每个人都是同一份内容，它才可以被缓存。
+//
+// 为什么是 60 秒而不是更久：源站渲染只要 1 毫秒，贵的是 Cloudflare 回源那一跳（实测
+// 500 毫秒以上，因为它把不带缓存头的 HTML 当 DYNAMIC 处理）。60 秒足够让绝大多数打开
+// 命中边缘，同时把「改了站点设置多久生效」压在 1 分钟以内。带 must-revalidate：过期
+// 后靠 ETag 走 304，不会把这几 KB 重复传一遍。
+//
+// 这里不能像带内容哈希的构建产物那样用 immutable —— 外壳文件名不带哈希，它必须能更新。
+func writeShell(c *gin.Context, body []byte) {
+	sum := fnv.New64a()
+	_, _ = sum.Write(body)
+	etag := fmt.Sprintf("\"%x\"", sum.Sum64())
+	c.Header("ETag", etag)
+	c.Header("Cache-Control", shellCacheControl)
+	if strings.Contains(c.GetHeader("If-None-Match"), etag) {
+		c.Status(http.StatusNotModified)
+		return
 	}
-
-	for _, r := range language {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' {
-			continue
-		}
-		return ""
-	}
-
-	return language
-}
-
-func replaceHTMLLanguage(htmlStr, language string) string {
-	language = normalizeHTMLLanguage(language)
-	if language == "" {
-		return htmlStr
-	}
-
-	replacements := []struct {
-		old string
-		new string
-	}{
-		{`<html lang="en">`, `<html lang="` + language + `">`},
-		{`<html lang='en'>`, `<html lang='` + language + `'>`},
-		{`<html>`, `<html lang="` + language + `">`},
-	}
-
-	for _, replacement := range replacements {
-		if strings.Contains(htmlStr, replacement.old) {
-			return strings.Replace(htmlStr, replacement.old, replacement.new, 1)
-		}
-	}
-
-	return htmlStr
+	// c.Data 会带上 Content-Length；靠 chunked 传输的响应 CDN 更不愿意缓存。
+	c.Data(http.StatusOK, "text/html; charset=utf-8", body)
 }
 
 func stripServiceWorkerRegistration(html string) string {
@@ -403,9 +393,12 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		if forceDefaultTheme {
 			htmlStr = stripServiceWorkerRegistration(htmlStr)
 		}
-		if language, err := c.Cookie(LanguageCookieName); err == nil {
-			htmlStr = replaceHTMLLanguage(htmlStr, language)
-		}
+		// 这里原先按 language cookie 改写 `<html lang>`，现在移除了。那个改写是多余的
+		// —— 前端 (frontend/src/utils/language.ts) 启动时会把同一个值写到
+		// documentElement.lang 上 —— 而它让这个响应变成「每人一份」：只要带上 cookie，
+		// 下面那条短缓存就永远不可能命中，每次打开面板都要回源一趟（实测回源这一跳
+		// 要 500 毫秒以上，而源站自己渲染只要 1 毫秒）。去掉之后，这个外壳只剩站点级
+		// 输入：主题、站名、描述、自定义 head/body、favicon 版本。
 
 		// favicon 的 URL 带上版本号，必须在下面那条「不替换」的早退之前执行 ——
 		// /admin 与 /terminal 走的就是那条路径，而站点设置页恰好在那里预览图标。
@@ -415,9 +408,9 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		// 图标 URL 立刻变化、绕过所有缓存层。
 		htmlStr = withVersionedFavicon(htmlStr)
 
-		// 如果不替换，保留系统内置页面内容，仅同步 html lang。
+		// 如果不替换，保留系统内置页面内容。
 		if !shouldReplace {
-			c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(htmlStr))
+			writeShell(c, []byte(htmlStr))
 			return
 		}
 
@@ -429,7 +422,7 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 			"</body>", cfg[config.CustomBodyKey].(string)+"</body>",
 		)
 
-		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(replacer.Replace(htmlStr)))
+		writeShell(c, []byte(replacer.Replace(htmlStr)))
 	}
 
 	// ================= 路由定义 =================

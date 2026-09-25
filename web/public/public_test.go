@@ -15,65 +15,74 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestNormalizeHTMLLanguage(t *testing.T) {
-	tests := map[string]struct {
-		input string
-		want  string
-	}{
-		"hyphen language": {
-			input: "zh-CN",
-			want:  "zh-CN",
-		},
-		"underscore language": {
-			input: "zh_CN",
-			want:  "zh-CN",
-		},
-		"reject script injection": {
-			input: `zh-CN" autofocus`,
-		},
-		"reject too short": {
-			input: "z",
-		},
+// TestShellIsCacheableAndCookieIndependent 固定这条缓存改动的两个要点。
+//
+// 一、外壳响应要带 ETag 与一条短缓存。源站渲染只要 1 毫秒，贵的是 Cloudflare 回源
+// 那一跳（不带缓存头的 HTML 会被当成 DYNAMIC，实测每次打开 500 毫秒以上）。
+//
+// 二、带不带 language cookie 拿到的字节必须完全一样。这不是形式主义：只要响应随
+// cookie 变化，CDN 就会把其中一种语言的 HTML 发给所有人 —— 而 Vary: Cookie 在
+// Cloudflare 的默认缓存里并不参与缓存键。原来的实现按 cookie 改写 `<html lang>`，
+// 正是这条断言的反面；语言现在由前端 (utils/language.ts) 在启动时写到
+// documentElement.lang 上。
+func TestShellIsCacheableAndCookieIndependent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Chdir(t.TempDir())
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open config db: %v", err)
+	}
+	config.SetDb(db)
+
+	router := gin.New()
+	StaticRestricted(router.Group("/"), func(handlers ...gin.HandlerFunc) {
+		router.NoRoute(handlers...)
+	})
+
+	fetch := func(language string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest("GET", "/", nil)
+		if language != "" {
+			request.AddCookie(&http.Cookie{Name: LanguageCookieName, Value: language})
+		}
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		return recorder
 	}
 
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			if got := normalizeHTMLLanguage(tt.input); got != tt.want {
-				t.Fatalf("normalizeHTMLLanguage(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
+	plain := fetch("")
+	if plain.Code != 200 {
+		t.Fatalf("shell status = %d, want 200", plain.Code)
 	}
-}
-
-func TestReplaceHTMLLanguage(t *testing.T) {
-	tests := map[string]struct {
-		html     string
-		language string
-		want     string
-	}{
-		"replace existing lang": {
-			html:     `<html lang="en"><head></head></html>`,
-			language: "zh-CN",
-			want:     `<html lang="zh-CN"><head></head></html>`,
-		},
-		"insert missing lang": {
-			html:     `<html><head></head></html>`,
-			language: "ja_JP",
-			want:     `<html lang="ja-JP"><head></head></html>`,
-		},
-		"ignore invalid lang": {
-			html:     `<html lang="en"><head></head></html>`,
-			language: `zh-CN" autofocus`,
-			want:     `<html lang="en"><head></head></html>`,
-		},
+	if got := plain.Header().Get("Cache-Control"); got != shellCacheControl {
+		t.Fatalf("Cache-Control = %q, want %q", got, shellCacheControl)
+	}
+	etag := plain.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("shell has no ETag, so a revalidation cannot be answered with 304")
+	}
+	if plain.Body.Len() == 0 {
+		t.Fatal("shell body is empty")
 	}
 
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			if got := replaceHTMLLanguage(tt.html, tt.language); got != tt.want {
-				t.Fatalf("replaceHTMLLanguage() = %q, want %q", got, tt.want)
-			}
-		})
+	for _, language := range []string{"zh-CN", "ja-JP", "en-US"} {
+		withCookie := fetch(language)
+		if withCookie.Body.String() != plain.Body.String() {
+			t.Fatalf("shell differs when language=%s is set: it would be cached once and served to everyone", language)
+		}
+		if got := withCookie.Header().Get("ETag"); got != etag {
+			t.Fatalf("language=%s changed the ETag (%q vs %q): the cache key is not just the URL", language, got, etag)
+		}
+	}
+
+	conditional := httptest.NewRequest("GET", "/", nil)
+	conditional.Header.Set("If-None-Match", etag)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, conditional)
+	if recorder.Code != http.StatusNotModified {
+		t.Fatalf("conditional request status = %d, want 304", recorder.Code)
+	}
+	if recorder.Body.Len() != 0 {
+		t.Fatalf("304 carried %d bytes of body, want 0", recorder.Body.Len())
 	}
 }
 
