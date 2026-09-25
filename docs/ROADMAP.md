@@ -205,14 +205,15 @@ v0.1.19 review and remain open; the theme half could reuse
    because it changed agent behaviour and the fleet had to move. The check before
    every rollout is `git diff --stat <previous-tag>..<tag> -- agent/ protocol/ pkg/`:
    empty means the agents stay. Recorded in `docs/RELEASING.md`.
-4. **The `MAC Server` jitter.** Investigated 2026-09-24 and the premise turned out
-   to be mis-framed; the measurements are in `docs/DEPLOY-OC424.md`. MAC has the
-   *best* baseline in the fleet — p50 3 ms on the education-network task against
-   OC424's 68 ms — with rare ~300 ms outliers that correlate with no other node's
-   (r ≈ 0.05, and the other nodes are uniformly slow rather than spiky). It is not
-   the LAN link either: 60 pings over the wired NIC peaked at 0.78 ms to the
-   gateway and 1.14 ms to 1.1.1.1. Still unexplained, but it is a handful of
-   minutes out of 360, not a persistent defect.
+4. ~~**The `MAC Server` jitter.**~~ **Resolved 2026-09-25, and the premise was
+   wrong.** It was never MAC. The panel's task is a **TCP** probe, and the TCP
+   handshake to that one target intermittently takes 240-590 ms from that host,
+   while **ICMP to the very same address from the very same machine stays clean**
+   (0 of ~900 pings over 50 ms, in parallel with 27 of ~900 TCP connects). MAC
+   just has the best baseline in the fleet — p50 **3 ms** on that task against
+   OC424's 68 ms — which is exactly why a 250 ms handshake stands out there and is
+   invisible in everyone else's noise. Full measurements in
+   `docs/DEPLOY-OC424.md`.
 
 ## F. Not on this list on purpose
 
