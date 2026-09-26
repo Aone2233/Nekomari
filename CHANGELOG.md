@@ -6,7 +6,12 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
-## [Unreleased]
+## [v0.1.28] — 2026-09-26
+
+**This release moves the fleet**, because the agent changed (per the cadence rule in
+`docs/RELEASING.md`): it gains a credential file and reports its ICMP capability.
+Both additions are additive on the wire, so an older panel ignores the new field and
+an older agent simply omits it.
 
 - **A node now reports whether it can do ICMP at all.** The agent probes its own
   raw and unprivileged ping sockets once at startup and sends the answer with the
@@ -16,21 +21,24 @@ Nekomari's own.
   shown as **unknown**, not as unavailable — every not-yet-upgraded node is in that
   state, and painting them as broken would be the same misreading the feature
   exists to remove. This is phase 1 of `docs/ROADMAP.md` E2; it changes no
-  scheduling. **This release moves the fleet**, because the agent changed.
+  scheduling.
 - **The agent reads its token from a file, not the command line.** `--token-file`
   (or `AGENT_TOKEN_FILE`, or an `AGENT_TOKEN=` line in a systemd `EnvironmentFile`)
   keeps the node's identity out of `/proc/<pid>/cmdline` and
   `systemctl show -p ExecStart`. `-t` still works and the agent warns once at
   startup when it is used; a credential file that group or other can read is
   refused rather than accepted quietly. Both installers now write the credential
-  file and pass `--token-file`, and the OpenRC template does the same. **This
-  release moves the fleet.**
+  file and pass `--token-file`, and the OpenRC template does the same.
 - **Fixed: a failed release-list refresh renewed the cached list for six hours.**
   The successful list and the failed attempt shared one timestamp, so a failure
   past the six-hour TTL rewrote it as "now" and the stale list was served from the
   success path. The two windows are now separate, the cache key moved to v3 (a v2
   entry cannot be aged, so it is discarded rather than trusted), and the service
   worker no longer caches `api.github.com`.
+- **Fixed: the auto-discovery panel's "go to general settings" button did not
+  navigate.** The module imported `Link` from `lucide-react` — an icon — and used it
+  as a router link, so the button rendered inside an `<svg to="…">`: visible,
+  styled, and inert.
 
 ## [v0.1.27] — 2026-09-25
 
