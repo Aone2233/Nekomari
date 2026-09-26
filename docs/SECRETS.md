@@ -212,6 +212,38 @@ was checked rather than guessed at (the same payload with the script as a file
 works, with `sh -s` prints an empty variable), and the fix is to copy the script
 to the node first and then feed the token on stdin.
 
+## Incident 6 — a node's login password is in the operator's ssh config
+
+`~/.ssh/config` on the workstation carries PZYC's password as a comment:
+
+```
+Host PZYC
+    HostName 119.45.118.213
+    User ubuntu
+    # 密码: <plaintext>
+```
+
+Same class as incidents 1-4: a credential in a file that is not protected by being
+a credential file, on a machine that is not the host it authenticates to. It was
+found on 2026-09-26 while deploying v0.1.28 to that node — it is the only node not
+reachable by key, which is why the password was there at all.
+
+**Fixed during that deploy, for this node:** OC424's public key is now in both
+`ubuntu`'s and `root`'s `authorized_keys`, so the fleet has a key route to PZYC and
+deploys no longer need the password. The comment has not been removed, and the
+password still works — that is the operator's call, and rotating it means updating
+whatever else uses it.
+
+Two lessons that generalise:
+
+- **A password in a config comment is still a password.** Comments are not
+  protected by ssh's own file checks, they are read by anyone with the file, and
+  they end up in transcripts and backups. A key is the fix, not a quieter comment.
+- **`sudo tee` truncates.** Writing root's `authorized_keys` with
+  `sudo -n tee /root/.ssh/authorized_keys` replaced the file. Appending needs
+  `tee -a`. Recorded in `docs/DEPLOY-OC424.md` with what was lost, which for this
+  node is unknown because no backup existed.
+
 ## Notes
 
 - Tokens from both incidents remain in git history. They are worthless now, so the

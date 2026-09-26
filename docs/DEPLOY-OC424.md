@@ -188,6 +188,89 @@ Still unknown, and not to be assumed from the tag: whether the other nine nodes
 moved, and whether ICMP now works anywhere that previously needed root only for
 it.
 
+## v0.1.28 rollout (2026-09-26): panel and fleet
+
+Released `v0.1.28` (tag on `e22d6f0`, CI green on that commit before tagging) and
+moved both halves: the panel container and all ten agents. This release changes the
+agent, so per `docs/RELEASING.md` the fleet had to move —
+`git diff --stat v0.1.27..HEAD -- agent/ protocol/ pkg/` is non-empty.
+
+| | Before | After |
+|---|---|---|
+| Panel image | `ghcr.io/aone2233/nekomari:v0.1.27` | `v0.1.28`, `/api/version` → `v0.1.28` / `e22d6f0`, `healthy`, `RestartCount=0` |
+| Panel backup | — | `/opt/nekomari-backups/pre-v0.1.28-20260926-095253` (data 364 files, `data.tar` sha256 `43691f93d711…`, mode 0700) |
+| Agents | `9477e4e4…` (9), `705e8d5b…` (PZYC, the release asset) | `20873452…` on all ten; every node reports `v0.1.28` and `icmp_capability=raw` |
+| Agent backups | — | `<bin>.bak-pre-v0.1.28` on every node, plus `migration-backup-20260926/` on PZYC |
+
+### Order matters: the panel first, or the agents cannot report
+
+The first agent upgraded was MAC-WAN, and it immediately logged:
+
+```
+Error uploading basic info: status code: 400, "no such column: icmp_capability"
+```
+
+The agent was reporting a field the v0.1.27 panel had no column for, so the whole
+basic-info upload was refused — not just the new field. The node stayed *online*
+(a WebSocket connection is not a basic-info upload) but **stopped sending version,
+CPU, memory and disk information**, which is the kind of failure that looks like a
+node problem until someone reads the journal.
+
+Nothing was lost: the column is created by `AutoMigrate` on the panel's next start,
+and re-uploading basic info is idempotent. But the order should be **panel first,
+then agents** whenever a release adds a field the panel has to store. The window
+here was about three minutes.
+
+The general shape is worth keeping in mind for the next field of this kind: an
+additive change is additive only in both directions *at the same time*. A new agent
+with an old panel is not "the old panel ignores it" — it is a rejected upload,
+because the ingest path maps the map's keys straight onto columns.
+
+### What each node needed
+
+Six different shapes, which is why the deploy was per node rather than one command:
+
+| Node | Shape | Note |
+|---|---|---|
+| AKKO06, megabox, HK04, HNJP01, CLISP | systemd, root | `deploy/install-staged-agent.sh` handles all five |
+| 甲骨文 OC424 | systemd, root, arm64 | same script, arm64 asset; `sudo` needed for the binary's ownership |
+| MAC-WAN | **user** unit, unprivileged + **file** capability | the capability has to be restored by hand after the swap |
+| NOSLA | systemd, unprivileged + `AmbientCapabilities` | nothing to restore: the unit grants the capability, not the file |
+| JPKD2 | **OpenRC** | `rc-service`, no `systemctl`; `install-staged-agent.sh` does not apply |
+| 并行智算云服务器 | systemd, root, **password** login | cannot fetch release assets, so the binary has to be pushed |
+
+Two mistakes made and fixed during the run, both worth avoiding next time:
+
+- **`sh` is not `bash` on Debian/Ubuntu.** Invoking the installer as
+  `ssh HOST sh /tmp/install-staged-agent.sh` fails at its `set -euo pipefail` with
+  "Illegal option -o pipefail" — before doing anything, so it looks like a no-op
+  rather than a failure. Its shebang says bash for this reason; invoke it as
+  `bash`. Nodes already upgraded by an earlier attempt were left alone by the
+  script's idempotency check, which is the behaviour that made the re-run safe.
+- **A CRLF line ending at the file's end is a command.** Transferring a bash script
+  through Git Bash left a trailing `\r`, which the node ran as a command
+  (`$'\r': command not found`) *after* installing and restarting. The install was
+  fine and the exit code was 127, so the wrapper reported a failure that had not
+  happened. Push scripts as base64, or `tr -d '\r'` first.
+
+### 并行智算云服务器: access changed, and a mistake to record
+
+This node was reached over a **password** that is stored in the operator's ssh
+config in plain text, and it cannot fetch release assets, so the binary had to be
+pushed by hand. OC424's public key is now in both `ubuntu`'s and `root`'s
+`authorized_keys`, so future deploys have a key route.
+
+**The mistake:** writing root's file used `sudo -n tee /root/.ssh/authorized_keys`,
+which *replaces* rather than appends. The original contents are not known — no
+backup existed and the file holds a single key whose public half was not on hand.
+It now holds the operator's own key (the one whose public half is in `ubuntu`'s
+file) plus OC424's, so both routes in work, but if root had had another key it is
+gone and would have to be re-added. Appending with `>>` under `sudo` needs
+`sudo tee -a`; `tee` without `-a` is a truncation.
+
+Also recorded in `docs/SECRETS.md`: that plaintext password is the same kind of
+finding as the ones already there.
+
 ## D1/D2 pilot: MAC-WAN migrated 2026-09-26
 
 The first node moved to a credential file and to a strictly non-root agent with
