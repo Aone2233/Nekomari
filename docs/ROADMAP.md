@@ -231,14 +231,17 @@ The repository no longer puts the token on a command line:
   the token never reaches the unit, for every spelling of the argument. In CI as
   the `deploy-scripts` job.
 
-What is **not** done: no node has been migrated. Every live unit still passes
-`-t <token>`, including OC424's, which was confirmed on 2026-09-26. Migrating one
-node is a production change with its own approval and rollback — the recipe and
-the rollback command are in `docs/SECRETS.md`. Acceptance stays as written below
-until that pilot happens.
+What is **not** done: eight of the ten nodes still pass `-t <token>`, and no node
+has been migrated by reinstalling rather than by hand. **MAC-WAN was migrated by
+hand on 2026-09-26** as the pilot — token in a 0600 credential file, absent from
+`/proc/<pid>/cmdline` and `systemctl show`, ICMP and TCP tasks still reporting
+real values afterwards. The record, the rollback, and the `setcap` trap that any
+hand-upgrade hits are in `docs/DEPLOY-OC424.md`. OC424 was confirmed still
+exposed on 2026-09-26, which is how the token that had to be rotated was read.
 
 Acceptance: `ps aux | grep komari-agent` on a node shows no token, and the
-installer's generated one-liner is updated to match.
+installer's generated one-liner is updated to match — **met on MAC-WAN**, open for
+the rest of the fleet.
 
 ### D2. Prefer `AmbientCapabilities` over running as root
 

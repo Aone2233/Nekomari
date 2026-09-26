@@ -188,6 +188,76 @@ Still unknown, and not to be assumed from the tag: whether the other nine nodes
 moved, and whether ICMP now works anywhere that previously needed root only for
 it.
 
+## D1/D2 pilot: MAC-WAN migrated 2026-09-26
+
+The first node moved to a credential file and to a strictly non-root agent with
+`CAP_NET_RAW` alone. It ran **before** the rest of the fleet on purpose, and the
+reason to read this section before repeating it is that the migration silently
+drops the file capability — see "the `setcap` trap" below.
+
+MAC-WAN is the host that already ran the agent unprivileged (`docs/AGENT-FOOTPRINT.md`
+records the arrangement), so D2's acceptance was already met there; this pilot is
+the D1 half, and it is also the first time the *new* agent binary has run
+anywhere.
+
+| | Before | After |
+|---|---|---|
+| Binary | `komari-agent-linux-amd64`, mtime 2026-09-25 18:30, sha256 `705e8d5b…` | same path, sha256 `b49fc58e…` (built from `main` after ac80b73) |
+| Credential | `-t <token>` in `ExecStart`, readable by every local user | `--token-file /home/macos/nekomari-agent/.agent-credentials`, mode `600 macos:macos` |
+| Identity | `macos` (uid 1000), `cap_net_raw=ep` on the binary | `macos`, `cap_net_raw=ep`, `CapEff=0000000000002000` |
+| Unit | `~/.config/systemd/user/nekomari-agent.service` | same, one line changed |
+
+Evidence collected on the host after the change:
+
+- `tr '\0' '\n' < /proc/<pid>/cmdline` contains no `-t`/`--token`; the command line
+  shows `--token-file …` and nothing else about credentials. Same for
+  `systemctl --user show -p ExecStart`.
+- The credential file is `AGENT_TOKEN=<22 chars>` at mode 600, owned by `macos`.
+- The agent starts, uploads basic info and reconnects the WebSocket — which is the
+  proof that it really read the token: an agent with no identity does none of those.
+- **ICMP still works, measured in the panel's own store, not on the host.** Tasks
+  17/18/19 reported `ping.latency_ms` 37/33/50 ms and `ping.loss` **0.0** in the
+  12:28 CST bucket. This is the acceptance criterion that matters, because
+  `net.ipv4.ping_group_range` on this host is `1 0` (no unprivileged ping socket at
+  all), so a working ICMP probe proves the binary's `cap_net_raw` is effective —
+  the fallback socket cannot be what answered.
+- TCP probes (tasks 1 and 3) keep reporting 1-2 ms, and the traffic ledger
+  (`net_static.json`) is rewritten after the restart.
+- A second restart was done deliberately: the state survives it.
+
+### The `setcap` trap — read this before upgrading any node by hand
+
+`scp` does not carry file capabilities. Replacing a hardened binary with `scp` (or
+any copy that is not `cp -a`/`rsync -X`) leaves the new file with **no**
+`cap_net_raw`, and the failure is quiet in the worst way: the agent starts, connects
+and reports everything else normally, while every ICMP task turns into packet loss —
+the exact "phantom loss" that `docs/ROADMAP.md` E1/E2 exist to remove. On this host
+the unprivileged ICMP socket is unavailable, so there is no fallback to hide it.
+
+Two consequences:
+
+1. After any binary replacement, re-run `sudo setcap cap_net_raw+ep <binary>` and
+   confirm with `getcap`, or use `deploy/install-staged-agent.sh`, which already
+   restores the capability when the node had it.
+2. The capability was lost **and restored** during this pilot, so the before/after
+   above is not a clean A/B on that variable. What it does prove is the end state.
+
+The backup taken before the change is `~/pilot-backup-20260926/` (unit plus binary).
+Rollback, in full:
+
+```bash
+cp ~/pilot-backup-20260926/nekomari-agent.service.bak-pre-token-file \
+   ~/.config/systemd/user/nekomari-agent.service
+cp ~/pilot-backup-20260926/komari-agent-linux-amd64.bak-pre-token-file \
+   ~/nekomari-agent/komari-agent-linux-amd64
+sudo setcap cap_net_raw+ep ~/nekomari-agent/komari-agent-linux-amd64   # the backup has no capability either
+systemctl --user daemon-reload && systemctl --user restart nekomari-agent.service
+```
+
+To undo only D1 (keep the new binary, put the token back on the command line), write
+`-t <token>` back into `ExecStart` in place of `--token-file …` and restart; the
+new binary accepts both.
+
 ## The MAC Server "jitter" — resolved 2026-09-25 (it was never MAC)
 
 `docs/OPEN-WORK.md` carried this for a week as "the 教育网 jitter is MAC Server

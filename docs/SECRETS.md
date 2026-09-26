@@ -118,6 +118,19 @@ token *ends up*:
 | an existing unit | unchanged, and the agent logs a warning at startup naming the exposure and the fix |
 | `--config` / a systemd `EnvironmentFile` | still supported; see the precedence below |
 
+**Deployed on MAC-WAN on 2026-09-26** — the first node, done by hand rather than by
+reinstalling. Before: `-t <token>` in a user unit, readable by any local user.
+After: `--token-file /home/macos/nekomari-agent/.agent-credentials` (mode 600,
+`macos:macos`), the token absent from `/proc/<pid>/cmdline` and from
+`systemctl show -p ExecStart`, and ICMP/TCP tasks still reporting real values.
+The full record, including the rollback and the `setcap` trap that bites any
+hand-upgrade, is in `docs/DEPLOY-OC424.md`.
+
+Reading a credential file is now a supported path, so the audit rule above needs a
+second half: **`--token-file` in `ExecStart` is safe to print; `-t` is not.** A
+redaction pattern that turns `-t <value>` into `<redacted>` therefore stays useful
+even after a node is migrated, because it distinguishes the two cases at a glance.
+
 The agent reads the token in this order, and never overwrites one that is already
 set: `-t` / `AGENT_TOKEN`, then `--token-file` / `AGENT_TOKEN_FILE`, then
 `AGENT_ENV_FILE`, then the `token` field of `--config`. A token file is an

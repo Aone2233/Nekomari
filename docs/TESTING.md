@@ -126,6 +126,51 @@ nothing else, it is the environment rather than the change under test — confir
 running the same command as root, where both pass. GitHub-hosted runners have a
 normal `/tmp`, so CI runs them.
 
+## Running the browser and shell suites on Windows
+
+Two environment problems cost an afternoon on 2026-09-26; both are worth knowing
+before concluding a change is broken.
+
+**`npm run build` fails at the very end with `Access is denied`.** The error is
+`[vite:esbuild-transpile] remove …\Temp\esbuild-<hex>: Access is denied`, after
+`built in`, i.e. every chunk was produced and only esbuild's temp-file cleanup
+failed. It reproduces on a pristine `d37bc01`, so it is the host, not the change.
+`TMPDIR` does **not** help — Node ignores it on Windows and `os.tmpdir()` keeps
+returning `%LOCALAPPDATA%\Temp`. What does help is pointing `TEMP` and `TMP` into a
+directory the build can delete from:
+
+```powershell
+$env:TEMP = "C:\path\to\workspace\.runtest\tmp"; $env:TMP = $env:TEMP
+cd frontend; npm run build
+```
+
+**The browsery specs need Playwright's own Chromium.** `python -m playwright
+install chromium` fetches it; with only a system Chrome available they cannot
+launch. Nothing else about them is environment-specific. When Chromium is present,
+the suites run as CI runs them:
+
+```powershell
+cd frontend
+# every mounted fixture
+Get-ChildItem script/*.browser.spec.py | ForEach-Object { python $_.Name }
+
+# the real panel, end to end — needs a server, which CI builds and installs
+python script/panel-smoke.spec.py http://127.0.0.1:25774
+python script/admin-write-paths.spec.py http://127.0.0.1:25774
+```
+
+`panel-smoke.spec.py` reports external failures (its update check reaches
+`api.github.com`) as warnings and never fails on them, so a blocked third party
+does not read as a regression here either.
+
+The deploy scripts have offline shell tests that are worth running on the
+workstation too — they need `bash` (Git Bash is enough) and no host access:
+
+```bash
+bash deploy/install-node-agent.test.sh   # the token must not reach the unit
+bash deploy/panel-probe.test.sh
+```
+
 ```bash
 # live protocol-resolution check (needs root for real ICMP)
 NEKOMARI_LIVE_PROBE=1 sudo -E env "PATH=$PATH" go test -run TestProbeAutoProtocolLive -v ./agent/server/
