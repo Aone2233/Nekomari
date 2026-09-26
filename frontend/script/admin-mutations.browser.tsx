@@ -4,7 +4,11 @@ import { I18nextProvider } from "react-i18next";
 import { Theme } from "@radix-ui/themes";
 import { Toaster } from "sonner";
 import { NodeDetailsContext, type NodeDetail } from "../src/contexts/NodeDetailsContext";
-import { BillingButton, DeleteButton, EditButton } from "../src/pages/admin/index";
+import {
+  BillingButton,
+  DeleteButton,
+  EditButton,
+} from "../src/pages/admin/nodeTable/NodeDialogs";
 import "@radix-ui/themes/styles.css";
 
 const i18n = i18next.createInstance();
