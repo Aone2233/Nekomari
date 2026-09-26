@@ -197,11 +197,19 @@ func loadFromFileLocked() error {
 //
 // At 缺失（旧账本没有这个字段）时保留 0，让 plausibleDelta 以"没有流逝时间"为由拒绝
 // 第一次增量 —— 宁可丢一个间隔，也不能拿一个来路不明的基线去算差值。
+//
+// lastWriteUnix 归零是这一步的一半，不是附带效果：启动时落盘的文件写于**基线还空着**
+// 的时候，而 shouldRewriteFileLocked 会把那次落盘当成"刚写过"，于是真正的基线要等一个
+// 完整重写周期（默认 30 分钟）才可能落盘。归零让下一次保存 tick 立刻把它写下去 ——
+// 现场第一次部署就是这样：账本在 12:41 被写过（空基线），14 分钟后读到的仍是没有基线的
+// 版本，而修复看起来"没生效"。
 func restoreLastCountersLocked() {
 	lastCounters = make(map[string]CounterSample, len(store.LastCounters))
 	for name, sample := range store.LastCounters {
 		lastCounters[name] = sample
 	}
+	// 内存里的基线还没有对应的文件内容，下一次保存必须落盘。
+	lastWriteUnix = 0
 }
 
 // snapshotLastCountersLocked 复制内存基线，供落盘使用。

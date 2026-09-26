@@ -140,6 +140,60 @@ func TestRejectionRebaselinesRatherThanFailingForever(t *testing.T) {
 	}
 }
 
+// A load must leave the ledger due for a rewrite.
+//
+// This is the fault that made the fix look broken in production: startup wrote the
+// file while the baseline was still empty, `shouldRewriteFileLocked` then treated
+// that write as recent, and the real baseline waited a full rewrite interval (30
+// minutes by default) before it could reach disk. Read fourteen minutes after the
+// rollout, every node's ledger still had no `last_counters`.
+func TestALoadMakesTheBaselineDueForRewrite(t *testing.T) {
+	resetState(t)
+	dir := t.TempDir()
+	SaveFilePath = filepath.Join(dir, "net_static.json")
+	oldRewrite := DefaultRewriteInterval
+	DefaultRewriteInterval = 1800
+	t.Cleanup(func() { DefaultRewriteInterval = oldRewrite })
+
+	// A ledger with no baseline, as an older agent would have written.
+	store.Interfaces["eth0"] = []TrafficData{{Timestamp: 1, Tx: 1, Rx: 1}}
+	mu.Lock()
+	if err := saveToFileLocked(); err != nil {
+		mu.Unlock()
+		t.Fatalf("save: %v", err)
+	}
+	// The startup write just happened, so by the interval alone nothing is due.
+	if shouldRewriteFileLocked(nowUnix()) {
+		mu.Unlock()
+		t.Fatal("nothing changed since the write, so no rewrite should be due")
+	}
+	mu.Unlock()
+
+	if err := loadFromFileLocked(); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	// The sampler has since recorded a baseline.
+	lastCounters["eth0"] = CounterSample{Tx: 100, Rx: 200, At: uint64(time.Now().Unix())}
+
+	if !shouldRewriteFileLocked(nowUnix()) {
+		t.Fatal("the baseline is in memory only; the next save must be allowed to write it")
+	}
+
+	mu.Lock()
+	err := saveToFileLocked()
+	mu.Unlock()
+	if err != nil {
+		t.Fatalf("save after load: %v", err)
+	}
+	raw, err := os.ReadFile(SaveFilePath)
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if !contains(string(raw), "last_counters") {
+		t.Fatalf("the baseline still did not reach disk: %s", raw)
+	}
+}
+
 // The snapshot handed to the ledger must be a copy: the sampler keeps mutating the
 // live map, and sharing it would make "the file's baseline" change under the writer.
 func TestSnapshotIsACopy(t *testing.T) {
