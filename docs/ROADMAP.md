@@ -31,47 +31,45 @@ decisions; `docs/DEPLOY-OC424.md` is the current-state runbook.
 
 ## A. Correctness and coverage
 
-### A1. Split `frontend/src/pages/admin/index.tsx`, with a fixture first
+### A1. Split `frontend/src/pages/admin/index.tsx`, with a fixture first — **closed 2026-09-26**
 
-2 962 lines, larger than the next two files combined, and the structural review
-calls it "the single worst compound-risk item". Its sections
-(`AutoDiscoverySection`, `GenerateCommandButton`, `NodeTable`, `EditButton`)
-already look like separate components.
+It was 2 962 lines, larger than the next two files combined, and the structural
+review called it "the single worst compound-risk item". Both halves of the
+ordering the review asked for are now done: the mounted regression first
+(`5453503`), then the split held by it (`d2d2269`, `e442e23`).
 
-The ordering matters and is the review's: **a mounted regression for the file
-comes first**, then the split, so the split is held by a test rather than by
-review. The v0.1.26 work added a server-backed regression for the node-edit and
-offline-notification write paths, which covers the mutations but not the file's
-own state wiring.
+`index.tsx` is **88 lines** and holds only what the page owns — the provider, the
+5 s poll, the search filter, the weight sort, the selection, and the choice
+between the empty-state guide and the table. What left:
 
-**The fixture landed 2026-09-26, in
-`frontend/script/admin-node-table.browser.{html,tsx}` with
-`admin-node-table.browser.spec.py`; the split has not been done.** It mounts the
-real page body — `Layout`, exported for this — rather than a re-implementation,
-because the state under test is spread across two components: `Layout` owns the
-poll, the search filter, the sort and the selection, while `NodeTable` receives
-`nodes` as a prop and owns only the local reorder list. Mounting `NodeTable` alone
-would leave the filter, the sort and the poll untested. Six cases:
+| Module | Lines | Was |
+|---|---:|---|
+| `nodeTable/GenerateCommandButton.tsx` | 882 | the install-command dialog |
+| `autoDiscovery/AutoDiscoverySection.tsx` | 911 | the "add node" dialog's body |
+| `nodeTable/NodeDialogs.tsx` | 718 | `DetailView`, `DeleteButton`, `EditButton`, `BillingButton` |
+| `nodeTable/NodeTable.tsx` | 343 | `NodeTable` and `SortableRow` |
+| `autoDiscovery/Header.tsx` | 101 | the title bar |
+| `autoDiscovery/EmptyNodesGuide.tsx` | 37 | the first-run hint |
+| `nodeTable/NodeActions.tsx` | 40 | the per-row action strip |
+| `nodeTable/mutationResult.ts` | 36 | the write-envelope check, previously duplicated by convention across four components |
+| `nodeTable/useIsSnapshotBackend.ts` | 37 | the snapshot-build hook, moved out of `NodeTable.tsx` because a file exporting both a hook and a component breaks fast refresh |
 
-| Case | What it pins |
-|---|---|
-| poll cadence | one request per 5 s interval and none at half an interval; a regression that rebuilt the timer on every response would show up here |
-| failure then recovery | the error is rendered, and the next poll clears it |
-| out-of-order responses | a held response that lands after a newer one is discarded, not painted |
-| filter and sort | weight ordering and the name filter, applied to the polled list |
-| selection | select-all and per-row selection agree, and the count is shared |
-| poll vs selection | a poll does not clear the selection |
+Two dead copies of `EditButton` and `BillingButton` were also removed: the second
+commit found them still defined in the page after their live versions had moved,
+unused but identical. That is the duplication A1 existed to remove.
 
-The three `data-testid`s it reads (`node-table`, `node-row`, `selected-count`) and
-the `export` on `Layout` are additive: no behaviour depends on them. CI runs it in
-the `frontend-browser` job.
+The fixture mounts `Layout`, so it covers the poll, the filter, the sort and the
+selection across the whole page rather than one component, and it passed
+unchanged through both commits. Verified: `npx tsc -b` clean, `npm run lint`
+clean, `npm test` 71/71, all twelve mounted browser specs 43/43, `npm run build`
+clean, `panel-smoke.spec.py` over 36 real routes with no same-origin console error
+or failed request, `admin-write-paths.spec.py` 2/2 with persistence.
 
-Next: split the file under this fixture, with no behaviour change. Acceptance is
-unchanged below.
+Not done here, and worth knowing before calling the area finished: the new
+`autoDiscovery/` modules have no fixture of their own. The page-level fixture
+mounts them, and the panel smoke renders them, but the auto-discovery key
+round-trip is still covered only by the server-backed write-path spec.
 
-Acceptance: a mounted fixture over the node table's state (poll, filter, sort,
-selection) passing before and after; the file under ~600 lines with no behaviour
-change.
 
 ### A2. Accessibility and integration the fixtures cannot prove
 
