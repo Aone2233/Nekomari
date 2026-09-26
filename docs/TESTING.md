@@ -171,6 +171,40 @@ bash deploy/install-node-agent.test.sh   # the token must not reach the unit
 bash deploy/panel-probe.test.sh
 ```
 
+### MAC-WAN as the standing browser-test host
+
+The browser suites also run on **MAC-WAN**, and it is the better place for a long
+run: 4 cores, 8 GB, a real Linux userspace, and no Windows temp-file quirks. It was
+set up on 2026-09-26 and the full suite was run there to prove it — 43/43.
+
+What is installed, and what was already there:
+
+| Piece | Where | Note |
+|---|---|---|
+| Chromium | `~/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome` | already downloaded; `chrome --version` → `Google Chrome for Testing 153.0.8010.12` |
+| Python Playwright | `~/.venvs/browsertest` (1.63.0) | **was missing** — the browser was cached but no package could drive it |
+| Repo | `~/nekomari-test/frontend` | source only; `npm ci` there installs the 761 packages the specs need |
+
+The revision matched by luck worth knowing about: Playwright 1.63.0 wants chromium
+revision **1243**, which is exactly what was already in the cache, so no second
+download was needed. If a future Playwright bump asks for a different revision,
+`~/.venvs/browsertest/bin/playwright install chromium` fetches it.
+
+To refresh the checkout and run the suite:
+
+```bash
+# from the workstation, shipped as a tar of the committed tree
+git archive --format=tar -o /tmp/frontend.tar HEAD frontend
+scp /tmp/frontend.tar MAC-WAN:/home/macos/frontend.tar
+ssh MAC-WAN 'tar -xf ~/frontend.tar -C ~/nekomari-test'
+
+# then on MAC-WAN
+cd ~/nekomari-test/frontend
+for f in script/*.browser.spec.py; do ~/.venvs/browsertest/bin/python "$f"; done
+```
+
+`npm ci` only needs re-running when `package-lock.json` changes.
+
 ```bash
 # live protocol-resolution check (needs root for real ICMP)
 NEKOMARI_LIVE_PROBE=1 sudo -E env "PATH=$PATH" go test -run TestProbeAutoProtocolLive -v ./agent/server/
