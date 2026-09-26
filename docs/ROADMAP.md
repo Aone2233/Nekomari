@@ -229,17 +229,18 @@ The repository no longer puts the token on a command line:
   the token never reaches the unit, for every spelling of the argument. In CI as
   the `deploy-scripts` job.
 
-What is **not** done: eight of the ten nodes still pass `-t <token>`, and no node
-has been migrated by reinstalling rather than by hand. **MAC-WAN was migrated by
-hand on 2026-09-26** as the pilot — token in a 0600 credential file, absent from
-`/proc/<pid>/cmdline` and `systemctl show`, ICMP and TCP tasks still reporting
-real values afterwards. The record, the rollback, and the `setcap` trap that any
-hand-upgrade hits are in `docs/DEPLOY-OC424.md`. OC424 was confirmed still
-exposed on 2026-09-26, which is how the token that had to be rotated was read.
+What is **not** done: **one node**, NOSLA, still passes `-t <token>`. The other
+nine are migrated — OC424, MAC-WAN and JPKD2 with their tokens rotated because
+they had been read out during this work, and the five systemd nodes (AKKO06,
+megabox, HK04, HNJP01, CLISP) moved without rotation on purpose, so a failed
+migration could not also cost the node its identity. NOSLA has no SSH route from
+OC424 or from the workstation, so it needs one before it can be migrated; it is
+healthy and reporting in the meantime. The records, the rollback for each shape,
+and the two traps are in `docs/DEPLOY-OC424.md`.
 
 Acceptance: `ps aux | grep komari-agent` on a node shows no token, and the
-installer's generated one-liner is updated to match — **met on MAC-WAN**, open for
-the rest of the fleet.
+installer's generated one-liner is updated to match — **met on nine of ten nodes**,
+open for NOSLA.
 
 ### D2. Prefer `AmbientCapabilities` over running as root
 

@@ -319,6 +319,49 @@ To undo only D1 (keep the new binary, put the token back on the command line), w
 `-t <token>` back into `ExecStart` in place of `--token-file …` and restart; the
 new binary accepts both.
 
+## The five systemd nodes migrated 2026-09-26
+
+AKKO06, megabox, HK04, HNJP01 and CLISP, one at a time, stopping at the first
+failure so a bad node could not take the rest with it. All five had the same shape
+— `/etc/systemd/system/nekomari-agent.service`, `/opt/nekomari-agent/komari-agent-linux-amd64`,
+`-t <token>` — so one procedure applied to all of them, run per node rather than
+as a loop.
+
+| | Before | After |
+|---|---|---|
+| Binary | sha256 `705e8d5b…` (the published v0.1.27, which predates `--token-file`) | sha256 `9477e4e4…`, built from `main` |
+| Credential | `-t <token>` in the unit | `/opt/nekomari-agent/.agent-credentials`, 600 root:root |
+| Unit | `-t <token>` | `--token-file /opt/nekomari-agent/.agent-credentials` |
+| Backup | — | `/opt/nekomari-agent/migration-backup-20260926/` (unit + previous binary, 9.2 MB each) |
+
+**The tokens were deliberately not rotated here.** The migration moves the existing
+token into a file, so a failure on the node leaves the node's identity intact and
+the rollback is a copy of two files. Rotation is a separate operation because it is
+the part that cannot be undone; doing both at once would mean a failed migration
+also cost the node its credential. OC424, MAC-WAN and JPKD2 were rotated because
+their tokens had actually been read out.
+
+Verified per node, read-only and after the restart: `service=active`,
+`unit_has_token=0`, `cmdline_has_token=0`, `unit_uses_token_file=1`,
+`cred_mode=600 root:root`, binary `9477e4e42291`.
+
+Verified fleet-wide afterwards, from the panel's own store: **all ten nodes
+reporting**, every one on `v0.1.27`, each producing latency and loss samples with
+the newest sample under a minute old.
+
+### What the fleet looks like now
+
+| Node | Token location | Identity |
+|---|---|---|
+| 甲骨文 OC424 | credential file (rotated) | root |
+| MAC-WAN | credential file (rotated) | non-root + `cap_net_raw` |
+| JPKD2 | credential file (rotated) | root, OpenRC |
+| AKKO06, megabox, HK04, HNJP01, CLISP | credential file (not rotated) | root |
+| **NOSLA** | **still `-t` on the command line** | unknown — no SSH route from OC424 or this workstation (`root@176.119.148.158` and `ubuntu@` both refuse the key) |
+
+NOSLA is the one node left, and it is not blocked on tooling: it needs an SSH
+route. It is healthy and reporting in the meantime.
+
 ## JPKD2 migrated 2026-09-26 (OpenRC, and the third token rotated)
 
 JPKD2 is the one node that is not systemd — Alpine 3.19 in LXC, behind NAT, with
