@@ -116,7 +116,12 @@ const NodeDetailsPage = () => {
   );
 };
 
-const Layout = () => {
+// Exported for the mounted regression in script/admin-node-table.browser.tsx.
+// The page owns the state the fixture has to observe — the poll interval, the
+// search filter, the sort, and the selection — and NodeTable owns only part of
+// it, so mounting NodeTable alone would test the wrong wiring. Exporting the
+// component is a visibility change: no behaviour depends on it.
+export const Layout = () => {
   const { nodeDetail, isLoading, error, refresh } = useNodeDetails();
   const { settings, loading: settingsLoading } = useSettings();
   const [searchTerm, setSearchTerm] = useState("");
@@ -1150,7 +1155,9 @@ const Header = ({
           {t("admin.nodeTable.nodeList")}
         </Text>
         {selectedNodes.length > 0 && (
-          <Text size="2">({selectedNodes.length} selected)</Text>
+          <Text size="2" data-testid="selected-count">
+            ({selectedNodes.length} selected)
+          </Text>
         )}
       </Flex>
       <Flex gap="2">
@@ -1217,7 +1224,15 @@ const SortableRow = ({
     toast.success(t("copy_success"));
   }
   return (
-    <TableRow ref={setNodeRef} style={style} className="hover:bg-accent-a2">
+    <TableRow
+      ref={setNodeRef}
+      style={style}
+      className="hover:bg-accent-a2"
+      // The mounted fixture reads row identity and order from here rather than
+      // from the rendered text, which repeats the name in the drawer and the flag.
+      data-testid="node-row"
+      data-node-uuid={node.uuid}
+    >
       <TableCell>
         <div
           {...attributes}
@@ -1431,6 +1446,10 @@ const NodeTable = ({
   };
   return (
     <div
+      data-testid="node-table"
+      // The rendered order, so a fixture can assert the sort and the local
+      // reorder without reading the DOM's text and guessing at row identity.
+      data-node-order={localNodes.map((node) => node.uuid).join(",")}
       className={`rounded-md overflow-hidden ${
         isDragging ? "select-none" : ""
       }`}
@@ -1447,6 +1466,7 @@ const NodeTable = ({
               <TableHead></TableHead>
               <TableHead>
                 <Checkbox
+                  data-testid="select-all"
                   checked={
                     selectedNodes.length === localNodes.length &&
                     localNodes.length > 0

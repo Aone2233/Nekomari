@@ -52,6 +52,7 @@ jobs:
           python script/remote-file-tree.browser.spec.py
           python script/load-chart.browser.spec.py
           python script/metrics-settings.browser.spec.py
+          python script/admin-node-table.browser.spec.py
 
   # The fixtures above mount one component against stubs. This job boots the
   # built server and walks the real panel instead, which is the only check that

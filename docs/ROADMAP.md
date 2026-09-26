@@ -44,6 +44,31 @@ review. The v0.1.26 work added a server-backed regression for the node-edit and
 offline-notification write paths, which covers the mutations but not the file's
 own state wiring.
 
+**The fixture landed 2026-09-26, in
+`frontend/script/admin-node-table.browser.{html,tsx}` with
+`admin-node-table.browser.spec.py`; the split has not been done.** It mounts the
+real page body — `Layout`, exported for this — rather than a re-implementation,
+because the state under test is spread across two components: `Layout` owns the
+poll, the search filter, the sort and the selection, while `NodeTable` receives
+`nodes` as a prop and owns only the local reorder list. Mounting `NodeTable` alone
+would leave the filter, the sort and the poll untested. Six cases:
+
+| Case | What it pins |
+|---|---|
+| poll cadence | one request per 5 s interval and none at half an interval; a regression that rebuilt the timer on every response would show up here |
+| failure then recovery | the error is rendered, and the next poll clears it |
+| out-of-order responses | a held response that lands after a newer one is discarded, not painted |
+| filter and sort | weight ordering and the name filter, applied to the polled list |
+| selection | select-all and per-row selection agree, and the count is shared |
+| poll vs selection | a poll does not clear the selection |
+
+The three `data-testid`s it reads (`node-table`, `node-row`, `selected-count`) and
+the `export` on `Layout` are additive: no behaviour depends on them. CI runs it in
+the `frontend-browser` job.
+
+Next: split the file under this fixture, with no behaviour change. Acceptance is
+unchanged below.
+
 Acceptance: a mounted fixture over the node table's state (poll, filter, sort,
 selection) passing before and after; the file under ~600 lines with no behaviour
 change.
