@@ -3,14 +3,23 @@
 #
 # The bundled installer is systemd-only, so this is the OpenRC equivalent: the
 # binary plus the flags from /etc/conf.d/nekomari-agent, supervised so it comes
-# back after a crash or a network blip. Host-specific settings, including the
-# node token, live in that conf.d file (mode 0600) rather than here.
+# back after a crash or a network blip. Host-specific settings live in that conf.d
+# file (mode 0600) rather than here.
+#
+# The token is NOT one of them: it goes in a credential file and reaches the agent
+# as `--token-file`. Putting it in conf.d only protects it at rest, because this
+# script interpolates whatever it reads into `command_args` -- and a command line
+# is readable by every local user through /proc/<pid>/cmdline. JPKD2 ran that way
+# until 2026-09-26; docs/SECRETS.md (incident 5) has the record.
+#
+#   umask 077; printf 'AGENT_TOKEN=%s\n' '<token from the panel>' \
+#     > /opt/nekomari-agent/.agent-credentials
 
 name="Nekomari monitoring agent"
 description="Reports this host to the Nekomari panel"
 
 command="/opt/nekomari-agent/komari-agent"
-command_args="-e ${NEKOMARI_ENDPOINT} -t ${NEKOMARI_TOKEN} ${NEKOMARI_EXTRA_ARGS}"
+command_args="-e ${NEKOMARI_ENDPOINT} --token-file ${NEKOMARI_TOKEN_FILE} ${NEKOMARI_EXTRA_ARGS}"
 command_user="root"
 pidfile="/run/${RC_SVCNAME}.pid"
 

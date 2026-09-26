@@ -319,6 +319,36 @@ To undo only D1 (keep the new binary, put the token back on the command line), w
 `-t <token>` back into `ExecStart` in place of `--token-file …` and restart; the
 new binary accepts both.
 
+## JPKD2 migrated 2026-09-26 (OpenRC, and the third token rotated)
+
+JPKD2 is the one node that is not systemd — Alpine 3.19 in LXC, behind NAT, with
+`/etc/conf.d/nekomari-agent` holding its settings. Its token was rotated and its
+service moved to a credential file in the same operation, for the same reasons as
+OC424: the token had been read out during the fleet audit, and moving it without
+replacing it would have fixed the handling and left the exposure.
+
+It also needed a new binary first. The fleet binary is the published `v0.1.27`,
+built before `ac80b73` added `--token-file`, so the flag did not exist there yet.
+
+| | Before | After |
+|---|---|---|
+| Binary | `/opt/nekomari-agent/komari-agent`, sha256 `705e8d5b…` (the release asset) | sha256 `9477e4e4…`, built from `main` at `55d1794` with the version injected |
+| Credential | `NEKOMARI_TOKEN=…` in `/etc/conf.d/nekomari-agent` (0600) — correct at rest | `/opt/nekomari-agent/.agent-credentials`, 600 root:root |
+| Command line | `/etc/init.d/nekomari-agent` built `-e … -t ${NEKOMARI_TOKEN} …`, so the token was in `/proc/<pid>/cmdline` | `-e … --token-file /opt/nekomari-agent/.agent-credentials …` |
+| conf.d | carried the token | carries endpoint and flags only |
+| Backup | — | `/opt/nekomari-agent/migration-backup-20260926/` (init script, conf.d, binary) |
+
+Evidence after the restart: `rc-service nekomari-agent status` → `started`; the
+process command line has **zero** `-t`/`--token` occurrences and shows
+`--token-file`; `getcap` is not involved (the service runs as root); the panel
+reports `JPKD2 | Uzumaru … v0.1.27` with a fresh `updated_at`, and its three TCP
+tasks keep producing latency and loss values in the current minute.
+
+The template `deploy/hosts/nekomari-agent.openrc` now passes
+`--token-file ${NEKOMARI_TOKEN_FILE}`, so the next Alpine node starts on the safe
+path rather than inheriting this one's mistake. `docs/SECRETS.md` (incident 5)
+records the token and the `sh -s` trap that made the first attempt fail silently.
+
 ## The MAC Server "jitter" — resolved 2026-09-25 (it was never MAC)
 
 `docs/OPEN-WORK.md` carried this for a week as "the 教育网 jitter is MAC Server

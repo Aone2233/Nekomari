@@ -196,6 +196,22 @@ the token file itself kept at 0600. `deploy/hosts/nekomari-agent.openrc` is the
 template to fix, and `deploy/rotate-all-tokens.py` already lists JPKD2
 (`JPKD2-OPENRC`, unit `/etc/conf.d/nekomari-agent`) as a rotation target.
 
+**Both are done, on JPKD2, on 2026-09-26.** The token was rotated (old one
+invalidated), `/opt/nekomari-agent/.agent-credentials` holds the new one at mode
+600 root:root, the init script passes `--token-file` and conf.d no longer has a
+`NEKOMARI_TOKEN` line, and the service restarted with **zero** `-t`/`--token`
+occurrences in its command line. The template now reads
+`--token-file ${NEKOMARI_TOKEN_FILE}` so a new Alpine node starts on the safe
+path.
+
+One trap worth recording from doing it: the migration script originally sent
+itself to the node as `ssh JPKD2 sh -s <<< payload` with the token on the first
+line of stdin. That cannot work — `sh -s` consumes the *whole* stdin as the
+script, so the script's own `read` gets EOF and the token is silently empty. It
+was checked rather than guessed at (the same payload with the script as a file
+works, with `sh -s` prints an empty variable), and the fix is to copy the script
+to the node first and then feed the token on stdin.
+
 ## Notes
 
 - Tokens from both incidents remain in git history. They are worthless now, so the
