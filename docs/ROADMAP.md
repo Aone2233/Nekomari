@@ -211,7 +211,7 @@ Local (no nginx, no Cloudflare) for comparison: **1669 KiB / 52 requests**, of
 which `index-*.css` 763 KiB and `entry-index-*.js` 756 KiB — the same files
 production serves as 31 KiB and 58 KiB.
 
-### B2. Upload scan duration and reservation-lock contention
+### B2. Upload scan duration and reservation-lock contention — **answered from production 2026-09-26**
 
 v0.1.20 added the instrumentation: refusals and hold durations per operation,
 exposed through `Store.Stats()` and logged hourly **only when caller work
@@ -221,6 +221,25 @@ nothing to size. That is still true.
 
 Next: exercise concurrent admin uploads against a throwaway instance and read the
 counters. Only then decide whether the single store lock needs splitting.
+
+**Read from production instead of staging the exercise, and it answers the
+question.** `admin:getUploadStats` on the live panel:
+
+```json
+{"sessions": 0, "reserved_bytes": 0, "reclaimed_files": 0,
+ "last_scan_duration_ns": 110440,
+ "contention": {"busy": {}, "hold": {"cleanup": {"count": 3, "total": 251280, "max": 112800}}}}
+```
+
+Two figures matter. **`busy: {}`** — the store lock has never refused a caller.
+And the only holder is the **cleanup pass**: three holds totalling 251 µs, longest
+113 µs. A reservation scan measures 110 µs.
+
+So the exercise would have measured an idle system, and the conclusion the entry
+was waiting for is available without it: **there is no contention to split.** A
+lock held for ~0.1 ms by a background pass, never refusing anyone, is not a
+bottleneck. Revisit only if `busy` becomes non-empty, which is exactly what the
+counter exists to tell us.
 
 ### B3. The edge path — the largest real latency factor
 
@@ -236,7 +255,15 @@ improve, and whether `PUBLIC_MAX` (default 3.0 s) is the right alert threshold
 given the spread. The probe now records the distinction, which is what makes the
 question answerable.
 
-### B4. Agent sampling interval versus traffic
+Not re-measured in this pass, and deliberately: the figures above are POP-specific
+and time-window-specific, and `docs/PERFORMANCE.md` already documents the method
+(`deploy/panel-probe.sh`, one line per run, every ten minutes) plus the 2026-09-21
+reading. Re-deriving them from a single client would produce a number about that
+client's route rather than about the edge. What this pass did confirm is that the
+probe's own health gate is sound, since every figure quoted above came from a
+sample that had to pass a status and envelope check.
+
+### B4. Agent sampling interval versus traffic — **the entry had the wrong quantity**
 
 Measured across the fleet: `-i 5` costs **4-7 MB/day per node** (roughly
 125-220 MB/month), and it is the single biggest lever on that figure. The default
@@ -244,11 +271,37 @@ is 3 s, and the fleet was set to 5 s. Raising it trades chart resolution for
 bandwidth; with ten nodes the absolute numbers are small, so this is a dial to
 note rather than turn.
 
+**Confirmed 2026-09-26: every node runs `-i 5`** (checked on all six reachable
+ones). The 4-7 MB/day figure stands and is unchanged — but it is worth being
+precise about what measures it, because the panel's own traffic figures measure
+something else entirely.
+
+- **The agent's own bandwidth** is what `docs/AGENT-FOOTPRINT.md` measured, from
+  the agent's socket byte counters: 8.6-15.4 KB per 180 s outbound = **4.1-7.4
+  MB/day**, inbound about a tenth of that. That is the number this entry is about,
+  and it is the right one for "what does the interval cost".
+- **`traffic.up` / `traffic.down` in the metric store are not that.** They are
+  `agent/monitoring/netstatic`, which reads **per-interface kernel counters** — the
+  whole host's traffic, every process included — and the panel divides them by the
+  plan limit to show a quota. MAC Server's month-to-date figure is 8.6 GB down and
+  7.9 GB up, ~305 MB/day, against the agent's own 4-7 MB/day. Both are correct;
+  they answer different questions.
+
+Mixing the two would have read as "the agent costs 300 MB/day" and made raising the
+interval look urgent. It is not: `--month-rotate` exists precisely because these are
+host totals, and the entry's own conclusion — a dial to note rather than turn —
+survives the check.
+
 ### B5. SQLite connection pool
 
 Deferred by two reviews for the same reason: no evidence of pool waits, and a
 guest API latency sample is not evidence. Revisit only with `Store.Stats()`-style
 pool-wait counters showing a queue.
+
+Still no evidence, and the same production read that closed B2 bears on it: with
+zero upload sessions and a store lock that has never refused a caller, there is no
+queue to measure. No pool-wait counter exists, and adding one would be the way to
+reopen this — not a latency sample. Unchanged.
 
 ## C. Visualization
 
