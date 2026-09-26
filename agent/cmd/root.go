@@ -28,6 +28,52 @@ var flags = pkg_flags.GlobalConfig
 
 var warningPanelHost, warningRunAsUser string
 
+// tokenOnCommandLine records whether this process was started with the token in
+// its arguments. It is read only by the one-time warning, after the token itself
+// is no longer reachable through this flag.
+var tokenOnCommandLine bool
+
+func tokenFlagProvided(args []string) bool {
+	_, ok := commandLineToken(args)
+	return ok
+}
+
+// warnIfTokenOnCommandLine states the exposure once, at startup, where the
+// operator will see it. Not an error: `-t` is still what the panel's generated
+// install command uses, and a node that refuses to start is a worse outcome than
+// one that starts with a warning.
+func warnIfTokenOnCommandLine() {
+	if !tokenOnCommandLine {
+		return
+	}
+	token, ok := commandLineToken(os.Args)
+	if !ok {
+		return
+	}
+	log.Printf("WARNING: the API token is on the command line (%d characters), so any local user can read it from `ps` or `systemctl show`. Move it to a file: `--token-file <path>` (mode 0600), or an AGENT_TOKEN environment file.", len(token))
+}
+
+// commandLineToken returns the token spelled out in args, or ok=false when the
+// token is not there. It handles the `-t v`, `-t=v` and `--token=v` spellings;
+// the bare `--token v` form consumes the following argument.
+func commandLineToken(args []string) (string, bool) {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-t" || arg == "--token":
+			if i+1 < len(args) {
+				return args[i+1], true
+			}
+			return "", false
+		case strings.HasPrefix(arg, "--token="):
+			return strings.TrimPrefix(arg, "--token="), true
+		case strings.HasPrefix(arg, "-t="):
+			return strings.TrimPrefix(arg, "-t="), true
+		}
+	}
+	return "", false
+}
+
 var RootCmd = &cobra.Command{
 	Use:   "komari-agent",
 	Short: "komari agent",
@@ -49,6 +95,12 @@ var RootCmd = &cobra.Command{
 				return fmt.Errorf("failed to parse config file: %w", err)
 			}
 		}
+		// After both of the above, so the precedence is explicit: -t / AGENT_TOKEN
+		// win, then --token-file / AGENT_TOKEN_FILE, then the config file's token.
+		if err := resolveToken(); err != nil {
+			return err
+		}
+		tokenOnCommandLine = os.Getenv("AGENT_TOKEN") == "" && tokenFlagProvided(os.Args)
 		if flags.PreferIPVersion != "" && flags.PreferIPVersion != "4" && flags.PreferIPVersion != "6" {
 			return fmt.Errorf("invalid --prefer-ip-version value %q: expected 4 or 6", flags.PreferIPVersion)
 		}
@@ -61,6 +113,7 @@ var RootCmd = &cobra.Command{
 			stopWarning = startSecurityWarning(stopCtx)
 		}
 		defer stopWarning()
+		warnIfTokenOnCommandLine()
 		go func() {
 			<-stopCtx.Done()
 			log.Printf("shutting down gracefully...")
@@ -166,6 +219,8 @@ func Execute() {
 
 func init() {
 	RootCmd.PersistentFlags().StringVarP(&flags.Token, "token", "t", "", "API token")
+	RootCmd.PersistentFlags().StringVar(&flags.TokenFile, "token-file", "",
+		"Read the API token from a file (mode 0600) instead of -t, so it stays out of ps and systemctl show")
 	//RootCmd.MarkPersistentFlagRequired("token")
 	RootCmd.PersistentFlags().StringVarP(&flags.Endpoint, "endpoint", "e", "", "API endpoint")
 	//RootCmd.MarkPersistentFlagRequired("endpoint")

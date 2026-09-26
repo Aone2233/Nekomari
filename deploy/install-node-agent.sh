@@ -22,6 +22,17 @@
 #                                reach GitHub directly
 #   --version vX.Y.Z             pin a release instead of using the latest
 #   --force                      reinstall even if an agent is already running
+#   --install-token-file PATH    where to write the node's credential
+#                                (default <install-dir>/.agent-credentials)
+#   --dry-run                    do everything except download, replace the binary
+#                                or touch the service; leaves the credential file
+#                                in place so the unit can be inspected
+#
+# The token never ends up in the unit. `-t <token>` is accepted — the panel hands
+# out exactly that — but the installer moves it into a 0600 credential file and
+# starts the agent with `--token-file`, because `-t` puts the node's whole
+# identity in /proc/<pid>/cmdline and `systemctl show -p ExecStart`. See
+# docs/SECRETS.md.
 #
 # Why this exists at all: the admin panel used to hand out upstream's installer
 # URL, which installs the *upstream* agent from an archived project — without the
@@ -34,7 +45,12 @@ SERVICE_NAME="nekomari-agent"
 GH_PROXY=""
 VERSION=""
 FORCE=0
+TOKEN_FILE=""
 AGENT_ARGS=()
+
+# A dry run still writes the credential file (that is the part worth inspecting)
+# and stops before the network and the service.
+DRY_RUN="${NEKOMARI_INSTALLER_DRY_RUN:-0}"
 
 log()  { printf '  %s\n' "$*"; }
 warn() { printf '  !! %s\n' "$*" >&2; }
@@ -51,6 +67,9 @@ while [ $# -gt 0 ]; do
     --install-ghproxy=*)    GH_PROXY="${1#*=}"; shift ;;
     --version)              VERSION="${2:?--version needs a value}"; shift 2 ;;
     --version=*)            VERSION="${1#*=}"; shift ;;
+    --install-token-file)   TOKEN_FILE="${2:?--install-token-file needs a value}"; shift 2 ;;
+    --install-token-file=*) TOKEN_FILE="${1#*=}"; shift ;;
+    --dry-run)              DRY_RUN=1; shift ;;
     --force)                FORCE=1; shift ;;
     -h|--help)
       sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
@@ -79,6 +98,7 @@ for i in "${!AGENT_ARGS[@]}"; do
     -e=*) ENDPOINT="${AGENT_ARGS[$i]#*=}" ;;
     -t) TOKEN="${AGENT_ARGS[$((i+1))]:-}" ;;
     -t=*) TOKEN="${AGENT_ARGS[$i]#*=}" ;;
+    --token=*) TOKEN="${AGENT_ARGS[$i]#*=}" ;;
     --auto-discovery) AUTO_DISCOVERY="${AGENT_ARGS[$((i+1))]:-}" ;;
     --auto-discovery=*) AUTO_DISCOVERY="${AGENT_ARGS[$i]#*=}" ;;
   esac
@@ -88,8 +108,85 @@ if [ -n "$AUTO_DISCOVERY" ]; then
   log "identity: --auto-discovery (the agent registers and saves the token in"
   log "          ${INSTALL_DIR}/auto-discovery.json; that file must survive, or the"
   log "          next start registers a second node)"
-else
-  [ -n "$TOKEN" ] || die "no token: pass -t <token from the panel> (or --auto-discovery <key> to enrol a new node)"
+elif [ -z "$TOKEN" ]; then
+  # No token on the command line: an earlier install may have left one behind, in
+  # which case a re-run needs no token at all. Check the flags before the default
+  # path so `--install-token-file X` is honoured on a re-run too.
+  EXISTING_TOKEN_FILE=""
+  for i in "${!AGENT_ARGS[@]}"; do
+    case "${AGENT_ARGS[$i]}" in
+      --token-file) EXISTING_TOKEN_FILE="${AGENT_ARGS[$((i+1))]:-}" ;;
+      --token-file=*) EXISTING_TOKEN_FILE="${AGENT_ARGS[$i]#*=}" ;;
+    esac
+  done
+  if [ -z "$EXISTING_TOKEN_FILE" ]; then
+    EXISTING_TOKEN_FILE="${TOKEN_FILE:-${INSTALL_DIR}/.agent-credentials}"
+  fi
+  if [ -s "$EXISTING_TOKEN_FILE" ]; then
+    log "identity: existing credential file ${EXISTING_TOKEN_FILE}"
+  else
+    die "no token: pass -t <token from the panel> (or --auto-discovery <key> to enrol a new node)"
+  fi
+fi
+
+# --- credentials ------------------------------------------------------------
+# `-t` is removed from the agent's arguments and replaced by --token-file, so the
+# token is not in ExecStart. The file is an AGENT_TOKEN= line: the same shape
+# systemd's EnvironmentFile= wants, so a unit can also carry it that way.
+#
+# The replacement happens before the dry-run exit, so a dry run exercises the
+# real argument handling and the unit that would be written is the unit you can
+# inspect.
+if [ -n "$TOKEN" ]; then
+  NEW_ARGS=()
+  i=0
+  while [ "$i" -lt "${#AGENT_ARGS[@]}" ]; do
+    case "${AGENT_ARGS[$i]}" in
+      -t|--token)
+        # The token value itself is dropped; it goes into the file below.
+        i=$((i + 2)) ;;
+      -t=*|--token=*)
+        i=$((i + 1)) ;;
+      *)
+        NEW_ARGS+=("${AGENT_ARGS[$i]}")
+        i=$((i + 1)) ;;
+    esac
+  done
+  [ -n "$TOKEN_FILE" ] || TOKEN_FILE="${INSTALL_DIR}/.agent-credentials"
+  NEW_ARGS+=("--token-file" "$TOKEN_FILE")
+  AGENT_ARGS=("${NEW_ARGS[@]}")
+  log "credential: token moved to ${TOKEN_FILE}, passed as --token-file (not in ExecStart)"
+elif [ -z "$AUTO_DISCOVERY" ]; then
+  # No `-t`, and an existing credential file was found above: keep the flag on
+  # the command line so the unit still points at the file. There is no default
+  # here on purpose — guessing a path that does not hold this node's token would
+  # start the agent with the wrong identity.
+  HAS_TOKEN_FILE=0
+  for a in "${AGENT_ARGS[@]}"; do
+    case "$a" in --token-file|--token-file=*) HAS_TOKEN_FILE=1 ;; esac
+  done
+  if [ "$HAS_TOKEN_FILE" = "0" ]; then
+    NEW_ARGS=("${AGENT_ARGS[@]}" "--token-file" "$EXISTING_TOKEN_FILE")
+    AGENT_ARGS=("${NEW_ARGS[@]}")
+  fi
+  log "credential: reusing ${EXISTING_TOKEN_FILE}"
+fi
+
+if [ "$DRY_RUN" = "1" ]; then
+  # Still write the file the unit will point at, so a dry run can be checked with
+  # `cat` and `ls -l` rather than taken on trust. Nothing else is touched.
+  if [ -n "${TOKEN:-}" ] && [ -n "${TOKEN_FILE:-}" ]; then
+    mkdir -p "$(dirname "$TOKEN_FILE")"
+    # umask first: the file must never exist with wider permissions, even briefly.
+    (umask 077; printf 'AGENT_TOKEN=%s\n' "$TOKEN" > "$TOKEN_FILE")
+    chmod 600 "$TOKEN_FILE"
+    log "dry run: wrote ${TOKEN_FILE} (mode 0600, $(printf '%s' "$TOKEN" | wc -c | tr -d ' ') characters)"
+  fi
+  log "dry run: stopping before the download and the service. Planned:"
+  log "  unit:    /etc/systemd/system/${SERVICE_NAME}.service"
+  log "  command: ${INSTALL_DIR}/${SERVICE_NAME}$(for a in "${AGENT_ARGS[@]}"; do printf ' %s' "$a"; done)"
+  log "no binary was downloaded and no service was changed."
+  exit 0
 fi
 
 # --- platform ---------------------------------------------------------------
@@ -161,6 +258,25 @@ $SUDO mkdir -p "$INSTALL_DIR"
 $SUDO install -m 0755 "$TMP/$ASSET" "$INSTALL_DIR/$ASSET"
 BIN="$INSTALL_DIR/$ASSET"
 log "installed to ${BIN}"
+
+# The credential file, written now rather than earlier so the install directory
+# exists and the file lands with the binary it belongs to. 0600 and owned by the
+# account the service runs as: root on systemd (see `User=` defaults) and the
+# invoking user under launchd. No other local user can read it either way.
+if [ -n "$TOKEN" ]; then
+  CRED_TMP="$TMP/.agent-credentials"
+  (umask 077; printf 'AGENT_TOKEN=%s\n' "$TOKEN" > "$CRED_TMP")
+  if [ "$(id -u)" -eq 0 ]; then
+    # install already creates the file as root; naming the user would break on
+    # hosts that have no `root` account (MSYS, some containers).
+    $SUDO install -m 0600 "$CRED_TMP" "$TOKEN_FILE"
+  else
+    $SUDO install -m 0600 -o "$(id -un)" -g "$(id -gn)" "$CRED_TMP" "$TOKEN_FILE"
+  fi
+  rm -f "$CRED_TMP"
+  cred_mode="$($SUDO stat -c '%a %U:%G' "$TOKEN_FILE" 2>/dev/null || echo '?')"
+  log "credential written: ${TOKEN_FILE} (${cred_mode})"
+fi
 
 # The agent resolves this relative to the binary; keep it beside it so state does
 # not land in whatever directory the service happens to start in.

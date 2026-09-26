@@ -108,6 +108,22 @@ jobs:
           # The cd above leaves this shell inside frontend for the rest of the step.
           python script/admin-write-paths.spec.py http://127.0.0.1:25774
 
+  # Shell-level tests for the deployment scripts. Offline and hermetic: the
+  # installer's own flags confine every write to a temp directory, so this needs
+  # no host, no network and no root.
+  deploy-scripts:
+    name: deploy scripts (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test the agent installer's credential handling
+        # The case that matters: `-t` must not survive into the unit's ExecStart.
+        # See docs/SECRETS.md.
+        run: bash deploy/install-node-agent.test.sh
+      - name: Test the panel health probe
+        run: bash deploy/panel-probe.test.sh
+
   build-and-test:
     name: build & test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

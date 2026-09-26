@@ -6,6 +6,7 @@ type Config struct {
 	DisableWebSsh       bool    `json:"disable_web_ssh" env:"AGENT_DISABLE_WEB_SSH"`               // 禁用远程控制（web ssh 和 rce）
 	MemoryModeAvailable bool    `json:"memory_mode_available" env:"AGENT_MEMORY_MODE_AVAILABLE"`   // [deprecated] 已弃用，请使用 MemoryIncludeCache
 	Token               string  `json:"token" env:"AGENT_TOKEN"`                                   // Token
+	TokenFile           string  `json:"token_file" env:"AGENT_TOKEN_FILE"`                         // 从文件读取 Token；避免 token 出现在进程命令行
 	Endpoint            string  `json:"endpoint" env:"AGENT_ENDPOINT"`                             // 面板地址
 	Interval            float64 `json:"interval" env:"AGENT_INTERVAL"`                             // 数据采集间隔，单位秒
 	IgnoreUnsafeCert    bool    `json:"ignore_unsafe_cert" env:"AGENT_IGNORE_UNSAFE_CERT"`         // 忽略不安全的证书

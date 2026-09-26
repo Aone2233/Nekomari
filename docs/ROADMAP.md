@@ -18,8 +18,10 @@ tag exists; it does not mean any host is running it.
 | `v0.1.27` released | yes | tag `v0.1.27` → `6a1e875`, 2026-09-25 18:11 +08:00, `CHANGELOG.md` |
 | `v0.1.27` CI | per the tag pipeline, not re-checked here | `.github/workflows/release.yml`, `ci.yml`; no run was inspected for this revision |
 | `v0.1.27` agent behaviour | changed → the fleet must move | `docs/RELEASING.md` cadence rule; `git diff --stat v0.1.26..v0.1.27 -- agent/ protocol/ pkg/` is not empty |
-| Production panel on `v0.1.27` | **not verified** | the last verified rollout in `docs/DEPLOY-OC424.md` is v0.1.26; no v0.1.27 rollout record exists |
-| Fleet agents on `v0.1.27` | **not verified** | same; the fleet was on v0.1.26 as of the 2026-09-24 rollout |
+| Production panel on `v0.1.27` | **verified 2026-09-26** | `/api/version` → `v0.1.27` / `6a1e875`; image `ghcr.io/aone2233/nekomari:v0.1.27` (`sha256:7a0086eb…`), started 2026-09-25T10:27:42Z, `RestartCount=0` |
+| OC424's agent on `v0.1.27` | **verified 2026-09-26** | binary mtime 2026-09-25 10:28:31 UTC; unit active. Still runs as root (D2 un-migrated) and still passes `-t` (D1 un-deployed) |
+| The other nine nodes on `v0.1.27` | **not verified** | only OC424 was reachable from this session |
+| D1 credential path in the repository | **done 2026-09-26**, not deployed | `agent/cmd/token.go`, both installers, `deploy/install-node-agent.test.sh`; no node migrated |
 
 The 2026-09-25 work that landed *after* the tag (`0989258`, `b4d1153`,
 `acbcf05`, `d37bc01`) is unreleased; `docs/DEPLOY-OC424.md` calls it v0.1.28.
@@ -186,13 +188,29 @@ theme, since the migration touched every chart's wrapper.
 
 ## D. Security and deployment hardening
 
-### D1. The agent token is visible in `ps`
+### D1. The agent token is visible in `ps` — **fixed in the repository 2026-09-26, fleet not migrated**
 
-Every unit in the fleet passes `-t <token>` on the command line, so any local user
-on a node can read its token. This was found while deploying JPKD2 and is
-fleet-wide, not specific to it. Options, cheapest first: read the token from an
-environment file or the config file (`--config` already exists), or keep the
-command line but restrict the unit's visibility.
+The repository no longer puts the token on a command line:
+
+- The agent reads `--token-file` (or `AGENT_TOKEN_FILE`, or an `AGENT_TOKEN=` line
+  in a systemd `EnvironmentFile`), and refuses a credential file that group or
+  other can read. `-t` still works, because the panel hands it out and existing
+  units carry it, but the agent logs a warning at startup naming the exposure and
+  the fix. Precedence: `-t`/`AGENT_TOKEN`, then `--token-file`, then
+  `AGENT_ENV_FILE`, then the `token` field of `--config`.
+- `deploy/install-node-agent.sh` moves `-t <token>` into
+  `<install-dir>/.agent-credentials` (0600) and passes `--token-file`, so the unit
+  it writes has no token in `ExecStart`. `deploy/install-node-agent.ps1` does the
+  same for a scheduled task, with an ACL limited to SYSTEM and Administrators.
+- `deploy/install-node-agent.test.sh` runs the real installer offline and asserts
+  the token never reaches the unit, for every spelling of the argument. In CI as
+  the `deploy-scripts` job.
+
+What is **not** done: no node has been migrated. Every live unit still passes
+`-t <token>`, including OC424's, which was confirmed on 2026-09-26. Migrating one
+node is a production change with its own approval and rollback — the recipe and
+the rollback command are in `docs/SECRETS.md`. Acceptance stays as written below
+until that pilot happens.
 
 Acceptance: `ps aux | grep komari-agent` on a node shows no token, and the
 installer's generated one-liner is updated to match.

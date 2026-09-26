@@ -83,6 +83,67 @@ agents, and replacing the evidence block with `token-1` / `token-2` / `token-3`.
 Lesson: the check has to run **after** the commit that documents the fix, not only
 before it. Documentation is a tracked file like any other.
 
+## Incident 3 — a live token was printed during a read-only audit (2026-09-26)
+
+`systemctl show -p ExecStart` prints the whole command line, token included. An
+audit of OC424 ran exactly that to find out whether the agent was on v0.1.27, and
+the token came back in the output. Nothing in the repository changed, but the
+credential was on screen and the session's command log keeps it.
+
+Two lessons, and both are about the audit rather than the deploy:
+
+- `systemctl show -p ExecStart` is a **credential read**, not a status check. Use
+  `systemctl show -p ExecStart` only when the token's absence is the thing being
+  verified, and pipe it through something that redacts the value:
+  `systemctl show -p ExecStart myservice | sed -E 's/(-t|--token) +[^ ]+/\1 <redacted>/g'`
+  — or read `/proc/<pid>/cmdline` the same way. `systemctl is-active` and the
+  binary hash answer "which version is running" without touching the token.
+- A token printed once is a token to rotate, even when it never entered git. The
+  panel's node token is the node's whole identity: it authenticates
+  `/api/clients/v2/rpc?token=…`, so a reader can report as that node.
+
+This is also why the fix below matters: the exposure is not the audit's fault,
+it is `-t` being on the command line at all.
+
+## The fix — the token comes from a file, not the command line
+
+`-t` still works: the panel hands out `-t <token>`, and command lines in existing
+unit files are not going to be rewritten by a release. What changed is where the
+token *ends up*:
+
+| Path | Where the token lives |
+|---|---|
+| `deploy/install-node-agent.sh` | `-t` is moved into `<install-dir>/.agent-credentials` (mode 0600, owned by the service account) and replaced with `--token-file`, so `ExecStart` has no token |
+| `deploy/install-node-agent.ps1` | same file, ACL restricted to `SYSTEM` and `Administrators`; the scheduled task's arguments carry `--token-file` |
+| an existing unit | unchanged, and the agent logs a warning at startup naming the exposure and the fix |
+| `--config` / a systemd `EnvironmentFile` | still supported; see the precedence below |
+
+The agent reads the token in this order, and never overwrites one that is already
+set: `-t` / `AGENT_TOKEN`, then `--token-file` / `AGENT_TOKEN_FILE`, then
+`AGENT_ENV_FILE`, then the `token` field of `--config`. A token file is an
+`AGENT_TOKEN=<token>` line with a trailing newline, which means the same file
+works as a systemd `EnvironmentFile=` and the unit can carry
+`EnvironmentFile=/etc/nekomari-agent.env` instead of an argument. The file must not
+be group- or world-readable; the agent refuses to start with a 0644 file rather
+than pretend the exposure was fixed.
+
+To move an existing node by hand, without reinstalling:
+
+```bash
+sudo sh -c 'umask 077; printf "AGENT_TOKEN=%s\n" "<token>" > /opt/nekomari-agent/.agent-credentials'
+sudo chmod 600 /opt/nekomari-agent/.agent-credentials
+sudo systemctl edit nekomari-agent        # then, in the drop-in:
+#   [Service]
+#   ExecStart=
+#   ExecStart=/opt/nekomari-agent/komari-agent-linux-amd64 -e <endpoint> --token-file /opt/nekomari-agent/.agent-credentials -i 5
+sudo systemctl daemon-reload && sudo systemctl restart nekomari-agent
+# Verify the absence, with the output redacted as above:
+systemctl show -p ExecStart nekomari-agent | sed -E 's/(-t|--token) +[^ ]+/\1 <redacted>/g'
+```
+
+Rollback is `systemctl revert nekomari-agent`, which restores the old unit with
+`-t` and the original token.
+
 ## Notes
 
 - Tokens from both incidents remain in git history. They are worthless now, so the

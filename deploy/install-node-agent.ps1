@@ -16,6 +16,12 @@
     -Version             pin a release instead of using the latest
     -Force               reinstall even if an agent is already running
 
+  The token never ends up in the task. -t is accepted -- the panel hands out
+  exactly that -- but the installer writes it to <InstallDir>\.agent-credentials,
+  readable by SYSTEM and Administrators only, and starts the agent with
+  --token-file. Otherwise the node's whole identity sits in the scheduled task's
+  command line, where `Get-ScheduledTask` or `schtasks /query /v` shows it.
+
   Note on service type: this registers a Scheduled Task rather than a Windows
   Service. The agent is a console program that holds a WebSocket open; a task with
   "run whether user is logged on or not" gives the same always-on behaviour without
@@ -135,7 +141,19 @@ try {
   Copy-Item $binPath $target -Force
   Log "installed to $target"
 
-  $agentArgs = @("-e", $Endpoint, "-t", $Token)
+  # --- credential -----------------------------------------------------------
+  # The token must not go into the task's arguments: a scheduled task's command
+  # line is visible to anyone who can run `schtasks /query /v` or Get-ScheduledTask,
+  # the same way `-t` is visible in `ps` on Linux. It goes into a file the task's
+  # account (SYSTEM) alone can read, and the agent is started with --token-file.
+  # See docs/SECRETS.md.
+  $tokenFile = Join-Path $InstallDir ".agent-credentials"
+  Set-Content -Path $tokenFile -Value "AGENT_TOKEN=$Token" -NoNewline -Encoding ascii
+  & icacls.exe $tokenFile /inheritance:r /grant:r "SYSTEM:(F)" "Administrators:(F)" | Out-Null
+  if ($LASTEXITCODE -ne 0) { Die "could not restrict access to $tokenFile" }
+  Log "credential written: $tokenFile (SYSTEM and Administrators only)"
+
+  $agentArgs = @("-e", $Endpoint, "--token-file", $tokenFile)
   if ($DisableWebSsh)     { $agentArgs += "--disable-web-ssh" }
   if ($DisableAutoUpdate) { $agentArgs += "--disable-auto-update" }
   if ($IgnoreUnsafeCert)  { $agentArgs += "--ignore-unsafe-cert" }

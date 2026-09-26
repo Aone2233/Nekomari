@@ -3,43 +3,48 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
-## What is actually deployed (checked 2026-09-26)
+## What is actually deployed (verified 2026-09-26)
 
-A commit or a tag proves *release*, never *deployment*. The rows below are
-separate claims; the ones marked **not verified** were not checked against the
-host, and the older rollout sections further down are the last thing that
-*was*.
+A commit or a tag proves *release*, never *deployment*. Each row below is a
+separate claim with the evidence that produced it. "Verified" means a command ran
+against the host on 2026-09-26 and the output is quoted.
 
-| Claim | State | Source of the claim |
+| Claim | State | Evidence |
 |---|---|---|
-| Repository `main` | `d37bc01` + the 2026-09-26 release-cache fix | read this checkout |
+| Repository `main` | `f44e1ac` (docs) on top of `0a90310`, which fixes the release-cache TTL | read this checkout |
 | `v0.1.27` tagged | yes, `6a1e875`, 2026-09-25 18:11 +08:00 | `git rev-parse v0.1.27` |
-| `v0.1.27` contents | agent ICMP fallback, reconnect backoff, ledger save errors; panel mixed-family refusal | [`CHANGELOG.md`](../CHANGELOG.md) |
-| `v0.1.27` CI/Release pipeline | **not verified** | release.yml runs on `v*`; no run was inspected |
-| Panel container on `v0.1.27` | **not verified** | the last verified rollout below is v0.1.26; no v0.1.27 record exists |
-| Fleet agents on `v0.1.27` | **not verified** | last verified fleet state is v0.1.26, 2026-09-24 |
-| Unreleased `main` work | shell caching (`0989258`), addressed here as v0.1.28 | `git log v0.1.27..main` |
+| Panel container on `v0.1.27` | **verified** | `docker ps` → `ghcr.io/aone2233/nekomari:v0.1.27 Up 17 hours (healthy)`; `/api/version` → `{"hash":"6a1e875","version":"v0.1.27"}` |
+| Panel image digest | `sha256:7a0086eb035facf2d02012c853a5f2cd69129b573ed2b77a51dd523d7665b818` | `docker image ls --digests` on OC424 |
+| Panel start time / restarts | started `2026-09-25T10:27:42Z`, `RestartCount=0`, health `healthy` | `docker inspect nekomari` |
+| OC424's own agent on `v0.1.27` | **verified** — binary mtime `2026-09-25 10:28:31 UTC`, 17 minutes after the tag | `ls -la /home/ubuntu/nekomari-agent/`; unit `StartedAt` 2026-09-25 10:28:31 UTC |
+| Rest of the fleet on `v0.1.27` | **not verified** | only OC424 was reachable from this session |
+| OC424 agent runs as root, no capabilities | **verified**, and it is the D1/D2 target | `systemctl show … -p User` → `root`; `AmbientCapabilities=` empty; `NoNewPrivileges=no` |
+| OC424 agent still passes the token on its command line | **verified** — D1 is not deployed | `ExecStart` contains `-t <redacted>`; see the note below |
+| Unreleased `main` work | shell caching (`0989258`), addressed below as v0.1.28 | `git log v0.1.27..main` |
 
-**Read this before treating the panel as current.** The version the panel
-*reports* lags the version a node *runs*: `clients.version` is refreshed by the
-basic-info upload every `--info-report-interval` (10 minutes by default), so a
-node can run a new binary while the panel still shows the old one. To settle
-"is this deployed", read the running binary's hash on the host (and
-`/api/version` for the panel), not the panel's node column.
+**The audit itself printed a live token.** `systemctl show -p ExecStart` was run to
+read the agent's flags, and that output includes the token — a credential read
+dressed as a status check. The token was therefore rotated, and the lesson is
+recorded in `docs/SECRETS.md` (incident 3): redact the flag on any future
+`ExecStart` read, or answer "which version is running" from `systemctl is-active`
+and the binary hash instead.
 
-### How to close the unverified rows
+The v0.1.27 rollout is otherwise **undocumented rather than unverified**: the
+panel moved at 15:17 UTC on 2026-09-25 and this host's agent binary 11 minutes
+later, per the image start time and the binary mtime, but no rollout section was
+written at the time. The numbers above are the replacement record.
+
+### How to close the remaining rows
 
 ```bash
-# Panel: which image is actually running, and what does the server report?
-curl -s https://komari.orderly2233.org/api/version
-ssh ubuntu@213.35.99.48 'docker inspect nekomari --format "{{.Config.Image}} {{.State.StartedAt}} RestartCount={{.RestartCount}}"; docker image inspect ghcr.io/aone2233/nekomari:v0.1.27 --format "{{index .RepoDigests 0}}"'
-
 # Per node: the running binary's hash, not the panel's version column.
 sha256sum /opt/nekomari-agent/komari-agent-linux-amd64   # or /opt/komari/agent on NOSLA
-```
 
-Write the results into a new rollout section, with the date and the backup path,
-the way the v0.1.26 section below does.
+# Which version is running, without reading the token:
+systemctl is-active nekomari-agent
+# Only if the token's absence is the question, redact it:
+systemctl show -p ExecStart nekomari-agent | sed -E 's/(-t|--token) +[^ ]+/\1 <redacted>/g'
+```
 
 ## Topology
 
@@ -47,7 +52,7 @@ the way the v0.1.26 section below does.
 |---|---|
 | Panel URL | **https://komari.orderly2233.org** |
 | Host | OC424 (`ubuntu@213.35.99.48`, Oracle Cloud, **arm64**, Ubuntu 22.04) |
-| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.26` as of the last verified rollout (`docs/ROADMAP.md` carries the verification state), bound to `127.0.0.1:25774` |
+| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.27` (`sha256:7a0086eb…`), verified running on 2026-09-26; bound to `127.0.0.1:25774` |
 | Compose dir | `/opt/nekomari` (bind mount `./data` → `/app/data`) |
 | Reverse proxy | host **nginx** `/etc/nginx/sites-available/nekomari` |
 | TLS at origin | `/etc/nginx/ssl/{fullchain,privkey}.pem` (Cloudflare Origin cert, shared with the other vhosts) |
@@ -141,11 +146,12 @@ host and the first that needed an IPv4 preference, so both are recorded here.
   deployment was rotated twice rather than once. Moving the token to a config file or an
   environment file is worth doing on its own.
 
-## v0.1.27 — released 2026-09-25, **rollout not recorded**
+## v0.1.27 — released 2026-09-25, **partly verified 2026-09-26**
 
 `v0.1.27` is tagged (`6a1e875`, 2026-09-25 18:11 +08:00) and, unlike v0.1.26, it
-**moves the fleet again**: the agent changed. Treat this section as a to-do list
-with the facts that are already known, not as a record of a deployment.
+**moves the fleet**, because the agent changed. The panel and this host's own
+agent are confirmed on it (see the table at the top of this file); the rest of the
+fleet is not.
 
 What the release contains, from [`CHANGELOG.md`](../CHANGELOG.md):
 
@@ -160,21 +166,27 @@ What the release contains, from [`CHANGELOG.md`](../CHANGELOG.md):
 - **A ping task that could measure two address families is refused** on create and
   on edit (`utils.ValidatePingTaskTargetFamily`).
 
-Facts that are *not* known, and must not be assumed from the tag:
+### What was verified on 2026-09-26
 
-| Question | State |
-|---|---|
-| Was the panel container moved to `ghcr.io/aone2233/nekomari:v0.1.27`? | not checked |
-| The panel image digest, and the pre-upgrade backup path/hash | not recorded |
-| Which agents, if any, were replaced, and with which binary hashes | not checked |
-| Whether ICMP now works on any node that previously ran as root only for it | not checked |
+Queried over SSH, read-only — no container, unit or binary was touched:
 
-If the fleet *is* moved, the checks worth writing down are the ones v0.1.26's
-section already uses (image digest, backup path and hash, `/api/version`,
-`RestartCount`, per-node binary hash), plus the two that are specific to this
-release: an ICMP-typed task on a node whose agent now runs without `CAP_NET_RAW`,
-and the traffic ledger surviving a restart on a host with a full or read-only
-data directory.
+- Panel: `ghcr.io/aone2233/nekomari:v0.1.27`,
+  `sha256:7a0086eb035facf2d02012c853a5f2cd69129b573ed2b77a51dd523d7665b818`,
+  started `2026-09-25T10:27:42Z`, `RestartCount=0`, health `healthy`,
+  `/api/version` → `v0.1.27` / `6a1e875`.
+- OC424's agent: binary `/home/ubuntu/nekomari-agent/komari-agent-linux-arm64`,
+  mtime `2026-09-25 10:28:31 UTC` — 17 minutes after the tag, so the rollout
+  happened promptly but was never written down. Unit active.
+- That agent runs as **root** with no `AmbientCapabilities` — the D2 pattern that
+  is still un-migrated on this host, and the reason `--disable-auto-update` and
+  `--month-rotate 1` are on its line.
+- Its `ExecStart` still carries `-t <redacted>`: D1 is fixed in the repository but
+  **not deployed here**. The repository fix and the one-node migration recipe are
+  in `docs/SECRETS.md`.
+
+Still unknown, and not to be assumed from the tag: whether the other nine nodes
+moved, and whether ICMP now works anywhere that previously needed root only for
+it.
 
 ## The MAC Server "jitter" — resolved 2026-09-25 (it was never MAC)
 
