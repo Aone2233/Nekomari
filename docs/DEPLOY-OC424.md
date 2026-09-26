@@ -202,10 +202,11 @@ anywhere.
 
 | | Before | After |
 |---|---|---|
-| Binary | `komari-agent-linux-amd64`, mtime 2026-09-25 18:30, sha256 `705e8d5b…` | same path, sha256 `b49fc58e…` (built from `main` after ac80b73) |
+| Binary | `komari-agent-linux-amd64`, mtime 2026-09-25 18:30, sha256 `705e8d5b…` | same path, sha256 `8145429c…`, built from `main` at `d4ae61f` |
 | Credential | `-t <token>` in `ExecStart`, readable by every local user | `--token-file /home/macos/nekomari-agent/.agent-credentials`, mode `600 macos:macos` |
 | Identity | `macos` (uid 1000), `cap_net_raw=ep` on the binary | `macos`, `cap_net_raw=ep`, `CapEff=0000000000002000` |
 | Unit | `~/.config/systemd/user/nekomari-agent.service` | same, one line changed |
+| Panel version | `v0.1.27` | `v0.1.27` (see the note on `-ldflags` below) |
 
 Evidence collected on the host after the change:
 
@@ -225,14 +226,16 @@ Evidence collected on the host after the change:
   (`net_static.json`) is rewritten after the restart.
 - A second restart was done deliberately: the state survives it.
 
-### The `setcap` trap — read this before upgrading any node by hand
+### Two traps, both of which bit during this pilot
 
-`scp` does not carry file capabilities. Replacing a hardened binary with `scp` (or
-any copy that is not `cp -a`/`rsync -X`) leaves the new file with **no**
+**`scp` does not carry file capabilities.** Replacing a hardened binary with `scp`
+(or any copy that is not `cp -a`/`rsync -X`) leaves the new file with **no**
 `cap_net_raw`, and the failure is quiet in the worst way: the agent starts, connects
 and reports everything else normally, while every ICMP task turns into packet loss —
 the exact "phantom loss" that `docs/ROADMAP.md` E1/E2 exist to remove. On this host
 the unprivileged ICMP socket is unavailable, so there is no fallback to hide it.
+This was reproduced deliberately on the second upload: `getcap` printed nothing
+straight after the copy, and `setcap` had to be re-run.
 
 Two consequences:
 
@@ -241,6 +244,22 @@ Two consequences:
    restores the capability when the node had it.
 2. The capability was lost **and restored** during this pilot, so the before/after
    above is not a clean A/B on that variable. What it does prove is the end state.
+
+**A locally built agent reports the wrong version.** The release pipeline passes
+`-ldflags="-X github.com/Aone2233/nekomari/agent/update.CurrentVersion=<tag>"`;
+`go build` on its own does not, and the agent then announces itself as `0.0.1`.
+The first upload here did exactly that and the panel showed `MAC Server … 0.0.1`
+while the node was healthy — a discrepancy that reads as a failed upgrade. Rebuild
+with the flag:
+
+```bash
+cd agent && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
+  -ldflags="-w -X github.com/Aone2233/nekomari/agent/update.CurrentVersion=v0.1.27" \
+  -o komari-agent-linux-amd64 .
+```
+
+The panel's `clients.version` column is refreshed by the basic-info upload, so it
+took one `--info-report-interval` (10 minutes) to show `v0.1.27` after the restart.
 
 The backup taken before the change is `~/pilot-backup-20260926/` (unit plus binary).
 Rollback, in full:
