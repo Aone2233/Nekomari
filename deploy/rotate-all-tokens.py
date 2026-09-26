@@ -39,12 +39,20 @@ NODES = {
                                              "/etc/systemd/system/nekomari-agent.service", False),
     "41b1f6f8-ee8c-4dd9-8d43-2435af31b719": ("BWG", "root@144.34.224.86",
                                              "/etc/systemd/system/nekomari-agent.service", False),
-    "4cea3016-9f17-4f46-a6db-504cd76b832c": ("NOMAO", "root@[2604:abc0:50::11:601e]",
-                                             "/etc/systemd/system/nekomari-agent.service", False),
     "646e7117-b7fe-48d7-8bc1-9aef55fcf90e": ("MACWAN", "MAC-WAN-USER",
                                              "~/.config/systemd/user/nekomari-agent.service", False),
+    "72a64984-8d1f-4b01-a2b9-9890b9c07005": ("NOSLA", "NOSLA",
+                                             "/etc/systemd/system/nekomari-agent.service", False),
     "92d91929-772c-4a9f-b9bd-8a6f8c5a69f9": ("PZYC", "PZYC-SUDO",
                                              "/etc/systemd/system/nekomari-agent.service", True),
+    "addcf4a6-24cc-475e-865e-3088777eaa85": ("JPKD2", "JPKD2-OPENRC",
+                                             "/etc/conf.d/nekomari-agent", True),
+}
+# UUIDs that no longer exist in the panel, checked against `clients` on
+# 2026-09-26. A rotation must not recreate one of these: the token would be
+# written for a node that cannot use it, and the UUID would look live again.
+RETIRED = {
+    "4cea3016-9f17-4f46-a6db-504cd76b832c": "NOMAO (checked 2026-09-26: no such client)",
 }
 
 

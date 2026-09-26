@@ -157,6 +157,45 @@ systemctl show -p ExecStart nekomari-agent | sed -E 's/(-t|--token) +[^ ]+/\1 <r
 Rollback is `systemctl revert nekomari-agent`, which restores the old unit with
 `-t` and the original token.
 
+## Incident 4 — the rotation script carried the admin password
+
+`deploy/rotate-all-tokens.py` logged in with the administrator's username and
+password written literally in the file, in a public repository. The one tool whose
+entire job is rotating credentials was itself a published credential, on an account
+that also has 2FA — so the password alone is not enough to log in, which limits the
+damage to "one factor of two leaked" rather than "the panel is open".
+
+Found on 2026-09-26 while rotating the token from incident 3, and fixed the same
+way: `NEKOMARI_USER` and `NEKOMARI_PASSWORD` now come from the environment, the
+TOTP half is delegated to `nekomari_auth.login` (whose `2fa_code` field is the one
+the server actually reads) instead of a hand-rolled import that did not exist, and
+the node map was corrected against the live `clients` table — it had a UUID for a
+node that no longer exists and was missing two that do.
+
+**The password still has to be changed.** Deleting it from the file does not
+un-publish it, exactly as in incident 1. Until it is changed, the account is
+protected by 2FA alone.
+
+## Incident 5 — JPKD2's token is in its service configuration
+
+While mapping the fleet for the same rotation, JPKD2's OpenRC service file
+`/etc/conf.d/nekomari-agent` (mode 0600, which is the right idea) was read for its
+shape and printed its `NEKOMARI_TOKEN` value into a terminal transcript. The same
+read showed why it matters: `/etc/init.d/nekomari-agent` builds
+
+```
+command_args="-e ${NEKOMARI_ENDPOINT} -t ${NEKOMARI_TOKEN} ${NEKOMARI_EXTRA_ARGS}"
+```
+
+so the token reaches the process command line on that node anyway. The 0600
+conf.d protects it at rest and not at run time.
+
+Two things follow. The token must be rotated. And the OpenRC path needs the same
+treatment D1 gave systemd: `--token-file` in `command_args` instead of `-t`, with
+the token file itself kept at 0600. `deploy/hosts/nekomari-agent.openrc` is the
+template to fix, and `deploy/rotate-all-tokens.py` already lists JPKD2
+(`JPKD2-OPENRC`, unit `/etc/conf.d/nekomari-agent`) as a rotation target.
+
 ## Notes
 
 - Tokens from both incidents remain in git history. They are worthless now, so the

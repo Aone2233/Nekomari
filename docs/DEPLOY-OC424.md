@@ -193,7 +193,7 @@ it.
 The first node moved to a credential file and to a strictly non-root agent with
 `CAP_NET_RAW` alone. It ran **before** the rest of the fleet on purpose, and the
 reason to read this section before repeating it is that the migration silently
-drops the file capability — see "the `setcap` trap" below.
+drops the file capability — see "the `scp` trap" below.
 
 MAC-WAN is the host that already ran the agent unprivileged (`docs/AGENT-FOOTPRINT.md`
 records the arrangement), so D2's acceptance was already met there; this pilot is
@@ -207,6 +207,45 @@ anywhere.
 | Identity | `macos` (uid 1000), `cap_net_raw=ep` on the binary | `macos`, `cap_net_raw=ep`, `CapEff=0000000000002000` |
 | Unit | `~/.config/systemd/user/nekomari-agent.service` | same, one line changed |
 | Panel version | `v0.1.27` | `v0.1.27` (see the note on `-ldflags` below) |
+
+## OC424 migrated 2026-09-26 (rotation and D1 in one restart)
+
+The panel host's own agent was migrated second, and its token was **rotated at the
+same time** — the token had been read out during the audit earlier that day, so
+moving it to a file without replacing it would have fixed the handling and left
+the exposure. One restart does both.
+
+| | Before | After |
+|---|---|---|
+| Binary | `komari-agent-linux-arm64`, sha256 `aaacb794…` | sha256 `a801bf6e…`, built from `main` at `703b3ae` with `-ldflags …CurrentVersion=v0.1.27` |
+| Credential | `-t <token>` in `/etc/systemd/system/komari-agent-oc424-original-node.service` | `--token-file /home/ubuntu/nekomari-agent/.agent-credentials`, mode `600 root:root` |
+| Token | the one printed during the audit | new, written through `admin:editClient` and verified with `admin:getClientToken` before anything on the host changed |
+| Identity | `User=root` (this node needs no capability: root has `CAP_NET_RAW`) | unchanged |
+| Backup | — | `/home/ubuntu/agent-migration-backup-20260926/` (unit + previous binary) |
+
+Evidence, all from the host after the restart:
+
+- `/proc/<pid>/cmdline` and the unit both contain zero `-t`/`--token` occurrences
+  carrying a value; the credential file is `600 root:root` and 35 bytes.
+- The **old** token answers `401` on `/api/clients/v2/rpc` and the **new** one does
+  not (it returns the route's `400` handshake failure, which is what "not 401"
+  means on that endpoint — see `docs/SECRETS.md` for why that is the check).
+- The agent logs `Nekomari Agent v0.1.27`, uploads basic info and reconnects the
+  WebSocket — the proof that it read the token from the file rather than merely
+  starting without one.
+- The panel's `clients` row shows `甲骨文 OC424 … v0.1.27` with `updated_at`
+  13:04:15 +08:00, and its TCP tasks keep reporting real latency (task 1: 1 ms,
+  task 3: 67-74 ms) in the same minutes.
+
+The script that did it was a one-shot on the host, deliberately bounded: it
+refused to run if the staged token file already existed or the unit was already
+migrated, verified the rotation *before* touching the unit, kept a backup, and
+would print the rollback if the restart had not come up active. There is no reason
+to keep it in the repository — `deploy/rotate-all-tokens.py` carries the same
+rotation path for all nodes, and the migration itself is now what the installer
+does by default.
+
+### MAC-WAN details
 
 Evidence collected on the host after the change:
 
@@ -226,16 +265,19 @@ Evidence collected on the host after the change:
   (`net_static.json`) is rewritten after the restart.
 - A second restart was done deliberately: the state survives it.
 
-### Two traps, both of which bit during this pilot
+### Two traps, both of which bit during these migrations
 
 **`scp` does not carry file capabilities.** Replacing a hardened binary with `scp`
 (or any copy that is not `cp -a`/`rsync -X`) leaves the new file with **no**
 `cap_net_raw`, and the failure is quiet in the worst way: the agent starts, connects
 and reports everything else normally, while every ICMP task turns into packet loss —
-the exact "phantom loss" that `docs/ROADMAP.md` E1/E2 exist to remove. On this host
-the unprivileged ICMP socket is unavailable, so there is no fallback to hide it.
-This was reproduced deliberately on the second upload: `getcap` printed nothing
-straight after the copy, and `setcap` had to be re-run.
+the exact "phantom loss" that `docs/ROADMAP.md` E1/E2 exist to remove. On MAC-WAN
+the unprivileged ICMP socket is unavailable, so there is no fallback to hide it;
+this was reproduced deliberately on the second upload (`getcap` printed nothing
+straight after the copy, and `setcap` had to be re-run). It does **not** apply to
+OC424, where the agent runs as root and already holds `CAP_NET_RAW` in its
+effective set — which is exactly why the trap is easy to miss: it depends on the
+node, not on the procedure.
 
 Two consequences:
 
