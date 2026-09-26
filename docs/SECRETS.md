@@ -223,26 +223,23 @@ Host PZYC
     # 密码: <plaintext>
 ```
 
-Same class as incidents 1-4: a credential in a file that is not protected by being
-a credential file, on a machine that is not the host it authenticates to. It was
-found on 2026-09-26 while deploying v0.1.28 to that node — it is the only node not
-reachable by key, which is why the password was there at all.
+**This one is accepted, not outstanding.** The password is the hosting vendor's
+provisioning default — it is what the provider issues and what their console
+expects — so rotating it is not ours to decide and would not remove the exposure
+that matters. It is recorded here because it is the same *class* as incidents 1-4
+(a credential in a file that is not a credential file), not because there is an
+action pending.
 
-**Fixed during that deploy, for this node:** OC424's public key is now in both
-`ubuntu`'s and `root`'s `authorized_keys`, so the fleet has a key route to PZYC and
-deploys no longer need the password. The comment has not been removed, and the
-password still works — that is the operator's call, and rotating it means updating
-whatever else uses it.
+What was done on 2026-09-26, while deploying v0.1.28 to that node: OC424's public
+key was added to both `ubuntu`'s and `root`'s `authorized_keys`, so **the fleet has
+a key route to PZYC and deploys no longer need the password at all**. That is the
+part we control, and it is done.
 
-Two lessons that generalise:
-
-- **A password in a config comment is still a password.** Comments are not
-  protected by ssh's own file checks, they are read by anyone with the file, and
-  they end up in transcripts and backups. A key is the fix, not a quieter comment.
-- **`sudo tee` truncates.** Writing root's `authorized_keys` with
-  `sudo -n tee /root/.ssh/authorized_keys` replaced the file. Appending needs
-  `tee -a`. Recorded in `docs/DEPLOY-OC424.md` with what was lost, which for this
-  node is unknown because no backup existed.
+The lesson that still generalises: a password in a config comment is read by anyone
+with the file and ends up in transcripts and backups, so a key route is worth having
+even when the password itself stays. And `sudo tee` truncates — writing root's
+`authorized_keys` with it replaced the file; appending needs `tee -a`. Recorded in
+`docs/DEPLOY-OC424.md` with what was lost.
 
 ## Notes
 

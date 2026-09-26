@@ -6,20 +6,32 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
-## [Unreleased]
+## [v0.1.29] — 2026-09-26
 
-- **Fixed: a node could report an impossible traffic delta right after the agent
-  started, inflating the panel's daily and monthly traffic by orders of
-  magnitude.** The counter baseline was kept in memory only, so a restart lost it
-  and the next sample compared a live cumulative counter against nothing; on one
-  node that produced a single **59.5 GB** delta in the minute the agent started,
-  against a real rate near 7 GB/day and an interface whose lifetime counter read
-  187 MB. The panel's "today" for that node went from ~7 GB to ~160 GB. The
-  baseline is now persisted in `net_static.json` (`last_counters`) and restored on
-  start, and a delta is discarded — with one log line — when it is not physically
-  possible for the elapsed time, when the baseline is older than the bucket it
-  would be attributed to, or when there is no elapsed time at all. **This release
-  moves the fleet**, because the agent changed.
+**This release moves the fleet**, because the agent changed. It fixes a bug that
+inflated a node's reported traffic by orders of magnitude; see the entry below for
+the measurement that found it.
+
+- **Fixed: a node could report an impossible traffic delta, inflating the panel's
+  daily and monthly traffic by orders of magnitude.** The counter baseline was kept
+  in memory only, so a restart lost it and the next sample compared a live
+  cumulative counter against nothing; on one node that produced a single **59.5 GB**
+  delta in the minute the agent started, against a real rate near 7 GB/day and an
+  interface whose lifetime counter read 187 MB. The panel's "today" for that node
+  read ~160 GB. The baseline is now persisted in `net_static.json`
+  (`last_counters`) and restored on start, and a delta is discarded — with one log
+  line — when it is not physically possible for the elapsed time, when the baseline
+  is older than the bucket it would be attributed to, or when there is no elapsed
+  time at all.
+
+  The same bug had been writing impossible samples since **2026-06-29**: cleaning the
+  store removed 4 minute samples (largest 60.9 GiB) and 63 coarser rows that contained
+  them or were of the same class (largest 321 GiB in a single hourly bucket). After
+  the cleanup NOSLA's recorded traffic was 3.8 GB and MAC Server's 0.5 GB, both in
+  line with their providers' own meters — which is the check that the numbers are now
+  real rather than merely smaller.
+
+## [Unreleased]
 
 ## [v0.1.28] — 2026-09-26
 
