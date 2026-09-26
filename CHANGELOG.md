@@ -31,6 +31,32 @@ the measurement that found it.
   line with their providers' own meters — which is the check that the numbers are now
   real rather than merely smaller.
 
+## [v0.1.30] — 2026-09-26
+
+**This release moves the fleet**, because — despite the heading above — the agent
+changed after v0.1.29 was built. The change is one assignment, and the section below
+explains why it is worth a release of its own.
+
+- **Fixed: the traffic baseline reached disk up to 30 minutes late.** v0.1.29
+  persisted the counter baseline and restored it on start, which is the fix for the
+  impossible-delta bug. But startup writes the ledger *before the first sample*, while
+  the baseline is still empty — and the rewrite limiter then treated that write as
+  recent, so the real baseline waited a full `DefaultRewriteInterval` (30 minutes)
+  before it could be written. For that window the baseline existed only in memory,
+  which is exactly the state a restart loses. That is what deploying v0.1.29 and
+  reading the ledgers showed: fourteen minutes after every node came back, none of
+  them had `last_counters` in `net_static.json`.
+
+  `restoreLastCountersLocked` now clears the rewrite timestamp, so the next save tick
+  writes the baseline. Verified on the fleet afterwards: all six reachable nodes
+  report the baseline present, in a ledger rewritten within one save interval.
+
+  Worth recording as a process note rather than a code note: the first version of
+  this fix **passed every test it had** and did nothing in production. The tests used
+  a controlled clock, so they could not see a limiter interaction. The test added here
+  pins the *sequence* instead — save, confirm nothing is due, load, record a baseline,
+  then require that a rewrite is due and that the field reaches disk.
+
 ## [Unreleased]
 
 ## [v0.1.28] — 2026-09-26
