@@ -3,13 +3,51 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## What is actually deployed (checked 2026-09-26)
+
+A commit or a tag proves *release*, never *deployment*. The rows below are
+separate claims; the ones marked **not verified** were not checked against the
+host, and the older rollout sections further down are the last thing that
+*was*.
+
+| Claim | State | Source of the claim |
+|---|---|---|
+| Repository `main` | `d37bc01` + the 2026-09-26 release-cache fix | read this checkout |
+| `v0.1.27` tagged | yes, `6a1e875`, 2026-09-25 18:11 +08:00 | `git rev-parse v0.1.27` |
+| `v0.1.27` contents | agent ICMP fallback, reconnect backoff, ledger save errors; panel mixed-family refusal | [`CHANGELOG.md`](../CHANGELOG.md) |
+| `v0.1.27` CI/Release pipeline | **not verified** | release.yml runs on `v*`; no run was inspected |
+| Panel container on `v0.1.27` | **not verified** | the last verified rollout below is v0.1.26; no v0.1.27 record exists |
+| Fleet agents on `v0.1.27` | **not verified** | last verified fleet state is v0.1.26, 2026-09-24 |
+| Unreleased `main` work | shell caching (`0989258`), addressed here as v0.1.28 | `git log v0.1.27..main` |
+
+**Read this before treating the panel as current.** The version the panel
+*reports* lags the version a node *runs*: `clients.version` is refreshed by the
+basic-info upload every `--info-report-interval` (10 minutes by default), so a
+node can run a new binary while the panel still shows the old one. To settle
+"is this deployed", read the running binary's hash on the host (and
+`/api/version` for the panel), not the panel's node column.
+
+### How to close the unverified rows
+
+```bash
+# Panel: which image is actually running, and what does the server report?
+curl -s https://komari.orderly2233.org/api/version
+ssh ubuntu@213.35.99.48 'docker inspect nekomari --format "{{.Config.Image}} {{.State.StartedAt}} RestartCount={{.RestartCount}}"; docker image inspect ghcr.io/aone2233/nekomari:v0.1.27 --format "{{index .RepoDigests 0}}"'
+
+# Per node: the running binary's hash, not the panel's version column.
+sha256sum /opt/nekomari-agent/komari-agent-linux-amd64   # or /opt/komari/agent on NOSLA
+```
+
+Write the results into a new rollout section, with the date and the backup path,
+the way the v0.1.26 section below does.
+
 ## Topology
 
 | Piece | Where |
 |---|---|
 | Panel URL | **https://komari.orderly2233.org** |
 | Host | OC424 (`ubuntu@213.35.99.48`, Oracle Cloud, **arm64**, Ubuntu 22.04) |
-| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.26`, bound to `127.0.0.1:25774` |
+| Container | `nekomari`, image `ghcr.io/aone2233/nekomari:v0.1.26` as of the last verified rollout (`docs/ROADMAP.md` carries the verification state), bound to `127.0.0.1:25774` |
 | Compose dir | `/opt/nekomari` (bind mount `./data` → `/app/data`) |
 | Reverse proxy | host **nginx** `/etc/nginx/sites-available/nekomari` |
 | TLS at origin | `/etc/nginx/ssl/{fullchain,privkey}.pem` (Cloudflare Origin cert, shared with the other vhosts) |
@@ -21,9 +59,12 @@ The container is deliberately **not** published on a public interface: UFW allow
 80/443 only from Cloudflare's ranges, so all traffic arrives via the edge, and
 nginx is the only thing that talks to the panel port.
 
-## Current rollout: 2026-09-24 (v0.1.26)
+## Last verified rollout: 2026-09-24 (v0.1.26)
 
-Panel moved from v0.1.25 to v0.1.26 at approximately 15:17 UTC, and **the agents moved
+This is the most recent rollout whose evidence came from the hosts. It is *not*
+the current release: v0.1.27 was tagged the next day and has no rollout record.
+
+The panel moved from v0.1.25 to v0.1.26 at approximately 15:17 UTC, and **the agents moved
 with it** — the first time since v0.1.19 that a release changes agent behaviour rather
 than just the compiler, and the reason is the address-family reporting: the panel can
 only split a ping task by the family a probe measured once the probes actually report
@@ -99,6 +140,41 @@ host and the first that needed an IPv4 preference, so both are recorded here.
   rather than a JPKD2 one, and it is the reason a token that leaked during this
   deployment was rotated twice rather than once. Moving the token to a config file or an
   environment file is worth doing on its own.
+
+## v0.1.27 — released 2026-09-25, **rollout not recorded**
+
+`v0.1.27` is tagged (`6a1e875`, 2026-09-25 18:11 +08:00) and, unlike v0.1.26, it
+**moves the fleet again**: the agent changed. Treat this section as a to-do list
+with the facts that are already known, not as a record of a deployment.
+
+What the release contains, from [`CHANGELOG.md`](../CHANGELOG.md):
+
+- **ICMP without root or `CAP_NET_RAW`.** The raw socket is still tried first; the
+  kernel's unprivileged ICMP socket is now the fallback. This is the item that
+  makes `D2`/`E1` actionable — a node without the privilege reports a real latency
+  instead of a permanent phantom loss.
+- **Reconnect backoff.** 5 s doubling to a 2-minute cap with ±25 % jitter, reset on
+  success, failure logs folded to one line per burst. Intended to cut the WebSocket
+  log churn measured on 华纳云 HN-JP1 (166 lines/24 h) and NOSLA (181).
+- **The traffic ledger reports its save failures** instead of discarding them.
+- **A ping task that could measure two address families is refused** on create and
+  on edit (`utils.ValidatePingTaskTargetFamily`).
+
+Facts that are *not* known, and must not be assumed from the tag:
+
+| Question | State |
+|---|---|
+| Was the panel container moved to `ghcr.io/aone2233/nekomari:v0.1.27`? | not checked |
+| The panel image digest, and the pre-upgrade backup path/hash | not recorded |
+| Which agents, if any, were replaced, and with which binary hashes | not checked |
+| Whether ICMP now works on any node that previously ran as root only for it | not checked |
+
+If the fleet *is* moved, the checks worth writing down are the ones v0.1.26's
+section already uses (image digest, backup path and hash, `/api/version`,
+`RestartCount`, per-node binary hash), plus the two that are specific to this
+release: an ICMP-typed task on a node whose agent now runs without `CAP_NET_RAW`,
+and the traffic ledger surviving a restart on a host with a full or read-only
+data directory.
 
 ## The MAC Server "jitter" — resolved 2026-09-25 (it was never MAC)
 

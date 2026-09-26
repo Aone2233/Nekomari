@@ -1,13 +1,30 @@
 # Roadmap
 
-Consolidated 2026-09-24, after the v0.1.26 rollout. This is the single list of
-what is left, in priority order, with the evidence for each item and what
-"done" would mean. It supersedes the scattered `FOLLOWUP-v*.md` lists for
-planning purposes; those stay as the record of what each release addressed.
+Consolidated 2026-09-24, after the v0.1.26 rollout; revised 2026-09-26 to
+distinguish what is *implemented*, what is *released*, and what is *deployed*.
+This is the single list of what is left, in priority order, with the evidence
+for each item and what "done" would mean. It supersedes the scattered
+`FOLLOWUP-v*.md` lists for planning purposes; those stay as the record of what
+each release addressed.
 
-State at the time of writing: production panel `v0.1.26`, **ten** nodes all on
-`v0.1.26` agents, the address-family split live in the metric store, CI green on
-`main`. `docs/OPEN-WORK.md` tracks the older 2026-09-18 batch and its remaining
+## State as of 2026-09-26
+
+Each row is a separate claim, and each has its own evidence. "Released" means a
+tag exists; it does not mean any host is running it.
+
+| Claim | State | Evidence |
+|---|---|---|
+| Repository `main` | `d37bc01` + the 2026-09-26 release-cache fix | `git log`; the shell-cache change (`0989258`) and the E2 design note (`099f32c`) are **merged on `main` but in no tag** — they are not in v0.1.27 |
+| `v0.1.27` released | yes | tag `v0.1.27` → `6a1e875`, 2026-09-25 18:11 +08:00, `CHANGELOG.md` |
+| `v0.1.27` CI | per the tag pipeline, not re-checked here | `.github/workflows/release.yml`, `ci.yml`; no run was inspected for this revision |
+| `v0.1.27` agent behaviour | changed → the fleet must move | `docs/RELEASING.md` cadence rule; `git diff --stat v0.1.26..v0.1.27 -- agent/ protocol/ pkg/` is not empty |
+| Production panel on `v0.1.27` | **not verified** | the last verified rollout in `docs/DEPLOY-OC424.md` is v0.1.26; no v0.1.27 rollout record exists |
+| Fleet agents on `v0.1.27` | **not verified** | same; the fleet was on v0.1.26 as of the 2026-09-24 rollout |
+
+The 2026-09-25 work that landed *after* the tag (`0989258`, `b4d1153`,
+`acbcf05`, `d37bc01`) is unreleased; `docs/DEPLOY-OC424.md` calls it v0.1.28.
+
+`docs/OPEN-WORK.md` tracks the older 2026-09-18 batch and its remaining
 decisions; `docs/DEPLOY-OC424.md` is the current-state runbook.
 
 ## A. Correctness and coverage
@@ -47,15 +64,25 @@ Acceptance: a recorded screen-reader pass over the node-detail load chart and th
 dashboard, and one real end-to-end login per provider family on a throwaway
 instance.
 
-### A3. Make the authentication suite repeatable in-process
+### A3. Make the authentication suite repeatable in-process — **closed 2026-09-26**
 
-`-count=10` runs of the auth tests fail on the later iterations because the rate
-limiter and database fixtures are shared. Fresh processes pass, so the suite is
-not wrong — it is only non-repeatable, which is why it cannot be used as a stress
-check yet.
+`-count=10` runs of the auth tests used to fail on the later iterations because
+the rate limiter and database fixtures were shared. The limiter and fixtures are
+now isolated per test, and CI runs the suite that way
+(`.github/workflows/ci.yml`, "Race-check authentication"):
+`go test -race ./database/accounts ./web/api/public -count=10 -shuffle=on`.
 
-Acceptance: `go test ./database/accounts/... ./web/api/public/... -count=10`
-passes, with the limiter and fixtures isolated per test.
+Checked locally on 2026-09-26 (windows/amd64, go1.27.1, `-race` omitted on
+Windows as CI omits it there):
+
+```
+go test ./database/accounts ./web/api/public -count=10 -shuffle=on
+ok  github.com/Aone2233/nekomari/database/accounts  2.103s
+ok  github.com/Aone2233/nekomari/web/api/public    1.386s
+```
+
+`-shuffle=on` makes the run order vary, so a pass is no longer evidence about
+one lucky ordering.
 
 ### A4. React Compiler rules: keep advisory, do not adopt yet
 
@@ -196,10 +223,13 @@ probe itself, ordered by how much they remove rather than how clever they are.
 Note the cost: any of these makes the fleet move, per the cadence rule in
 `docs/RELEASING.md`, so they are worth batching into one release.
 
-**E1, E3 and E4 are implemented** (PR #49) and merged; they ship with the next
-agent release, at which point the fleet moves. **E2 is still a design question** —
-it needs a representation that crosses agent → panel → store → frontend, and the
-representation is worth choosing before writing it.
+**E1, E3 and E4 are implemented** (PR #49) and merged; **they were released in
+v0.1.27** (tag `6a1e875`, 2026-09-25), which is the release that moves the fleet.
+Whether each node is *running* it is a deployment question, and not verified
+here — see the state table at the top. **E2 is still a design question** — it
+needs a representation that crosses agent → panel → store → frontend, and the
+representation is worth choosing before writing it; the design note
+(`099f32c`) is merged on `main` and in no tag.
 
 ### E1. ICMP does not need root, but the agent demands it — **implemented**
 
@@ -328,10 +358,16 @@ become its own outage) and visible in the agent's output.
 
 ## F. Decisions waiting on you
 
-1. **Mixed-family ping tasks.** The panel now *shows* the mix; it still does not
-   *prevent* one. The durable fix (option C) made it visible; option B — restrict
-   a task to one family at creation — was never implemented. Do you want creation
-   blocked, warned, or left alone?
+1. ~~**Mixed-family ping tasks.**~~ **Decided and shipped in v0.1.27: creation is
+   refused.** `utils.ValidatePingTaskTargetFamily` is called from both the create
+   and the edit path (`web/rpc/jsonrpc/admin.ping.go:64` and `:101`), so the
+   option is no longer open. The rule, and why an address literal is always
+   allowed while a hostname needs every probe to be known single-stack: an
+   address literal has no room to mix, a hostname is resolved per node, and
+   `default_on` would let each future node decide for itself. A task with one
+   probe is allowed because one probe is one path; a dual-stack node, or one
+   that has not reported addresses yet, is refused at two or more probes.
+   Covered by `utils/pingFamily_test.go`.
 2. ~~**Nomao's orphaned agent.**~~ **Closed.** The agent was already gone when
    checked on 2026-09-24: no unit, no binary, no `/opt/komari*`, and the panel has
    logged no request from that address since. `docs/OPEN-WORK.md` entry 4 carries
