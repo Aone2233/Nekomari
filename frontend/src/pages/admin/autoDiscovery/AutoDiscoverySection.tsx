@@ -10,7 +10,8 @@ import {
   TextArea,
   TextField,
 } from "@radix-ui/themes";
-import { Copy, Link, Radar, Settings } from "lucide-react";
+import { Copy, Radar, Settings } from "lucide-react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import Tips from "@/components/ui/tips";
 import Loading from "@/components/loading";
@@ -123,8 +124,7 @@ export const AutoDiscoverySection = ({
         return settings.script_domain.replace(/\/+$/, "");
       }
       return `http://${settings.script_domain.replace(/\/+$/, "")}`;
-    })();
-    const args: string[] = ["-e", host, "--auto-discovery", adKey];
+    })();    const args: string[] = ["-e", host, "--auto-discovery", adKey];
     if (installOptions.disableWebSsh) {
       args.push("--disable-web-ssh");
     }
@@ -302,7 +302,13 @@ export const AutoDiscoverySection = ({
 
   if (loading) {
     return (
-      <Flex align="center" justify="center" mt="4" py="4">
+      <Flex
+        data-testid="ad-section"
+        align="center"
+        justify="center"
+        mt="4"
+        py="4"
+      >
         <Loading text="" />
       </Flex>
     );
@@ -310,7 +316,7 @@ export const AutoDiscoverySection = ({
 
   if (!enabled) {
     return (
-      <Callout.Root color="blue" mt="4" size="1">
+      <Callout.Root color="blue" mt="4" size="1" data-testid="ad-section">
         <Callout.Icon>
           <Radar size={16} />
         </Callout.Icon>
@@ -341,7 +347,7 @@ export const AutoDiscoverySection = ({
   }
 
   return (
-    <Flex direction="column" gap="3" mt="4">
+    <Flex data-testid="ad-section" direction="column" gap="3" mt="4">
       <Flex direction="column" gap="1">
         <Flex gap="2" align="center">
           <Radar size={16} />
@@ -358,6 +364,7 @@ export const AutoDiscoverySection = ({
       </Flex>
 
       <SegmentedControl.Root
+        data-testid="ad-platform"
         value={selectedPlatform}
         onValueChange={(value) => setSelectedPlatform(value as Platform)}
       >

@@ -70,6 +70,30 @@ Not done here, and worth knowing before calling the area finished: the new
 mounts them, and the panel smoke renders them, but the auto-discovery key
 round-trip is still covered only by the server-backed write-path spec.
 
+**Closed 2026-09-26: `autoDiscovery/` has its own fixture, and it found a bug.**
+`script/admin-autodiscovery.browser.{html,tsx,spec.py}` mounts
+`AutoDiscoverySection` directly — the page-level fixture only ever reaches its
+*disabled* branch, because the "add node" dialog has to be open and the settings
+have to carry a key before the rest renders. Nine cases: the loading placeholder,
+the disabled branch and its link target, the enabled command (Linux, Windows,
+macOS, Docker), the script-domain override, the install options, the snapshot
+build pinning `--version`, copy-to-clipboard, and settings arriving after mount
+flipping the section from disabled to enabled.
+
+Writing it immediately found a real defect: **the "go to general settings" button
+did not navigate.** `AutoDiscoverySection` imported `Link` from `lucide-react`
+(the icon) and used it as the router link, so the disabled branch rendered an
+`<svg to="/admin/settings/general">` wrapped around the button. The import now
+comes from `react-router-dom`, and the fixture asserts the anchor's href — which
+is the assertion that would have caught it, since it is visible, styled correctly,
+and inert.
+
+Two fixture-level traps worth recording, because both look like product bugs:
+`RPC2Client.call` prefers the WebSocket when connected, so the fixture must stub
+`WebSocket` to fail in order for `common:getVersion` to reach the HTTP stub; and
+the wrapper has to use `BrowserRouter` (as `main.tsx` does), because under
+`MemoryRouter` the section's `<Link>` did not render as an anchor at all.
+
 
 ### A2. Accessibility and integration the fixtures cannot prove
 
