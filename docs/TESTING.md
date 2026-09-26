@@ -76,6 +76,9 @@ they run on. They are **not** hermetic and will fail in restricted environments:
 |---|---|---|
 | `TestICMPPing` (agent) | privilege to open raw ICMP sockets (root, or `setcap cap_net_raw+ep`) | `error setting traffic class: ... access permissions` |
 | `TestTCPPing` / `TestHTTPPing` (agent) | IPv6 connectivity, reachability of the fixed upstream hosts | `unreachable network`, `http status not ok` |
+| `TestIpInfo` (server) | reachability of `ipinfo.io` | timeout, or an error body from a rate limit |
+| `TestIpApi` (server) | reachability of `ip-api.com` | same |
+| `TestGeojs` (server) | reachability of `geojs.io` | same |
 
 These fail identically on the **unmodified upstream** code (verified against
 `komari-agent` at tag `1.5.0`), so a red run here is an environment signal, not
@@ -83,6 +86,39 @@ a regression. Run them as root on a host with IPv6:
 
 ```bash
 sudo env "PATH=$PATH" go test -run 'TestICMPPing|TestTCPPing|TestHTTPPing' ./server/
+```
+
+### Why the three GeoIP ones are skipped in CI, and how they fail
+
+They are not broken — each passes on its own, from a machine that can reach the
+provider. What makes them unusable in CI is that they bind the suite to three
+third-party quotas, two of them notoriously rate-limited, and the failure arrives
+as a red run with no relation to the change under review. Observed directly on
+2026-09-26: `go test ./...` on one workstation failed `TestGeojs`, then on the next
+run failed `TestIpApi` instead, while each passed **alone** and both passed on
+retry. That is a flaky signal, not a failing test, so CI's skip list names all
+three:
+
+```bash
+go test ./... -count=1 -skip '^TestIpInfo$|^TestIpApi$|^TestGeojs$'
+```
+
+The anchors matter and are not decoration: this repository has more than thirty
+hermetic `TestIpInfo*` tests (`TestIpInfoLookup*`,
+`TestIpInfoIPAPICooldownOn429`, `TestIpInfoReputationFormula`, …) that stub their
+upstream with `httptest` and **must keep running**. Only the upstream
+`TestIpInfo`, which carries no suffix, is the live one.
+
+`TestMmdb` is deliberately **not** skipped. It does reach the network — it
+downloads `GeoLite2-Country.mmdb` (8.5 MB) from a public GitHub URL when
+`utils/geoip/data` is empty, which is always true on CI because the file is
+gitignored — but it *passes*, and it is the only test covering the real MaxMind
+read path. The cost is 8.5 MB per CI run; caching it or checking in a tiny fixture
+would be the fix if that ever matters, and skipping it would not.
+
+```bash
+# the three live ones, deliberately, on a machine that can reach the providers
+go test ./utils/geoip/ -count=1 -run '^TestIpInfo$|^TestIpApi$|^TestGeojs$|^TestMmdb$' -v
 ```
 
 ## Tests added by Nekomari

@@ -186,13 +186,23 @@ jobs:
           done
 
       - name: Test server
-        # 跑全部用例，只排除已知不密封的那一个：上游 utils/geoip 的 TestIpInfo 会真的
-        # 请求 ipinfo.io（Nekomari 新增的 TestIpInfo* 不匹配这个锚定正则，仍会运行）。
+        # 跑全部用例，只排除会真的访问第三方的那三个：上游 utils/geoip 的
+        # TestIpInfo 打 ipinfo.io，TestIpApi 打 ip-api.com，TestGeojs 打 geojs.io。
+        # 它们不是"错"的 —— 单独跑、由一台能出去的机器跑都通过 —— 但会把 CI 的
+        # 结果绑在三个第三方配额上，两家是出了名的限流服务。
+        #
+        # 名字特意锚定（^...$）：本仓库另有三十多个 hermetic 的 TestIpInfo* 用例
+        # （TestIpInfoLookup*、TestIpInfoIPAPICooldownOn429 等），它们用 httptest
+        # 假上游，必须继续跑。上游那个 TestIpInfo 是唯一不带后缀的同名测试。
+        #
+        # TestMmdb 不在这里：它下载一份公共 MaxMind 库（8.5 MB，仓库里 .gitignore
+        # 掉了），会通过，只是每次 CI 多下一次。想省这 8.5 MB 就该给它加缓存或改用
+        # 夹具，而不是跳过——它测的是真实库的读取路径。
         #
         # 从「白名单 -run」改成「黑名单 -skip」是有意的：白名单让新测试默认不跑，
         # 实测只覆盖了 552 个用例中的 79 个，连 v0.1.9 新增的解锁与 ping 重传用例
         # 都没跑 —— 其中两个解锁用例从提交起就是失败的。详见 docs/TESTING.md。
-        run: go test ./... -count=1 -skip '^TestIpInfo$'
+        run: go test ./... -count=1 -skip '^TestIpInfo$|^TestIpApi$|^TestGeojs$'
 
       - name: Test agent
         # 全部用例，只排除三个真实网络/权限用例（需要 root、IPv6 与目标可达），
