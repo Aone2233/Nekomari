@@ -150,7 +150,7 @@ The rule this project has adopted, after the upload-lock proposal was correctly
 deferred: **instrument first, change second.** Each item below says what to
 measure before touching anything.
 
-### B1. What the service worker precaches (the biggest first-visit cost)
+### B1. What the service worker precaches (the biggest first-visit cost) — **measured 2026-09-26**
 
 Measured: a first visit transfers **1.9 MB gzipped across 540 files**, because
 every route chunk is precached rather than just the shell. The editor (3.09 MB
@@ -160,6 +160,56 @@ lever.
 Next: measure the first visit's actual transfer and cache contents on a fresh
 profile, then decide which route chunks belong in the precache. Acceptance: a
 first-visit figure and a stated policy per route group, not a guess.
+
+**Re-measured 2026-09-26, against production, on a cold profile** (script:
+`frontend/script/_b1_panel.py`, three runs, one fresh browser context each):
+
+| | Transfer | Detail |
+|---|---:|---|
+| First visit | **480 KiB** | deterministic across three runs |
+| Repeat visit | 2 KiB | nothing left to fetch |
+| Offline navigation | works | app mounts from the precached shell; only `/api/*` fails |
+
+Split of that 480 KiB: **JS 226 KiB** across 9 requests, **images 218 KiB** across
+2, **CSS 32 KiB** across 2, HTML 3 KiB. The precache holds **448 entries**.
+
+Three things this measurement changes about the entry:
+
+1. **"1.9 MB gzipped across 540 files" is the precache's contents, not a visit.**
+   The two differ by a factor of four, and this entry had been quoting the larger
+   one as a first-visit cost. The real visit is 480 KiB.
+2. **The precache policy is not the lever, and neither is the stylesheet.** CSS is
+   32 KiB compressed, and the largest single asset is
+   `bg-desktop-light.v2.jpeg` at 170 KiB — **already optimised**, from 1.13 MB, in
+   `docs/PERFORMANCE.md` Finding 2. Both numbers agree with that file, which is
+   reassuring rather than new: it means the 2026-09-21 work is still in effect, and
+   this re-measurement is a check on it as much as on the precache.
+3. **Caching an offline shell already works.** The precache contains no HTML entry
+   (`navigateFallback: null` is deliberate), yet an offline navigation still mounts
+   the app: the served shell is cached by the *runtime* path, and the app then fails
+   only on `/api/*`. So "offline capability" is not a reason to put route chunks in
+   the precache.
+
+**Policy, per route group, as the acceptance asked:** keep precaching the shell's
+own chunks and drop nothing. There is no evidence that the precache costs a visitor
+anything — a first visit fetches what it renders and the precache fills after
+`load` — and the two levers this entry named (route chunks, the stylesheet) measure
+as 448 stored entries and 32 KiB respectively. The one thing worth acting on this
+entry surfaced was the deployment gap below, which is configuration rather than
+precache policy.
+
+**A gap in the deployment, restated with a number.** `docs/PERFORMANCE.md` already
+records that the origin's `gzip_types` is commented out and that Cloudflare is what
+compresses text assets; this measurement puts a size on the consequence. The same
+first visit **without Cloudflare or nginx compression is 1669 KiB** — `index-*.css`
+at 763 KiB and `entry-index-*.js` at 756 KiB, the same files production serves as
+31 KiB and 58 KiB. So JS and CSS are compressed only as long as Cloudflare is in
+front, and a self-hosted deployment can therefore pay 3.5x what this instance pays.
+Uncommenting `gzip_types`, or letting the Go server compress text assets, closes it.
+
+Local (no nginx, no Cloudflare) for comparison: **1669 KiB / 52 requests**, of
+which `index-*.css` 763 KiB and `entry-index-*.js` 756 KiB — the same files
+production serves as 31 KiB and 58 KiB.
 
 ### B2. Upload scan duration and reservation-lock contention
 

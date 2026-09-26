@@ -99,6 +99,42 @@ Text assets were already fine through Cloudflare: it compresses at the edge (CSS
 27 KB, entry JS 186 KB → 57 KB). The origin's own `gzip_types` is commented out in
 `/etc/nginx/nginx.conf`, which only matters if something stops going through Cloudflare.
 
+## Re-measured 2026-09-26, with a tool that stays in the tree
+
+The numbers above were re-derived end to end on 2026-09-26 by
+`frontend/script/first-visit-transfer.py`, which measures a first visit against any
+panel you point it at:
+
+```bash
+python frontend/script/first-visit-transfer.py https://komari.orderly2233.org 3
+```
+
+It reports the first-visit transfer split by resource kind, the repeat visit, and
+whether an offline navigation still mounts the app. A fresh browser **context** per
+run makes each cold (a new context shares neither the HTTP cache nor the
+service-worker registration), and the offline check asks whether the app *mounted*
+rather than whether the body had text, because the shell is a placeholder until
+React runs.
+
+Production, three runs, 480 KiB every time: **JS 226 KiB / 9 requests, images
+218 KiB / 2, CSS 32 KiB / 2, HTML 3 KiB**; repeat visit 2 KiB; offline navigation
+mounts with only `/api/*` failing; 448 entries precached. Every figure agrees with
+the tables above, so the 2026-09-21 work is still in effect.
+
+Two conclusions this pass adds:
+
+- **Measure production, not a local instance.** The panel's Go server compresses
+  nothing: `/assets/*.js` and `*.css` return raw `Content-Length` with no
+  `Content-Encoding` even when the request offers gzip. The identical first visit
+  without Cloudflare and without nginx's gzip is **1669 KiB** — `index-*.css` 763 KiB
+  and `entry-index-*.js` 756 KiB against production's 31 KiB and 58 KiB. A local
+  number will therefore mislead you by 3.5x about the payload *and* about what is
+  worth optimising, because compression, not size, is what the edge is contributing.
+- **What the service worker stores is not what a visit pays.** The precache holds
+  448 entries; a first visit transfers 480 KiB, because it fetches what it renders
+  and the precache fills afterwards. The two figures were being used
+  interchangeably; they differ by 4x.
+
 ## Finding 3 — theme settings need a restart
 
 The panel serves `theme_configurations` from memory: an out-of-process `UPDATE` is
