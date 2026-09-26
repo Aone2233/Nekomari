@@ -31,6 +31,19 @@ the measurement that found it.
   line with their providers' own meters — which is the check that the numbers are now
   real rather than merely smaller.
 
+## [Unreleased]
+
+- **Noted, not fixed: changing a node's timezone requires an agent restart.** Go reads
+  `/etc/localtime` once at startup, so a process running from before a zone change
+  keeps printing the old zone *and* keeps cutting the `--month-rotate` window at the
+  old zone's day boundary — a quota figure wrong by up to a day, not only a log line.
+  Found on CLISP, where the zone changed from UTC+8 to `America/Los_Angeles` at 15:03
+  and the process running since before it printed UTC+8 stamps until the v0.1.30
+  rollout restarted it. No code change: the behaviour is Go's, and the fleet was
+  checked — every agent was already younger than its timezone file. Documented in
+  `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
+  look like a bug.
+
 ## [v0.1.30] — 2026-09-26
 
 **This release moves the fleet**, because — despite the heading above — the agent

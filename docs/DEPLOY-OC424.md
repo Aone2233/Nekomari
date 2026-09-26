@@ -271,6 +271,44 @@ gone and would have to be re-added. Appending with `>>` under `sudo` needs
 Also recorded in `docs/SECRETS.md`: that plaintext password is the same kind of
 finding as the ones already there.
 
+## Changing a node's timezone needs an agent restart
+
+Found on 2026-09-26 while reading CLISP's journal, and it looked like an agent bug:
+
+```
+15:15:12Z  [233254]  2026/09/26 23:15:12  shutting down gracefully...   <- old process
+15:15:12Z  [276167]  2026/09/26 08:15:12  Nekomari Agent v0.1.30       <- new process
+```
+
+Same systemd unit, same second, four hours apart in the printed stamp — and neither
+matched the UTC time the journal recorded.
+
+**It is not a bug.** The node's timezone had been changed at 15:03:27 that day, from
+UTC+8 to `America/Los_Angeles`. Go reads `/etc/localtime` **once at startup** and
+caches the zone, so the process running since before the change kept printing UTC+8
+(`22:51`, `23:01`, `23:11`) while the journal's own stamps stayed UTC. The restart
+that the v0.1.30 rollout performed replaced the process, and it printed PDT from then
+on — correct.
+
+Two things worth knowing, because both would mislead someone reading logs:
+
+- **The agent's log stamps carry no zone offset**, so `08:15:12` and `23:15:12` are
+  indistinguishable as evidence until you compare them against the journal's UTC
+  column. `journalctl -o short-iso` prints that column separately; use it rather than
+  the message text when the question is "when did this happen".
+- **The same cached zone feeds the month boundary.** `--month-rotate` computes the
+  reset day through `utils.GetLastResetDate(flags.MonthRotate, time.Now())`, and that
+  function takes the location from `time.Now()` — the process's cached zone. So
+  between a timezone change and the next agent restart, the "this month" window is
+  cut at the old zone's day boundary. On a node with `--month-rotate`, that is a quota
+  figure that is wrong by up to a day, not just a log line.
+
+**Rule: after changing a node's timezone, restart its agent.** Checked across the
+fleet on 2026-09-26 (`/proc/<MainPID>` creation time against `/etc/localtime`'s
+mtime): every node's agent was already younger than its timezone file, so nothing was
+outstanding — CLISP was the only node whose zone had changed recently, and the
+rollout had restarted it.
+
 ## D1/D2 pilot: MAC-WAN migrated 2026-09-26
 
 The first node moved to a credential file and to a strictly non-root agent with
