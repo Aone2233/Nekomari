@@ -124,7 +124,19 @@ export default defineConfig(({ mode }) => {
           navigateFallback: null,
           runtimeCaching: [
             {
-              urlPattern: /^https:\/\/api\./i,
+              // Third-party `api.*` hosts are cached with NetworkFirst, which is
+              // what makes an offline reload answer from the cache instead of
+              // failing.
+              //
+              // `api.github.com` is singled out because the admin bar's release
+              // check cannot tell a cached answer from a fresh one: it records
+              // "fetched at now" for whatever comes back, so a response replayed
+              // from `api-cache` would look like a successful refresh and the
+              // real six-hour TTL would never start. It is also the only
+              // absolute `api.*` URL the panel itself fetches (everything else
+              // is same-origin `/api/…`, and the notification endpoints are
+              // called server-side), so excluding it costs nothing else.
+              urlPattern: /^https:\/\/api\.(?!github\.com\/)/i,
               handler: "NetworkFirst",
               options: {
                 cacheName: "api-cache",
