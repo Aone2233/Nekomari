@@ -362,6 +362,32 @@ the newest sample under a minute old.
 NOSLA is the one node left, and it is not blocked on tooling: it needs an SSH
 route. It is healthy and reporting in the meantime.
 
+### NOSLA's access route, fixed 2026-09-26
+
+For most of this work NOSLA was reachable **only** from MAC-WAN: its key lived in
+that workstation's `~/.ssh/config` (`Host tender-guard TG`) and nowhere else, so
+operating the node depended on one home-broadband machine being up. That is a
+single point of failure for a production node, and the fleet migration hit it —
+OC424 could not reach NOSLA at all, so the token had to be rotated there, piped
+through MAC-WAN, and installed over a double hop.
+
+Fixed by giving OC424 **its own** key, not a copy of MAC-WAN's:
+
+- OC424's `id_ed25519` public key was appended to `~/.ssh/authorized_keys` on
+  NOSLA (now four keys). Appending rather than replacing, so MAC-WAN's access and
+  the other two keys are untouched.
+- OC424's `~/.ssh/config` gained `Host NOSLA tender-guard TG` → `176.119.148.158`,
+  `User root`, `IdentitiesOnly yes`, with the previous config kept as
+  `config.bak-pre-nosla-<timestamp>`.
+
+Verified from OC424: `ssh NOSLA` answers, `systemctl is-active komari-agent` is
+`active`, and the process command line has no `-t`/`--token`. Either host can now
+operate the node.
+
+A copied private key would have been the quicker fix and the wrong one: it puts
+one credential on two hosts, cannot be revoked for one without the other, and
+leaves `authorized_keys` unable to say who is logging in.
+
 ## JPKD2 migrated 2026-09-26 (OpenRC, and the third token rotated)
 
 JPKD2 is the one node that is not systemd — Alpine 3.19 in LXC, behind NAT, with
