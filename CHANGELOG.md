@@ -6,6 +6,21 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [Unreleased]
+
+- **Fixed: a node could report an impossible traffic delta right after the agent
+  started, inflating the panel's daily and monthly traffic by orders of
+  magnitude.** The counter baseline was kept in memory only, so a restart lost it
+  and the next sample compared a live cumulative counter against nothing; on one
+  node that produced a single **59.5 GB** delta in the minute the agent started,
+  against a real rate near 7 GB/day and an interface whose lifetime counter read
+  187 MB. The panel's "today" for that node went from ~7 GB to ~160 GB. The
+  baseline is now persisted in `net_static.json` (`last_counters`) and restored on
+  start, and a delta is discarded — with one log line — when it is not physically
+  possible for the elapsed time, when the baseline is older than the bucket it
+  would be attributed to, or when there is no elapsed time at all. **This release
+  moves the fleet**, because the agent changed.
+
 ## [v0.1.28] — 2026-09-26
 
 **This release moves the fleet**, because the agent changed (per the cadence rule in

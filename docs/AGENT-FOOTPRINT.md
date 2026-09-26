@@ -81,6 +81,42 @@ each. On HK04 those rollback copies were 43 MB of the 52 MB the agent directory
 occupied — larger than everything else the agent uses put together. Prune them if
 space is tight.
 
+The ledger now also carries the counter baseline (`last_counters`): one small object
+per monitored interface, ~120 bytes on a one-NIC node against a 53 KB ledger. It is
+there because a delta without a baseline is not a delta — see the incident below.
+
+## The traffic ledger, and the time it reported 59.5 GB in a minute
+
+`net_static.json` records per-interval deltas of the interface counters. On
+2026-09-26 one node reported a single **59,480.5 MB** delta in the minute its agent
+started. Its provider's own usage page showed **184 GB for the whole cycle** (26
+days, ~7 GB/day), and the interface's lifetime counter read **187 MB**, so the
+number was impossible by three orders of magnitude — but it was stored, uploaded,
+and summed into the panel's "today", which read ~160 GB instead of ~7 GB.
+
+What made it possible: the previous counter reading lived only in memory. A restart
+lost it, the next sample compared a live counter against nothing, and the entire
+cumulative value was attributed to one interval. The fix has two halves, and the
+second is what makes the first safe to trust:
+
+- the baseline is persisted with the ledger and restored on start, so a restart no
+  longer throws it away
+- a delta is now checked before it is recorded: it is discarded, once per burst and
+  with a log line, when it is larger than a 1 Gbps link could carry in the elapsed
+  time, when the baseline is older than the bucket it would be attributed to, or
+  when there is no elapsed time at all
+
+The throughput ceiling is an assumed 1 Gbps rather than the interface's real speed,
+because `/sys/class/net/<iface>/speed` returns -1 or nothing on many virtual NICs
+and the whole point is to have a bound on hosts where the real speed is unavailable.
+The headroom (×3) keeps bursty counters from tripping it.
+
+**What is deliberately lost:** a baseline old enough to be rejected means the
+interval it covers is not counted at all. That is bounded by the ledger's rewrite
+interval, and it is the same tradeoff the ledger already made — up to that interval
+of buckets can be lost if the process is killed, which is why `Stop()` still writes
+unconditionally.
+
 A 1 vCPU / 64 MiB / 1 GB-disk VPS is comfortably above what the agent needs. The
 smallest host in this fleet that is actually running it is HK04 at 1 vCPU and
 476 MB, and its agent uses 15.8 MiB and 0.083 % of that core.

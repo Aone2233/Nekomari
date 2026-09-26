@@ -3,6 +3,7 @@ package netstatic
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -59,6 +60,23 @@ var (
 type NetStatic struct {
 	Interfaces map[string][]TrafficData `json:"interfaces"` // key: interface name
 	Config     NetStaticConfig          `json:"config"`
+	// LastCounters 记录上一次采集到的累计字节数，随账本一起落盘。
+	//
+	// 它为什么必须落盘：增量是 `当前 - 上次`，而"上次"原先只存在内存里。进程一重启，
+	// 基线就没了，重启后第一次采样拿到的是一个**已经很高的累计值**，而基线是零 —— 于是
+	// 整个累计量被当成一个采样间隔的增量。现场证据：一台节点在 agent 启动的那一分钟上报了
+	// 单点 59.5 GB（真实速率约 7 GB/天，接口自开机累计仅 187 MB），把面板"今日流量"
+	// 从 7 GB 抬到 160 GB。sampleOnceLocked 现在还会核对数值是否可信（见
+	// plausibleDeltaBytes），这条字段是让重启后仍有基线可用，而不是只能丢弃一个间隔。
+	LastCounters map[string]CounterSample `json:"last_counters,omitempty"`
+}
+
+// CounterSample 是一次采集到的累计值，以及读到它的时刻（unix 秒）。
+// 时刻是判断"增量是否可信"的依据：增量的上限随时间线性增长。
+type CounterSample struct {
+	Tx uint64 `json:"tx"`
+	Rx uint64 `json:"rx"`
+	At uint64 `json:"at"`
 }
 
 type NetStaticConfig struct {
@@ -92,8 +110,9 @@ var (
 	// lastWriteUnix 上次成功落盘的时间，用于限流整体重写（见 DefaultRewriteInterval）
 	lastWriteUnix uint64
 
-	// 上次采集到的累计字节数（用于计算 delta）
-	lastCounters = map[string]struct{ Tx, Rx uint64 }{}
+	// 上次采集到的累计字节数（用于计算 delta）。初值从账本恢复，见
+	// NetStatic.LastCounters：重启后丢基线正是把累计值当增量上报的成因。
+	lastCounters = map[string]CounterSample{}
 )
 
 func nowUnix() uint64 { return uint64(time.Now().Unix()) }
@@ -166,9 +185,39 @@ func loadFromFileLocked() error {
 	store = ns
 	config = configOrDefault(ns.Config)
 	ensureInitLocked()
+	// 恢复上次采集到的累计值。这就是"重启后仍有基线"的那一步：没有它，重启后第一次
+	// 采样会把整个累计量当成一个间隔的增量（见 NetStatic.LastCounters 的说明）。
+	restoreLastCountersLocked()
 	// 启动时清理过期数据
 	purgeExpiredLocked()
 	return nil
+}
+
+// restoreLastCountersLocked 把账本里的基线搬回内存。
+//
+// At 缺失（旧账本没有这个字段）时保留 0，让 plausibleDelta 以"没有流逝时间"为由拒绝
+// 第一次增量 —— 宁可丢一个间隔，也不能拿一个来路不明的基线去算差值。
+func restoreLastCountersLocked() {
+	lastCounters = make(map[string]CounterSample, len(store.LastCounters))
+	for name, sample := range store.LastCounters {
+		lastCounters[name] = sample
+	}
+}
+
+// snapshotLastCountersLocked 复制内存基线，供落盘使用。
+//
+// 复制而不是直接把 map 交给 store：落盘之后采集还会继续改 lastCounters，共享同一个 map
+// 会让"内存中的基线"和"文件里的基线"变成一份东西，purgeExpiredLocked 之类的清理一旦
+// 动它，文件内容就跟着变了。
+func snapshotLastCountersLocked() map[string]CounterSample {
+	if len(lastCounters) == 0 {
+		return nil
+	}
+	out := make(map[string]CounterSample, len(lastCounters))
+	for name, sample := range lastCounters {
+		out[name] = sample
+	}
+	return out
 }
 
 func saveToFileLocked() error {
@@ -178,6 +227,8 @@ func saveToFileLocked() error {
 	}
 	// 写入时带上当前 config
 	store.Config = configOrDefault(config)
+	// 基线随账本落盘，重启才能接上（见 NetStatic.LastCounters）。
+	store.LastCounters = snapshotLastCountersLocked()
 	b, err := json.Marshal(store) // 紧凑格式（不缩进）
 	if err != nil {
 		return err
@@ -295,12 +346,92 @@ func safeDelta(cur, prev uint64) uint64 {
 	return 0
 }
 
+// assumedLinkBytesPerSecond 是判断增量是否可信时使用的链路速率上限（1 Gbps）。
+//
+// 为什么用一个假定值而不是读真实速率：`/sys/class/net/<iface>/speed` 在很多虚拟网卡上
+// 返回 -1 或不存在，而这条路走不通时**不能退回"不做检查"** —— 现场那次 59.5 GB 的假增量
+// 就是在一个读不到真实速率的节点上产生的。1 Gbps 是这类 VPS 的常见上限，配上下面的
+// headroom 已经足够宽松：一个 30 秒采样间隔在 1 Gbps 上最多 3.75 GB，×3 余量 = 11.25 GB，
+// 而假增量是 59.5 GB。真按 10 Gbps 网卡跑的机器由 ceilingBytes 的真实速率优先分支覆盖。
+const assumedLinkBytesPerSecond = 1e9 / 8
+
+// deltaHeadroom 给"瞬时速率可能短暂高于链路标称值"留的余量（网卡突发、计数器批量刷新）。
+const deltaHeadroom = 3
+
+// ceilingBytes 返回一段时间内物理上可能的字节数上限。
+//
+// 上限随 elapsed 线性增长，而不是固定在"一个采样间隔"：进程停了几小时再起来时，
+// 那段间隔里的累计增量是真实的，按一个间隔去卡会把它整段丢掉。
+func ceilingBytes(elapsed time.Duration) uint64 {
+	if elapsed <= 0 {
+		return 0
+	}
+	return uint64(elapsed.Seconds() * assumedLinkBytesPerSecond * deltaHeadroom)
+}
+
+// deltaGapLimit 是"上次记录与本次之间的时差"超过多少就拒绝一个区间增量。
+//
+// 一个桶代表不到一个 SaveInterval 的时间。若基线比这还旧（进程停了很久、或账本被
+// 手工搬到了别的机器），把整段累计值记成一个桶会污染日/月统计，而这段时间的数据本来
+// 也无法归到某一天。拒绝它并重新取基线，代价是这段时间的流量不计入 —— 与"重启丢一个
+// 采集间隔"的既有取舍同向。
+func deltaGapLimit() time.Duration {
+	limit := time.Duration(DefaultSaveInterval * float64(time.Second))
+	if limit <= 0 {
+		return time.Minute
+	}
+	return limit
+}
+
+// invalidDeltaLogged 记录"当前这一轮"是否已经就丢弃增量打过日志，避免每次采集一行。
+var invalidDeltaLogged bool
+
+// plausibleDelta 判断一个增量是否物理上可信，并返回原因（可信时为空）。
+//
+// name 只用于让原因自带上下文：调用方会把它连同 reason 一起写进日志，而"哪个网卡"是
+// 排查时第一个要问的问题。
+func plausibleDelta(name string, dtx, drx uint64, elapsed time.Duration) (bool, string) {
+	if elapsed <= 0 {
+		return false, fmt.Sprintf("%s: no elapsed time since the previous sample", name)
+	}
+	if elapsed > deltaGapLimit() {
+		return false, fmt.Sprintf(
+			"%s: the previous sample is %s old, older than the %s bucket it would be attributed to",
+			name, elapsed.Round(time.Second), deltaGapLimit())
+	}
+	ceiling := ceilingBytes(elapsed)
+	if dtx > ceiling || drx > ceiling {
+		return false, fmt.Sprintf(
+			"%s: counted %s up / %s down in %s, more than the %s a 1 Gbps link can carry in that time",
+			name, humanBytes(dtx), humanBytes(drx), elapsed.Round(time.Second), humanBytes(ceiling))
+	}
+	return true, ""
+}
+
+func humanBytes(n uint64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	value := float64(n)
+	for _, suffix := range []string{"KiB", "MiB", "GiB", "TiB"} {
+		value /= unit
+		if value < unit {
+			return fmt.Sprintf("%.1f %s", value, suffix)
+		}
+	}
+	return fmt.Sprintf("%.1f PiB", value/unit)
+}
+
 func sampleOnceLocked() {
 	ios, err := gnet.IOCounters(true)
 	if err != nil {
 		return
 	}
 	ts := nowUnix()
+	// 用真实时钟而不是 ts：测试会把 nowUnix 换成受控时钟，而"距上次采集多久"必须反映
+	// 真实流逝时间，否则上限判断会随之失真。
+	sampledAt := uint64(time.Now().Unix())
 	for _, io := range ios {
 		name := io.Name
 		// 仅监控指定网卡（当配置了 Nics 时）
@@ -311,16 +442,31 @@ func sampleOnceLocked() {
 		curRx := io.BytesRecv
 		prev, ok := lastCounters[name]
 		if ok {
+			elapsed := time.Duration(sampledAt-prev.At) * time.Second
 			dtx := safeDelta(curTx, prev.Tx)
 			drx := safeDelta(curRx, prev.Rx)
-			// 首次采样不记录
-			if dtx > 0 || drx > 0 {
-				staticCache[name] = append(staticCache[name], TrafficData{Timestamp: ts, Tx: dtx, Rx: drx})
-			} else {
+			if plausible, reason := plausibleDelta(name, dtx, drx, elapsed); plausible {
+				// 首次采样不记录
+				if dtx > 0 || drx > 0 {
+					staticCache[name] = append(staticCache[name], TrafficData{Timestamp: ts, Tx: dtx, Rx: drx})
+				}
 				// 即便为 0，也可以记录，但为了降低噪音与占用，这里忽略 0
+			} else if dtx > 0 || drx > 0 {
+				// 不可信的增量要留下痕迹：静默丢弃会让"数字不对"这件事无从追查，
+				// 而这正是这个字段存在的意义（见 docs/SILENT-FAILURES.md 的同类问题）。
+				if !invalidDeltaLogged {
+					invalidDeltaLogged = true
+					log.Printf("netstatic: discarded an implausible traffic delta on %s (%s); "+
+						"re-baselining from the current counters, this interval is not counted",
+						name, reason)
+				}
+				lastCounters[name] = CounterSample{Tx: curTx, Rx: curRx, At: sampledAt}
+				storeDirty = true
+				continue
 			}
 		}
-		lastCounters[name] = struct{ Tx, Rx uint64 }{Tx: curTx, Rx: curRx}
+		lastCounters[name] = CounterSample{Tx: curTx, Rx: curRx, At: sampledAt}
+		storeDirty = true
 	}
 }
 
@@ -426,7 +572,7 @@ func Clear() error {
 	ensureInitLocked()
 	store.Interfaces = make(map[string][]TrafficData)
 	staticCache = make(map[string][]TrafficData)
-	lastCounters = map[string]struct{ Tx, Rx uint64 }{}
+	lastCounters = map[string]CounterSample{}
 	storeDirty = true
 	// 不落盘，等下次保存或停止时写
 	return nil

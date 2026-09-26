@@ -32,7 +32,7 @@ func resetState(t *testing.T) {
 	mu.Lock()
 	store = NetStatic{Interfaces: map[string][]TrafficData{}}
 	staticCache = map[string][]TrafficData{}
-	lastCounters = map[string]struct{ Tx, Rx uint64 }{}
+	lastCounters = map[string]CounterSample{}
 	config = configOrDefault(NetStaticConfig{})
 	storeDirty = false
 	lastWriteUnix = 0
