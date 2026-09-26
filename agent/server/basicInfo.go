@@ -58,6 +58,12 @@ func uploadBasicInfo() error {
 		"gpu_name":           monitoring.GpuName(),
 		"virtualization":     monitoring.Virtualized(),
 		"version":            update.CurrentVersion,
+		// What this host can do about ICMP, so the panel can tell "this node
+		// cannot probe" apart from "the target did not answer" (roadmap E2). The
+		// payload is a free-form map, so this is additive in both directions: an
+		// older panel ignores the key, and an older agent simply does not send it
+		// — which the panel renders as "unknown" rather than "unavailable".
+		"icmp_capability": ICMPCapability(),
 	}
 
 	return tryUploadData(data)

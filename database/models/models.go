@@ -29,6 +29,11 @@ type Client struct {
 	SwapTotal        int64      `json:"swap_total" gorm:"type:bigint"`
 	DiskTotal        int64      `json:"disk_total" gorm:"type:bigint"`
 	Version          string     `json:"version,omitempty" gorm:"type:varchar(100)"`
+	// What the agent reported about this host's ICMP sockets: "raw", "ping",
+	// "none", or "" when an older agent has not said. The empty value means
+	// *unknown*, and the UI must render it as unknown rather than as a denial --
+	// an agent that has never reported is not a node that cannot probe.
+	ICMPCapability string `json:"icmp_capability,omitempty" gorm:"type:varchar(10)"`
 	Weight           int        `json:"weight" gorm:"type:int"`
 	Price            float64    `json:"price"`
 	BillingCycle     int        `json:"billing_cycle"`

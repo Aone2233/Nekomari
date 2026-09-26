@@ -17,6 +17,10 @@ export type NodeDetail = {
   swap_total: number;
   disk_total: number;
   version: string;
+  // What the agent reported about this host's ICMP sockets: "raw", "ping", "none",
+  // or absent for a pre-`icmp_capability` agent. Absent means unknown, and the UI
+  // must not draw it as unavailable (roadmap E2).
+  icmp_capability?: "raw" | "ping" | "none" | "";
   weight: number;
   price: number;
   remark: string | undefined;

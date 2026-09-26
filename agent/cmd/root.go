@@ -172,6 +172,9 @@ var RootCmd = &cobra.Command{
 			log.Println("Failed to get interface list:", err)
 		}
 		log.Println("Monitoring Interfaces:", interfaceList)
+		// The panel shows this too; saying it here means an operator reading the
+		// journal and an operator reading the panel see the same answer.
+		log.Println(server.ICMPCapabilityLogLine())
 
 		// 忽略不安全的证书
 		if flags.IgnoreUnsafeCert {

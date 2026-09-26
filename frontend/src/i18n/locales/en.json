@@ -50,6 +50,14 @@
   },
   "admin": {
     "nodeDetail": {
+      "icmp": {
+        "raw": "ICMP available: raw socket (the node runs as root or with CAP_NET_RAW)",
+        "ping": "ICMP available: using the kernel's unprivileged ping socket fallback",
+        "noneLabel": "ICMP unavailable",
+        "none": "This node cannot send ICMP probes: neither a raw socket nor an unprivileged ping socket opens. Loss shown for its ICMP tasks is the tool's limitation, not the target's behaviour. Fix: give the agent binary cap_net_raw (setcap cap_net_raw+ep), or widen net.ipv4.ping_group_range to cover the agent's group.",
+        "unknownLabel": "ICMP unknown",
+        "unknown": "This node has not reported its ICMP capability yet (its agent predates icmp_capability). Unknown is not unavailable: upgrade the node's agent to see the real answer."
+      },
       "arch": "Architecture",
       "clientVersion": "Client version",
       "cpu": "CPU",

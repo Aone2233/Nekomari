@@ -341,7 +341,7 @@ agent's icmpPing:  非特权回退生效：ICMP 往返 1 ms（ipv4）
 The opt-in test (`NEKOMARI_LIVE_PROBE=1`) skips itself where the raw socket works,
 so it can only pass where it proves something.
 
-### E2. A denied ICMP probe is reported as packet loss — **still a design question**
+### E2. A denied ICMP probe is reported as packet loss — **phase 1 implemented 2026-09-26**
 
 Only the `auto` protocol path consults `isPermissionErr`
 (`agent/server/task.go:369`), which falls back to TCP when the local permission is
@@ -358,6 +358,38 @@ fixed by restoring the capability rather than by making the agent honest.
 E1 removes the cause on most hosts; E2 is what makes the remaining ones
 self-describing. Acceptance: a locally-denied ICMP probe is distinguishable from
 target loss in the panel, not only in the journal.
+
+**Phase 1 (the node states what it can do) is done.** The agent probes its own ICMP
+sockets once at startup — opening each kind for real, 300 ms timeout, rather than
+inspecting capabilities or `ping_group_range`, because a capability can be present
+in `CapEff` and still unusable (the `NoNewPrivileges`/`PrivateTmp` trap in
+`docs/AGENT-FOOTPRINT.md`) — and reports one of:
+
+| Value | Meaning |
+|---|---|
+| `raw` | a raw socket opens: the path every pre-v0.1.27 node has always used |
+| `ping` | only the kernel's unprivileged ping socket opens; measures echo latency just as well |
+| `none` | neither opens, so an ICMP task here reports the tool's limit, not the target's |
+| absent | **the agent has not said** — an older build. Unknown, never "unavailable" |
+
+It travels in the existing basic-info upload (`icmp_capability`), which is a
+free-form map, so it is additive in both directions: an older panel ignores the
+key, and an older agent simply omits it. The panel stores it in a new
+`clients.icmp_capability` column and shows a badge beside the node's version (icon
+only in the table, icon plus label in the node drawer), whose tooltip names the
+cause and the fix.
+
+Verified against a real host rather than by reasoning: on MAC-WAN, as the `macos`
+user with no `cap_net_raw` and `net.ipv4.ping_group_range = 1 0`, the agent logs
+"neither a raw socket nor an unprivileged ping socket opens"; the same binary after
+`setcap cap_net_raw+ep` logs "raw socket available". Two builds of the same code on
+the same machine, differing only in the permission.
+
+**Still open under E2, deliberately:** warning on an ICMP-typed task that includes a
+capability-less node, and phase 2 (the scheduler skipping impossible probes, only
+when the fact is known). Neither is in this change: `docs/ROADMAP.md` keeps
+scheduling out of the visibility step, because silently narrowing coverage is a
+decision with its own risks, and an old agent must never be skipped.
 
 **Recommended design: report it as a node capability, not as a per-sample value.**
 

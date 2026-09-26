@@ -36,6 +36,7 @@ import {
 import { SelectOrInput } from "@/components/ui/select-or-input";
 import Flag from "@/components/Flag";
 import Tips from "@/components/ui/tips";
+import { IcmpCapabilityBadge } from "@/components/admin/IcmpCapabilityBadge";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { formatBytes, stringToBytes } from "@/utils/unitHelper";
 import { requireClientMutationSuccess } from "./mutationResult";
@@ -131,6 +132,7 @@ export function DetailView({ node }: { node: NodeDetail }) {
                     <span className="text-muted-foreground">-</span>
                   )}
                 </span>
+                <IcmpCapabilityBadge capability={node.icmp_capability} />
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

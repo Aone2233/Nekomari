@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table";
 import { useIsMobile } from "@/hooks/use-mobile";
 import PriceTags from "@/components/PriceTags";
+import { IcmpCapabilityBadge } from "@/components/admin/IcmpCapabilityBadge";
 import { ActionButtons } from "./NodeActions";
 import { DetailView } from "./NodeDialogs";
 import { requireClientMutationSuccess } from "./mutationResult";
@@ -132,7 +133,14 @@ const SortableRow = ({
           )}
         </Flex>
       </TableCell>
-      <TableCell>{node.version}</TableCell>
+      <TableCell>
+        <Flex align="center" gap="2">
+          <Text size="2">{node.version}</Text>
+          {/* The node's own report about ICMP, beside the version because both
+              are facts about the agent rather than about the target. */}
+          <IcmpCapabilityBadge capability={node.icmp_capability} compact />
+        </Flex>
+      </TableCell>
       <TableCell>
         <Text
           size="2"

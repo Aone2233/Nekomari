@@ -50,6 +50,14 @@
   },
   "admin": {
     "nodeDetail": {
+      "icmp": {
+        "raw": "ICMP 可用：裸 socket（节点以 root 或 CAP_NET_RAW 运行）",
+        "ping": "ICMP 可用：走内核非特权 ping socket 回退",
+        "noneLabel": "ICMP 不可用",
+        "none": "该节点无法发出 ICMP 探测：裸 socket 与非特权 ping socket 都打不开。此节点上的 ICMP 任务显示的丢包是工具的限制，不是目标的行为。修法：给 agent 二进制 cap_net_raw（setcap cap_net_raw+ep），或让 net.ipv4.ping_group_range 覆盖该 agent 所在的用户组。",
+        "unknownLabel": "ICMP 未知",
+        "unknown": "该节点尚未上报 ICMP 能力（agent 版本早于 icmp_capability）。未知不等于不可用：升级该节点 agent 后才会显示实际结果。"
+      },
       "arch": "架构",
       "clientVersion": "客户端版本",
       "cpu": "CPU",
