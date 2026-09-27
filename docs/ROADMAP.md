@@ -1,33 +1,251 @@
 # Roadmap
 
 Consolidated 2026-09-24, after the v0.1.26 rollout; revised 2026-09-26 to
-distinguish what is *implemented*, what is *released*, and what is *deployed*.
-This is the single list of what is left, in priority order, with the evidence
-for each item and what "done" would mean. It supersedes the scattered
-`FOLLOWUP-v*.md` lists for planning purposes; those stay as the record of what
-each release addressed.
+distinguish what is *implemented*, what is *released*, and what is *deployed*, and
+again on the same day to add section H, which is where the work now is.
 
-## State as of 2026-09-26
+**Read section H first.** Sections A-G are the audit of what was wrong and are
+nearly exhausted: the correctness work is closed, the performance items are
+measured, and what remains in them is a handful of migrations and one visualization
+pass. Section H is the forward plan — the six features being built next, in order,
+each with its acceptance criteria and, for each, what would make it wrong.
+
+`docs/OPEN-WORK.md` tracks the older 2026-09-18 batch and its remaining
+decisions; `docs/DEPLOY-OC424.md` is the current-state runbook, including the
+rollout traps that section H6 exists to make impossible.
+
+## State as of 2026-09-26 (after the v0.1.30 rollout)
 
 Each row is a separate claim, and each has its own evidence. "Released" means a
-tag exists; it does not mean any host is running it.
+tag exists; "deployed" means a host is running it, and the two are never the same
+claim.
 
 | Claim | State | Evidence |
 |---|---|---|
-| Repository `main` | `d37bc01` + the 2026-09-26 release-cache fix | `git log`; the shell-cache change (`0989258`) and the E2 design note (`099f32c`) are **merged on `main` but in no tag** — they are not in v0.1.27 |
-| `v0.1.27` released | yes | tag `v0.1.27` → `6a1e875`, 2026-09-25 18:11 +08:00, `CHANGELOG.md` |
-| `v0.1.27` CI | per the tag pipeline, not re-checked here | `.github/workflows/release.yml`, `ci.yml`; no run was inspected for this revision |
-| `v0.1.27` agent behaviour | changed → the fleet must move | `docs/RELEASING.md` cadence rule; `git diff --stat v0.1.26..v0.1.27 -- agent/ protocol/ pkg/` is not empty |
-| Production panel on `v0.1.27` | **verified 2026-09-26** | `/api/version` → `v0.1.27` / `6a1e875`; image `ghcr.io/aone2233/nekomari:v0.1.27` (`sha256:7a0086eb…`), started 2026-09-25T10:27:42Z, `RestartCount=0` |
-| OC424's agent on `v0.1.27` | **verified 2026-09-26** | binary mtime 2026-09-25 10:28:31 UTC; unit active. Still runs as root (D2 un-migrated) and still passes `-t` (D1 un-deployed) |
-| The other nine nodes on `v0.1.27` | **not verified** | only OC424 was reachable from this session |
-| D1 credential path in the repository | **done 2026-09-26**, not deployed | `agent/cmd/token.go`, both installers, `deploy/install-node-agent.test.sh`; no node migrated |
+| Repository `main` | `7ba066b` | `git log` |
+| Latest tag | `v0.1.30` → `96f65c2` | `gh release view v0.1.30`; assets for 8 platforms + `SHA256SUMS.txt` |
+| CI on the released commit | green before tagging | `ci` run on `96f65c2` completed success; the tag was pushed only after it |
+| Production panel | **`v0.1.30`, deployed 2026-09-26** | `/api/version` → `v0.1.30` / `96f65c2`; image `ghcr.io/aone2233/nekomari:v0.1.30`, `healthy`, `RestartCount=0`; backup `/opt/nekomari-backups/pre-v0.1.30-20260926-153310` |
+| All ten agents | **`v0.1.30`, deployed 2026-09-26** | every node reports `version=v0.1.30` and `icmp_capability=raw` within one 10-minute info interval |
+| Fleet restart traps encountered | four, all in `docs/DEPLOY-OC424.md` | `sh` vs `bash` on Debian, a CRLF-terminated script, a staged file that vanished, an amd64 binary sent to an arm64 host |
+| D1 credential path | **done and deployed**, ten of ten | no token on `/proc/<pid>/cmdline` or in `ExecStart` on any node; NOSLA rotated and migrated |
+| D2 non-root agents | **two of ten** | MAC-WAN (file capability) and NOSLA (`AmbientCapabilities`); the other eight still run as root |
+| Traffic counter-baseline bug | fixed, released, deployed | `fd6508f` + `59aa8f3`; a canary restart on v0.1.30 produced 0.1 MB where v0.1.29 produced 37 GB |
+| Polluted traffic samples (2026-06-29 onward) | removed | 4 minute samples + 63 coarser rows; after cleanup NOSLA reports 3.8 GB and MAC Server 0.5 GB, matching both providers' meters |
+| `icmp_capability` (E2 phase 1) | visible on every node | badge in the table and the node drawer; `clients.icmp_capability` present |
+| i18n for the six new keys | **English fallback** in `ja_JP`, `zh_TW`, `id_ID` | `npm run i18n:sync` needs `OPENAI_API_KEY`, which is not available in this environment |
+| Next features | planned in section H below | H1-H6, each with its acceptance criteria |
 
-The 2026-09-25 work that landed *after* the tag (`0989258`, `b4d1153`,
-`acbcf05`, `d37bc01`) is unreleased; `docs/DEPLOY-OC424.md` calls it v0.1.28.
+Two claims that used to be wrong here and are worth not repeating: a version in the
+repository is not a deployed version, and a tag is not a rollout. The state table
+carried "the other nine nodes not verified" for a day because only one host was
+reachable from that session; the 2026-09-26 work made every node reachable from
+OC424, so the rows above are read from the panel's own database rather than inferred.
 
-`docs/OPEN-WORK.md` tracks the older 2026-09-18 batch and its remaining
-decisions; `docs/DEPLOY-OC424.md` is the current-state runbook.
+## H. The next features — planned 2026-09-26
+
+Sections A-G are close to exhausted: the correctness work is closed, the security
+items are single migrations, and the performance items have all been measured (B1,
+B2, B4) or are not ours to fix (B3). The last four releases — v0.1.27 through
+v0.1.30 — were three-quarters bug fixes. This section is what comes next, in the
+order it will be built, with the evidence and the acceptance test for each.
+
+**The rule this section keeps:** a feature here has to turn something the panel
+*already collects* into something it can *state*. The metrics store holds 90 days at
+four resolutions, the notification stack already has per-event senders, grace
+periods and channel plugins, and none of it is missing data — what is missing is
+answers. Nothing below needs a new data source; two of the six need no agent change
+at all.
+
+| # | Feature | Batch | Touches the agent? |
+|---|---|---|---|
+| H1 | Status page and SLA report | v0.1.31 | no |
+| H2 | Bulk operations | v0.1.32 | no |
+| H3 | Maintenance windows | v0.1.33 | no |
+| H4 | Configuration import/export | v0.1.34 | no |
+| H5 | Traffic and cost forecasting | v0.1.35 | no |
+| H6 | Panel-triggered agent upgrade | v0.1.36 | **yes — moves the fleet** |
+
+H6 is last on purpose. It is the one that changes the agent, and it is also the one
+that makes every later fleet change cheap, so it should be built on top of the
+panel-side plumbing the earlier batches establish rather than beside it.
+
+### H1. Status page and SLA report — **v0.1.31**
+
+**Evidence.** The metrics store keeps every node's history for 90 days at four
+resolutions, and `ping.*` series carry loss and latency per task. Nothing computes an
+availability figure from any of it. Asked "how long was NOSLA down this month?", the
+answer today is to open a chart and read it by eye — and the peak/loss readings the
+2026-09-26 traffic work had to clean up show how badly an aggregate can mislead when
+nobody has stated what it means.
+
+**Scope.** A public page (guest-readable, like the existing public dashboard) plus an
+RPC that computes, per node and per ping task, over a chosen window (24 h / 7 d / 30 d
+/ 90 d):
+
+- **availability** as a percentage, from the node's own online/offline history and
+  from task loss, with the two reported separately — a node can be up while a *target*
+  is unreachable, and conflating them is the same misreading E2 exists to remove
+- **latency percentiles** p50 / p95 / p99, not a mean, because a mean hides the tail
+  that users actually feel
+- **incident list**: contiguous intervals where the node was offline or a task was
+  failing, each with a start, an end, a duration, and which of the two it was
+- **a shareable URL** that encodes the window and the entity, so a report can be sent
+  to someone without an account
+
+**Why the computation is the deliverable and not the chart.** The three numbers above
+each have a definition that can be wrong in a way nobody notices — "availability"
+over a window with no data at all, a gap in the series treated as downtime, a single
+one-minute blip counted as an incident. Each definition is a decision, and each gets a
+test that fails if the definition changes silently.
+
+**Acceptance.**
+- A window with **no data** reports "no data", never 0 % and never 100 %.
+- A gap in the series is not downtime; only a *reported* offline or a *recorded*
+  failure counts, and the report names which.
+- The incident list reconstructs a synthetic outage of known length to within one
+  bucket of the source resolution.
+- Percentiles come from the stored values, and a window spanning resolutions does not
+  mix a 1-minute p95 with an hourly one.
+- Guest-readable: the page and its RPC work without a session, and a hidden node stays
+  hidden (the same `clientHistoryReadable` rule the history endpoints use).
+- Fixtures: a mounted browser spec for the page (loading / no data / one incident /
+  hidden node), and Go tests for each definition above.
+
+### H2. Bulk operations — **v0.1.32**
+
+**Evidence.** Ten nodes, each configured by opening a dialog, editing, and saving.
+Changing a group, a billing cycle, a notification policy or a weight across the fleet
+is that many round trips, and it is the kind of edit where one node silently keeps the
+old value.
+
+**Scope.** Multi-select on the node table, then apply one change to the selection:
+group / tags / billing cycle and price / notification policy / weight / hidden flag.
+Plus "copy this node's settings to…". Every field the edit dialog can write, the bulk
+path can write, through the same `admin:editClient` handler rather than a second
+implementation of the rules.
+
+**Acceptance.**
+- A partial failure is reported **per node** and leaves the successful ones applied —
+  no all-or-nothing rollback, and no silent skip.
+- The selection survives a poll refresh (the table re-renders every 5 s).
+- Bulk writes go through the existing per-node validation, proved by a test that a
+  value refused for one node is refused in a bulk apply too.
+- Fixtures: selection across a poll, a partial failure, and "copy settings" with a
+  field the target legitimately rejects.
+
+### H3. Maintenance windows — **v0.1.33**
+
+**Evidence.** Every planned restart during the 2026-09-26 work was indistinguishable
+from an outage to the notifier. The offline sender already has a grace period and
+per-client state (`utils/notifier/offline.go`), so the machinery for "do not shout
+about this" exists — it just has no way to be told *in advance*.
+
+**Scope.** A window, scoped to nodes or to a whole fleet, with a start, an end and a
+reason. While a node is inside a window: offline and ping notifications are suppressed
+for it, the panel marks the node as "in maintenance" rather than "down", and the
+suppression is recorded so a report can show why an alert did not fire. Suppression is
+scoped to notification, never to collection — the metrics keep recording, because the
+whole point of a maintenance window is that the node is doing something real.
+
+**Acceptance.**
+- A window that has not started, or has ended, changes nothing.
+- Inside a window, no offline/ping notification is sent **and** the reason is
+  retrievable afterwards; the senders' existing grace-period tests keep passing.
+- A node that goes offline inside a window and stays offline past its end is notified
+  once the window closes — the "silenced, then forgotten" failure.
+- The status page distinguishes "maintenance" from "down".
+- Fixtures: a notification suppressed inside the window and delivered after it, plus a
+  Go test for the boundary (a window ending mid-outage).
+
+### H4. Configuration import/export — **v0.1.34**
+
+**Evidence.** The only backup path is a whole-database migration
+(`/admin/database-migration`). That moves a database; it does not answer "give me this
+fleet's node and task configuration as a file I can read, diff and re-apply", which is
+what is wanted when rebuilding a panel or reproducing a setup.
+
+**Scope.** Export nodes, ping tasks, notification policies and settings as one JSON
+document, with a versioned schema; import with a **dry run first** that reports what
+would be created, changed and removed. Secrets (tokens, notification credentials, the
+2FA secret, SMTP passwords) are excluded by default and, when included, require an
+explicit flag and produce a file that says so in its own header — the panel has enough
+credential incidents in `docs/SECRETS.md` without adding a config file to the list.
+
+**Acceptance.**
+- Round trip: export, import into an empty instance, and the resulting configuration
+  equals the source for every field the schema claims to carry (asserted, not eyeballed).
+- Import is idempotent: applying the same document twice changes nothing the second
+  time and says so.
+- The dry run's report matches what the real import does, on the same input.
+- A document from a future schema version is refused with a readable message rather
+  than partially applied.
+- No secret appears in the default export — asserted by a test that greps the output
+  for the known credential fields.
+
+### H5. Traffic and cost forecasting — **v0.1.35**
+
+**Evidence.** The 2026-09-26 traffic work established what the `traffic.*` series
+actually mean (per-bucket byte deltas, month-to-date totals in the ledger) and cleaned
+out three months of impossible samples. `netstatic`'s own `--month-rotate` defines the
+billing window. Nothing projects forward, so hitting a plan limit is discovered by
+hitting it — which for a NAT'd node means the provider suspends it.
+
+**Scope.** Per node, from the current cycle's traffic and the elapsed fraction of it:
+the projected end-of-cycle total, the day the plan limit would be reached, and the
+projection's own uncertainty. A warning through the existing notifier before the limit,
+at a configurable threshold. The forecast states its method and refuses to project from
+too little data rather than extrapolating two points into a confident number.
+
+**Acceptance.**
+- A cycle with under a day of data reports "not enough data", not a projection.
+- A node with a flat rate projects within a stated tolerance of a synthetic known total.
+- The limit-crossing date is reported with the basis (rate, window, samples used).
+- The threshold warning fires once per cycle per node, not once per scan.
+- A node with no plan limit set is not forecast at all, rather than forecast against
+  infinity.
+- Go tests for each case; a fixture for the panel's presentation of the forecast.
+
+### H6. Panel-triggered agent upgrade — **v0.1.36 — moves the fleet**
+
+**Evidence.** This is the batch that pays for the other five. Deploying v0.1.28, .29
+and .30 by hand took two sessions and produced four distinct operational traps
+(`sh` vs `bash` on Debian, a CRLF-terminated script, a staged file that had vanished, an
+amd64 binary sent to an arm64 host), each documented in `docs/DEPLOY-OC424.md`. PZYC
+cannot reach the release assets at all, so for that node the hand-carry is not a
+preference — it is the only route.
+
+**Scope.** The panel offers a version to a node over the connection the node already
+holds; the agent fetches the binary from the panel (not GitHub), verifies its checksum,
+installs it keeping the current binary as a rollback, restarts, and reports the result.
+Staged: one canary node first, each node's outcome recorded, and an automatic rollback
+if the new binary fails to report within a timeout. Refuses to send a binary whose
+architecture does not match the node's report, which is the trap above made impossible
+rather than documented.
+
+**Acceptance.**
+- The architecture check refuses a mismatched binary **before** anything is transferred.
+- A canary rollout upgrades one node, verifies it reports, and only then offers the
+  rest.
+- A binary that fails to start is rolled back automatically and the node reports the
+  old version again; the operator sees which node and why.
+- The transfer is resumable or restartable: a dropped connection does not leave a
+  half-written binary where the agent can execute it (write to a temp path, verify,
+  then rename — the property the manual rollouts had to do by hand).
+- An agent too old to understand the command is left alone and reported as such,
+  never upgraded forcibly.
+- Proven on a real node before the fleet: the canary is the acceptance test, and its
+  transcript goes into `docs/DEPLOY-OC424.md`.
+
+### What is deliberately not in this section
+
+- **A second notification channel implementation.** `utils/messageSender/` already has
+  Bark, mail and a JavaScript escape hatch, and plugins cover the rest; H3 and H5 add
+  events, not channels.
+- **A new time-series store.** The four-resolution store is adequate for all six
+  features, and B5 found no evidence of a problem that would justify replacing it.
+- **Anything requiring the agent for H1-H5.** They are panel work, so they ship by
+  restarting one container rather than moving ten nodes.
 
 ## A. Correctness and coverage
 
