@@ -75,6 +75,17 @@ the measurement that found it.
   default (measured at four hours). Now `public, max-age=31536000, immutable`. This affected anyone
   running LuminaPlus, not only this deployment.
 
+- **The panel's admin interface is now its own build, served at `/admin`**, instead of coming from whatever
+  theme is embedded as the default. A theme may decide what the *public* page looks like; whether the panel can
+  be administered should not depend on which theme is installed. This existed as a latent problem before: the
+  server has always forced `/admin` to the embedded default theme, so replacing that theme with a front-end-only
+  one left a fresh installation with no admin at all. Found while releasing this version, which is why it is
+  described in the same entry — see roadmap H7.
+
+- **Fixed: every stylesheet was served without a long-lived `Cache-Control`.** A Vite manifest lists a build's
+  CSS in a separate `css` array rather than as its own entry, and the server only read the `file` field, so no
+  stylesheet was ever recognised as content-hashed. Affected the theme and the panel, on every deployment.
+
 ## [v0.1.38] — 2026-09-26
 
 **Panel only.** H4: the panel's configuration as one file, and one file applied back.
