@@ -6,7 +6,7 @@
   "scripts": {
     "test": "node --test script/*.test.mjs",
     "dev": "vite",
-    "build": "tsc -b && vite build && vite build --config vite.standalone.config.ts && node script/build-standalone-sla.mjs",
+    "build": "tsc -b && vite build && node script/build-standalone.mjs",
     "lint": "eslint . --max-warnings 0",
     "audit:compiler": "node script/audit-compiler.mjs",
     "preview": "vite preview",

@@ -1621,5 +1621,44 @@
     "sampleInterval": "每桶 {{seconds}} 秒",
     "clamped": "已缩短到保留范围内",
     "navStatus": "状态"
+  },
+
+  "bulk": {
+    "title": "批量编辑",
+    "subtitle": "把一项改动应用到多个节点。只有你打开开关的字段会被发送。",
+    "fieldsHeading": "要改的字段",
+    "fieldsHint": "只有开关打开的字段才会被发送，其余字段在所有选中节点上保持原值。",
+    "nodesHeading": "节点",
+    "selectAll": "全选",
+    "selectNone": "全不选",
+    "selected": "选中",
+    "node": "节点",
+    "group": "分组",
+    "weight": "权重",
+    "apply": "应用到选中项",
+    "selectionCount": "已选 {{count}} 个",
+    "fieldCount": "将发送 {{count}} 个字段",
+    "noFieldsHint": "至少打开一个字段。",
+    "loading": "正在加载节点…",
+    "error": "无法发送本次编辑",
+    "reportSummary": "{{total}} 个中：成功 {{applied}}，失败 {{failed}}",
+    "failuresHeading": "未应用",
+    "unknownError": "未给出原因",
+    "fieldsApplied": "已发送字段：{{fields}}",
+    "field": {
+      "group": "分组",
+      "tags": "标签",
+      "weight": "权重",
+      "hidden": "隐藏",
+      "price": "价格",
+      "billingCycle": "计费周期",
+      "currency": "货币",
+      "trafficLimit": "流量阈值",
+      "trafficLimitType": "阈值类型"
+    },
+    "hidden": {
+      "yes": "隐藏",
+      "no": "可见"
+    }
   }
 }

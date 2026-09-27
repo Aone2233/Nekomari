@@ -1616,5 +1616,44 @@
     "sampleInterval": "Buckets of {{seconds}}s",
     "clamped": "Shortened to the retained range",
     "navStatus": "Status"
+  },
+
+  "bulk": {
+    "title": "Bulk edit",
+    "subtitle": "Apply one change to many nodes. Only the fields you switch on are sent.",
+    "fieldsHeading": "Fields to change",
+    "fieldsHint": "A field is only sent when its switch is on, so the other fields on every selected node keep their values.",
+    "nodesHeading": "Nodes",
+    "selectAll": "Select all",
+    "selectNone": "Select none",
+    "selected": "Selected",
+    "node": "Node",
+    "group": "Group",
+    "weight": "Weight",
+    "apply": "Apply to selection",
+    "selectionCount": "{{count}} selected",
+    "fieldCount": "{{count}} fields to send",
+    "noFieldsHint": "Switch on at least one field.",
+    "loading": "Loading nodes…",
+    "error": "The edit could not be sent",
+    "reportSummary": "{{applied}} applied, {{failed}} failed of {{total}}",
+    "failuresHeading": "Not applied",
+    "unknownError": "no reason given",
+    "fieldsApplied": "Fields sent: {{fields}}",
+    "field": {
+      "group": "Group",
+      "tags": "Tags",
+      "weight": "Weight",
+      "hidden": "Hidden",
+      "price": "Price",
+      "billingCycle": "Billing cycle",
+      "currency": "Currency",
+      "trafficLimit": "Traffic limit",
+      "trafficLimitType": "Limit type"
+    },
+    "hidden": {
+      "yes": "hidden",
+      "no": "visible"
+    }
   }
 }
