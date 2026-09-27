@@ -237,9 +237,22 @@ func currentExecutablePath() (string, error) {
 	return cmdPath, nil
 }
 
+// DoUpdateWorks 按六小时周期检查更新。
+//
+// 面板下发了期望版本（AGENT_TARGET_VERSION）时，这里只对齐到那个版本，不再自行追最新发布 —— 否则
+// 一次「指定版本」会在下一个周期被自动更新覆盖掉，灰度与回滚都没有意义。清空期望版本即恢复原有行为。
 func DoUpdateWorks() {
 	ticker_ := time.NewTicker(time.Duration(6) * time.Hour)
 	for range ticker_.C {
+		if target := RequestedVersion(); target != "" {
+			if TargetSatisfied(target) {
+				continue
+			}
+			if err := CheckAndUpdateTo(target); err != nil {
+				log.Println("Targeted update failed:", err)
+			}
+			continue
+		}
 		CheckAndUpdate()
 	}
 }
