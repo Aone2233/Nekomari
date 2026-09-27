@@ -81,10 +81,40 @@ considering:
 3. **Ask the theme to add it.** Not in this repository's control; LuminaPlus is built
    elsewhere and its source is not here.
 
-Until this is decided, **H1's server half is complete and verified against production**
-(`public:getSlaReport` answers over the live store) and its page is not reachable on
-OC424. The record of that state is the point of this section: "implemented", "released"
-and "visible to a user" are three different claims, and this feature is the first two.
+**Decided 2026-09-26: option 1.** The report is a standalone page at
+`/standalone/sla.html`, built by its own Vite config (`vite.standalone.config.ts`) into
+its own output directory and folded into `dist/` by
+`frontend/script/build-standalone-sla.mjs`. It is one bundle with React inside it, no
+chunk imports, its own stylesheet, and no service worker.
+
+It is not an entry in the main Vite build, and that is the part worth remembering: a
+shared build splits the page's dependencies into `chunk-*.js` files inside the `/assets/`
+namespace the theme owns, where a name collision resolves to the theme's file — and the
+theme's `index.html` would begin preloading chunks built for the UI it replaced. Two
+builds, two namespaces, no collisions.
+
+The cost, stated where it will be read again: **it does not inherit the theme's chrome or
+navigation.** Somewhere in the theme its link has to be added, which is the same
+injection the repository already does for other panel features. Until that link exists the
+page is reachable by URL only.
+
+**Contract tests now guard this, in two places, because the failure was invisible to every
+other kind of test.** The page was unreachable while go tests, node tests and a mounted
+browser fixture all passed: nothing asserted that it could be *reached*.
+
+| Where | What it pins |
+|---|---|
+| `frontend/script/standalone-sla.test.mjs` (5, in `npm test`) | the entry mounts `#root`, does not import the app router, the build config stays isolated, nothing new lives in `/assets/` |
+| `web/public/standalone_test.go` (5) | the built page is in the embedded archive, references only `/standalone/`, registers no service worker, and its bundle has React and no chunk imports |
+
+The Go half failed the first time it ran — `frontend/dist` had been rebuilt but
+`tools/zstdpack` had not been re-run, so the archive the binary carries did not contain the
+page. That is precisely the packaging mistake a source-level test cannot see, and it is
+why the contract is split across the two.
+
+**The pattern generalises to H2-H5**, all of which are panel features: a source-level
+contract test for the wiring, an artefact-level one for the build output, and a check that
+the page is reachable in the deployment that actually runs.
 
 ## H. The next features — planned 2026-09-26
 

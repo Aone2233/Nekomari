@@ -193,6 +193,10 @@ export default defineConfig(({ mode }) => {
       // 哈希文件，代价是用户看到过期的资源。清单是构建自己写的，没有猜测。
       manifest: true,
       rollupOptions: {
+        // The standalone SLA report is deliberately NOT an entry here: it is built by
+        // vite.standalone.config.ts into its own directory, because a shared build splits
+        // its dependencies into chunks inside the /assets/ namespace the installed theme
+        // owns, and a name collision would resolve to the theme's file. See roadmap H0.
         output: {
           // go embed ignore files start with '_'
           chunkFileNames: "assets/chunk-[name]-[hash].js",

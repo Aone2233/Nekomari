@@ -44,6 +44,38 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v0.1.33] — 2026-09-26
+
+**Panel only.** Makes the SLA report reachable on a themed deployment, which is what
+v0.1.31 and v0.1.32 could not do.
+
+- **The report is now a standalone page** at `/standalone/sla.html` instead of a route in
+  the built-in router. v0.1.31 added it as a route, and the production panel answered its
+  own 404: **LuminaPlus is an installed theme whose compiled `index.html` and `assets`
+  replace the panel's built-in UI**, and `web/public/public.go` prefers the theme
+  directory over the embedded bundle. A path the theme does not claim falls through to the
+  embedded bundle, so `/standalone/` works in every deployment, themed or not — at the
+  cost of not inheriting the theme's chrome. Roadmap H0 records the finding and the three
+  options it rules out.
+
+  Its own Vite config and its own output directory, deliberately: a shared build splits
+  the page's dependencies into `chunk-*.js` files inside the `/assets/` namespace the
+  theme owns, where a name collision resolves to the theme's file and the theme's
+  `index.html` starts preloading chunks built for the UI it replaced. The page is one
+  595 KB bundle with React inside it and no chunk imports, plus a stylesheet. No service
+  worker, no `public/` (the several hundred flags and OS logos belong to the main UI).
+
+- **Two contract tests, and the reason they exist.** Every unit test passed while the page
+  was unreachable, because nothing asserted that it could be *reached* — so the contract is
+  now tested from both ends. `script/standalone-sla.test.mjs` (5 cases, in `npm test`)
+  checks the wiring at source level: the entry mounts into `#root`, does not import the app
+  router, and the build config is isolated. `web/public/standalone_test.go` (5 cases)
+  checks the artefact: the page is in the embedded bundle, references only its own
+  prefixed assets, does not register the service worker, and its bundle contains React and
+  no chunks. The Go half was written first and **failed before the archive was
+  regenerated** — the build step that packs `frontend/dist` had never been run in this
+  session — which is exactly the class of mistake it is there to catch.
+
 ## [v0.1.32] — 2026-09-26
 
 **Panel only**, a fix for v0.1.31. Found by calling the deployed panel, which is the

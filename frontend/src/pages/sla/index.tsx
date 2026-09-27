@@ -22,7 +22,7 @@ import { windowFromLocation } from "@/components/status/slaFormat";
  */
 
 /** windowFromLocation reads the window out of the URL, falling back to the default. */
-const StatusPage: React.FC = () => {
+export const SlaReportPage: React.FC = () => {
   const { t } = useTranslation();
   const { call } = useRPC2Call();
   const { nodeList } = useNodeList();
@@ -98,4 +98,4 @@ const StatusPage: React.FC = () => {
   );
 };
 
-export default StatusPage;
+export default SlaReportPage;

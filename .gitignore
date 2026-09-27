@@ -69,3 +69,6 @@ node_modules/
 
 # local run artifacts
 /.runtest/
+
+# The standalone SLA report's own build output (folded into dist/standalone/).
+/frontend/dist-standalone/

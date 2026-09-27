@@ -24,12 +24,11 @@ export const routes: RouteObject[] = [
         path: "plugin/:short/*",
         element: React.createElement(lazy(() => import("./pages/plugin_page"))),
       },
-      {
-        // Public on purpose: a report you can send to someone is worth more than a
-        // chart only an account holder can see. Roadmap H1.
-        path: "status",
-        element: React.createElement(lazy(() => import("./pages/status"))),
-      },
+      // The SLA report is deliberately *not* here. It is a standalone entry at
+      // /sla.html (see src/entries/sla.tsx): an installed theme replaces this router
+      // entirely, so a route added here does not exist in a themed deployment. Roadmap
+      // H0 records the finding; v0.1.31 shipped this route and the production panel
+      // answered its own 404.
     ],
   },
   {
