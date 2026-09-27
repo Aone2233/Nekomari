@@ -198,6 +198,35 @@ class AdminWritePathTest(unittest.TestCase):
         page.goto(BASE + ADMIN_SERVERS_ROUTE, wait_until="networkidle", timeout=30000)
         page.wait_for_timeout(1500)
         self.dismiss_eula()
+        self.require_admin_ui()
+
+    def require_admin_ui(self):
+        """Fail with the reason if the installed theme provides no admin interface.
+
+        This suite drives the panel's *admin pages*, and those pages come from a theme: the panel serves
+        `/api/admin/*`, and whatever renders the forms is the theme's. The panel's own theme has them; the
+        embedded default does not. LuminaPlus's router declares only `/`, `/instance/:uuid`, `/assets`,
+        `/traffic` and `/404`, and everything under `/admin` is its service-worker recovery screen — so on
+        a fresh installation of the current embedded default there is no admin UI to drive, which is a real
+        gap rather than a broken test.
+
+        Saying so in one place means the failure names its cause. Without it the run dies three lines later
+        on a `to_have_count(1)` timeout for a table row, which reads as a broken selector and sends the next
+        person looking in the wrong place entirely — the same failure-of-reporting this repository has been
+        fixing all week.
+        """
+        body = self.page.inner_text("body") or ""
+        if "正在恢复后台入口" in body or "restoring the admin" in body:
+            self.fail(
+                f"the installed theme has no admin interface: {ADMIN_SERVERS_ROUTE} is its service-worker "
+                f"recovery screen. This suite needs a theme that provides the admin pages; the panel's own "
+                f"default theme does, and the embedded default does not."
+            )
+        self.assertGreater(
+            self.page.locator("table, [role='table'], form").count(), 0,
+            f"no admin interface found at {ADMIN_SERVERS_ROUTE}: the page rendered neither a table nor a form, "
+            f"so there is nothing to drive",
+        )
 
     def dismiss_eula(self):
         """The admin layout blocks on a legal-notice modal for Chinese-language
