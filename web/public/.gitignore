@@ -1,17 +1,23 @@
 dist/*
 defaultTheme/*
 
-# The embedded default theme's archive is committed, and the exception is the point.
+# Two files are tracked explicitly rather than by pattern, and both had to be, because
+# `defaultTheme/*` ignored everything and the effect was invisible:
 #
-# It is the build output of a **separate repository** (the LuminaPlus theme), so CI cannot produce it:
-# this repository does not contain the theme's sources. Before this exception, the archive was ignored
-# and therefore never committed, and CI and the release workflow each rebuilt it inline from
-# `frontend/dist` plus `frontend/komari-theme.json` -- the panel's own UI, described by komari-web's
-# manifest. So the embedded default theme was quietly the panel's built-in interface, and any change to
-# it was silently discarded on the next build.
+#   - `dist.tar.zst` is the theme's build output. It comes from a **separate repository** (the
+#     LuminaPlus theme) whose sources this one does not contain, so CI cannot produce it. Before these
+#     exceptions the archive was ignored and therefore never committed, and CI and the release workflow
+#     each rebuilt it inline from `frontend/dist` plus `frontend/komari-theme.json` -- the panel's own
+#     UI, described by komari-web's manifest. The embedded default theme was quietly the panel's
+#     built-in interface, and a change to it was discarded on the next build.
+#   - `komari-theme.json` was ignored too, so **CI did not have it either**, and the same workflows
+#     created it on the spot by copying `frontend/komari-theme.json`. That is why the identity test
+#     reported the previous theme even after the file in the working tree had been replaced: what CI
+#     embedded was never what the repository held.
 #
-# Committing it is what makes "the embedded theme is the theme" true rather than aspirational.
-# `script/embed-theme.mjs` checks it during CI and regenerates it with `--write`; that script's header
-# documents the maintainer step, and docs/THIRD-PARTY-LICENSES.md records the theme version, the
-# licence obligation and how to rebuild.
+# Everything else under defaultTheme/ stays ignored, because everything else is generated.
+#
+# `script/embed-theme.mjs` checks both during CI and regenerates the archive with `--write`;
+# docs/THIRD-PARTY-LICENSES.md records the theme version and the licence obligation.
 !defaultTheme/dist.tar.zst
+!defaultTheme/komari-theme.json

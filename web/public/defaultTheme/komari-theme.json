@@ -1,0 +1,11 @@
+{
+  "name": "Komari-Theme-LuminaPlus",
+  "short": "default",
+  "description": "Komari-Theme-LuminaPlus (Nekomari build)",
+  "version": "1.3.5-nk1",
+  "author": "shark&shanyang, Nekomari",
+  "url": "https://github.com/shanyang242/Komari-Theme-LuminaPlus",
+  "license": "MIT",
+  "copyright": "(c) 2026 Shanyang242",
+  "preview": "assets/LanternRivers_1080p15fps2Mbps3s.mp4"
+}
