@@ -664,6 +664,7 @@ func doInitialize() error {
 		&models.ThemeConfiguration{},
 		&models.PluginConfiguration{},
 		&models.UnlockReport{},
+		&models.MaintenanceWindow{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create tables: %w", err)

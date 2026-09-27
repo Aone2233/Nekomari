@@ -232,6 +232,13 @@ func registerScheduledWork() {
 	if err := scheduler.AddFunc("notifier:expire", "0 0 9 * * *", notifier.CheckExpireScheduledWork); err != nil {
 		logger.ErrorArgs("server", "Failed to add expire notification task:", err)
 	}
+	// Deferred offline alerts: a maintenance window suppresses an alert but must not swallow it,
+	// so the ones it deferred are reconsidered once their window has closed. On the existing
+	// scheduler rather than a goroutine of its own, so there is one place that owns periodic work
+	// and one place to look when something is not running.
+	if err := scheduler.AddFunc("notifier:sweepDeferred", "@every 1m", notifier.SweepDeferredAlerts); err != nil {
+		logger.ErrorArgs("server", "Failed to add deferred alert task:", err)
+	}
 }
 
 const taskResultRetentionDays = 30

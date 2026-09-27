@@ -1660,5 +1660,32 @@
       "yes": "隐藏",
       "no": "可见"
     }
+  },
+
+  "maintenance": {
+    "title": "维护窗口",
+    "subtitle": "窗口开启期间，其中节点的告警会被抑制。指标照常采集。",
+    "creating": "新建窗口",
+    "editing": "正在编辑",
+    "new": "新建",
+    "namePlaceholder": "名称",
+    "reasonPlaceholder": "原因（可选）",
+    "scope": "范围",
+    "scopeAll": "全部节点",
+    "scopeAllBadge": "全部节点",
+    "save": "保存窗口",
+    "cancelEdit": "取消编辑",
+    "windowsHeading": "窗口列表",
+    "openCount": "{{count}} 个正在生效",
+    "loading": "正在加载窗口…",
+    "empty": "暂无维护窗口。",
+    "name": "名称",
+    "window": "时间窗",
+    "state": "状态",
+    "openFor": "生效中，剩余 {{remaining}}",
+    "closed": "未生效",
+    "edit": "编辑",
+    "delete": "删除",
+    "error": "窗口未保存"
   }
 }

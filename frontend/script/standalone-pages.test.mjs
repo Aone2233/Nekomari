@@ -32,6 +32,7 @@ import test from 'node:test';
 const PAGES = [
   { page: 'sla', entry: 'sla.html', tsx: 'src/entries/sla.tsx', component: 'src/pages/sla/index.tsx' },
   { page: 'bulk', entry: 'bulk.html', tsx: 'src/entries/bulk.tsx', component: 'src/pages/bulk/index.tsx' },
+  { page: 'maintenance', entry: 'maintenance.html', tsx: 'src/entries/maintenance.tsx', component: 'src/pages/maintenance/index.tsx' },
 ];
 
 const read = (relative) => readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8');
@@ -95,6 +96,7 @@ test('the build script lists exactly the pages that exist', () => {
   for (const { page, entry, config } of [
     { page: 'sla', entry: 'sla.html', config: 'vite.standalone.sla.config.ts' },
     { page: 'bulk', entry: 'bulk.html', config: 'vite.standalone.bulk.config.ts' },
+    { page: 'maintenance', entry: 'maintenance.html', config: 'vite.standalone.maintenance.config.ts' },
   ]) {
     assert.match(script, new RegExp(`page: "${page}"`), `the build script must build ${page}`);
     assert.match(script, new RegExp(`entry: "${entry.replace('.', '\\.')}"`), `entry for ${page}`);

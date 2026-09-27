@@ -41,6 +41,7 @@ import * as path from "path";
 export const STANDALONE_PAGES = {
   sla: "sla.html",
   bulk: "bulk.html",
+  maintenance: "maintenance.html",
 } as const;
 
 export type StandalonePage = keyof typeof STANDALONE_PAGES;

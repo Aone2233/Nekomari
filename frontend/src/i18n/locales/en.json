@@ -1655,5 +1655,32 @@
       "yes": "hidden",
       "no": "visible"
     }
+  },
+
+  "maintenance": {
+    "title": "Maintenance windows",
+    "subtitle": "While a window is open, its nodes' alerts are suppressed. Metrics keep recording.",
+    "creating": "New window",
+    "editing": "Editing",
+    "new": "new",
+    "namePlaceholder": "name",
+    "reasonPlaceholder": "reason (optional)",
+    "scope": "Scope",
+    "scopeAll": "every node",
+    "scopeAllBadge": "every node",
+    "save": "Save window",
+    "cancelEdit": "Cancel edit",
+    "windowsHeading": "Windows",
+    "openCount": "{{count}} open now",
+    "loading": "Loading windows…",
+    "empty": "No maintenance windows.",
+    "name": "Name",
+    "window": "Window",
+    "state": "State",
+    "openFor": "open, {{remaining}} left",
+    "closed": "closed",
+    "edit": "Edit",
+    "delete": "Delete",
+    "error": "The window was not saved"
   }
 }

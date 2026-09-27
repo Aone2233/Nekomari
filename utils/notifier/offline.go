@@ -84,6 +84,21 @@ func OfflineNotification(clientID string, endedConnectionID int64) {
 	state.pendingOfflineSince = now
 	state.mu.Unlock()
 
+	// 维护窗口：抑制这次通知，但**不是丢弃它**。
+	//
+	// 判断放在宽限期之前，也就是节点刚离线时：窗口在离线期间结束的话，延迟队列会在那时
+	// 重新检查，而那时它还能看到这次离线。放到宽限期之后判断的话，一个 3 分钟宽限期 +
+	// 10 分钟窗口的常见组合会让通知在窗口中途发出，抑制等于没做。
+	//
+	// 「抑制」只针对这一条通知。指标照常采集 —— 维护窗口的意义就是节点确实在做事，
+	// 事后报表里出现一段空白才是真的在说谎。
+	if decision := For(now, clientID); decision.Suppress {
+		logger.Infof("notifier", "%s is inside a %s; the offline alert is deferred to %s",
+			clientID, decision.Reason, decision.DeliverAt.Format(time.RFC3339))
+		deferOfflineAlert(clientID, decision.DeliverAt, endedConnectionID)
+		return
+	}
+
 	// 新建协程，等待宽限期后判断是否需要发送通知。
 	go func(startTime time.Time, expectedConnectionID int64) {
 		time.Sleep(gracePeriod)
@@ -169,6 +184,11 @@ func OnlineNotification(clientID string, connectionID int64) {
 	if err != nil {
 		return
 	}
+	// An outage that has ended needs no alert: a deferred one about it is dropped rather than
+	// delivered late. This is the other half of the deferral rule — the sweeper checks that the node
+	// is still offline before sending, and this removes the entry as soon as it is not.
+	forgetDeferredAlert(clientID)
+
 	// 上线时检测续费
 	renewal.CheckAndAutoRenewal(client)
 	shouldNotify := updateOnlineState(clientID, connectionID)
