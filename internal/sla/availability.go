@@ -43,13 +43,13 @@ type Sample struct {
 type Presence struct {
 	// ExpectedBuckets is how many buckets the window should hold at the observed
 	// cadence, and ObservedBuckets is how many actually carried data.
-	ExpectedBuckets int
-	ObservedBuckets int
+	ExpectedBuckets int `json:"expected_buckets"`
+	ObservedBuckets int `json:"observed_buckets"`
 	// Coverage is ObservedBuckets/ExpectedBuckets. Zero when ExpectedBuckets is 0.
-	Coverage float64
+	Coverage float64 `json:"coverage"`
 	// FirstData and LastData bound the buckets that carried data. Zero when none did.
-	FirstData time.Time
-	LastData  time.Time
+	FirstData time.Time `json:"first_data"`
+	LastData  time.Time `json:"last_data"`
 }
 
 // Availability is a fraction in [0, 1] with the evidence it was computed from.
@@ -57,16 +57,16 @@ type Availability struct {
 	// Fraction is the availability of the *reported* buckets only. It is meaningless
 	// when Buckets is 0, which is why HasData exists rather than leaving the reader to
 	// infer it from a zero.
-	Fraction float64
-	HasData  bool
+	Fraction float64 `json:"fraction"`
+	HasData  bool    `json:"has_data"`
 	// Buckets is how many buckets contributed, and Lost is how many of those were
 	// failures.
-	Buckets int
-	Lost    int
+	Buckets int `json:"buckets"`
+	Lost    int `json:"lost"`
 	// Presence says how much of the window those buckets cover.
-	Presence Presence
+	Presence Presence `json:"presence"`
 	// Window is the requested window, so a caller can report "over this period".
-	Window time.Duration
+	Window time.Duration `json:"window"`
 }
 
 // cadence derives the reporting cadence from a series' bucket grid, including the
@@ -265,15 +265,15 @@ func interpolate(sorted []float64, quantile float64) float64 {
 
 // Incident is a contiguous run of failing buckets.
 type Incident struct {
-	Start time.Time
-	End   time.Time
+	Start time.Time `json:"Start"`
+	End   time.Time `json:"End"`
 	// Buckets is how many consecutive failing buckets the run covers, and Duration is
 	// End minus Start. Both are reported because they answer different questions: the
 	// first is the resolution-limited evidence, the second is what a reader cares about.
-	Buckets  int
-	Duration time.Duration
+	Buckets  int           `json:"buckets"`
+	Duration time.Duration `json:"duration"`
 	// PeakLoss is the worst bucket value in the run, in the same units as the source.
-	PeakLoss float64
+	PeakLoss float64 `json:"peak_loss"`
 }
 
 // IncidentsFromLoss groups buckets whose loss crosses threshold into contiguous runs.
