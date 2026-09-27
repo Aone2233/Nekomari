@@ -80,3 +80,36 @@ Two details that are easy to get wrong and produce a blank panel rather than an 
 - `preview` in the embedded manifest must name a file that exists **inside the archive**. The
   upstream theme's `preview.png` sits above `dist/`, so it is not in the archive; the embedded
   manifest points at an asset that is.
+
+## Verified: a fresh install serves the embedded theme
+
+The embedded archive is invisible on this deployment, because an installed theme takes precedence —
+so verifying it needed a **clean data directory**, which is the situation it exists for. Built
+natively on the panel host (Go 1.27.1, arm64) and run with an empty `data/`:
+
+```
+[INFO/SERVER] First-run installation guide is available on 127.0.0.1:25799
+/assets/index-CZnsOz3N.js    HTTP 200  189254B
+/assets/index-BweSsnE4.css   HTTP 200  172780B
+/assets/charts-lRTmaCY8.js   HTTP 200  62228B
+/.vite/manifest.json         HTTP 200
+```
+
+The install page names `LuminaPlus` five times and its assets resolve, which is the prefix rule
+holding on the embedded path — the failure that serves a theme whose every request 404s.
+
+**And the cache-header finding is confirmed rather than predicted**, which is why the manifest flag
+was worth adding:
+
+| | `Cache-Control` on a hashed asset |
+|---|---|
+| embedded archive, `build.manifest` enabled | `public, max-age=31536000, immutable` |
+| this deployment's installed theme (no manifest) | *absent* |
+
+So the installed theme was serving every hashed asset with no `Cache-Control` at all. Behind
+Cloudflare that means every POP re-fetches files that never change, on the provider's default
+(measured at four hours) — on every panel, not only this one. Enabling `manifest` in the theme's Vite
+config fixes it for the embedded default and for anyone who installs the rebuilt theme.
+
+Note the response headers had to be read with `GET`, not `HEAD`: the asset routes answer `GET` only,
+and `curl -I` returns 404, which briefly looked like the assets were missing.
