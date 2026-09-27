@@ -44,6 +44,42 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v0.1.31] — 2026-09-26
+
+**A panel-only release.** The agents are untouched —
+`git diff --stat v0.1.30..v0.1.31 -- agent/ protocol/ pkg/` is empty — so the fleet
+stays where it is and only the panel container is restarted.
+
+- **New: a public status page with an SLA report** (`/status`), the first of the six
+  features planned in `docs/ROADMAP.md` section H. Over a window of 24 hours, 7, 30 or
+  90 days it reports, per node and per ping task: **availability** computed from measured
+  loss, **coverage** beside it, **latency percentiles** (p50/p95/p99 across buckets), the
+  **outage list** with each run's start, end, duration and peak loss, and the node's own
+  **reporting gaps** — listed separately, because the panel knows a node stopped reporting
+  and does not know it was down. The window is in the URL, so a report can be sent to
+  someone along with the window that produced it, and the page is guest-readable like the
+  public dashboard.
+
+  The definitions are the feature. `internal/sla` holds them with no database in it, each
+  stated in the doc comment of the function implementing it and each covered by a test:
+  no data is neither 0% nor 100%; coverage is never folded into availability; the bucket
+  cadence comes from the series grid rather than from the buckets that happened to carry
+  data (or a series missing every third minute reads as a slower cadence and reports full
+  coverage); a gap ends an outage instead of joining the failures around it; and a single
+  lost probe is not an outage. Two defects were found this way while writing it — the
+  cadence one above, and a bucket width that put a 24-hour window into 720 buckets against
+  a 500 target.
+
+  Deliberately not claimed: **node-level uptime**. The panel does not persist an
+  online/offline history — `resp.Online` is built from live WebSocket connections and
+  nothing writes it down — so a node-level percentage derived from reporting would be
+  coverage dressed up as availability, and a node hard down for a week would read 100%.
+  The page reports coverage for the node and availability per task, where loss is actually
+  measured.
+
+  i18n: `status.*` is in `zh_CN` and `en`; `ja_JP`, `zh_TW` and `id_ID` fall back to
+  English until `npm run i18n:sync` runs with an API key.
+
 ## [v0.1.30] — 2026-09-26
 
 **This release moves the fleet**, because — despite the heading above — the agent
