@@ -42,6 +42,50 @@ carried "the other nine nodes not verified" for a day because only one host was
 reachable from that session; the 2026-09-26 work made every node reachable from
 OC424, so the rows above are read from the panel's own database rather than inferred.
 
+### H0. A themed deployment cannot show a new panel page — found 2026-09-26, blocks H1-H5
+
+The status page was built, tested and deployed, and the production panel returned its
+own 404 for it. The cause is the deployment, not the feature:
+
+| Check | Result |
+|---|---|
+| Entry JS in the panel container | only `/app/data/theme/LuminaPlus/dist/assets/index-Kbf1m-l1.js` |
+| Does that bundle contain the new route? | **no** — it is a LuminaPlus build from 2026-09-18 |
+| nginx for `/status` | **200**, so the proxy is not the problem |
+| What the page renders | the theme bundle's own NotFound route |
+
+**LuminaPlus is an installed third-party theme whose compiled `index.html` and `assets`
+replace the panel's built-in UI entirely.** Everything the panel serves at `/` comes from
+`data/theme/<name>/dist`, and the built-in frontend is shadowed. A route added to
+`frontend/src/routes.ts` therefore exists in the image and in no browser.
+
+This is not new — the repository already worked around the same wall twice, and both
+workarounds are injections rather than edits:
+
+- `deploy/theme-unlock-panel/unlock-panel.js` injects a block into the theme's DOM from a
+  `<script defer>` tag appended to the theme's `index.html`. Its README states the reason:
+  "压缩过的 React bundle 改起来极易出错，而且主题一升级就失效."
+- `docs/PERFORMANCE.md` Finding 2 repointed theme settings for the background images.
+
+**What this means for section H.** H1 through H5 are panel features, and on this
+deployment a panel feature needs somewhere to live. Three routes, in the order worth
+considering:
+
+1. **Somewhere a theme cannot shadow.** The panel still serves its own assets: a request
+   for a built-in chunk under `/assets/` answers 200 even with the theme installed. A
+   self-contained page served from a path the theme does not claim would work in every
+   deployment, themed or not, at the cost of not inheriting the theme's chrome.
+2. **An injected script in the theme's DOM**, following `unlock-panel.js`. It has to
+   render the whole feature itself — the theme bundle exposes no route registration — so
+   it is the same self-contained work as option 1 plus a DOM integration.
+3. **Ask the theme to add it.** Not in this repository's control; LuminaPlus is built
+   elsewhere and its source is not here.
+
+Until this is decided, **H1's server half is complete and verified against production**
+(`public:getSlaReport` answers over the live store) and its page is not reachable on
+OC424. The record of that state is the point of this section: "implemented", "released"
+and "visible to a user" are three different claims, and this feature is the first two.
+
 ## H. The next features — planned 2026-09-26
 
 Sections A-G are close to exhausted: the correctness work is closed, the security
