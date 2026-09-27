@@ -30,6 +30,7 @@ var standalonePages = []standalonePage{
 	{name: "sla", minBundleBytes: 200_000},
 	{name: "bulk", minBundleBytes: 200_000},
 	{name: "maintenance", minBundleBytes: 200_000},
+	{name: "config", minBundleBytes: 200_000},
 }
 
 // Each page must be in the embedded bundle. If the build script stops copying it, or the path

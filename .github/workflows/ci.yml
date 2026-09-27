@@ -58,6 +58,7 @@ jobs:
           python script/status-sla.browser.spec.py
           python script/bulk-edit.browser.spec.py
           python script/maintenance.browser.spec.py
+          python script/config-export.browser.spec.py
 
   # The fixtures above mount one component against stubs. This job boots the
   # built server and walks the real panel instead, which is the only check that

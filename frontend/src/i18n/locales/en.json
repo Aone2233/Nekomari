@@ -1682,5 +1682,31 @@
     "edit": "Edit",
     "delete": "Delete",
     "error": "The window was not saved"
+  },
+
+  "config": {
+    "title": "Configuration export and import",
+    "subtitle": "Take the panel's nodes, tasks, maintenance windows, settings and notification policies as one file, and apply one back.",
+    "export": "Export",
+    "includeSecrets": "Include credentials (agent tokens, notification credentials)",
+    "secretsWarning": "The file will carry credentials",
+    "documentHeading": "Document",
+    "documentPlaceholder": "Export to fill this in, or paste a document from another panel.",
+    "dryRun": "Check what this would do",
+    "import": "Import",
+    "parseError": "Not a document",
+    "runDryRunFirst": "Check the document first: the import button unlocks after a check.",
+    "error": "The operation failed",
+    "planSummary": "This would:",
+    "resultSummary": "Imported:",
+    "changeKind": "Action",
+    "changeEntity": "Entity",
+    "changeRecord": "Record",
+    "changeFields": "Fields",
+    "kind_create": "create",
+    "kind_update": "update",
+    "kind_unchanged": "unchanged",
+    "kind_remove": "not in the document",
+    "removalsNotDeleted": "{{count}} record(s) are in the panel and not in the document; they were left alone."
   }
 }

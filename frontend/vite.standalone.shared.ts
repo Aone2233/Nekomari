@@ -42,6 +42,7 @@ export const STANDALONE_PAGES = {
   sla: "sla.html",
   bulk: "bulk.html",
   maintenance: "maintenance.html",
+  config: "config.html",
 } as const;
 
 export type StandalonePage = keyof typeof STANDALONE_PAGES;
