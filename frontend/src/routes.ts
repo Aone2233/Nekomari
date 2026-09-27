@@ -24,6 +24,12 @@ export const routes: RouteObject[] = [
         path: "plugin/:short/*",
         element: React.createElement(lazy(() => import("./pages/plugin_page"))),
       },
+      {
+        // Public on purpose: a report you can send to someone is worth more than a
+        // chart only an account holder can see. Roadmap H1.
+        path: "status",
+        element: React.createElement(lazy(() => import("./pages/status"))),
+      },
     ],
   },
   {

@@ -1593,5 +1593,33 @@
     "mode": "显示模式"
   },
   "warn_https": "当前连接不是 HTTPS！您的敏感数据存在严重风险。请立即采取措施确保连接安全！复制操作可能无法使用！",
-  "warn_websocket": "RPC2 请求失败，请检查网络连接或服务器状态！"
+  "warn_websocket": "RPC2 请求失败，请检查网络连接或服务器状态！",
+
+  "status": {
+    "title": "状态与 SLA",
+    "subtitle": "按所选时间窗，从已存指标计算可用率、延迟与中断。",
+    "window": "时间窗",
+    "window_24h": "24 小时",
+    "window_7d": "7 天",
+    "window_30d": "30 天",
+    "window_90d": "90 天",
+    "loading": "正在加载报表…",
+    "error": "无法加载报表",
+    "empty": "该时间窗内没有任何节点上报。",
+    "noData": "无数据",
+    "coverage": "覆盖率",
+    "coverageOf": "{{percent}}（{{observed}}/{{expected}} 个采样）",
+    "availability": "可用率",
+    "latency": "延迟 p50/p95/p99（毫秒）",
+    "latencyValues": "{{p50}} / {{p95}} / {{p99}}",
+    "outages": "中断",
+    "noOutages": "无",
+    "reportingGaps": "上报缺口（不是中断——只是节点停止上报）",
+    "task": "任务",
+    "untaggedSeries": "无标签序列",
+    "nodeNoData": "该节点在此时间窗内没有上报。",
+    "sampleInterval": "每桶 {{seconds}} 秒",
+    "clamped": "已缩短到保留范围内",
+    "navStatus": "状态"
+  }
 }
