@@ -18,6 +18,7 @@ import (
 	"github.com/Aone2233/nekomari/agent/monitoring"
 	v2 "github.com/Aone2233/nekomari/agent/protocol/v2"
 	"github.com/Aone2233/nekomari/agent/terminal"
+	"github.com/Aone2233/nekomari/agent/update"
 	"github.com/Aone2233/nekomari/agent/utils"
 	"github.com/Aone2233/nekomari/agent/ws"
 	"github.com/gorilla/websocket"
@@ -429,6 +430,33 @@ func processV2Event(conn *ws.SafeConn, method string, params interface{}, eventI
 		} else {
 			log.Printf("bad v2 terminal params: %v", err)
 		}
+	case v2.MethodAgentUpdate:
+		var p v2.UpdateParams
+		bindErr := v2.BindParams(params, &p)
+		if bindErr == nil {
+			// Recorded first, then acted on, so that a failed install still leaves the node pinned to what the
+			// panel asked for. The alternative — recording only on success — would make a node whose install
+			// failed drift back to tracking releases, which is the opposite of what an operator who set a
+			// target wants and would be invisible from the panel.
+			update.SetRequestedVersion(p.Target)
+			if p.Target == "" {
+				log.Println("Panel cleared the target version; this node will track releases again.")
+				return true
+			}
+			go func(target string) {
+				if update.TargetSatisfied(target) {
+					log.Printf("Already running the panel's target version %s.", target)
+					return
+				}
+				if err := update.CheckAndUpdateTo(target); err != nil {
+					// Logged, not swallowed: the panel can see the version that is still running, and this is
+					// what says why.
+					log.Println("Panel-requested update failed:", err)
+				}
+			}(p.Target)
+			return true
+		}
+		log.Printf("bad v2 update params: %v", bindErr)
 	case v2.MethodAgentMessage, v2.MethodAgentEvent:
 		log.Printf("received v2 %s: %+v", method, params)
 		return true

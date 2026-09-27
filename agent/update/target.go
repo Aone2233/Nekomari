@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync/atomic"
 )
 
 // Targeted updates: install the version the panel asks for, rather than the newest one.
@@ -31,12 +32,30 @@ import (
 // An empty target keeps the old behaviour exactly: update to the latest. So a deployment that never sets one
 // sees no change, and a node whose target is cleared resumes tracking releases.
 
+// SetRequestedVersion records a target the panel has pushed to this node.
+//
+// Held in memory, not written to disk, and that is deliberate: the panel re-sends its target with every update
+// event, and it also sends one on connection, so a restart re-learns it. Persisting it would mean a node that
+// was once pointed at an old version kept going back to it after the operator had cleared the target and the
+// panel was unreachable — the failure mode of a stale rollout that nobody can call off.
+func SetRequestedVersion(target string) { requested.Store(strings.TrimSpace(target)) }
+
+var requested atomic.Value // string
+
 // RequestedVersion is the version the panel asked this node to run, or empty to track releases.
 //
-// Read from the environment each time rather than cached, because the value changes when an operator decides
-// it should and a cached copy would make the change take effect on the next restart — the opposite of what a
-// rollout needs.
+// The panel's target wins over `AGENT_TARGET_VERSION`, because the panel is where a rollout is decided: an
+// operator who set a fleet-wide target and then saw it silently overridden by a leftover environment variable
+// on one node would have no way to tell which had won. The environment variable remains as the deployment-level
+// default for a fleet whose operator prefers to configure it in the unit file, and as the way to pin a node the
+// panel cannot reach.
+//
+// Read on each call rather than cached: a cached copy would defer an operator's change to the next restart,
+// which is the opposite of what a rollout needs.
 func RequestedVersion() string {
+	if pushed, ok := requested.Load().(string); ok && pushed != "" {
+		return pushed
+	}
 	return strings.TrimSpace(os.Getenv("AGENT_TARGET_VERSION"))
 }
 

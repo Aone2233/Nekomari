@@ -21,6 +21,12 @@ const (
 	MethodAgentFile       = "agent.file"
 	MethodAgentFileResult = "agent.file.result"
 	MethodAgentUnlock     = "agent.unlock"
+	// MethodAgentUpdate 让面板指定一个节点要运行的版本（roadmap H6）。
+	//
+	// 这份文件与 agent/protocol/v2/jsonrpc.go 是同一协议的两份副本（面板与 agent 是两个模块，无法共享
+	// 代码），手工保持同步 —— 两侧各有一个测试断言方法名集合一致，否则漂移只会表现为「事件发出去了但
+	// agent 说 unknown method」。
+	MethodAgentUpdate = "agent.update"
 )
 
 // UnlockParams 是 agent.unlock 的负载：探针从自己的出口测得的解锁结论。
@@ -93,6 +99,11 @@ type Response struct {
 	ID      any       `json:"id,omitempty"`
 	Result  any       `json:"result,omitempty"`
 	Error   *RPCError `json:"error,omitempty"`
+}
+
+// UpdateParams 是一次指定版本升级的请求，或一次取消。Target 为空表示取消指定、回到跟随最新发布。
+type UpdateParams struct {
+	Target string `json:"target"`
 }
 
 type Event struct {

@@ -20,6 +20,11 @@ const (
 	MethodAgentFile       = "agent.file"
 	MethodAgentFileResult = "agent.file.result"
 	MethodAgentUnlock     = "agent.unlock"
+	// MethodAgentUpdate 让面板指定这个节点要运行的版本（roadmap H6）。
+	//
+	// 走事件通道而不是配置：agent 的配置是部署级的（环境变量/systemd），面板没有运行时通道能改它，
+	// 而事件队列是既有的面板→agent 指令路径 —— 能立刻送达在线节点，也能留在队列里等离线节点回来。
+	MethodAgentUpdate = "agent.update"
 )
 
 type Request struct {
@@ -47,6 +52,14 @@ type TaskResultParams struct {
 	Result     string    `json:"result"`
 	ExitCode   int       `json:"exit_code"`
 	FinishedAt time.Time `json:"finished_at"`
+}
+
+// UpdateParams 是一次指定版本升级的请求，或一次取消。
+//
+// Target 为空表示取消指定、回到跟随最新发布；这正是回滚的操作方式 —— 把一个更早的版本写进去，
+// 或者清空让它重新跟随。
+type UpdateParams struct {
+	Target string `json:"target"`
 }
 
 type Event struct {
