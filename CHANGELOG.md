@@ -44,6 +44,14 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v0.1.41] — 2026-09-27
+
+- **Fixed: the theme page's preview image, properly this time.** v0.1.40 put the image in the archive; the route
+  still could not see it, because the server's embedded lookup only considered names under `dist/` and the
+  preview sits at the archive root. Every file at that root — the preview, and the theme manifest itself — was
+  invisible to `/themes/<short>/...`. There is now a regression test that reads the preview out of the embedded
+  manifest and fetches it through the route, which is the assertion that would have caught both attempts.
+
 ## [v0.1.40] — 2026-09-27
 
 - **Fixed: a broken image and a console 404 on the theme page.** The embedded theme's `preview` field named a
