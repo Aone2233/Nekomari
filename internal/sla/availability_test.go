@@ -371,3 +371,59 @@ func TestObservedNeverExceedsExpected(t *testing.T) {
 		}
 	}
 }
+
+// Duplicate bucket timestamps must not destroy the cadence.
+//
+// This is H1a, reproduced. A task's series are split by their tags, and the tags have
+// grown over time: one task_id carries `{task_id}` for older data, then
+// `{protocol, task_id}`, then `{family, protocol, task_id}`. Those series cover
+// *overlapping* windows, so one task's samples contain many buckets sharing a timestamp —
+// measured on the live store, 327 of 489 adjacent gaps were zero.
+//
+// `cadence` takes the median of the gaps, so a majority of zeros made it 0, and the
+// `step <= 0` early exit reported "expected 1, observed 163, coverage 100%". A denominator
+// of "unknown" was rendered as "one", and 100% hid the very gaps coverage exists to
+// expose.
+func TestDuplicateTimestampsDoNotDestroyTheCadence(t *testing.T) {
+	// Two series for one task over overlapping windows: ten minutes, then minutes 5..9
+	// again — the shape the tag history produced.
+	merged := append(slots([]float64{0, 0, 0, 0, 0, 0, 0, 0, 0, 0}),
+		slots([]float64{0, 0, 0, 0, 0})[5:]...)
+
+	result := AvailabilityFromLoss(merged, 10*time.Minute)
+	presence := result.Presence
+
+	if presence.ExpectedBuckets != 10 {
+		t.Fatalf("ExpectedBuckets = %d, want 10: duplicates must not collapse the grid",
+			presence.ExpectedBuckets)
+	}
+	if !almostEqual(presence.Coverage, 1) {
+		t.Fatalf("Coverage = %v, want 1: every minute in the window was reported", presence.Coverage)
+	}
+
+	// A duplicate-heavy series with a real gap still shows the gap.
+	withGap := append(slots([]float64{0, gap, gap, gap, 0, 0, 0, 0, gap, 0}),
+		slots([]float64{0, 0, 0})[1:]...) // minutes 5..7 repeated
+	gapped := AvailabilityFromLoss(withGap, 10*time.Minute)
+	if gapped.Presence.Coverage >= 1 {
+		t.Fatalf("Coverage = %v, want below 1: three minutes of the window are missing",
+			gapped.Presence.Coverage)
+	}
+	if gapped.Presence.ObservedBuckets > gapped.Presence.ExpectedBuckets {
+		t.Fatalf("observed %d exceeds expected %d",
+			gapped.Presence.ObservedBuckets, gapped.Presence.ExpectedBuckets)
+	}
+}
+
+// A purely duplicated series — every timestamp twice — is still a one-minute cadence, not
+// an unknown one. The minimal case of the bug above.
+func TestAllDuplicatesStillHaveACadence(t *testing.T) {
+	samples := append(slots([]float64{0, 0, 0}), slots([]float64{0, 0, 0})...)
+	result := AvailabilityFromLoss(samples, 3*time.Minute)
+	if result.Presence.ExpectedBuckets != 3 {
+		t.Fatalf("ExpectedBuckets = %d, want 3", result.Presence.ExpectedBuckets)
+	}
+	if !almostEqual(result.Presence.Coverage, 1) {
+		t.Fatalf("Coverage = %v, want 1", result.Presence.Coverage)
+	}
+}

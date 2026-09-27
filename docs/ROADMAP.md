@@ -116,40 +116,55 @@ why the contract is split across the two.
 contract test for the wiring, an artefact-level one for the build output, and a check that
 the page is reachable in the deployment that actually runs.
 
-### H1a. Open: a task can report `expected_buckets: 1` against 160 observed
+### H1a. Resolved: a task reported `expected_buckets: 1` against 160 observed — **fixed 2026-09-26**
 
 Found by opening the deployed page in a real browser, which is the step that caught the
 PascalCase bug an hour earlier and this one too.
 
-For a **7-day** window at `interval_seconds: 3600`, a node's *own* presence is right
-(`167 expected, 162 observed, 97.0%`) while its **tasks** report
-`expected_buckets: 1, observed_buckets: 163, coverage: 1.0`. The 24h and 30d windows are
-correct, and the node-level path is correct, so the fault is specific to the task-level
-presence grid at an hourly interval.
+**The cause was duplicate bucket timestamps within one task, and it is deterministic.**
 
-What is established:
+A task's series are split by their tags, and the tags have grown over time. One `task_id`
+in this fleet carries three generations, over *overlapping* windows:
 
-- The store *has* the data: `ping.loss` carries 840 hourly rows in the last 24 hours and
-  14 626 across the window, contiguous, `distinct_step_minutes=[60]`.
-- `computePresence` returns 1 only on its `step <= 0` early exit, which means the sample
-  slice it was handed had no two distinct buckets to measure a gap between — while its
-  own `observed` count from the same slice was 163. Those two facts cannot both come from
-  a 163-element slice of hourly buckets, so the inputs are not what the code appears to
-  assume.
-- The `observed <= expected` guard added in `e4a0bde` makes the pair impossible to render
-  but **is not the cause**: with 163 contiguous hourly samples the calculation already
-  yields 163, and removing the guard leaves the new test green. It is recorded as a guard,
-  not a fix.
+```
+sid=713  {protocol:tcp, task_id:1}                  hourly, 09-20 07:00 .. 09-24 15:00
+sid=835  {family:ipv4, protocol:tcp, task_id:1}     hourly, 09-24 15:00 .. 09-27 05:00
+sid=540  {task_id:1}                                (older, empty in this window)
+```
 
-What is not established: why. A unit test cannot settle it — the store keeps raw points for
-ten minutes (`pkg/metric`'s `RawRetention`) and flushes coarser rollups on its own schedule,
-so a test cannot seed a week of hourly data synchronously; an attempt to do so is what
-established *that* fact, and the test was removed rather than left failing.
+The report groups by `task_id`, so all three arrive as one task, and because the windows
+overlap the same bucket is present once per generation — **327 of 489 adjacent gaps were
+zero** when measured on the live store.
 
-Next step, and it is deliberately small: a read-only script against the live database that
-prints, for one task and the 7-day window, the exact buckets the store returns and what
-`computePresence` derives from them. That distinguishes "the store returns a strange
-shape" from "the grid-filling code mangles a normal one", and it needs no build or deploy.
+`cadence()` takes the *median* of the gaps, so a majority of zeros made it 0, and the
+`step <= 0` branch reported `expected 1, observed 163, coverage 100%`. A denominator of
+"unknown" was rendered as "one", and 100% hid the gaps coverage exists to expose.
+
+**The fix** is `dedupe()`: samples sharing a timestamp merge before anything measures
+them, combining counts and keeping the worst loss — the same rule `unionPresence` already
+used across tasks. It runs at the query boundary (`ReadSeriesPerEntity`) so every consumer
+downstream sees one entry per bucket, because the cadence, the coverage, the incident
+grouping and the presence union all assume that.
+
+**Why it took a live database to find.** Three tests and two hours of theory did not
+locate it. What did was a read-only script printing the report's numbers beside the
+buckets the store holds for the same series — which showed the three tag generations and
+their overlapping windows in one screen. The lesson is in the shape of the evidence, not
+the effort: the bug lived in the *relationship between series*, and every unit test built
+its own samples, so every unit test was blind to it by construction.
+
+Two things this leaves behind:
+
+- The `observed <= expected` guard added while hunting it **was not the cause** — removing
+  it leaves the new tests green — and it is kept only as an invariant that makes a
+  self-contradictory pair impossible to render. The code says so.
+- `pkg/metric` keeps raw points for ten minutes and flushes coarser rollups on its own
+  schedule, so a test cannot seed a week of hourly data synchronously. A test that tried
+  is what established that, and it was deleted rather than left failing.
+
+**Verified after the fix:** the live report is self-consistent for every node and task at
+24h, 7d, 30d and 90d (observed never exceeds expected), and 7d now reads about 97% with
+matching counts.
 
 ## H. The next features — planned 2026-09-26
 

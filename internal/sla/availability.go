@@ -69,6 +69,55 @@ type Availability struct {
 	Window time.Duration `json:"window"`
 }
 
+// dedupe merges samples that share a bucket timestamp into one, and reports whether it
+// changed anything.
+//
+// It has to happen before the cadence is measured, and the reason is a live bug (H1a): a
+// task's series are split by their tags, and the tags have grown over time — one task_id
+// carries `{task_id}`, then `{protocol, task_id}`, then `{family, protocol, task_id}` —
+// over *overlapping* windows. One task therefore arrives with the same bucket repeated
+// once per tag generation: on the live store, 327 of 489 adjacent gaps were zero.
+//
+// `cadence` takes the median of the gaps, so a majority of zeros made it 0, and the
+// `step <= 0` branch reported "expected 1, observed 163, coverage 100%". A denominator of
+// "unknown" rendered as "one", and 100% hid the gaps coverage exists to expose.
+//
+// Merging rather than dropping: two series disagreeing about the same bucket is a stronger
+// signal, not a duplicate to discard, so the losses combine and the worst is kept — the
+// same rule `unionPresence` uses across tasks.
+func dedupe(samples []Sample) []Sample {
+	if len(samples) < 2 {
+		return samples
+	}
+	merged := make(map[int64]Sample, len(samples))
+	order := make([]int64, 0, len(samples))
+	for _, sample := range samples {
+		key := sample.Bucket.Unix()
+		existing, seen := merged[key]
+		if !seen {
+			merged[key] = sample
+			order = append(order, key)
+			continue
+		}
+		// A bucket is measured if any generation measured it.
+		combined := existing
+		combined.Count = existing.Count + sample.Count
+		if sample.Value > combined.Value {
+			combined.Value = sample.Value
+		}
+		merged[key] = combined
+	}
+	if len(merged) == len(samples) {
+		return samples
+	}
+	out := make([]Sample, 0, len(merged))
+	for _, key := range order {
+		out = append(out, merged[key])
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Bucket.Before(out[j].Bucket) })
+	return out
+}
+
 // cadence derives the reporting cadence from a series' bucket grid, including the
 // buckets that carried no data.
 //
@@ -108,6 +157,11 @@ func cadence(samples []Sample) time.Duration {
 // evidence there is, and pretending to know the cadence from one point would be
 // invention.
 func computePresence(samples []Sample, window time.Duration) Presence {
+	// One slot per distinct timestamp, before anything else: see dedupe. Both the
+	// observed count and the cadence have to be computed from the deduplicated grid, or
+	// the two disagree and the coverage reads as a figure nobody can check.
+	samples = dedupe(samples)
+
 	var presence Presence
 	withData := make([]Sample, 0, len(samples))
 	for _, sample := range samples {

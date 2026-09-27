@@ -117,6 +117,11 @@ func ReadSeriesPerEntity(ctx context.Context, reader BatchSeriesReader, query Se
 		sort.Slice(bucket.Samples, func(i, j int) bool {
 			return bucket.Samples[i].Bucket.Before(bucket.Samples[j].Bucket)
 		})
+		// Deduplicated here, at the boundary, so every consumer downstream sees the same
+		// grid: the cadence, the coverage, the incident grouping and the presence union
+		// all assume one entry per bucket, and a caller that forgot would silently get a
+		// different answer. See dedupe() for the live bug this fixes.
+		bucket.Samples = dedupe(bucket.Samples)
 		out = append(out, *bucket)
 	}
 	return out, nil
