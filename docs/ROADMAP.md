@@ -194,7 +194,39 @@ H6 is last on purpose. It is the one that changes the agent, and it is also the 
 that makes every later fleet change cheap, so it should be built on top of the
 panel-side plumbing the earlier batches establish rather than beside it.
 
-### H1. Status page and SLA report — **v0.1.31**
+### H1. Status page and SLA report — **closed 2026-09-26, v0.1.31 through v0.1.35**
+
+Shipped in five releases, and four of them were fixes to the first one. The sequence is
+worth reading as a unit, because each fix was found by a different kind of check and no
+single check would have found all of them:
+
+| Release | What it fixed | Found by |
+|---|---|---|
+| v0.1.31 | the feature: availability, coverage, percentiles, outages, a public page | — |
+| v0.1.32 | nested fields marshalled as PascalCase, so every figure was an absent key | calling the deployed API |
+| v0.1.33 | the page was unreachable on a themed deployment (H0), and the packaging step was unrun | opening the deployed page in a browser |
+| v0.1.34 | a task's coverage read `expected 1` against 163 observed (H1a) | a read-only script comparing the report to the store |
+| v0.1.35 | the latency series was never read, so every task said "no data" | the same deployed-page check as v0.1.33 |
+
+**Final state, verified on production at 24h / 7d / 30d / 90d:** 11 nodes, 45-56 tasks,
+zero self-inconsistent figures (observed never exceeds expected), latency present for every
+task, and the page renders with figures through nginx.
+
+Three lessons the section keeps rather than tidies away:
+
+- **"Implemented", "released" and "visible" are three claims.** v0.1.31 satisfied the first
+  two and failed the third, and every suite was green, because nothing asserted that the
+  page could be *reached*. That is what H0's contract tests now cover, from the source and
+  from the artefact.
+- **Some bugs live between series, where unit tests are blind by construction.** H1a needed
+  a script printing the report beside the store; three tests and two hours of theory had not
+  found it.
+- **A field that is always empty is indistinguishable from a measurement of nothing.**
+  v0.1.35's latency bug would have shipped as "no latency on this fleet" and looked like an
+  answer.
+
+**Original entry follows, for the record.**
+
 
 **Evidence.** The metrics store keeps every node's history for 90 days at four
 resolutions, and `ping.*` series carry loss and latency per task. Nothing computes an
