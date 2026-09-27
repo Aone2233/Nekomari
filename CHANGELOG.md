@@ -44,6 +44,26 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v0.1.34] — 2026-09-26
+
+**Panel only.** Fixes the SLA report's last wrong number.
+
+- **Fixed: a task's coverage could report `expected 1` against 160 observed.** A task's
+  series are split by their tags, and the tags have grown over time — one `task_id` in this
+  fleet carries `{task_id}`, then `{protocol, task_id}`, then
+  `{family, protocol, task_id}` — over *overlapping* windows. The report groups by
+  `task_id`, so the same bucket arrived once per tag generation: **327 of 489 adjacent gaps
+  were zero** on the live store. `cadence()` takes the median of the gaps, so a majority of
+  zeros made it 0, and the "unknown cadence" branch reported `expected 1, observed 163,
+  coverage 100%`. A denominator of "unknown" was rendered as "one", and 100% hid the gaps
+  that coverage exists to expose. Duplicate timestamps now merge before anything measures
+  them, combining counts and keeping the worst loss.
+
+  Found by a read-only script printing the report's numbers beside the buckets the store
+  holds for the same series. Three tests and two hours of theory had not located it, and
+  the reason is worth keeping: the bug lived in the *relationship between series*, so every
+  unit test — each building its own samples — was blind to it by construction.
+
 ## [v0.1.33] — 2026-09-26
 
 **Panel only.** Makes the SLA report reachable on a themed deployment, which is what
