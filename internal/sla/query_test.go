@@ -124,7 +124,7 @@ func TestBucketsAreSorted(t *testing.T) {
 func TestNodeReportHasCoverageAndGapsButNoInventedUptime(t *testing.T) {
 	presence := slots([]float64{0, 0, gap, gap, 0, 0})
 
-	report := BuildNodeReport("node-uuid", presence, nil, 6*time.Minute)
+	report := BuildNodeReport("node-uuid", presence, nil, nil, 6*time.Minute)
 
 	if report.Presence.ObservedBuckets != 4 {
 		t.Fatalf("ObservedBuckets = %d, want 4", report.Presence.ObservedBuckets)
@@ -150,7 +150,7 @@ func TestPerTaskReportsAreSeparateAndOrdered(t *testing.T) {
 		"3": series(0, 0, 0, 0),
 	}
 
-	report := BuildNodeReport("node-uuid", presence, taskSamples, 4*time.Minute)
+	report := BuildNodeReport("node-uuid", presence, taskSamples, nil, 4*time.Minute)
 	if len(report.Tasks) != 2 {
 		t.Fatalf("got %d task reports, want 2", len(report.Tasks))
 	}
@@ -193,7 +193,7 @@ func TestFailedLatencyBucketsAreExcluded(t *testing.T) {
 
 // A node with nothing at all is a report with no data, not a failure.
 func TestAnEmptyNodeIsReportedAsNoData(t *testing.T) {
-	report := BuildNodeReport("node-uuid", nil, map[string][]Sample{"1": nil}, time.Hour)
+	report := BuildNodeReport("node-uuid", nil, map[string][]Sample{"1": nil}, nil, time.Hour)
 	if report.HasReport {
 		t.Fatal("a node with no samples has no report")
 	}

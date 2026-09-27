@@ -262,8 +262,28 @@ func Build(ctx context.Context, req ReportRequest) (Report, error) {
 	}
 	buckets = CompleteGrid(buckets, req.Start, req.End, req.Interval)
 
+	// Latency is a second series for the same (entity, task) pairs. It is read separately
+	// rather than derived from the loss series because they carry different values — a
+	// bucket can be measurably slow without being lost — and the report would show
+	// "no data" for every task without it, which is exactly what it did until this was
+	// added: `LatencyFromSamples` existed and nothing called it.
+	latencyBuckets, err := ReadSeriesPerEntity(ctx, req.Reader, SeriesQuery{
+		MetricName:  MetricLatency,
+		Start:       req.Start,
+		End:         req.End,
+		Interval:    req.Interval,
+		Aggregation: metric.AggAvg,
+	}, req.EntityIDs, req.Now)
+	if err != nil {
+		// A missing latency series is not worth failing the whole report for: the
+		// availability figures are the reason the report exists, and an instance that
+		// never collected ping latency should still get a coverage answer.
+		latencyBuckets = nil
+	}
+
 	// Group by entity, then by task, so one node's five targets stay five reports.
 	byEntity := make(map[string]map[string][]Sample)
+	latencyByEntity := make(map[string]map[string][]Sample)
 	entityOrder := make([]string, 0, len(req.EntityIDs))
 	seen := make(map[string]bool, len(req.EntityIDs))
 	for _, entityID := range req.EntityIDs {
@@ -272,7 +292,7 @@ func Build(ctx context.Context, req ReportRequest) (Report, error) {
 			entityOrder = append(entityOrder, entityID)
 		}
 	}
-	for _, bucket := range buckets {
+	index := func(byEntity map[string]map[string][]Sample, bucket Bucket) {
 		tasks := byEntity[bucket.EntityID]
 		if tasks == nil {
 			tasks = make(map[string][]Sample)
@@ -284,6 +304,12 @@ func Build(ctx context.Context, req ReportRequest) (Report, error) {
 		}
 		tasks[taskIDOf(bucket.Tags)] = append(tasks[taskIDOf(bucket.Tags)], bucket.Samples...)
 	}
+	for _, bucket := range buckets {
+		index(byEntity, bucket)
+	}
+	for _, bucket := range latencyBuckets {
+		index(latencyByEntity, bucket)
+	}
 
 	window := req.End.Sub(req.Start)
 	for _, entityID := range entityOrder {
@@ -294,7 +320,8 @@ func Build(ctx context.Context, req ReportRequest) (Report, error) {
 		// was heard from, and a separate resource-metric query would cost a read for no
 		// more information.
 		presence := unionPresence(tasks, req.Start, req.End, req.Interval)
-		report.Nodes = append(report.Nodes, BuildNodeReport(entityID, presence, tasks, window))
+		report.Nodes = append(report.Nodes,
+			BuildNodeReport(entityID, presence, tasks, latencyByEntity[entityID], window))
 	}
 	return report, nil
 }
@@ -486,7 +513,7 @@ const lossThreshold = 0.5
 //
 // Kept separate from the reading so the arithmetic can be tested directly, which is
 // the whole reason the pure functions in availability.go exist.
-func BuildNodeReport(entityID string, presenceSamples []Sample, taskSamples map[string][]Sample, window time.Duration) NodeReport {
+func BuildNodeReport(entityID string, presenceSamples []Sample, taskSamples, latencySamples map[string][]Sample, window time.Duration) NodeReport {
 	report := NodeReport{
 		EntityID: entityID,
 		Presence: PresenceFromSamples(presenceSamples, window),
@@ -507,6 +534,7 @@ func BuildNodeReport(entityID string, presenceSamples []Sample, taskSamples map[
 		task := TaskReport{
 			TaskID:  taskID,
 			Loss:    AvailabilityFromLoss(samples, window),
+			Latency: LatencyFromSamples(latencySamples[taskID]),
 			Outages: IncidentsFromLoss(samples, lossThreshold),
 		}
 		report.Tasks = append(report.Tasks, task)

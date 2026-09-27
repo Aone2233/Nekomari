@@ -8,8 +8,12 @@ import (
 	"github.com/Aone2233/nekomari/pkg/metric"
 )
 
-// Build must cover the whole fleet in one query, group per node and per task, and
-// report a node that sent nothing as having no data rather than as failing.
+// Build must cover the whole fleet in one query **per metric**, group per node and per task,
+// and report a node that sent nothing as having no data rather than as failing.
+//
+// Per metric and not per node: the count is constant in the size of the fleet, which is the
+// property that matters. Two queries rather than one batched query with two specs is a
+// deliberate choice — the same count, one less moving part.
 func TestBuildAssemblesTheWholeReport(t *testing.T) {
 	reader := &fakeBatchReader{values: map[string]map[metric.Aggregation][]metric.AggregatePoint{
 		MetricLoss: {
@@ -43,8 +47,8 @@ func TestBuildAssemblesTheWholeReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if reader.calls != 1 {
-		t.Fatalf("expected one query for three nodes, got %d", reader.calls)
+	if reader.calls != 2 {
+		t.Fatalf("expected two queries (loss and latency) for three nodes, got %d", reader.calls)
 	}
 	if len(report.Nodes) != 3 {
 		t.Fatalf("got %d nodes, want 3: %+v", len(report.Nodes), report.Nodes)
