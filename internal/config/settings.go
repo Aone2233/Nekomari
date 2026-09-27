@@ -39,6 +39,12 @@ type Settings struct {
 	ExpireNotificationLeadDays int     `json:"expire_notification_lead_days" default:"7"`  // 过期前多少天通知，默认7天
 	LoginNotification          bool    `json:"login_notification" default:"true"`          // 登录通知
 	TrafficLimitPercentage     float64 `json:"traffic_limit_percentage" default:"80.00"`   // 流量限制百分比，默认80.00%
+	// TrafficMonthRotate 是节点的流量账期日（每月几号重置），与 agent 的 --month-rotate 同一含义。
+	//
+	// 为什么面板需要它：账期原本只存在于 agent 侧（agent/utils.GetLastResetDate，按 agent 本地时区），
+	// 而 agent 上报的是累计总量、不说明覆盖哪个窗口。要做"本周期将用多少"的预测就必须知道窗口，
+	// 所以面板侧复制一份配置，而不是靠猜。
+	TrafficMonthRotate int `json:"traffic_month_rotate" default:"1"` // 账期日，默认每月 1 日
 	UpdatedAt                  time.Time
 }
 
@@ -74,6 +80,7 @@ const (
 	ExpireNotificationLeadDaysKey = "expire_notification_lead_days"
 	LoginNotificationKey          = "login_notification"
 	TrafficLimitPercentageKey     = "traffic_limit_percentage"
+	TrafficMonthRotateKey         = "traffic_month_rotate"
 	UpdatedAtKey                  = "updated_at"
 	XtermjsSettingsKey            = "xtermjs_settings"
 	ThemeMarketSourcesKey         = "theme_market_sources"

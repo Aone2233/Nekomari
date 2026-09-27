@@ -232,6 +232,13 @@ func registerScheduledWork() {
 	if err := scheduler.AddFunc("notifier:expire", "0 0 9 * * *", notifier.CheckExpireScheduledWork); err != nil {
 		logger.ErrorArgs("server", "Failed to add expire notification task:", err)
 	}
+	// The traffic forecast: warns when a node is *projected* to reach its allowance, rather than once it
+	// has used a percentage of it. A node at 60% on day five of a cycle is a problem and one at 60% on day
+	// twenty-nine is not, and the used percentage alone cannot tell the two apart. It runs on the same
+	// minute as the used-percentage check so the two cannot disagree about which scan is which.
+	if err := scheduler.AddFunc("notifier:trafficForecast", "@every 1m", notifier.CheckTrafficForecast); err != nil {
+		logger.ErrorArgs("server", "Failed to add traffic forecast task:", err)
+	}
 	// Deferred offline alerts: a maintenance window suppresses an alert but must not swallow it,
 	// so the ones it deferred are reconsidered once their window has closed. On the existing
 	// scheduler rather than a goroutine of its own, so there is one place that owns periodic work
