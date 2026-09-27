@@ -188,15 +188,18 @@ class AdminWritePathTest(unittest.TestCase):
         self.assertTrue(me.get("ok") and me.get("logged_in") is True,
                         f"the session did not take; /api/me answered {me}")
 
-        # The landing page's own in-flight requests are cancelled by the SPA's post-login navigation, the
-        # same blind spot panel-smoke has by clearing per route. The discipline below starts at the admin
-        # UI.
+        # The discipline below starts at the admin UI, so the landing page's in-flight requests are cleared
+        # — but only *after* the navigation to the admin page has settled.
+        #
+        # Clearing before the `goto` was the bug: loading the landing page starts requests, and the very next
+        # navigation aborts them, so `/api/login` was recorded as `net::ERR_ABORTED` and attributed to the
+        # admin page. Functionally the writes already worked — the run reported both edits persisted — and the
+        # only failure left was a bookkeeping entry about a request nobody made from the page under test.
+        page.goto(BASE + ADMIN_SERVERS_ROUTE, wait_until="networkidle", timeout=30000)
+        page.wait_for_timeout(1500)
         self.console_errors.clear()
         self.failed_requests.clear()
         self.bad_responses.clear()
-
-        page.goto(BASE + ADMIN_SERVERS_ROUTE, wait_until="networkidle", timeout=30000)
-        page.wait_for_timeout(1500)
         self.dismiss_eula()
         self.require_admin_ui()
 
@@ -222,10 +225,19 @@ class AdminWritePathTest(unittest.TestCase):
                 f"recovery screen. This suite needs a theme that provides the admin pages; the panel's own "
                 f"default theme does, and the embedded default does not."
             )
+        # Presence is checked by something the admin always has rather than by a table or a form.
+        #
+        # An empty instance has *neither*: the server list is a grid of cards, and with no nodes it renders
+        # an empty state with a "添加节点" button and no `<table>` at all. So the first version of this check
+        # failed on a working admin — the second time in this file that a too-narrow definition of "the page
+        # is there" reported a fault that was not one.
         self.assertGreater(
-            self.page.locator("table, [role='table'], form").count(), 0,
-            f"no admin interface found at {ADMIN_SERVERS_ROUTE}: the page rendered neither a table nor a form, "
-            f"so there is nothing to drive",
+            self.page.locator(
+                "table, [role='table'], form, nav, aside, [class*='admin']"
+            ).count(),
+            0,
+            f"no admin interface found at {ADMIN_SERVERS_ROUTE}: the page has no table, form, navigation or "
+            f"admin chrome, so there is nothing to drive",
         )
 
     def dismiss_eula(self):

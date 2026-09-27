@@ -35,12 +35,17 @@ const PAGES = [
   { page: 'maintenance', entry: 'maintenance.html', tsx: 'src/entries/maintenance.tsx', component: 'src/pages/maintenance/index.tsx' },
   { page: 'config', entry: 'config.html', tsx: 'src/entries/config.tsx', component: 'src/pages/config/index.tsx' },
   { page: 'forecast', entry: 'forecast.html', tsx: 'src/entries/forecast.tsx', component: 'src/pages/forecast/index.tsx' },
+  // The admin interface uses its own router on purpose: it is served from `/admin`, so its absolute routes
+  // and API calls resolve without a basename, and `App` owns that router. `ownsItsOwnRouter` marks the one
+  // page for which "does not use a router" is the wrong assertion — that rule exists because a *standalone
+  // page* must not depend on the router a theme replaces, and the admin is not behind a theme at all.
+  { page: 'admin', entry: 'admin.html', tsx: 'src/entries/admin.tsx', component: 'src/App.tsx', ownsItsOwnRouter: true },
 ];
 
 const read = (relative) => readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8');
 const routes = read('src/routes.ts');
 
-for (const { page, entry, tsx, component } of PAGES) {
+for (const { page, entry, tsx, component, ownsItsOwnRouter } of PAGES) {
   test(`${page}: the entry and its html agree`, () => {
     assert.ok(existsSync(new URL(`../${entry}`, import.meta.url)), `${entry} is missing`);
     const html = read(entry);
@@ -53,6 +58,12 @@ for (const { page, entry, tsx, component } of PAGES) {
   });
 
   test(`${page}: the entry renders without the app router`, () => {
+    if (ownsItsOwnRouter) {
+      // Asserted the other way round: this page *must* mount a router, because its own routes are absolute
+      // and the server answers every path under its prefix with its document.
+      assert.match(read(tsx), /BrowserRouter/, 'the admin serves its own routes and needs its own router');
+      return;
+    }
     const source = read(tsx);
     assert.doesNotMatch(source, /from ["']react-router/, 'must not use the app router');
     assert.doesNotMatch(source, /from ["'][^"']*\/routes["']/, 'must not import the route table');
@@ -60,6 +71,13 @@ for (const { page, entry, tsx, component } of PAGES) {
   });
 
   test(`${page}: it is not a route in the built-in router`, () => {
+    if (ownsItsOwnRouter) {
+      // The admin *is* the `/admin` route: it holds the whole router, which is why it is served from that
+      // prefix and why the server answers every path under it with its document. The rule being checked
+      // here is for standalone pages, which must not hide inside a router a theme replaces.
+      assert.match(routes, /path: "\/admin"/, 'the admin holds the /admin route itself');
+      return;
+    }
     // If someone adds it back, this says why not, next to the reason.
     assert.doesNotMatch(
       routes,
@@ -70,6 +88,17 @@ for (const { page, entry, tsx, component } of PAGES) {
   });
 
   test(`${page}: its build is isolated from the main one`, () => {
+    if (ownsItsOwnRouter) {
+      // `vite.admin.config.ts`, not a `vite.standalone.*` one, and it does not call the shared factory:
+      // the admin is served from `/admin` rather than `/standalone/<page>/`, so `base` differs, and it is
+      // allowed to code-split because it is a real application rather than one page.
+      const config = read('vite.admin.config.ts');
+      assert.match(config, /base: "\/admin\/"/, 'the admin is served from /admin');
+      assert.match(config, /outDir: "dist-admin"/, 'its own output directory');
+      assert.match(config, /copyPublicDir: false/, 'it does not need the flags and OS logos');
+      assert.match(config, /manifest: true/, 'so its hashed assets get a long-lived Cache-Control');
+      return;
+    }
     assert.ok(
       existsSync(new URL(`../vite.standalone.${page}.config.ts`, import.meta.url)),
       `vite.standalone.${page}.config.ts is missing`,
@@ -101,10 +130,19 @@ test('the build script lists exactly the pages that exist', () => {
     { page: 'maintenance', entry: 'maintenance.html', config: 'vite.standalone.maintenance.config.ts' },
     { page: 'config', entry: 'config.html', config: 'vite.standalone.config.config.ts' },
     { page: 'forecast', entry: 'forecast.html', config: 'vite.standalone.forecast.config.ts' },
+    // `index.html` is what ends up in the archive for the admin; the build emits `admin.html` and the script
+    // renames it, which the `renameFrom` assertion below pins.
+    { page: 'admin', entry: 'index.html', config: 'vite.admin.config.ts' },
   ]) {
     assert.match(script, new RegExp(`page: "${page}"`), `the build script must build ${page}`);
     assert.match(script, new RegExp(`entry: "${entry.replace('.', '\\.')}"`), `entry for ${page}`);
     assert.match(script, new RegExp(`config: "${config.replace(/\./g, '\\.')}"`), `config for ${page}`);
+    // The admin additionally names its output directory, because it does not use the
+    // `dist-standalone/<page>` default.
+    if (page === 'admin') {
+      assert.match(script, /outDir: "dist-admin"/, 'the admin names its own output directory');
+      assert.match(script, /renameFrom: "admin.html"/, 'and its document is renamed to index.html');
+    }
   }
 });
 

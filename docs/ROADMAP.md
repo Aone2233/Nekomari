@@ -1059,7 +1059,7 @@ become its own outage) and visible in the agent's output.
   now (`v0.1.26`), and a behaviour-changing cleanup that belongs with someone
   actually touching the terminal page.
 
-## H7. The admin interface belongs to the panel, not the theme
+## H7. The admin interface belongs to the panel, not the theme — **closed 2026-09-27, v0.1.39**
 
 **Found while releasing v0.1.39**, and it is the reason that release is not tagged: making LuminaPlus the
 embedded default theme left a fresh installation with no way to administer the panel.

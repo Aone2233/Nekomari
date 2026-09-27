@@ -73,3 +73,7 @@ coverage/
 vite.config.dev.ts
 todo.md
 .codex
+
+# The panel's own interface, built separately for /admin (roadmap H7). A build output, like
+# dist/ and dist-standalone/.
+/dist-admin/

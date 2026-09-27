@@ -26,6 +26,14 @@ type standalonePage struct {
 	minBundleBytes int
 }
 
+// The standalone pages, which are all served from `standalone/<name>/<name>.html`.
+//
+// The admin interface is deliberately not in this list. It is the same kind of artefact — a separate
+// build, served from a path a theme does not claim — but it is served from `/admin` out of the archive's
+// `admin/` subtree, so its entry is `admin/index.html` rather than `admin/admin.html`. Bending this table
+// to hold both shapes would make every assertion here conditional; `admin_theme_test.go` holds its
+// contract instead, with the same concerns (the document is embedded, its assets resolve, it carries a
+// manifest, it is a plausible size).
 var standalonePages = []standalonePage{
 	{name: "sla", minBundleBytes: 200_000},
 	{name: "bulk", minBundleBytes: 200_000},

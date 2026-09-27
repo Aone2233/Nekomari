@@ -68,7 +68,8 @@ var hashedAssetCache sync.Map
 // 退回改动前的行为 —— 少缓存是安全的，缓存错不是。
 func hashedAssetsFromManifest(data []byte) map[string]struct{} {
 	var manifest map[string]struct {
-		File string `json:"file"`
+		File string   `json:"file"`
+		CSS  []string `json:"css"`
 	}
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return nil
@@ -80,6 +81,15 @@ func hashedAssetsFromManifest(data []byte) map[string]struct{} {
 	for _, entry := range manifest {
 		if entry.File != "" {
 			out[entry.File] = struct{}{}
+		}
+		// A build's stylesheets are listed in a separate `css` array, not as their own entry, and they carry
+		// a content hash just like the scripts. Missing them meant **every stylesheet from every build lost
+		// its long-lived cache header** — silently, because the files still served. Found while adding the
+		// admin, whose document references a stylesheet; the theme and the panel had the same gap.
+		for _, css := range entry.CSS {
+			if css != "" {
+				out[css] = struct{}{}
+			}
 		}
 	}
 	return out
@@ -153,6 +163,9 @@ const (
 
 	// 主题内部结构定义
 	DistDir   = "dist"       // 静态资源存放目录
+	// AdminDistDir 是内置归档里面板自带后台界面的子树（roadmap H7）。归档里 dist/ 的内容在根上
+	// （内置主题去掉前缀），所以后台单独放在 admin/ 下，避免与主题的 index.html 和 assets/ 相撞。
+	AdminDistDir = "admin"
 	IndexFile = "index.html" // 相对于 DistDir
 )
 
@@ -339,6 +352,60 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		return assets
 	}
 
+	// adminHashedAssets 与上面同理，但读的是面板自带后台界面的清单（roadmap H7）。
+	//
+	// 不能复用 themeHashedAssets(DefaultTheme)：那个读的是主题自己的 dist/.vite/manifest.json，而
+	// 后台的清单在 admin/.vite/manifest.json。用错清单的后果不是报错，而是后台的每个资源都退成长缓存
+	// 缺失 —— 与之前在主题上修过的是同一类静默退化。
+	adminHashedAssets := func() map[string]struct{} {
+		const cacheKey = "admin"
+		if cached, ok := hashedAssetCache.Load(cacheKey); ok {
+			assets, _ := cached.(map[string]struct{})
+			return assets
+		}
+		var assets map[string]struct{}
+		manifestPath := path.Join(DistDir, AdminDistDir, ".vite", "manifest.json")
+		if source, ok := openAsset(DefaultTheme, manifestPath); ok {
+			if source.close != nil {
+				defer source.close()
+			}
+			if data, err := io.ReadAll(source.reader); err == nil {
+				assets = hashedAssetsFromManifest(data)
+			}
+		}
+		hashedAssetCache.Store(cacheKey, assets)
+		return assets
+	}
+
+	// adminAssetKey 返回后台资源在清单意义上的键。
+	//
+	// 清单的键是 Vite 的 `file` 字段，相对于后台构建输出的根（`assets/foo-<hash>.js`），而路由交上来的
+	// 路径带着 admin/ 前缀（`admin/assets/foo-<hash>.js`）。两者不相等时 isHashedAsset 一律返回 false，
+	// 资源照常服务但静默失去长期缓存 —— 与主题上那次是同一个失效方式，只是这次是键不对齐。
+	adminAssetKey := func(relative string) string {
+		trimmed := strings.TrimPrefix(filepath.ToSlash(relative), "/")
+		trimmed = strings.TrimPrefix(trimmed, DistDir+"/")
+		return strings.TrimPrefix(trimmed, AdminDistDir+"/")
+	}
+
+	// serveAdminAsset 与 serveAsset 相同，只是用后台自己的清单判定长期缓存。
+	serveAdminAsset := func(c *gin.Context, source assetSource, relative string) {
+		if source.close != nil {
+			defer source.close()
+		}
+		header := c.Writer.Header()
+		if source.mimeType == "" {
+			header["Content-Type"] = nil
+		} else {
+			header.Set("Content-Type", source.mimeType)
+		}
+		header.Set("ETag", fmt.Sprintf("\"%x-%x\"", source.size, source.modTime.UnixNano()))
+		if isHashedAsset(adminAssetKey(relative), adminHashedAssets()) {
+			header.Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		http.ServeContent(c.Writer, c.Request, path.Base(relative), source.modTime, source.reader)
+	}
+
 	// 核心逻辑：获取文件内容（供 index.html 改写与 favicon 等需要完整内容的分支使用）
 	// 返回: content, contentType, exists
 	readAsset := func(themeID string, relativePath string) ([]byte, string, bool) {
@@ -481,6 +548,55 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		source, exists := openAsset(themeID, filePath)
 		if exists {
 			serveAsset(c, source, filePath, themeHashedAssets(themeID))
+			return
+		}
+		c.Status(http.StatusNotFound)
+	})
+
+	// 2b. 面板自带的后台界面（roadmap H7）。
+	//
+	// 为什么需要这条路由：后台界面原先由「内置默认主题」提供 —— 下面的 SPA 分支对 /admin 与 /terminal
+	// 强制使用内置主题 —— 所以内置主题换了之后后台就跟着换了。主题决定**前台**长什么样是合理的，
+	// 但「这台面板能不能管理」不该取决于装了哪个主题。
+	//
+	// 现在它有自己的构建（frontend/vite.admin.config.ts，base 为 /admin/），并作为内置归档里
+	// admin/ 子树分发。这里把 /admin 下的资源请求指到那棵子树，于是：
+	//   - 浏览器的路径就是 /admin/...，与面板自己的路由和 API 绝对路径一致，不需要 basename 适配；
+	//   - 请求 /admin 时取 admin/admin.html 而不是主题的 index.html，所以主题无法再接管这个前缀；
+	//   - 面板的 /api/admin/* 是已注册路由，优先于 noRoute 的 SPA 分支，不受影响。
+	// Gin's wildcard needs at least one character to match, so `/admin` itself is a separate route rather
+	// than the empty case of `/admin/*path`. Without this the bare path fell through to the SPA branch,
+	// which handed it the theme's document — the exact behaviour this route exists to replace.
+	serveAdminDocument := func(c *gin.Context) {
+		source, exists := openAsset(DefaultTheme, path.Join(DistDir, AdminDistDir, IndexFile))
+		if !exists {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		serveAdminAsset(c, source, path.Join(AdminDistDir, IndexFile))
+	}
+	r.GET("/admin", serveAdminDocument)
+
+	r.GET("/admin/*path", func(c *gin.Context) {
+		filePath := c.Param("path")
+		// /admin/ → admin/index.html, anything else by its own path.
+		relative := path.Join(DistDir, AdminDistDir, strings.TrimPrefix(filePath, "/"))
+
+		// Only the embedded archive is consulted, never an installed theme: the admin is the panel's own
+		// asset, and a theme should not be able to replace it.
+		source, exists := openAsset(DefaultTheme, relative)
+		if exists {
+			serveAdminAsset(c, source, relative)
+			return
+		}
+		// A path with no extension is a client-side route (`/admin/servers` and the rest), so it gets the
+		// document and the app resolves it.
+		//
+		// This has to come *after* the asset lookup: otherwise `/admin/assets/admin-<hash>.js` would be
+		// answered with HTML, and the symptom would be a blank page and a MIME-type error in the console
+		// rather than a 404 anyone can act on.
+		if path.Ext(filePath) == "" {
+			serveAdminDocument(c)
 			return
 		}
 		c.Status(http.StatusNotFound)
