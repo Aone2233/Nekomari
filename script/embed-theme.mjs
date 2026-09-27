@@ -236,6 +236,17 @@ async function regenerate() {
   if (existsSync(adminDist)) {
     await cp(adminDist, path.join(stage, "admin"), { recursive: true });
   }
+  // The theme's preview image, copied in beside the manifest.
+  //
+  // The embedded theme must carry one: the panel's theme list renders `preview`, and the first attempt
+  // pointed that field at a file inside the theme's build (`assets/...`) which is not reachable from the
+  // theme path — `/themes/<short>/assets/...` resolves inside the theme, not inside the admin. The result was
+  // a 404 in the console on the theme page and a broken image. The source image sits above the theme's `dist`
+  // and so is not in the archive otherwise.
+  const previewSource = path.join(root, "theme-luminaplus", "preview.png");
+  if (existsSync(previewSource)) {
+    await cp(previewSource, path.join(stage, "preview.png"));
+  }
   await writeFile(path.join(stage, "komari-theme.json"), manifestText);
 
   const packed = spawnSync(
