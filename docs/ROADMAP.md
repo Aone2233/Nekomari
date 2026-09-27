@@ -371,7 +371,33 @@ whole point of a maintenance window is that the node is doing something real.
 - Fixtures: a notification suppressed inside the window and delivered after it, plus a
   Go test for the boundary (a window ending mid-outage).
 
-### H4. Configuration import/export — **v0.1.34**
+### H4. Configuration import/export — **closed 2026-09-26, v0.1.38**
+
+**Final state, verified on production:** 11 real agent tokens were read out of the database and the
+export was asserted against their *values*, not their field names — none appeared, and the token
+field is not named at all. The panel's own export re-planned as `creates=0, unchanged=60`, and the
+page's Import button was confirmed locked until a check had been shown.
+
+Three things the acceptance criteria forced, each asserted somewhere:
+
+- **No credential in the default export.** The exported fields are hand-written lists, so a new
+  column is invisible until someone names it — the failure direction that does not leak. Settings
+  keys are matched by *suffix* (`password`, `secret`, `token`, …), because settings keys are
+  free-form and a list would be a list to forget. There are already five credential incidents in
+  docs/SECRETS.md, and a config file is a new place for a sixth.
+- **The dry run's report equals the import's.** Both call the same planner, which makes that
+  structural rather than two code paths kept in step. A second import reports what it found
+  unchanged rather than reporting nothing, because "nothing to do" should be visible.
+- **An import never deletes.** A record the panel has and the document omits is counted, listed and
+  left alone: absence in a snapshot is not intent, and a node added since the export would otherwise
+  vanish on re-import. A newer schema is refused rather than partly applied; so is a document with no
+  version at all, since an unknown shape is not "version 1".
+
+The page locks Import until a check has been shown **for the document currently in the box**, and
+editing the document withdraws the check — a plan for a different document is worse than no plan,
+because it looks like one.
+
+**Original entry follows, for the record.**
 
 **Evidence.** The only backup path is a whole-database migration
 (`/admin/database-migration`). That moves a database; it does not answer "give me this
