@@ -317,7 +317,37 @@ implementation of the rules.
 - Fixtures: selection across a poll, a partial failure, and "copy settings" with a
   field the target legitimately rejects.
 
-### H3. Maintenance windows — **v0.1.33**
+### H3. Maintenance windows — **closed 2026-09-26, v0.1.37**
+
+One release, and the deployed page was checked in a browser as the last step — which is now the
+pattern.
+
+**Final state, verified on production:** the page rendered, the form created a fleet-wide window,
+the store held it with `open=True`, `remaining=1768s`, and the active list named it. The check
+deleted what it created.
+
+Four decisions the acceptance criteria forced, each stated in code and tested:
+
+- **The alert is deferred, not dropped.** A node offline inside a window and still offline when it
+  closes is reported then; a node that came back is not. The sweeper requires the window closed, the
+  deferral not stale (30 minutes), **and the node still offline under the same connection** — that
+  last one is what a naive implementation omits, and omitting it delivers every suppressed alert
+  late as a false alarm.
+- **Half-open windows** (`start <= now < end`), so two back-to-back windows neither overlap for an
+  instant nor leave a gap.
+- **The soonest-ending matching window is reported**, so "when do my alerts come back" does not
+  depend on storage order.
+- **An empty client list means every node**, not none, and the page says which per row — "every
+  node" and "these three" are different claims and the fleet-wide one is easy to create by accident.
+
+Suppression is scoped to notification and never to collection, which is stated in the package
+comment: a gap in the charts after a window would be a lie about what happened.
+
+One test of my own failed loudly and is recorded in it: `clearDeferred` registered itself as its own
+`t.Cleanup`, so the binary ran for the full ten-minute timeout with a stack of identical frames.
+
+**Original entry follows, for the record.**
+
 
 **Evidence.** Every planned restart during the 2026-09-26 work was indistinguishable
 from an outage to the notifier. The offline sender already has a grace period and
