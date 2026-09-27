@@ -146,6 +146,19 @@ func computePresence(samples []Sample, window time.Duration) Presence {
 	if expected < 1 {
 		expected = 1
 	}
+	// Observed can never exceed expected: the expected count is derived from the same
+	// window the observations came from. If it does, the cadence was misread — most
+	// likely because the caller handed us a series whose empty buckets were *absent*
+	// rather than zero-counted, so the only gap the cadence can see is the span itself.
+	// Reporting "100% (163/1 samples)" is nonsense a reader would rightly distrust, so
+	// the expectation is widened to fit the evidence.
+	//
+	// The order matters and was wrong once: this clamp sat *before* the calculation
+	// above, so its value was overwritten by it and the guard did nothing at all. The
+	// live page is what surfaced the symptoms.
+	if presence.ObservedBuckets > expected {
+		expected = presence.ObservedBuckets
+	}
 	presence.ExpectedBuckets = expected
 	presence.Coverage = float64(presence.ObservedBuckets) / float64(expected)
 	if presence.Coverage > 1 {

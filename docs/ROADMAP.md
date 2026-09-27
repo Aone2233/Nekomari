@@ -116,6 +116,41 @@ why the contract is split across the two.
 contract test for the wiring, an artefact-level one for the build output, and a check that
 the page is reachable in the deployment that actually runs.
 
+### H1a. Open: a task can report `expected_buckets: 1` against 160 observed
+
+Found by opening the deployed page in a real browser, which is the step that caught the
+PascalCase bug an hour earlier and this one too.
+
+For a **7-day** window at `interval_seconds: 3600`, a node's *own* presence is right
+(`167 expected, 162 observed, 97.0%`) while its **tasks** report
+`expected_buckets: 1, observed_buckets: 163, coverage: 1.0`. The 24h and 30d windows are
+correct, and the node-level path is correct, so the fault is specific to the task-level
+presence grid at an hourly interval.
+
+What is established:
+
+- The store *has* the data: `ping.loss` carries 840 hourly rows in the last 24 hours and
+  14 626 across the window, contiguous, `distinct_step_minutes=[60]`.
+- `computePresence` returns 1 only on its `step <= 0` early exit, which means the sample
+  slice it was handed had no two distinct buckets to measure a gap between — while its
+  own `observed` count from the same slice was 163. Those two facts cannot both come from
+  a 163-element slice of hourly buckets, so the inputs are not what the code appears to
+  assume.
+- The `observed <= expected` guard added in `e4a0bde` makes the pair impossible to render
+  but **is not the cause**: with 163 contiguous hourly samples the calculation already
+  yields 163, and removing the guard leaves the new test green. It is recorded as a guard,
+  not a fix.
+
+What is not established: why. A unit test cannot settle it — the store keeps raw points for
+ten minutes (`pkg/metric`'s `RawRetention`) and flushes coarser rollups on its own schedule,
+so a test cannot seed a week of hourly data synchronously; an attempt to do so is what
+established *that* fact, and the test was removed rather than left failing.
+
+Next step, and it is deliberately small: a read-only script against the live database that
+prints, for one task and the 7-day window, the exact buckets the store returns and what
+`computePresence` derives from them. That distinguishes "the store returns a strange
+shape" from "the grid-filling code mangles a normal one", and it needs no build or deploy.
+
 ## H. The next features — planned 2026-09-26
 
 Sections A-G are close to exhausted: the correctness work is closed, the security

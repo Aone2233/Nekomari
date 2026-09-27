@@ -310,3 +310,64 @@ func TestCoverageNeverDividesByZero(t *testing.T) {
 		t.Fatalf("Coverage = %v, want within (0,1]", presence.Coverage)
 	}
 }
+
+// The same shape as the live page's seven-day report: hourly buckets, no gaps, and the
+// counts must agree.
+//
+// Honest about what this pins. It would **not** have caught the live page's
+// "100% (163/1 samples)": for 163 contiguous hourly buckets the calculation already yields
+// 163, and removing the `observed <= expected` guard afterwards leaves this test green.
+// The guard in `computePresence` is therefore a defensive invariant — it makes a
+// self-contradictory pair of numbers impossible to render — and **not** the explanation
+// for what the page showed. That cause is still open; see the H1 note in
+// `docs/ROADMAP.md`.
+//
+// What this test does pin is the ordinary case, which had no coverage at all before: a
+// full window reports full coverage with counts that match. That is worth having on its
+// own, because the reader-facing invariant is exactly "these two numbers agree".
+func TestEveryBucketReportedIsFullCoverage(t *testing.T) {
+	samples := make([]Sample, 0, 163)
+	for i := 0; i < 163; i++ {
+		samples = append(samples, Sample{
+			Bucket: base.Add(time.Duration(i) * time.Hour),
+			Value:  0,
+			Count:  3,
+		})
+	}
+
+	result := AvailabilityFromLoss(samples, 7*24*time.Hour)
+	if result.Presence.ObservedBuckets != 163 {
+		t.Fatalf("ObservedBuckets = %d, want 163", result.Presence.ObservedBuckets)
+	}
+	if result.Presence.ExpectedBuckets != 163 {
+		t.Fatalf("ExpectedBuckets = %d, want 163", result.Presence.ExpectedBuckets)
+	}
+	if !almostEqual(result.Presence.Coverage, 1) {
+		t.Fatalf("Coverage = %v, want 1", result.Presence.Coverage)
+	}
+}
+
+// The invariant behind the case above, asserted across shapes rather than one example:
+// whatever the input, the two counts stay ordered and coverage stays within [0,1]. A
+// reader cannot check a report's arithmetic, so it has to hold by construction.
+func TestObservedNeverExceedsExpected(t *testing.T) {
+	cases := [][]float64{
+		{0, 0, 0},
+		{0, gap, 0},
+		{gap, gap, gap, 0},
+		{0},
+		{1, 1, 1, 1, 1},
+		{0, gap, gap, gap, 0},
+	}
+	for index, values := range cases {
+		result := AvailabilityFromLoss(slots(values), time.Duration(len(values))*time.Minute)
+		presence := result.Presence
+		if presence.ObservedBuckets > presence.ExpectedBuckets {
+			t.Errorf("case %d: observed %d > expected %d (inputs %v)",
+				index, presence.ObservedBuckets, presence.ExpectedBuckets, values)
+		}
+		if presence.Coverage < 0 || presence.Coverage > 1 {
+			t.Errorf("case %d: coverage %v outside [0,1]", index, presence.Coverage)
+		}
+	}
+}
