@@ -1058,3 +1058,55 @@ become its own outage) and visible in the agent's output.
 - **Replacing the npm `lodash/throttle` import with a local throttle** — declared
   now (`v0.1.26`), and a behaviour-changing cleanup that belongs with someone
   actually touching the terminal page.
+
+## H7. The admin interface belongs to the panel, not the theme
+
+**Found while releasing v0.1.39**, and it is the reason that release is not tagged: making LuminaPlus the
+embedded default theme left a fresh installation with no way to administer the panel.
+
+### What actually happens
+
+`web/public/public.go` has always forced `/admin` and `/terminal` to the **embedded default theme**,
+ignoring any installed theme. So the panel's admin pages have always come from the embedded default —
+originally `komari-web`, which is both a front page and an admin interface. Replacing it with LuminaPlus
+removed the admin half:
+
+```
+LuminaPlus's router declares:  /   /instance/:uuid   /assets   /traffic   /404
+everything under /admin is its service-worker recovery screen
+```
+
+LuminaPlus's own README is honest about this being a front-end theme; its `/admin` route exists to replace a
+stale cached admin bundle from an earlier version. The panel's admin pages are `frontend/src/pages/admin`
+(43 files) plus the `/admin/*` table in `frontend/src/routes.ts`.
+
+### Why it was not noticed sooner
+
+On this deployment the admin is reached through the **admin-path plugin**, which serves the panel's admin at
+a private path, and the installed theme takes precedence over the embedded one — so the gap is invisible to
+the person who made the change and to every test that existed. It only appears on a *fresh* installation,
+which is exactly and only what the embedded default affects.
+
+### The fix
+
+Bundle the panel's own admin as a **standalone page**, on the same mechanism as the five that already exist
+(`vite.standalone.*.config.ts`, `script/build-standalone.mjs`, and the staging step in
+`script/embed-theme.mjs`), served at a path no theme claims. Then:
+
+- a fresh installation gets the same admin interface that exists today, independent of the theme
+- `public.go`'s `/admin`/`/terminal` override can be revisited, since its purpose was to reach the embedded
+  default's admin pages — a rule worth re-examining once the admin no longer lives in a theme at all
+- two CI suites (`panel-smoke.spec.py`, `admin-write-paths.spec.py`) can go back to asserting real behaviour
+  instead of naming why they cannot run
+
+### Acceptance
+
+- The standalone admin is reachable on a clean data directory with the embedded default installed, and
+  every `/admin/*` route renders with no console error and no failed request.
+- The panel's `AdminLayout` and its permission gating are reused, not reimplemented.
+- Both halves of the standalone-page contract list it (source-level and artefact-level).
+- `pnpm`/`npm` build, `tsc`, `eslint`, the frontend unit suite, all browser specs and the Go suite are green,
+  and `script/embed-theme.mjs` reports the archive holds the theme, its manifest and all six pages.
+
+**Not weakening the tests to make CI green.** `admin-write-paths.spec.py` fails on purpose, naming the
+cause, until the admin exists.
