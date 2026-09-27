@@ -44,6 +44,37 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v0.1.39] — 2026-09-26
+
+**Panel only.** H5: traffic forecasting, and the default theme is now LuminaPlus.
+
+- **New: traffic forecast** at `/standalone/forecast/forecast.html`. For each node, where this cycle's
+  traffic is heading, when it would reach the plan limit, and — the part that makes it actable — the data
+  behind it: how many samples, what fraction of the cycle they cover, and how scattered they were.
+
+  **A projection that cannot be made is not made.** A cycle with under a day of data, or fewer than five
+  observations, reports "not enough data" with the reason rather than extrapolating two points into a
+  confident number. A node with no plan limit is projected but not projected against infinity.
+
+  **A new notification warns when a node is projected to reach its limit**, once per cycle, alongside the
+  existing "you have used N%" warning rather than replacing it: a node at 60% on day five of a cycle is a
+  problem and one at 60% on day twenty-nine is not, and the percentage alone cannot tell them apart.
+
+  The cycle is computed from a configurable cycle day, matching the agent's `--month-rotate`. The panel
+  computes it in its own timezone because the agent does not report one, and the page states which
+  timezone was used — a fleet on UTC agrees exactly.
+
+- **The built-in default theme is now Komari-Theme-LuminaPlus**, replacing `komari-web`. This changes what
+  a *fresh* installation looks like; an installed theme still takes precedence, so an existing panel sees
+  no difference. The archive also carries all five standalone pages, and the theme's licence and copyright
+  notice travel with it in `docs/THIRD-PARTY-LICENSES.md` and in the embedded manifest.
+
+- **Fixed: every content-hashed asset was served without `Cache-Control`.** The theme's build did not emit
+  `.vite/manifest.json`, which the panel uses to identify hashed asset names and give them a long-lived
+  cache header. Without it, Cloudflare re-fetched files that never change on every POP, on the provider's
+  default (measured at four hours). Now `public, max-age=31536000, immutable`. This affected anyone
+  running LuminaPlus, not only this deployment.
+
 ## [v0.1.38] — 2026-09-26
 
 **Panel only.** H4: the panel's configuration as one file, and one file applied back.
