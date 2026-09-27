@@ -89,9 +89,10 @@ jobs:
         run: |
           (cd frontend && npm ci --no-audit --no-fund && npm run build)
           (cd tools/zstdpack && go build -o zstdpack .)
-          mkdir -p web/public/defaultTheme
-          ./tools/zstdpack/zstdpack -src frontend/dist -out web/public/defaultTheme/dist.tar.zst
-          cp -f frontend/komari-theme.json web/public/defaultTheme/
+          # The embedded archive is committed, not built here: it is the theme's build output, from a
+          # repository this one does not contain. The script checks what is committed and explains how to
+          # regenerate it. See the header of script/embed-theme.mjs.
+          node script/embed-theme.mjs
           go build -o nekomari .
       - name: Install browser test dependencies
         working-directory: frontend
@@ -181,14 +182,12 @@ jobs:
         # 服务端用 //go:embed defaultTheme/dist.tar.zst，这一步必须先于 go build，
         # 否则编译会直接失败（pattern: no matching files found）。
         run: |
-          mkdir -p web/public/defaultTheme
-          ./tools/zstdpack/zstdpack${{ runner.os == 'Windows' && '.exe' || '' }} \
-            -src frontend/dist \
-            -out web/public/defaultTheme/dist.tar.zst
-          cp -f frontend/komari-theme.json web/public/defaultTheme/
-          for f in preview.png perview.png preview.webp; do
-            [ -f "frontend/$f" ] && cp -f "frontend/$f" web/public/defaultTheme/ || true
-          done
+          # The archive is committed and must not be rebuilt here: it is the *theme's* build output, from
+          # a separate repository this one does not contain, so this can only check it. It used to be
+          # rebuilt from frontend/dist and frontend/komari-theme.json -- the panel's own UI and
+          # komari-web's manifest -- which meant the committed default theme never survived a build.
+          # See the header of script/embed-theme.mjs.
+          node script/embed-theme.mjs
 
       - name: Test server
         # 跑全部用例，只排除会真的访问第三方的那三个：上游 utils/geoip 的

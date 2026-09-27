@@ -164,14 +164,12 @@ jobs:
       - name: Pack embedded theme
         shell: bash
         run: |
-          mkdir -p web/public/defaultTheme
-          ./tools/zstdpack/zstdpack${{ matrix.ext }} \
-            -src frontend/dist \
-            -out web/public/defaultTheme/dist.tar.zst
-          cp -f frontend/komari-theme.json web/public/defaultTheme/
-          for f in preview.png perview.png preview.webp; do
-            [ -f "frontend/$f" ] && cp -f "frontend/$f" web/public/defaultTheme/ || true
-          done
+          # The archive is committed and must not be rebuilt here: it is the *theme's* build output, from
+          # a separate repository this one does not contain, so this can only check it. It used to be
+          # rebuilt from frontend/dist and frontend/komari-theme.json -- the panel's own UI and
+          # komari-web's manifest -- which meant the committed default theme never survived a release.
+          # See the header of script/embed-theme.mjs.
+          node script/embed-theme.mjs
 
       - name: Build server
         shell: bash
