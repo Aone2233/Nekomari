@@ -172,9 +172,35 @@ async function verify() {
   // The panel's own pages live here too. A theme build replacing the archive drops them, and the only
   // symptom is a 404 on a page that was working.
   for (const page of await readdir(standalone).catch(() => [])) {
+    // `admin` appears at both locations by design: the archive root is what `/admin` serves, and the copy
+    // beside the other pages keeps this check honest about what was built.
+    const candidates =
+      page === "admin"
+        ? ["admin/index.html", "standalone/admin/index.html"]
+        : [`standalone/${page}/${page}.html`];
     check(
-      names.has(`standalone/${page}/${page}.html`),
-      `the panel's ${page} page is missing from the archive: it must be packed alongside the theme, not replaced by it`,
+      candidates.some((name) => names.has(name)),
+      `the panel's ${page} page is missing from the archive (looked for ${candidates.join(" or ")}): it must be packed alongside the theme, not replaced by it`,
+    );
+  }
+
+  // The admin's own assets must be reachable too, because a document whose script 404s is a blank page rather
+  // than an error anyone can see.
+  //
+  // And its absence is a failure rather than something to note when the build output is sitting right there.
+  // Regenerating the archive without a fresh `frontend/dist` produced a 1.89 MiB archive with no admin at all
+  // — the size bound below accepted it, because 1.89 MiB is a plausible theme — and the only thing that
+  // objected was a Go test about a different page. Comparing the archive against what was built is what
+  // catches that, and the check above already knows whether the source exists.
+  const adminSource = path.join(standalone, "admin");
+  if (existsSync(adminSource)) {
+    check(
+      names.has("admin/index.html"),
+      "the admin was built but is not in the archive at admin/index.html: the staging step did not run, or ran without it",
+    );
+    check(
+      [...names].some((name) => name.startsWith("admin/assets/")),
+      "the admin document is in the archive but its assets are not, so it would render nothing",
     );
   }
 
@@ -196,6 +222,20 @@ async function regenerate() {
   await mkdir(stage, { recursive: true });
   await cp(themeDist, stage, { recursive: true });
   await cp(standalone, path.join(stage, "standalone"), { recursive: true });
+
+  // The panel's own interface also goes at the archive root as `admin/`, not under `standalone/`.
+  //
+  // Roadmap H7. Its routes and API calls are absolute (`/admin/servers`, `/api/admin/...`) and the server
+  // serves this subtree for requests under `/admin`, so `admin/` is the location that matches the URL the
+  // browser is on. Left at `standalone/admin/` the same bytes would be served from a different path, where
+  // the app's own links would point outside the subtree it was loaded from.
+  //
+  // Copied rather than moved: the archive wants it at the root, and the verification above still looks for
+  // it beside the other pages, so removing the source would make the two disagree.
+  const adminDist = path.join(standalone, "admin");
+  if (existsSync(adminDist)) {
+    await cp(adminDist, path.join(stage, "admin"), { recursive: true });
+  }
   await writeFile(path.join(stage, "komari-theme.json"), manifestText);
 
   const packed = spawnSync(
