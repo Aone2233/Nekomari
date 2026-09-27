@@ -57,42 +57,82 @@ function check(condition, message) {
   return condition;
 }
 
-/** readArchive lists the archive's entries, using the Go packer's counterpart. */
+/**
+ * listArchive lists the archive's entries.
+ *
+ * Through `zstd` and then `tarfile`, rather than through `tarfile`'s own zstd support: that support
+ * landed in Python 3.14 and CI runs 3.13, so the direct form works on a developer's machine and fails on
+ * the runner with "unknown compression type 'zst'". A check that passes where it is written and fails
+ * where it matters is worse than no check. `zstd` is on the runners and in Git for Windows.
+ */
 function listArchive() {
-  // Through the same tar+zstd stack the server decodes with, so this check cannot pass on an archive
-  // the server would refuse.
-  const script = [
-    "import tarfile,sys",
-    "t=tarfile.open(sys.argv[1],'r:zst')",
+  const listPython = [
+    "import sys, tarfile",
+    "t = tarfile.open(fileobj=sys.stdin.buffer, mode='r|')",
+    "print('\\n'.join(m.name for m in t))",
+  ].join("\n");
+
+  const failures = [];
+
+  // Two routes, because the reader has to work in three places with different Python versions:
+  //
+  //   1. `zstd` piped into `tarfile` -- works on the CI runners (`zstd` present, Python 3.13 which has
+  //      no zstd support of its own) and in Git for Windows.
+  //   2. `tarfile` reading the archive directly -- only Python 3.14 and later, but that is a developer's
+  //      machine, where `zstd` may not be on PATH at all.
+  //
+  // Choosing only the second works where it is written and fails on the runner with "unknown compression
+  // type 'zst'"; choosing only the first fails on a machine without the CLI. The list is what makes this
+  // independent of both.
+  const directPython = [
+    "import sys, tarfile",
+    "t = tarfile.open(sys.argv[1], 'r:zst')",
     "print('\\n'.join(t.getnames()))",
   ].join("\n");
 
-  // Each candidate is tried, and a run that produced no output at all is treated as a failure rather
-  // than as an empty archive. Getting that wrong made this check report eight missing entries when the
-  // real problem was that `python` does not exist on Windows -- a checker that cannot tell "the tool did
-  // not run" from "the thing is absent" reports the wrong fault, which is the failure mode the rest of
-  // this file exists to avoid.
-  const failures = [];
-  for (const candidate of ["python3", "python", "py"]) {
-    const result = spawnSync(candidate, ["-c", script, archivePath], { encoding: "utf8" });
-    if (result.error) {
-      failures.push(`${candidate}: ${result.error.code || result.error.message}`);
+  for (const python of ["python3", "python", "py"]) {
+    const result = spawnSync(python, ["-c", directPython, archivePath], { encoding: "utf8" });
+    if (result.status !== 0 || !result.stdout) {
       continue;
     }
-    if (result.status !== 0) {
-      failures.push(`${candidate}: ${(result.stderr || "").trim().split("\n").slice(-1)[0] || `exit ${result.status}`}`);
-      continue;
+    const names = result.stdout.split("\n").map((name) => name.trim()).filter(Boolean);
+    if (names.length > 0) {
+      return { names };
     }
-    const names = result.stdout.split("\n").map((n) => n.trim()).filter(Boolean);
-    if (names.length === 0) {
-      failures.push(`${candidate}: read no entries`);
-      continue;
-    }
-    return { names };
   }
-  return { error: `could not read the archive with any of python3/python/py (${failures.join("; ")})` };
-}
+  failures.push("direct tarfile (needs Python 3.14+)");
 
+  const listPython = [
+    "import sys, tarfile",
+    "t = tarfile.open(fileobj=sys.stdin.buffer, mode='r|')",
+    "print('\\n'.join(m.name for m in t))",
+  ].join("\n");
+  const quotedPython = listPython.replace(/"/g, '\\"');
+
+  for (const decompressor of ["zstd -dc", "zstdcat"]) {
+    for (const python of ["python3", "python", "py"]) {
+      const pipeline = `${decompressor} "${archivePath}" | ${python} -c "${quotedPython}"`;
+      const result = spawnSync(pipeline, { shell: true, encoding: "utf8", maxBuffer: 64 << 20 });
+      if (result.status !== 0 || !result.stdout) {
+        const detail = (result.stderr || "").trim().split("\n").slice(-1)[0] || "no output";
+        failures.push(`${decompressor} | ${python}: ${detail}`);
+        continue;
+      }
+      const names = result.stdout.split("\n").map((name) => name.trim()).filter(Boolean);
+      if (names.length === 0) {
+        failures.push(`${decompressor} | ${python}: read no entries`);
+        continue;
+      }
+      return { names };
+    }
+  }
+
+  return {
+    error:
+      "could not list the archive. It needs either a Python with tarfile zstd support (3.14+) or " +
+      `\`zstd\` on PATH. Tried: ${failures.join("; ")}`,
+  };
+}
 async function verify() {
   if (!check(existsSync(archivePath), `no archive at ${path.relative(root, archivePath)}; see the header for how to regenerate it`)) {
     return;
