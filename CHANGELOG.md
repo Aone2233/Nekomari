@@ -44,6 +44,24 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v0.1.42] — 2026-09-27
+
+**Agent and panel.** H6: the panel can point a node at a version.
+
+- **`admin:rollAgentUpdate`** asks nodes to run a chosen agent release, or clears the target so they track
+  releases again. Per-node outcomes distinguish `dispatched`, `at_target`, `offline` and `failed` — the first
+  three want different actions, and a fleet-wide verdict would hide which. `admin:agentVersions` reports each
+  node's version and connection state.
+
+  The channel is the v2 event queue that already carries exec, ping and terminal requests. The target is
+  re-sent on every dispatch, so a node restarted mid-rollout re-learns it rather than resuming its own tracking
+  of the newest release. The panel's target wins over `AGENT_TARGET_VERSION`, which remains the
+  deployment-level default and the way to pin a node the panel cannot reach.
+
+- **The agent installs a named release, including an older one.** A rollback that cannot go backwards is not a
+  rollback, and "update to the latest" can never express one. Drafts and prereleases are refused, as is a
+  release with no asset for the node's platform, with the asset named in the message.
+
 ## [v0.1.41] — 2026-09-27
 
 - **Fixed: the theme page's preview image, properly this time.** v0.1.40 put the image in the archive; the route
