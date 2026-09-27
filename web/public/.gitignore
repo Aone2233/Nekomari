@@ -1,2 +1,17 @@
 dist/*
 defaultTheme/*
+
+# The embedded default theme's archive is committed, and the exception is the point.
+#
+# It is the build output of a **separate repository** (the LuminaPlus theme), so CI cannot produce it:
+# this repository does not contain the theme's sources. Before this exception, the archive was ignored
+# and therefore never committed, and CI and the release workflow each rebuilt it inline from
+# `frontend/dist` plus `frontend/komari-theme.json` -- the panel's own UI, described by komari-web's
+# manifest. So the embedded default theme was quietly the panel's built-in interface, and any change to
+# it was silently discarded on the next build.
+#
+# Committing it is what makes "the embedded theme is the theme" true rather than aspirational.
+# `script/embed-theme.mjs` checks it during CI and regenerates it with `--write`; that script's header
+# documents the maintainer step, and docs/THIRD-PARTY-LICENSES.md records the theme version, the
+# licence obligation and how to rebuild.
+!defaultTheme/dist.tar.zst
