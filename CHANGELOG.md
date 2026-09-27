@@ -44,6 +44,19 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v0.1.35] — 2026-09-26
+
+**Panel only.**
+
+- **Fixed: the report never read the latency series, so every task showed "no data".** The
+  store held **29 478 minute rows** of `ping.latency_ms` with values up to 513 ms;
+  `LatencyFromSamples` was written, tested and never called, so `TaskReport.Latency` stayed
+  at its zero value and `has_data` was false everywhere. An always-empty field is
+  indistinguishable from a target that never answered, so the report was quietly asserting
+  "no latency measured" about a fleet that had weeks of it. The second read costs one query
+  per request, and its failure is swallowed rather than failing the report — coverage is the
+  reason the report exists.
+
 ## [v0.1.34] — 2026-09-26
 
 **Panel only.** Fixes the SLA report's last wrong number.
