@@ -268,7 +268,34 @@ test that fails if the definition changes silently.
 - Fixtures: a mounted browser spec for the page (loading / no data / one incident /
   hidden node), and Go tests for each definition above.
 
-### H2. Bulk operations — **v0.1.32**
+### H2. Bulk operations — **closed 2026-09-26, v0.1.36**
+
+Shipped in one release, with the H1 lessons applied: the page was built as a standalone entry
+from the start, the contract was tested from both ends before the release, and the deployed page
+was opened in a browser as the last step.
+
+**Final state, verified on production:** the page at `/standalone/bulk/bulk.html` rendered 11
+node rows, applied one field to one node, the store showed the new value, and **a field the page
+never mentioned was unchanged** — the property the whole design is built around, checked against
+the database rather than against the page's own report. The check restored the original value.
+
+Three things the acceptance criteria forced, and each is asserted somewhere:
+
+- **only switched-on fields are sent** — asserted on the payload the page produced
+  (`bulk-fields.test.mjs` and `bulk-edit.browser.spec.py`), because it is invisible in a
+  rendered page and one typo would set a fleet's group to the empty string
+- **a partial failure is reported per node, with the applier's own reason** — asserted in
+  `internal/bulk` (a fake applier that fails one uuid), in `admin.bulk_test.go` (a real database,
+  proving a value the single-node path refuses is refused in bulk too), and in the fixture
+- **the selection survives a poll** — asserted by replacing the node list mid-test and checking
+  that the same *nodes* stay selected rather than the same row positions
+
+The build gained a shared factory (`vite.standalone.shared.ts`, four lines per page) because the
+output directory, `inlineDynamicImports`, `copyPublicDir: false` and the `@` alias were four
+things to forget per page.
+
+**Original entry follows, for the record.**
+
 
 **Evidence.** Ten nodes, each configured by opening a dialog, editing, and saving.
 Changing a group, a billing cycle, a notification policy or a weight across the fleet

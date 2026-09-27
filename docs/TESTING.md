@@ -121,6 +121,58 @@ would be the fix if that ever matters, and skipping it would not.
 go test ./utils/geoip/ -count=1 -run '^TestIpInfo$|^TestIpApi$|^TestGeojs$|^TestMmdb$' -v
 ```
 
+## Checking a deployed page in a real browser
+
+Two features so far were "implemented, released, and wrong" in ways no suite caught, so opening
+the deployed page is now the last step before claiming one works. It is what found:
+
+- **v0.1.31's status page answering its own 404**, because an installed theme replaces the
+  panel's built-in router (roadmap H0).
+- **The SLA report's nested fields marshalled as PascalCase**, so every figure arrived as an
+  absent key. The fixture could not see it: its JSON was written by hand to match the
+  TypeScript types, so the page and the API disagreed while both suites passed.
+- **`expected 1` against `observed 163`** on a seven-day window (roadmap H1a).
+
+The scripts are throwaway — they run on OC424 against the live panel, through nginx and the
+public hostname — but three things about them are worth keeping.
+
+### Log in **in the browser**, do not inject the cookie
+
+A session cookie obtained in Python and added with `context.add_cookies` does **not**
+authenticate the page's own requests. The symptom is specific and misleading: the HTML renders
+(it needs no session), so the page looks alive, while every `public:*` and `api/*` call comes
+back 401 and any list is empty. `NodeListProvider` goes through the RPC2 client, which prefers a
+WebSocket, and the handshake fails with `HTTP Authentication failed; no valid credentials
+available`.
+
+Log in from the page and let the browser set its own cookie:
+
+```python
+page.goto("https://<host>/", wait_until="domcontentloaded")
+page.evaluate("""async ([u, p, code]) => {
+  const r = await fetch("/api/login", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: u, password: p, "2fa_code": code }),
+    credentials: "same-origin",
+  });
+  return r.status;
+}""", [user, password, totp(secret)])
+```
+
+### Assert on the store, not on the page's own report
+
+The bulk check applies one field to one node and then reads the result back through
+`admin:getClient`, because the page's own report is what is being checked and cannot also be the
+evidence. It additionally verifies that a field the page never mentioned is **unchanged** —
+that is what "only switched-on fields are sent" means once it reaches the database — and it
+restores the original value in a `finally`, so a failure leaves no trace on the fleet.
+
+### Read the console
+
+Both the 401s and the failed WebSocket upgrade appear only in the console. A check that looks at
+the DOM alone reports "the list did not render", which is true and useless; the console says
+why.
+
 ## Tests added by Nekomari
 
 These are hermetic (no network) unless noted:
