@@ -32,6 +32,332 @@ type SeriesReader interface {
 	Series(ctx context.Context, query metric.AggregateQuery, now time.Time) ([]metric.AggregatePoint, error)
 }
 
+// BatchSeriesReader is the same, for one query covering many entities.
+//
+// Worth its own interface rather than being folded into SeriesReader: a report over a
+// fleet is one query here and N there, and the difference is not academic — ten nodes
+// across three metrics is 30 queries the long way. It stays separate so a reader
+// that only implements Series keeps working.
+type BatchSeriesReader interface {
+	SeriesBatch(ctx context.Context, query metric.BatchSeriesQuery, now time.Time) (metric.BatchSeriesResult, error)
+}
+
+// Bucket is one entity's series for one metric, keyed for the report.
+type Bucket struct {
+	EntityID string
+	// Tags identify the series within an entity: task_id, protocol, role, family.
+	Tags    map[string]string
+	Samples []Sample
+}
+
+// ReadSeriesPerEntity fetches one metric for many entities in a single query and
+// splits the result by entity, keeping each series' tags.
+//
+// The split is the point. `PreserveSeries` keeps series apart by their tags, so the
+// result arrives as points whose Tags distinguish one task from another; grouping them
+// here is what lets the report answer per task instead of averaging a node's five
+// targets into one meaningless number.
+func ReadSeriesPerEntity(ctx context.Context, reader BatchSeriesReader, query SeriesQuery, entityIDs []string, now time.Time) ([]Bucket, error) {
+	if reader == nil {
+		return nil, fmt.Errorf("no metric store")
+	}
+	if query.Interval <= 0 {
+		return nil, fmt.Errorf("interval must be positive")
+	}
+	aggregation := query.Aggregation
+	if aggregation == "" {
+		aggregation = metric.AggAvg
+	}
+	result, err := reader.SeriesBatch(ctx, metric.BatchSeriesQuery{
+		Specs: []metric.BatchSeriesSpec{{
+			MetricName:     query.MetricName,
+			Aggregations:   []metric.Aggregation{aggregation},
+			Interval:       query.Interval,
+			PreserveSeries: true,
+		}},
+		EntityIDs: entityIDs,
+		Start:     query.Start,
+		End:       query.End,
+		Tags:      query.Tags,
+	}, now)
+	if err != nil {
+		return nil, err
+	}
+
+	byAggregation, ok := result.Values[query.MetricName]
+	if !ok {
+		return nil, nil
+	}
+	points := byAggregation[aggregation]
+
+	// One bucket per (entity, series). The key uses a separator that cannot appear in
+	// an entity id or a tag value, so two different series can never collide.
+	order := make([]string, 0)
+	buckets := make(map[string]*Bucket)
+	for _, point := range points {
+		key := point.EntityID + "\x00" + seriesTagsKey(point.Tags)
+		bucket := buckets[key]
+		if bucket == nil {
+			bucket = &Bucket{EntityID: point.EntityID, Tags: cloneTags(point.Tags)}
+			buckets[key] = bucket
+			order = append(order, key)
+		}
+		bucket.Samples = append(bucket.Samples, Sample{
+			Bucket: point.Bucket.UTC(),
+			Value:  point.Value,
+			Count:  point.Count,
+		})
+	}
+
+	// Deterministic order: a report that reshuffles between requests cannot be diffed.
+	sort.Slice(order, func(i, j int) bool { return order[i] < order[j] })
+	out := make([]Bucket, 0, len(order))
+	for _, key := range order {
+		bucket := buckets[key]
+		sort.Slice(bucket.Samples, func(i, j int) bool {
+			return bucket.Samples[i].Bucket.Before(bucket.Samples[j].Bucket)
+		})
+		out = append(out, *bucket)
+	}
+	return out, nil
+}
+
+// seriesTagsKey renders tags into a stable key.
+func seriesTagsKey(tags map[string]string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(tags))
+	for key := range tags {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var builder []byte
+	for _, key := range keys {
+		builder = append(builder, key...)
+		builder = append(builder, '=')
+		builder = append(builder, tags[key]...)
+		builder = append(builder, ';')
+	}
+	return string(builder)
+}
+
+func cloneTags(tags map[string]string) map[string]string {
+	if len(tags) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(tags))
+	for key, value := range tags {
+		out[key] = value
+	}
+	return out
+}
+
+// CompleteGrid fills a series' missing buckets with gaps, given the grid the query
+// asked for.
+//
+// It exists because "absent" and "empty" mean the same thing to a reader and different
+// things to the store: with `PreserveSeries`, a series that reported nothing in a
+// bucket may come back with no point at all, or with a point whose Count is 0. Both
+// are gaps, and a report that treated only one of them as a gap would silently count
+// the other as a measurement of zero — which is exactly the failure mode where a dead
+// node looks healthy.
+//
+// The grid is derived from the query's interval and window, so the result has a slot
+// for every bucket the window should hold. Trailing buckets that no series reached are
+// not invented: the grid stops at the last bucket any series carried.
+func CompleteGrid(buckets []Bucket, start, end time.Time, interval time.Duration) []Bucket {
+	if interval <= 0 || len(buckets) == 0 {
+		return buckets
+	}
+	// Buckets are aligned the same way the store aligns them, so a filled slot lands
+	// on the same boundary as a reported one.
+	var latest time.Time
+	for _, bucket := range buckets {
+		for _, sample := range bucket.Samples {
+			if sample.Bucket.After(latest) {
+				latest = sample.Bucket
+			}
+		}
+	}
+	if latest.IsZero() {
+		return buckets
+	}
+
+	out := make([]Bucket, 0, len(buckets))
+	for _, bucket := range buckets {
+		present := make(map[int64]Sample, len(bucket.Samples))
+		for _, sample := range bucket.Samples {
+			present[sample.Bucket.Unix()] = sample
+		}
+		filled := make([]Sample, 0, len(bucket.Samples))
+		for slot := start.UTC().Truncate(interval); !slot.After(latest); slot = slot.Add(interval) {
+			if sample, ok := present[slot.Unix()]; ok {
+				filled = append(filled, sample)
+				continue
+			}
+			filled = append(filled, Sample{Bucket: slot, Value: 0, Count: 0})
+		}
+		bucket.Samples = filled
+		out = append(out, bucket)
+	}
+	return out
+}
+
+// ReportRequest is one SLA report to build.
+type ReportRequest struct {
+	Reader    BatchSeriesReader
+	EntityIDs []string
+	// TaskNames maps a task id to its display name, so a report says what a task is
+	// rather than only which number it is.
+	TaskNames map[string]string
+	Start     time.Time
+	End       time.Time
+	Interval  time.Duration
+	// WindowLabel is what the caller asked for, carried through so the report can say
+	// "last 30 days" without recomputing it from the timestamps.
+	WindowLabel string
+	// Clamped explains a shortened window, from WindowStart.
+	Clamped string
+	Now     time.Time
+}
+
+// Build reads the series and assembles the whole report.
+//
+// One query per metric for the entire fleet: the report covers every requested entity
+// in two reads, not two per node. The presence grid is derived from the loss series'
+// own buckets rather than read separately — a node that reported no ping result also
+// reported no resource metrics, so a second series would cost a query and add no
+// information.
+func Build(ctx context.Context, req ReportRequest) (Report, error) {
+	if req.Now.IsZero() {
+		req.Now = time.Now().UTC()
+	}
+	report := Report{
+		Start:           req.Start.UTC(),
+		End:             req.End.UTC(),
+		Window:          req.WindowLabel,
+		IntervalSeconds: req.Interval.Seconds(),
+		Clamped:         req.Clamped,
+		Nodes:           []NodeReport{},
+	}
+	if req.Reader == nil {
+		return report, fmt.Errorf("no metric store")
+	}
+
+	buckets, err := ReadSeriesPerEntity(ctx, req.Reader, SeriesQuery{
+		MetricName:  MetricLoss,
+		Start:       req.Start,
+		End:         req.End,
+		Interval:    req.Interval,
+		Aggregation: metric.AggAvg,
+	}, req.EntityIDs, req.Now)
+	if err != nil {
+		return report, err
+	}
+	buckets = CompleteGrid(buckets, req.Start, req.End, req.Interval)
+
+	// Group by entity, then by task, so one node's five targets stay five reports.
+	byEntity := make(map[string]map[string][]Sample)
+	entityOrder := make([]string, 0, len(req.EntityIDs))
+	seen := make(map[string]bool, len(req.EntityIDs))
+	for _, entityID := range req.EntityIDs {
+		if !seen[entityID] {
+			seen[entityID] = true
+			entityOrder = append(entityOrder, entityID)
+		}
+	}
+	for _, bucket := range buckets {
+		tasks := byEntity[bucket.EntityID]
+		if tasks == nil {
+			tasks = make(map[string][]Sample)
+			byEntity[bucket.EntityID] = tasks
+			if !seen[bucket.EntityID] {
+				seen[bucket.EntityID] = true
+				entityOrder = append(entityOrder, bucket.EntityID)
+			}
+		}
+		tasks[taskIDOf(bucket.Tags)] = append(tasks[taskIDOf(bucket.Tags)], bucket.Samples...)
+	}
+
+	window := req.End.Sub(req.Start)
+	for _, entityID := range entityOrder {
+		tasks := byEntity[entityID]
+		// The node's presence grid is the union of its series' buckets: a node with two
+		// tasks reported in a bucket if *either* task has a result there. Built here
+		// rather than read as a third series — the same query already says when the node
+		// was heard from, and a separate resource-metric query would cost a read for no
+		// more information.
+		presence := unionPresence(tasks, req.Start, req.End, req.Interval)
+		report.Nodes = append(report.Nodes, BuildNodeReport(entityID, presence, tasks, window))
+	}
+	return report, nil
+}
+
+// unionPresence merges every task's samples into one grid for the node.
+//
+// A bucket is "reported" when at least one series carried a measurement there, and a
+// total loss (count present, loss 1) still counts: the node was up, the target was
+// not, and conflating the two is the misreading this whole report is built to avoid.
+// The value carried is the worst loss seen in that bucket across tasks, which is what
+// reportingGaps reads for incident grouping — but the grid is what presence uses.
+func unionPresence(tasks map[string][]Sample, start, end time.Time, interval time.Duration) []Sample {
+	type slot struct {
+		count int
+		worst float64
+	}
+	slots := make(map[int64]*slot)
+	var latest time.Time
+	for _, samples := range tasks {
+		for _, sample := range samples {
+			key := sample.Bucket.Unix()
+			entry := slots[key]
+			if entry == nil {
+				entry = &slot{}
+				slots[key] = entry
+			}
+			if sample.Count > 0 {
+				entry.count += sample.Count
+				if sample.Value > entry.worst {
+					entry.worst = sample.Value
+				}
+			}
+			if sample.Bucket.After(latest) {
+				latest = sample.Bucket
+			}
+		}
+	}
+	if len(slots) == 0 {
+		return nil
+	}
+
+	out := make([]Sample, 0, len(slots))
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	for at := start.UTC().Truncate(interval); !at.After(latest); at = at.Add(interval) {
+		entry, ok := slots[at.Unix()]
+		if !ok || entry.count == 0 {
+			out = append(out, Sample{Bucket: at, Value: 0, Count: 0})
+			continue
+		}
+		out = append(out, Sample{Bucket: at, Value: entry.worst, Count: entry.count})
+	}
+	return out
+}
+
+// taskIDOf reads the task id out of a series' tags.
+//
+// A series with no task_id tag is still reported, under an empty id, rather than
+// dropped: it is data that exists, and silently discarding it would make the report
+// disagree with the raw series for no stated reason.
+func taskIDOf(tags map[string]string) string {
+	if tags == nil {
+		return ""
+	}
+	return tags["task_id"]
+}
+
 // SeriesQuery describes one series to read and how to bucket it.
 type SeriesQuery struct {
 	MetricName string

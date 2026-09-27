@@ -1,0 +1,195 @@
+package jsonrpc
+
+import (
+	"context"
+	"time"
+
+	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/internal/sla"
+	"github.com/Aone2233/nekomari/pkg/rpc"
+)
+
+// public.sla.go
+// SLA report over the metrics the panel already stores. Guest-readable like the rest
+// of public:*, and subject to the same visibility rule: a hidden node stays hidden.
+
+func init() {
+	regPublic("getSlaReport", publicGetSlaReport, "Get availability, latency percentiles and outages for a window")
+}
+
+// slaWindowPresets are the windows a status page offers. Named rather than free-form so
+// the report's bucket width is a decision the server makes, not a number a caller picks
+// and the panel then has to explain.
+var slaWindowPresets = map[string]time.Duration{
+	"24h": 24 * time.Hour,
+	"7d":  7 * 24 * time.Hour,
+	"30d": 30 * 24 * time.Hour,
+	"90d": 90 * 24 * time.Hour,
+}
+
+// slaBucketTarget caps how many buckets a report is computed from.
+//
+// The store's finest tier is one minute, so a 90-day window at full resolution is
+// 129 600 buckets per series times the fleet — a report nobody asked for and a read
+// budget that would refuse it anyway. Bucketing to roughly this many keeps the
+// definitions honest (each incident is then accurate to the bucket, and the report
+// says which bucket) while keeping the query bounded. The value is deliberately the
+// same order as the dashboard's own point cap so the two agree on what "the last 30
+// days" looks like.
+const slaBucketTarget = 500
+
+type publicSlaReportParams struct {
+	UUID      string   `json:"uuid"`
+	EntityID  string   `json:"entity_id"`
+	EntityIDs []string `json:"entity_ids"`
+
+	// Window is one of slaWindowPresets. Defaults to 24h.
+	Window string `json:"window"`
+	Hours  float64 `json:"hours"`
+
+	Start *time.Time `json:"start"`
+	End   *time.Time `json:"end"`
+}
+
+type publicSlaReportResponse struct {
+	Start           time.Time          `json:"start"`
+	End             time.Time          `json:"end"`
+	Window          string             `json:"window"`
+	IntervalSeconds float64            `json:"interval_seconds"`
+	Clamped         string             `json:"clamped,omitempty"`
+	Nodes           []sla.NodeReport   `json:"nodes"`
+	Count           int                `json:"count"`
+	Presets         map[string]float64 `json:"window_presets"`
+}
+
+func publicGetSlaReport(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	var params publicSlaReportParams
+	if err := req.BindParams(&params); err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request body: "+err.Error(), nil)
+	}
+
+	store := metricstore.GetStore()
+	if store == nil {
+		return nil, rpc.MakeError(rpc.InternalError, "metric store not initialized", nil)
+	}
+
+	now := time.Now().UTC()
+	end := metricQueryTimeOrDefault(params.End, now)
+
+	window, label, clampReason, rpcErr := resolveSlaWindow(ctx, params, now, end)
+	if rpcErr != nil {
+		return nil, rpcErr
+	}
+	start := end.Add(-window)
+
+	// Only the requested entities, and only the visible ones. A hidden node is absent
+	// from the answer entirely rather than reported with zeroes, which would leak that
+	// it exists.
+	requested := normalizeStringList(params.EntityIDs, []string{firstNonEmpty(params.EntityID, params.UUID)})
+	entityIDs, rpcErr := publicMetricEntityIDs(ctx, requested)
+	if rpcErr != nil {
+		return nil, rpcErr
+	}
+
+	interval := slaBucketInterval(window)
+	if compatible := store.CompatibleSeriesInterval(start, now, interval); compatible > 0 {
+		interval = compatible
+	}
+
+	report, err := sla.Build(ctx, sla.ReportRequest{
+		Reader:      store,
+		EntityIDs:   entityIDs,
+		Start:       start,
+		End:         end,
+		Interval:    interval,
+		WindowLabel: label,
+		Clamped:     clampReason,
+		Now:         now,
+	})
+	if err != nil {
+		return nil, rpc.MakeError(rpc.InternalError, "Failed to build the SLA report: "+err.Error(), nil)
+	}
+
+	presets := make(map[string]float64, len(slaWindowPresets))
+	for name, duration := range slaWindowPresets {
+		presets[name] = duration.Hours()
+	}
+
+	return publicSlaReportResponse{
+		Start:           report.Start,
+		End:             report.End,
+		Window:          report.Window,
+		IntervalSeconds: report.IntervalSeconds,
+		Clamped:         report.Clamped,
+		Nodes:           report.Nodes,
+		Count:           len(report.Nodes),
+		Presets:         presets,
+	}, nil
+}
+
+// resolveSlaWindow turns the request into a window, a label and a clamp reason.
+//
+// The clamp is what makes the report honest about its own scope: asking for 90 days when
+// the store keeps 30 answers a 30-day question, and says so, because the coverage figure
+// depends on the window being the window asked for.
+func resolveSlaWindow(ctx context.Context, params publicSlaReportParams, now, end time.Time) (time.Duration, string, string, *rpc.JsonRpcError) {
+	retention := metricRetentionWindow(ctx)
+	clamp := func(window time.Duration) (time.Duration, string) {
+		if retention <= 0 || window <= retention {
+			return window, ""
+		}
+		return retention, "requested " + window.Round(time.Hour).String() +
+			" but only " + retention.Round(time.Hour).String() + " is retained"
+	}
+
+	if params.Start != nil && params.End != nil {
+		window := end.Sub(*params.Start)
+		if window <= 0 {
+			return 0, "", "", rpc.MakeError(rpc.InvalidParams, "end must be after start", nil)
+		}
+		clamped, reason := clamp(window)
+		return clamped, "custom", reason, nil
+	}
+
+	if params.Window == "" && params.Hours > 0 {
+		clamped, reason := clamp(metricQueryHours(params.Hours))
+		return clamped, "custom", reason, nil
+	}
+
+	label := params.Window
+	if label == "" {
+		label = "24h"
+	}
+	window, ok := slaWindowPresets[label]
+	if !ok {
+		return 0, "", "", rpc.MakeError(rpc.InvalidParams, "unknown window "+label, nil)
+	}
+	clamped, reason := clamp(window)
+	return clamped, label, reason, nil
+}
+
+// slaBucketInterval picks a bucket width near slaBucketTarget for the window.
+//
+// Rounded to a whole number of minutes so buckets land on wall-clock boundaries and two
+// reports of the same window agree with each other.
+func slaBucketInterval(window time.Duration) time.Duration {
+	if window <= 0 {
+		return time.Minute
+	}
+	interval := window / slaBucketTarget
+	if interval < time.Minute {
+		return time.Minute
+	}
+	return interval.Truncate(time.Minute)
+}
+
+// metricRetentionWindow is the longest window the metric store can answer, from the
+// definitions that are actually configured rather than a constant: an instance that kept
+// its history for a year would otherwise be told its own data was gone.
+func metricRetentionWindow(ctx context.Context) time.Duration {
+	summary, err := metricstore.GetRetentionSummary(ctx)
+	if err != nil || summary.MaxDays <= 0 {
+		return 0
+	}
+	return time.Duration(summary.MaxDays) * 24 * time.Hour
+}
