@@ -44,6 +44,28 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v0.1.38] — 2026-09-26
+
+**Panel only.** H4: the panel's configuration as one file, and one file applied back.
+
+- **New: configuration export and import** at `/standalone/config/config.html`. Export nodes, ping
+  tasks, maintenance windows, settings and notification policies as one JSON document; paste a
+  document and see exactly what applying it would do, per record, before anything is written.
+
+  **Credentials are excluded by default.** A document that carried every column would eventually
+  carry a token, and a config file is a new place for a sixth credential incident — so the exported
+  fields are written out by hand and a new column is invisible until someone names it. An explicit
+  "include credentials" export says so in the document and in the audit trail.
+
+  **Import is locked until a check has been shown for the document in the box**, and editing the
+  document withdraws the check: a plan for a different document is worse than no plan, because it
+  looks like one. The report names each record and, for an update, which fields would change.
+
+  **An import never deletes.** A record the panel has and the document does not mention is reported
+  and left alone; absence in a snapshot is not intent, and a node added since the export would
+  otherwise vanish on re-import. A document from a newer schema is refused rather than partly
+  applied.
+
 ## [v0.1.37] — 2026-09-26
 
 **Panel only.** H3: maintenance windows, so a planned reboot does not page anyone.
