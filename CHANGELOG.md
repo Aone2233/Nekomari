@@ -44,6 +44,13 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v0.1.40] — 2026-09-27
+
+- **Fixed: a broken image and a console 404 on the theme page.** The embedded theme's `preview` field named a
+  file from the theme's own build, which resolves under the theme's path rather than where that file actually
+  lives, so the panel's theme page asked for a URL that does not exist. The theme's `preview.png` is now in the
+  archive and named.
+
 ## [v0.1.39] — 2026-09-26
 
 **Panel only.** H5: traffic forecasting, and the default theme is now LuminaPlus.
