@@ -60,18 +60,18 @@ function check(condition, message) {
 /**
  * listArchive lists the archive's entries.
  *
- * Through `zstd` and then `tarfile`, rather than through `tarfile`'s own zstd support: that support
- * landed in Python 3.14 and CI runs 3.13, so the direct form works on a developer's machine and fails on
- * the runner with "unknown compression type 'zst'". A check that passes where it is written and fails
- * where it matters is worse than no check. `zstd` is on the runners and in Git for Windows.
+ * Two routes, because the reader has to work in three places with different Python versions:
+ *
+ *   1. `tarfile` reading the archive directly -- Python 3.14 and later, and a developer's machine may
+ *      have no `zstd` CLI at all.
+ *   2. `zstd -dc` piped into `tarfile` -- present on the CI runners (`zstd` is there, Python is 3.13
+ *      which has no zstd support of its own) and in Git for Windows.
+ *
+ * Neither alone works everywhere, and choosing only the first is the mistake that was made here: it
+ * works where it is written and fails on the runner with "unknown compression type 'zst'". A check that
+ * passes where it is written and fails where it matters is worse than no check.
  */
 function listArchive() {
-  const listPython = [
-    "import sys, tarfile",
-    "t = tarfile.open(fileobj=sys.stdin.buffer, mode='r|')",
-    "print('\\n'.join(m.name for m in t))",
-  ].join("\n");
-
   const failures = [];
 
   // Two routes, because the reader has to work in three places with different Python versions:
