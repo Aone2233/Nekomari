@@ -1713,5 +1713,32 @@
     "kind_unchanged": "无变化",
     "kind_remove": "不在文档中",
     "removalsNotDeleted": "有 {{count}} 条记录在面板里但不在文档中；它们被保留了。"
+  },
+
+  "forecast": {
+    "title": "流量预测",
+    "subtitle": "本周期各节点的流量走向，以及何时会触顶。每个预测都会附上它依据的数据。",
+    "cycleWindow": "本周期",
+    "cycleDay": "账期日",
+    "timezone": "计算时区",
+    "threshold": "{{percent}}% 时告警",
+    "preview": "预览",
+    "saveDay": "保存账期日",
+    "error": "无法应用",
+    "exceeding": "{{count}} 个预计超限",
+    "projected": "{{count}} 个已预测",
+    "refused": "{{count}} 个数据不足",
+    "loading": "正在计算预测…",
+    "node": "节点",
+    "used": "已用",
+    "projectedEnd": "预计周期末",
+    "limit": "限量",
+    "crosses": "触顶剩余",
+    "basis": "依据",
+    "noLimit": "未设限量",
+    "insufficient": "数据不足",
+    "inDays": "{{days}} 天",
+    "notThisCycle": "本周期不会",
+    "basisDetail": "{{samples}} 个样本，覆盖周期 {{coverage}}%，±{{uncertainty}}%"
   }
 }

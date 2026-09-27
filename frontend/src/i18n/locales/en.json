@@ -1708,5 +1708,32 @@
     "kind_unchanged": "unchanged",
     "kind_remove": "not in the document",
     "removalsNotDeleted": "{{count}} record(s) are in the panel and not in the document; they were left alone."
+  },
+
+  "forecast": {
+    "title": "Traffic forecast",
+    "subtitle": "Where each node's traffic is heading this cycle, and when it would reach its limit. A projection is shown with the data behind it.",
+    "cycleWindow": "This cycle",
+    "cycleDay": "Cycle day",
+    "timezone": "Computed in",
+    "threshold": "warns at {{percent}}%",
+    "preview": "Preview",
+    "saveDay": "Save day",
+    "error": "Could not apply",
+    "exceeding": "{{count}} projected over the limit",
+    "projected": "{{count}} projected",
+    "refused": "{{count}} with too little data",
+    "loading": "Loading projections…",
+    "node": "Node",
+    "used": "Used",
+    "projectedEnd": "Projected end",
+    "limit": "Limit",
+    "crosses": "Limit reached in",
+    "basis": "Basis",
+    "noLimit": "no limit",
+    "insufficient": "not enough data",
+    "inDays": "{{days}} days",
+    "notThisCycle": "not this cycle",
+    "basisDetail": "{{samples}} samples, {{coverage}}% of cycle, ±{{uncertainty}}%"
   }
 }

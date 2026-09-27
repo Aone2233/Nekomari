@@ -163,6 +163,9 @@ func forecastEnabledFor(uuid string) bool {
 // The same setting as the used-percentage warning, so the panel has one answer to "when should I hear
 // about traffic". A value outside (0, 1] is ignored rather than clamped, because a threshold of 0 would
 // warn about every node every cycle and a threshold above 1 would warn about none.
+func ForecastThreshold() float64 { return configuredForecastThreshold() }
+
+// configuredForecastThreshold reads the warning fraction from the shared traffic setting.
 func configuredForecastThreshold() float64 {
 	percentage, err := config.GetAs[float64](config.TrafficLimitPercentageKey, 80.0)
 	if err != nil || percentage <= 0 || percentage > 100 {
@@ -175,6 +178,13 @@ func configuredForecastThreshold() float64 {
 //
 // Returns the cycle start alongside the projection so the caller can use it as the once-per-cycle key
 // without recomputing it, which would be a second place to get the boundary wrong.
+func ProjectClient(now time.Time, client models.Client, day int) (forecast.Forecast, error) {
+	projection, _, err := projectClient(now, client, day)
+	return projection, err
+}
+
+// projectClient is the internal form: it also returns the cycle start the caller needs as its
+// once-per-cycle key.
 func projectClient(now time.Time, client models.Client, day int) (forecast.Forecast, time.Time, error) {
 	window, err := cycle.Bounds(day, time.Local, now)
 	if err != nil {

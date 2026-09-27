@@ -128,12 +128,6 @@ func sweepDeferredAlerts(now time.Time) {
 	}
 }
 
-// maintenanceShouldSendLater is a seam for the staleness rule, so this file does not have to
-// reach into internal/maintenance in a test.
-var maintenanceShouldSendLater = func(now, deliverAt time.Time) bool {
-	return ShouldSendLater(now, deliverAt)
-}
-
 func sendDeferredOfflineAlert(clientID string, now time.Time) error {
 	client, err := clients.GetClientByUUID(clientID)
 	if err != nil {
@@ -170,6 +164,12 @@ func currentConnectionID(clientID string) int64 {
 	return state.connectionID
 }
 
+// maintenanceShouldSendLater is a seam for the staleness rule, so this file does not reach into
+// internal/maintenance directly and a test can drive the sweeper with a controlled clock instead of
+// waiting for a tick. Replaced by the tests, restored on cleanup.
+var maintenanceShouldSendLater = func(now, deliverAt time.Time) bool {
+	return ShouldSendLater(now, deliverAt)
+}
 // maintenanceFor is a seam for the window decision, so the sweeper's rule is testable without a
 // database.
 var maintenanceFor = For

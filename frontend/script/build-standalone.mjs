@@ -32,6 +32,7 @@ const PAGES = [
   { page: "bulk", entry: "bulk.html", config: "vite.standalone.bulk.config.ts" },
   { page: "maintenance", entry: "maintenance.html", config: "vite.standalone.maintenance.config.ts" },
   { page: "config", entry: "config.html", config: "vite.standalone.config.config.ts" },
+  { page: "forecast", entry: "forecast.html", config: "vite.standalone.forecast.config.ts" },
 ];
 
 async function buildOne(build, { page, entry, config }) {
