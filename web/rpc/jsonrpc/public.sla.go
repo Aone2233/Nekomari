@@ -168,19 +168,42 @@ func resolveSlaWindow(ctx context.Context, params publicSlaReportParams, now, en
 	return clamped, label, reason, nil
 }
 
-// slaBucketInterval picks a bucket width near slaBucketTarget for the window.
+// slaBucketInterval picks the finest bucket width that keeps a window within
+// slaBucketTarget.
 //
-// Rounded to a whole number of minutes so buckets land on wall-clock boundaries and two
-// reports of the same window agree with each other.
+// The widths are the store's own tiers rather than an arbitrary division of the window.
+// Two reasons, and the second is the one that matters:
+//
+//   - a report bucketed on a tier boundary asks the store for data it actually keeps,
+//     instead of making it aggregate across tiers;
+//   - a 24-hour window divided by the target lands on two minutes, which is 720 buckets
+//     — over the target the constant exists to enforce. The first version of this
+//     truncated to a round minute and produced exactly that, and the test that asserts
+//     every preset stays within the target is what caught it.
+//
+// The smallest tier is one minute, so a short window is reported at the store's finest
+// resolution rather than at a width nobody stores.
 func slaBucketInterval(window time.Duration) time.Duration {
 	if window <= 0 {
 		return time.Minute
 	}
-	interval := window / slaBucketTarget
-	if interval < time.Minute {
-		return time.Minute
+	for _, tier := range slaBucketTiers {
+		if window/tier <= slaBucketTarget {
+			return tier
+		}
 	}
-	return interval.Truncate(time.Minute)
+	return slaBucketTiers[len(slaBucketTiers)-1]
+}
+
+// slaBucketTiers are the bucket widths a report may ask for, ascending. They mirror the
+// resolutions the metric store maintains.
+var slaBucketTiers = []time.Duration{
+	time.Minute,
+	5 * time.Minute,
+	15 * time.Minute,
+	time.Hour,
+	6 * time.Hour,
+	24 * time.Hour,
 }
 
 // metricRetentionWindow is the longest window the metric store can answer, from the
