@@ -72,3 +72,9 @@ node_modules/
 
 # The standalone SLA report's own build output (folded into dist/standalone/).
 /frontend/dist-standalone/
+
+# A checkout of the LuminaPlus theme, kept beside the panel for the same reason .runtest is: it is
+# a separate repository with its own history, and a nested working tree inside this one turns the
+# panel's git status into a list of someone else's files -- with a real risk of committing the
+# whole theme into the panel by accident.
+/theme-luminaplus/
