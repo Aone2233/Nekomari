@@ -328,6 +328,18 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 			return embeddedAsset(embedPath, content), true
 		}
 
+		// 3. 归档根部的文件，即主题根而不在 dist/ 下的那些（roadmap H7）。
+		//
+		// `dist.tar.zst` 里 dist/ 的内容在归档根上，所以 `defaultDistFiles` 的键不带前缀；而主题根的文件
+		// （preview.png、komari-theme.json）在归档里同样是根级名字，却落不到上面那个分支 —— 它要求
+		// DistDir 前缀。结果是 `/themes/<short>/preview.png` 一律 404，而主题清单自己声明的 preview 正是
+		// 这个形式，于是面板的主题页永远是一张破图。
+		//
+		// 放在最后而不是最前：先查 dist 分支保持既有解析顺序不变，只有它没命中时才考虑根级文件。
+		if content, ok := defaultDistFiles[embedPath]; ok {
+			return embeddedAsset(embedPath, content), true
+		}
+
 		return assetSource{}, false
 	}
 

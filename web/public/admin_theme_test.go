@@ -1,6 +1,7 @@
 package public
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -171,6 +172,40 @@ func TestTheAdminArchiveCarriesItsManifest(t *testing.T) {
 	manifest, ok := files["admin/.vite/manifest.json"]
 	if ok && !strings.Contains(string(manifest), "admin.html") {
 		t.Error("the archive's admin manifest does not describe admin.html, so it is not the admin's build output")
+	}
+}
+
+// The embedded theme's preview has to be reachable at the path its own manifest names.
+//
+// This is the failure that took two releases to clear: the manifest said `preview.png`, the archive carried it,
+// and `/themes/default/preview.png` still answered 404 — because `openAsset`'s embedded branch only looked for
+// names under `dist/`, so a file at the archive root was invisible to the very route that serves it. The
+// visible symptom was a broken image on the theme page and one 404 in the console, on a page that otherwise
+// rendered.
+func TestTheEmbeddedThemesPreviewIsReachable(t *testing.T) {
+	router := newRouter(t)
+
+	raw, err := PublicFS.ReadFile("defaultTheme/komari-theme.json")
+	if err != nil {
+		t.Fatalf("read the embedded manifest: %v", err)
+	}
+	var manifest struct {
+		Preview string `json:"preview"`
+	}
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatalf("parse the embedded manifest: %v", err)
+	}
+	if manifest.Preview == "" {
+		t.Fatal("the embedded manifest names no preview")
+	}
+
+	recorder := get(t, router, "/themes/default/"+manifest.Preview)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /themes/default/%s = %d, want 200: the theme page's preview image would be broken",
+			manifest.Preview, recorder.Code)
+	}
+	if bytes := recorder.Body.Len(); bytes < 1024 {
+		t.Errorf("the preview is %d bytes, too small to be an image", bytes)
 	}
 }
 
