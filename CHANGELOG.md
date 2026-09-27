@@ -44,6 +44,30 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v0.1.37] — 2026-09-26
+
+**Panel only.** H3: maintenance windows, so a planned reboot does not page anyone.
+
+- **New: maintenance windows** at `/standalone/maintenance/maintenance.html`. Create a window with
+  a name, a start and an end, optionally scoped to specific nodes (or every node), and while it is
+  open those nodes' alerts are suppressed. The page marks an open window per row and distinguishes
+  a fleet-wide window from a scoped one, because "every node" and "these three" are different claims
+  and the fleet-wide one is easy to create by accident.
+
+  **Suppression is scoped to notification, never to collection.** The metrics keep recording through
+  a window, because the point of the window is that the node is doing something real — a gap in the
+  charts afterwards would be a lie about what happened.
+
+- **A suppressed alert is deferred, not dropped.** A node that goes offline inside a window and is
+  still offline when it closes is reported then: the maintenance did not fix it, and silence there
+  would be this feature's worst failure. A node that came back is not reported, because a late alert
+  about an outage that has ended is a false alarm. The sweeper requires all three of: the window
+  closed, the deferral not stale (30 minutes), and the node still offline under the same connection.
+
+  Boundaries are stated and tested: half-open windows, so two back-to-back windows neither overlap
+  nor leave a gap; the soonest-ending matching window is reported, so "when do alerts come back"
+  does not depend on storage order; an empty client list means every node rather than none.
+
 ## [v0.1.36] — 2026-09-26
 
 **Panel only.** H2: one change applied to many nodes, with a per-node outcome.
