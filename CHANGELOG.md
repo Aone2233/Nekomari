@@ -44,6 +44,30 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v0.1.36] — 2026-09-26
+
+**Panel only.** H2: one change applied to many nodes, with a per-node outcome.
+
+- **New: bulk edit** at `/standalone/bulk/bulk.html`. Multi-select the node table, switch on
+  the fields you want to change — group, tags, weight, hidden, price, billing cycle, currency,
+  traffic limit, limit type — and apply. **Only the fields you switch on are sent**, because
+  sending every field would overwrite each node's unmentioned fields with the form's defaults:
+  the first bulk edit anyone tried would have set a whole fleet's group to the empty string.
+
+  A partial failure is reported **per node, with the applier's own reason**, rather than as a
+  count. The edit is deliberately not transactional: all-or-nothing rollback means one bad node
+  costs the operator the fifteen that would have worked, and hides which node is the problem.
+  Every uuid gets an outcome; the successes stay applied.
+
+  The selection is a list of uuids rather than row indices, so the list polling every few
+  seconds cannot silently move it onto different nodes, and a node that has disappeared drops
+  out instead of being applied to.
+
+  `admin:bulkEditClients` runs each update through the **same** `clients.SaveClient` that a
+  single-node edit uses, which a test proves by establishing that a value the single-node path
+  refuses is refused in bulk too. An empty update is refused outright rather than reported as
+  N failures, since it would stamp `updated_at` across the fleet while changing nothing.
+
 ## [v0.1.35] — 2026-09-26
 
 **Panel only.**
