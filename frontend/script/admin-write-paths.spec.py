@@ -48,6 +48,11 @@ HOST = urlparse(BASE).netloc
 NODE_EDIT_ERROR = "E2E forced node edit failure"
 OFFLINE_SAVE_ERROR = "E2E forced offline save failure"
 
+# The theme's own server-list page, which is where its node-edit control lives. It is the theme's route
+# because the admin interface is a theme's page: the panel serves `/api/admin/*`, and the paths annotated
+# in the comments below (`pages/admin/index.tsx`) are the theme's files.
+ADMIN_SERVERS_ROUTE = "/admin/servers"
+
 NODE_EDIT_ROUTE = "**/api/admin/client/*/edit"
 OFFLINE_SAVE_ROUTE = "**/api/admin/notification/offline/edit"
 
@@ -140,28 +145,58 @@ class AdminWritePathTest(unittest.TestCase):
     # --- reaching the real admin UI ---
 
     def login(self):
-        """The login walk script/panel-smoke.spec.py uses, against the real dialog."""
+        """Establish a session through the API, then land on the theme's server list.
+
+        Not through the login dialog, and not by asserting the URL contains `/admin`. Both were
+        assumptions about the *panel's own* theme, and this suite failed with "no login button found on
+        the landing page" once LuminaPlus became the embedded default: it renders an icon-only link
+        instead of a button, and its `/admin` is a service-worker recovery route rather than the panel's
+        admin UI.
+
+        The panel's admin interface is a **theme's** page — what the panel serves is `/api/admin/*` — so
+        a test that wants to exercise admin writes has to reach whichever page the theme puts them on.
+        LuminaPlus's is `/admin/servers`, which it serves from its own `pages/admin/index.tsx`; that file's
+        paths are what the locators below were always annotated with, so the two agree.
+        """
         page = self.page
-        page.goto(BASE, wait_until="networkidle", timeout=30000)
-        page.wait_for_timeout(1200)
-        trigger = page.get_by_role("button", name="登录")
-        if trigger.count() == 0:
-            trigger = page.get_by_role("button", name="Login")
-        self.assertGreater(trigger.count(), 0, "no login button found on the landing page")
-        trigger.first.click()
-        page.wait_for_selector('[role="dialog"]', timeout=15000)
-        dialog = page.locator('[role="dialog"]')
-        dialog.locator("input").nth(0).fill(USER)
-        dialog.locator('input[type="password"]').fill(PASSWORD)
-        dialog.get_by_role("button", name="登录").or_(dialog.get_by_role("button", name="Login")).first.click()
-        page.wait_for_timeout(2500)
-        self.assertIn("/admin", page.url, f"login did not reach an admin route (landed on {page.url})")
-        # The landing page's own in-flight requests are cancelled by the SPA's
-        # post-login navigation, the same blind spot panel-smoke has by clearing
-        # per route. The discipline below starts at the admin UI.
+        page.goto(BASE, wait_until="domcontentloaded", timeout=30000)
+        page.wait_for_timeout(800)
+        result = page.evaluate(
+            """async ([user, password]) => {
+                 const response = await fetch("/api/login", {
+                   method: "POST",
+                   headers: { "Content-Type": "application/json" },
+                   body: JSON.stringify({ username: user, password: password }),
+                   credentials: "same-origin",
+                 });
+                 return { status: response.status };
+               }""",
+            [USER, PASSWORD],
+        )
+        self.assertEqual(result["status"], 200, f"could not sign in through the API: {result}")
+
+        # The panel's own answer to "am I signed in", which is the question the SPA asks. `/api/me`
+        # answers flat rather than in the {"status","data"} envelope.
+        me = page.evaluate(
+            """async () => {
+                 const response = await fetch("/api/me", { credentials: "same-origin" });
+                 if (!response.ok) return { ok: false, status: response.status };
+                 const payload = await response.json().catch(() => null);
+                 return { ok: true, logged_in: payload?.logged_in ?? null };
+               }"""
+        )
+        self.assertTrue(me.get("ok") and me.get("logged_in") is True,
+                        f"the session did not take; /api/me answered {me}")
+
+        # The landing page's own in-flight requests are cancelled by the SPA's post-login navigation, the
+        # same blind spot panel-smoke has by clearing per route. The discipline below starts at the admin
+        # UI.
         self.console_errors.clear()
         self.failed_requests.clear()
         self.bad_responses.clear()
+
+        page.goto(BASE + ADMIN_SERVERS_ROUTE, wait_until="networkidle", timeout=30000)
+        page.wait_for_timeout(1500)
         self.dismiss_eula()
 
     def dismiss_eula(self):
