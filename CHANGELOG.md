@@ -44,6 +44,26 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v0.1.32] — 2026-09-26
+
+**Panel only**, a fix for v0.1.31. Found by calling the deployed panel, which is the
+slowest way to find it.
+
+- **Fixed: the SLA report marshalled its nested fields as PascalCase.** `Presence`,
+  `Availability` and `Incident` were declared without `json` tags, so the API answered
+  `{"ExpectedBuckets":288,"Coverage":0.97}` while the page read `expected_buckets` and
+  `coverage`. Every nested figure — coverage, availability fraction, bucket counts,
+  incident times — arrived as an absent key, so v0.1.31's status page rendered with its
+  numbers missing.
+
+  **The tests were blind to it and so was the fixture.** The Go tests exercise values, not
+  encoding; the browser fixture supplies hand-written JSON that already matched the
+  TypeScript types. The page and the API could disagree while both suites passed.
+  `internal/sla/wire_test.go` closes that gap: it marshals a fully populated report,
+  walks the result generically, and asserts that every key the frontend reads is present
+  and that none is PascalCase — the signature of an untagged field, so a field added later
+  fails the same test.
+
 ## [v0.1.31] — 2026-09-26
 
 **A panel-only release.** The agents are untouched —
