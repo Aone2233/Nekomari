@@ -26,6 +26,25 @@ MAC-WAN   elsewhere  # only reachable from the workstation, not from the panel h
 
 PZYC      elsewhere  # reachable from the workstation via WSL; NAT node, vendor-default password, do not rotate
 
-NOSLA     legacy   # only /opt/komari/agent exists; the real service was never installed here
+NOSLA     systemd  # migrated from the legacy service on 2026-09-28; token carried over, legacy disabled
 JPKD2     openrc   # Alpine: OpenRC init script, `supervise-daemon`, binary without an arch suffix
 SDE9929   systemd  # "ShunDun DE 9929" in the panel; reported v0.1.32, so it had drifted from the rest
+
+# Verified 2026-09-28, all ten nodes at v0.1.46.
+#
+# ## The bootstrap threshold
+#
+# A panel-requested update needs an agent that already understands the request. The fix that made this work
+# first shipped in **v0.1.45**; before it, `findReleaseByTag` asked for a `checksums.txt` asset that no
+# release has ever contained, so every targeted update failed with "invalid release asset URL" and every
+# node below v0.1.45 has to be brought up by direct binary replacement (`upgrade-agent.sh`).
+#
+# This is not a limitation to design around so much as a fact to know: the first rollout of any new agent
+# capability is always manual, and a node that reports an old version cannot be moved by the panel.
+#
+# ## Nodes the panel cannot move
+#
+# `MAC-WAN` and `PZYC` are only reachable from the workstation. `PZYC` additionally cannot fetch release
+# assets from GitHub at all — `objects.githubusercontent.com` resets the TLS connection while `github.com`
+# answers — so its updates are always: download elsewhere, verify the SHA256, transfer, install, restart.
+# It is the one node that did not move when the panel rolled the fleet to v0.1.46.

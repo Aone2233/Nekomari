@@ -32,7 +32,7 @@
 # ## Safety
 #
 #   - the current binary is copied aside with a timestamp before anything is replaced
-#   - the download is verified against the release's checksums.txt when the asset is listed there
+#   - the download is verified against the release's SHA256SUMS.txt when the asset is listed there
 #   - the new binary is executed once with `--help` *before* it replaces anything, so an incompatible
 #     build (wrong architecture, wrong libc) is caught while the old binary is still in place
 #   - the service is restarted only after that check passes, and its state is reported afterwards
@@ -164,16 +164,16 @@ cd "$TMP"
 log "downloading $ASSET"
 curl -fsSL -o "$ASSET" "$BASE/$ASSET" || die "download failed for $BASE/$ASSET"
 
-if curl -fsSL -o checksums.txt "$BASE/checksums.txt" 2>/dev/null && [ -s checksums.txt ]; then
-  if grep -q "$ASSET" checksums.txt; then
-    grep "$ASSET" checksums.txt > want.txt
+if curl -fsSL -o SHA256SUMS.txt "$BASE/SHA256SUMS.txt" 2>/dev/null && [ -s SHA256SUMS.txt ]; then
+  if grep -q "$ASSET" SHA256SUMS.txt; then
+    grep "$ASSET" SHA256SUMS.txt > want.txt
     sha256sum -c want.txt >/dev/null 2>&1 || die "checksum mismatch for $ASSET"
     log "checksum ok"
   else
-    log "note: $ASSET is not listed in checksums.txt, so only the transport was verified"
+    log "note: $ASSET is not listed in SHA256SUMS.txt, so only the transport was verified"
   fi
 else
-  log "note: the release has no checksums.txt"
+  log "note: the release has no SHA256SUMS.txt, so only the transport was verified"
 fi
 
 chmod +x "$ASSET"
