@@ -132,6 +132,11 @@ jobs:
         run: bash deploy/install-node-agent.test.sh
       - name: Test the panel health probe
         run: bash deploy/panel-probe.test.sh
+      - name: Test that the agent upgrade scripts preserve file capabilities
+        # A binary replacement drops them (`cp`/`install` copy content and mode, never xattrs), and a node whose
+        # agent runs as a non-root user unit needs `cap_net_raw` to probe ICMP at all — otherwise the panel
+        # shows packet loss that belongs to the tooling rather than the target. This has already happened once.
+        run: sh deploy/fleet/upgrade-agent.capability.test.sh
 
   build-and-test:
     name: build & test (${{ matrix.os }})

@@ -189,9 +189,42 @@ log "the new binary executes"
 
 TS=$(date +%Y%m%d-%H%M%S)
 cp -a "$BIN" "$BIN.pre-$TARGET-$TS" || die "could not back up $BIN"
+
+# The file capabilities of the binary being replaced, read before it is gone.
+#
+# **A binary replacement discards them**, and that is not obvious: `cp` and `install` copy content and mode,
+# never extended attributes, and the capability has to be re-applied by a privileged process afterwards.
+#
+# This silently disabled ICMP probes on one node. That node runs the agent as a *user* unit — deliberately, as
+# `deploy/hosts/macwan.service` explains, because the host has no passwordless sudo — so the agent is not root
+# and needs `cap_net_raw` on its binary to open a raw socket. The capability was granted once, by hand, as root.
+# Replacing the binary therefore dropped it, and the agent began reporting "neither a raw socket nor an
+# unprivileged ping socket opens" together with a panel warning that ICMP loss on that node was a limitation
+# of the tooling rather than the target's behaviour. Every other node runs its agent as root, where no file
+# capability is needed, so nothing else was affected — which is exactly why it went unnoticed for a day.
+#
+# Read via getcap rather than assumed, so a node that never had capabilities is untouched, and an upgrade on
+# such a node cannot start requiring them.
+BIN_CAPS=""
+if command -v getcap >/dev/null 2>&1; then
+  BIN_CAPS=$(getcap "$BIN" 2>/dev/null | sed 's/^[^ ]* *//' || true)
+fi
 log "backup: $BIN.pre-$TARGET-$TS"
 
 cp "$ASSET" "$BIN.new" && chmod 0755 "$BIN.new" && mv -f "$BIN.new" "$BIN" || die "could not replace $BIN"
+
+# Restored immediately, so the window in which the binary lacks them is as short as possible. A failure here is
+# reported with the exact command, because this script may be running as a user that cannot set capabilities —
+# the fleet runner invokes it through `sudo -n` on the far side, but a direct run as an unprivileged user
+# cannot, and silently leaving ICMP broken is the outcome worth avoiding.
+if [ -n "$BIN_CAPS" ]; then
+  if setcap "$BIN_CAPS" "$BIN" 2>/dev/null; then
+    log "capabilities restored: $BIN_CAPS"
+  else
+    log "WARNING: $BIN had capabilities ($BIN_CAPS) and they could not be restored."
+    log "WARNING: run this on the node as root:  setcap $BIN_CAPS $BIN"
+  fi
+fi
 log "replaced"
 
 # --- restart and report --------------------------------------------------------------------
@@ -219,6 +252,30 @@ log "service: $STATE"
 log "auth errors in the last minute: $ERRORS"
 if [ "${ERRORS:-0}" != "0" ]; then
   log "WARNING: the agent is reporting authentication errors; check its credentials before continuing"
+fi
+
+# ICMP capability is reported, not just preserved.
+#
+# Preserving it above only helps the next upgrade; this says whether the node can probe at all *now*. The
+# failure that motivated it was invisible from the panel except as a warning badge, and took a manual log
+# inspection to explain. Print the conclusion instead, from the same check the agent makes: a raw socket, then
+# an unprivileged ping socket.
+if [ -n "$BIN_CAPS" ] || [ "$(ps -o user= -p "$APID" 2>/dev/null | tr -d ' ')" != "root" ]; then
+  ICMP="no"
+  if command -v python3 >/dev/null 2>&1; then
+    if python3 -c "import socket,sys; socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP).close()" 2>/dev/null; then
+      ICMP="raw socket"
+    elif python3 -c "import socket,sys; socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_ICMP).close()" 2>/dev/null; then
+      ICMP="unprivileged ping socket"
+    fi
+  fi
+  if [ "$ICMP" = "no" ]; then
+    log "ICMP: UNAVAILABLE — the agent runs as $(ps -o user= -p "$APID" 2>/dev/null | tr -d ' ') and neither socket type opens."
+    log "       Give the binary the capability:  setcap cap_net_raw+ep $BIN"
+    log "       Or widen net.ipv4.ping_group_range to cover that user's group."
+  else
+    log "ICMP: available via $ICMP"
+  fi
 fi
 
 # --- legacy services, only when asked ------------------------------------------------------
