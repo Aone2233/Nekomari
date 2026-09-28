@@ -32,6 +32,15 @@ on the affected series the mean was dominated by the two bad points.
   being produced once the panel is updated, and the panel's `traffic.*` becomes the cycle cumulative as reported
   by an updated agent — at which point the old points age out of the rollups on their own.
 
+## The panel must be stopped first
+
+A running panel keeps the current rollup bucket in memory and flushes it, so rows deleted while it is running
+**come back**. Verified directly: 450 rows were deleted and confirmed gone by the deleting connection, then
+still present from a fresh one; running the tool twice reported the same per-series counts both times.
+
+So the order is: stop the panel, clean, start the panel. A deployment stops it anyway, which is the natural
+window.
+
 ## Safety
 
 - read-only unless `--apply`
@@ -109,7 +118,16 @@ def main() -> int:
         print(f"no metrics database at {args.db}", file=sys.stderr)
         return 1
 
-    connection = sqlite3.connect(f"file:{args.db}?mode={'rw' if args.apply else 'ro'}", uri=True)
+    # Opened by **path**, not with a `file:` URI.
+    #
+    # The first version used `sqlite3.connect(f"file:{path}?mode=rw", uri=True)`. That form does not raise when
+    # the path is not a well-formed `file://` URI — as an absolute POSIX path is not — and the deletion then
+    # ran against something other than the intended database while reporting success. The symptom was a
+    # "removed 464 rows" message followed by a verification query showing every row still present, which is
+    # exactly the class of silent failure this script is meant to remove data caused by.
+    #
+    # `mode=ro` is no longer needed: the read-only path only reads, and the write path needs to write.
+    connection = sqlite3.connect(args.db, timeout=30)
     try:
         found = list(scan(connection, args.ratio))
         if not found:
@@ -158,11 +176,24 @@ def main() -> int:
             print(f"\nreport only. re-run with --apply to remove {len(found)} rows.")
             return 0
 
+        # Deleted and then **verified in the same connection**, because the failure mode above was a delete
+        # that reported success without removing anything. A one-line check turns that into an error.
         with connection:
             connection.executemany(
                 "delete from metric_rollups where rowid=?", [(r[0],) for r in found]
             )
-        print(f"\nremoved {len(found)} rows.")
+
+        remaining = connection.execute(
+            "select count(*) from metric_rollups where rowid in (%s)"
+            % ",".join("?" * len(found)),
+            [r[0] for r in found],
+        ).fetchone()[0]
+        if remaining:
+            print(f"\n{remaining} of {len(found)} rows are still present after the delete; nothing was removed.",
+                  file=sys.stderr)
+            return 3
+
+        print(f"\nremoved {len(found)} rows, verified gone.")
         print("The panel reads these tables directly, so a restart is not required; long-lived in-process "
               "caches, if any, refresh on the next rollup.")
         return 0
