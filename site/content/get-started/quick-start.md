@@ -25,7 +25,7 @@ curl -fsSL https://your-panel/install.sh | sudo bash -s -- \
   -e https://your-panel -t <node-token>
 ```
 
-## 3. 确认它连上了
+## 3. 确认它连上了 { #confirm-online }
 
 节点列表里该条目应从"离线"变为在线，并在十几秒内出现 CPU、内存、磁盘数据。
 

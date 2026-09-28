@@ -49,7 +49,7 @@ komari-agent --auto-discovery <key> -e https://panel.example.com
 
 ### 面板下发（推荐）
 
-面板可以指定某个节点运行哪个版本，**包括更早的版本**（用于回滚）。细节见[运维能力](../features/operations.md#探针升级由面板下发)。
+面板可以指定某个节点运行哪个版本，**包括更早的版本**（用于回滚）。细节见[运维能力](../features/operations.md#agent-upgrade)。
 
 ### 自行跟踪最新发布
 
@@ -68,7 +68,7 @@ komari-agent --auto-discovery <key> -e https://panel.example.com
 
 | 功能 | 影响 |
 |---|---|
-| **ICMP 探测** | 需要 `cap_net_raw`，见[监控与告警](../features/monitoring.md#一个必须知道的限制icmp-需要权限) |
+| **ICMP 探测** | 需要 `cap_net_raw`，见[监控与告警](../features/monitoring.md#icmp-permission) |
 | **部分硬件信息** | 某些 GPU、磁盘 SMART、温度需要更高权限才能读到 |
 
 降权的收益是安全边界，代价是部分指标缺失。**缺失的指标会明确标注**，不会静默显示为零。

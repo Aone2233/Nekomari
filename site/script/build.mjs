@@ -57,16 +57,40 @@ const BRANCH = "main";
  * left alone, because rewriting those would break working links to fix nothing.
  */
 function rewriteExternalLinks(markdown, fromPath) {
-  return markdown.replace(/\]\((\.{1,2}\/[^)\s#]+)(#[^)\s]*)?\)/g, (whole, target, anchor = "") => {
-    // Where the target actually lives, resolved from the file's original position in the repository.
+  // Two shapes are rewritten.
+  //
+  // 1. Markdown links: `](../LICENSE)`.
+  // 2. Paths in backticks: `` `../LICENSE` `` — a convention this repository uses for "a file next to this
+  //    one", which renders as code rather than a link on GitHub and is therefore invisible to a naive search.
+  //    `docs/THIRD-PARTY-LICENSES.md` has one, and it reached the built site as an unrecognized relative link:
+  //    not a broken link to a reader, but a build warning under `--strict`, which is the mechanism working.
+  //
+  // The emitted form depends on the shape, so a backticked path stays readable as a path in the rendered page
+  // while resolving to the right file when clicked.
+  const toRepoUrl = (target, anchor) => {
     const absolute = resolve(repoRoot, dirname(fromPath), target);
     const repoRelative = relative(repoRoot, absolute).split("\\").join("/");
     if (repoRelative.startsWith("..")) {
       // Leaves the repository entirely — leave it as written rather than inventing a destination.
-      return whole;
+      return null;
     }
-    return `](${REPO}/blob/${BRANCH}/${repoRelative}${anchor})`;
+    return `${REPO}/blob/${BRANCH}/${repoRelative}${anchor}`;
+  };
+
+  let rewritten = markdown.replace(
+    /\]\((\.{1,2}\/[^)\s#]+)(#[^)\s]*)?\)/g,
+    (whole, target, anchor = "") => {
+      const url = toRepoUrl(target, anchor);
+      return url === null ? whole : `](${url})`;
+    },
+  );
+
+  rewritten = rewritten.replace(/`(\.{1,2}\/[^`\s]+)`/g, (whole, target) => {
+    const url = toRepoUrl(target, "");
+    return url === null ? whole : `[\`${target}\`](${url})`;
   });
+
+  return rewritten;
 }
 
 /** Copy the hand-written pages, so staging is generated from scratch every time.

@@ -21,7 +21,7 @@ curl -s http://127.0.0.1:25774/api/version
 `/api/version` 同时返回版本号与提交哈希，可以和 Release 对照确认拉到的确实是那一版。
 
 !!! danger "不要省略 `-v`"
-    见[安装](install.md#docker推荐)里那段说明：匿名卷会让升级看起来像"配置被重置了"。
+    见[安装](../get-started/install.md#docker)里那段说明：匿名卷会让升级看起来像"配置被重置了"。
 
 ## 探针
 

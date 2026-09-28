@@ -24,7 +24,7 @@ Nekomari 是 [Komari](https://github.com/komari-monitor/komari) 的分支。上�
 
 而 Go module 路径已全部改为 `github.com/Aone2233/nekomari`，没有残留指向上游的 import。
 
-## 版本号为什么从 `0.1.x` 改成了 `1.6.0`
+## 版本号为什么从 `0.1.x` 改成了 `1.6.0` { #version-numbering }
 
 这个改动值得单独说明，因为它是**功能性的**，不是记账。
 

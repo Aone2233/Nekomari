@@ -12,6 +12,10 @@ COPY site/ ./site/
 COPY docs/IP-INFO-API.md ./docs/IP-INFO-API.md
 COPY docs/THIRD-PARTY-LICENSES.md ./docs/THIRD-PARTY-LICENSES.md
 COPY README.md ./README.md
+# `docs/THIRD-PARTY-LICENSES.md` refers to `../LICENSE`. The staging step rewrites that path to a repository
+# URL, so this file is not served — it is here because the path is resolved against the filesystem to work out
+# where it points, and a missing target would silently leave the link unrewritten.
+COPY LICENSE ./LICENSE
 RUN node site/script/build.mjs stage && node site/script/build.mjs check
 
 FROM squidfunk/mkdocs-material:9 AS build
