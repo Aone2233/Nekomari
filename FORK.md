@@ -29,6 +29,59 @@ Upstream splits the project across several repositories. Nekomari combines them 
 
 > The internal Go protocol package (`/protocol/`) was part of the upstream server repository and is therefore covered by the `1.5.0-fix1` entry above.
 
+## Version numbering, and why the fork's version is a compatibility statement
+
+The plugin market gates every plugin on the server's version. Each entry carries a `komari` constraint
+(`>=1.4.0`, `>=1.6.0`, …), and **both** sides enforce it: the panel hides the install button
+(`isKomariCompatible` in the market UI) and the server refuses to load the plugin (`CheckKomariVersion` in
+`internal/plugin/version.go`).
+
+Both parsers accept **only numeric dotted versions** — the string is split on `.` and each part parsed as an
+integer. That has two consequences, and the second is silent:
+
+- a version like `1.5.0-fix1` does not parse. The panel reads that as an unsatisfiable constraint and marks
+  every plugin as needing a newer server.
+- on the server the same failure takes the **opposite** branch: an unparseable `utils.CurrentVersion` is
+  deliberately ignored ("a malformed server version must not block plugin loading"), so a suffixed version
+  *passes* the server check while the UI says it cannot. The two ends disagree, which is the worst of both.
+
+So the version the release workflow writes into the binary has to be plain `X.Y.Z`.
+
+### What the number means here
+
+Nekomari's releases were numbered `0.1.x` — a fresh sequence unrelated to the upstream lineage recorded at the
+top of this file. Upstream published up to `1.5.1`, and the ecosystem's constraints are written against that
+line, so a `0.1.x` server is judged older than *every* plugin requirement: 15 of the 19 plugins in the
+official market could not be installed, including all the notification plugins.
+
+From **`1.6.0`** the fork numbers releases **as a continuation of the upstream line**:
+
+| | |
+|---|---|
+| Upstream base | `1.5.0-fix1` |
+| Last upstream release | `1.5.1` |
+| Upstream's next entry | `1.6.0-pre1` (prerelease, never finalised) |
+| **Nekomari from here** | **`1.6.0`, `1.6.1`, …** |
+
+This is a choice about what the number is *for*. It is not a claim that an upstream `1.6.0` exists to compare
+against — it does not. It is the mechanism by which the inherited plugin ecosystem recognises this server as
+one it can run on, and it is honest in the direction that matters: this fork's feature set exceeds upstream
+`1.5.1` (SLA reporting, bulk operations, maintenance windows, configuration import/export, traffic
+forecasting, a bundleable admin interface, panel-triggered agent updates).
+
+**The residual risk, stated plainly:** a plugin whose manifest requires `>=1.6.0` may use an API that upstream
+added in `1.6.0-pre1` after this fork's base. Such a plugin satisfies the gate and fails when it loads. The
+gate is a version comparison, not a capability check, and it cannot become one without reading each plugin's
+source. If one is found, the fix is to raise that plugin's requirement in the market index — or to port the
+missing API — not to lower this version.
+
+### Why not simply keep `0.1.x`
+
+Because the number is what the ecosystem reads. Renumbering is the only way for a fork to inherit a plugin
+market that predates it, and the alternative — staying on a sequence the ecosystem will always read as
+ancient — means shipping a fork whose entire plugin market is unusable by construction.
+
+
 ### Why agent `1.5.0` and not `1.5.10`
 
 Upstream published `komari-agent` `1.5.10` *after* the last server release. The server's last release is `1.5.0-fix1`, so Nekomari pairs it with the contemporaneous agent `1.5.0` to keep the wire protocol generation consistent. If you want to use a newer agent, please verify protocol compatibility first.
