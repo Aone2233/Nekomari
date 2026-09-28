@@ -135,10 +135,27 @@ func serveAsset(c *gin.Context, source assetSource, name string, hashedAssets ma
 	// （实测 4 小时），于是每个 POP 每 4 小时都要回源重取一次这些永远不变的文件 ——
 	// 白白制造回源流量，而回源正是最容易出问题的那一段。
 	//
-	// 其余资源（index.html、sw.js、以及 public/ 下那些没有哈希的图标）保持原样：
-	// index.html 必须能立刻更新，sw.js 缓存久了会拖住整个应用的下一次部署。
+	// 其余资源显式声明为「每次协商」而不是留空。
+	//
+	// 留空曾经是这里的做法，注释里写的是「保持原样」—— 而「原样」就是源站不发 Cache-Control，
+	// 于是 Cloudflare 套用自己的 4 小时（实测就是这个值）。这与「index.html 必须能立刻更新」
+	// 的意图正好相反，并且造成过一次真实故障：主题的背景图是 public/ 下没有内容哈希的文件，
+	// 我替换主题时它们短暂缺失，那个 404 就被边缘缓存下来，之后即便文件已经就位，页面背景
+	// 在用户浏览器里仍然是空白，直到硬刷新。
+	//
+	// `no-cache` 的含义是「可以缓存，但每次必须回源校验」，配合上面那行 ETag 就能得到 304，
+	// 不重复传内容。关键是它把决定权留在源站，而不是让中间层替我们决定缓存多久。
 	if isHashedAsset(name, hashedAssets) {
 		header.Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		// 服务外壳与 Service Worker 不能走协商缓存：`no-cache` 仍允许中间层保留一份副本，
+		// 而这两者一旦被保留，下一次部署就拖住了整个应用。
+		switch name {
+		case "index.html", "sw.js":
+			header.Set("Cache-Control", "no-store")
+		default:
+			header.Set("Cache-Control", "no-cache")
+		}
 	}
 	http.ServeContent(c.Writer, c.Request, name, source.modTime, source.reader)
 }
