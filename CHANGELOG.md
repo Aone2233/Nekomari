@@ -44,6 +44,34 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v1.6.1] — 2026-09-28
+
+**Traffic accounting.** The probe reported two different quantities through one field and the panel
+differentiated it, which recorded a node's cycle cumulative as a single interval's traffic. On the node this was
+found on, the interface had carried **0.29 GB since boot** (measured ~0.05 GB/day) and two samples of **41 GB**
+were stored; its card showed ~39 GB per direction of "today" against a hover of ~80 GB. The scan found 450 such
+samples across every node with `--month-rotate` configured.
+
+- **The agent reports both quantities separately.** `net.total.*` is now always the kernel lifetime total
+  (monotonic, same interface scope as the rate, so the two can be cross-checked); `traffic.*` is always the
+  cycle cumulative. Previously one field held either, and fell back from the first to the second mid-stream
+  when netstatic was unavailable. When netstatic is unavailable the cycle fields now report 0 **with an error**
+  instead of substituting a value with a different meaning.
+- **The cycle cumulative no longer depends on sample retention.** It was `sum(samples in [reset day, now])`
+  while samples are pruned by `DataPreserveDay`, so a cycle longer than the retention window made it *shrink* —
+  indistinguishable from a counter reset. It is now a persistent accumulator updated as samples are taken, and
+  the reset day is passed into netstatic so the rollover happens on the sampling path.
+- **The panel stores each quantity as-is.** `net.total.*` the raw counter, `traffic.*` the raw cumulative; the
+  delta machinery is no longer applied to traffic.
+- **Readers take the last value** of `traffic.*` instead of summing it — `sum` multiplied one running total by
+  the sample count, which is where the ~80 GB figure came from. Changed in the admin dashboard, the load chart
+  and the built-in theme.
+- `deploy/cleanup-phantom-traffic.py` removes the samples already recorded (stop the panel first; a running
+  panel rewrites the current bucket).
+
+**Consequence to plan around:** a node's cycle total starts from zero the first time it runs this agent, so its
+first billing cycle under-reports and the next one is correct. See `docs/TRAFFIC-ACCOUNTING.md`.
+
 ## [v1.6.0] — 2026-09-28
 
 **The version now continues the upstream line, which is what makes the inherited plugin market work.**
