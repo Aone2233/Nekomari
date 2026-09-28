@@ -44,6 +44,16 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v0.1.43] — 2026-09-27
+
+- **Fixed: the front page's background image, which a theme rebuild had removed.** The theme's saved
+  configuration points at `/assets/bg-desktop-light.v2.jpeg` and three siblings; those eight images had been
+  added to the installed deployment by hand and were absent from the theme's source, so building the theme from
+  source and replacing the installed copy deleted them. A missing background and one console 404, with nothing
+  in any log to explain it. The images are now part of the theme's source, the deployed copy was restored from
+  the pre-replacement backup, and a Go test asserts the embedded archive carries the four paths the
+  configuration names.
+
 ## [v0.1.42] — 2026-09-27
 
 **Agent and panel.** H6: the panel can point a node at a version.
