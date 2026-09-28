@@ -199,6 +199,40 @@ func TestTheEmbeddedArchiveCarriesThePanelsOwnPages(t *testing.T) {
 	}
 }
 
+// The embedded theme must carry the background images its own saved configuration names.
+//
+// This is the defect that made the front page's background disappear: a rebuild of the theme produced a
+// `dist/assets/` holding only the built bundle and the video, the eight background images had been added to the
+// installed deployment by hand and were not in the theme's source, and replacing the theme with that build
+// removed them. The page then asked for `/assets/bg-desktop-light.v2.jpeg` and got a 404 — a missing background
+// and one console error, with nothing in any log to say why.
+//
+// Asserted by name against the configuration, not "some images exist": the paths come from the theme's saved
+// settings, so a rename on either side is what this catches.
+func TestTheEmbeddedThemeCarriesItsBackgroundImages(t *testing.T) {
+	files, _ := loadEmbeddedTheme(t)
+
+	// The paths the deployed theme's configuration refers to. Kept as a list here because the assertion is about
+	// what a saved configuration will ask for, and that configuration lives in a database this test has no
+	// access to — the same reason the theme's own settings are read from its manifest elsewhere.
+	wanted := []string{
+		"assets/bg-desktop-light.v2.jpeg",
+		"assets/bg-desktop-dark.v2.jpg",
+		"assets/bg-mobile-light.v2.jpg",
+		"assets/bg-mobile-dark.v2.jpg",
+	}
+	for _, name := range wanted {
+		content, ok := files[name]
+		if !ok {
+			t.Errorf("%q is not in the embedded archive, so a deployment whose theme settings point at it would show no background", name)
+			continue
+		}
+		if len(content) < 10_000 {
+			t.Errorf("%q is %d bytes, too small to be a background image", name, len(content))
+		}
+	}
+}
+
 // The archive must be small enough to ship and large enough to be a page. Both bounds are loose; the
 // point is to catch an archive that is empty, or one that accidentally swallowed a build directory.
 func TestTheEmbeddedArchiveIsAPlausibleSize(t *testing.T) {
