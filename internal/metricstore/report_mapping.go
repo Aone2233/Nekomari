@@ -11,7 +11,17 @@ import (
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 )
 
-func reportMetricPoints(report v2.Report, trafficUp, trafficDown int64) []metric.Point {
+// reportMetricPoints 把一次上报映射成指标点位。
+//
+// 流量有两个量，语义不同，各自按正确的方式映射：
+//
+//   - `net.total.*` 是内核自开机累计（单调）。原样存入，是唯一适合取差值的对象。
+//   - `traffic.*` 是自计费周期重置日以来的累计（跨周期归零，**不是**计数器）。原样存入，
+//     读取方取最后值；对它求和会得到"累计值 × 采样次数"，取差会把整个累计当成一次增量 ——
+//     后者正是 41 GB 单点幻影的成因。
+//
+// 未配置 `--month-rotate` 的探针上报 0，此时 `traffic.*` 是零值序列，与"该节点没有周期统计"一致。
+func reportMetricPoints(report v2.Report) []metric.Point {
 	entityID := report.UUID
 	ts := report.UpdatedAt
 	points := []metric.Point{
@@ -24,8 +34,8 @@ func reportMetricPoints(report v2.Report, trafficUp, trafficDown int64) []metric
 		{MetricName: MetricNetOut, EntityID: entityID, Timestamp: ts, Value: float64(report.Network.Up)},
 		{MetricName: MetricNetTotalUp, EntityID: entityID, Timestamp: ts, Value: float64(report.Network.TotalUp)},
 		{MetricName: MetricNetTotalDown, EntityID: entityID, Timestamp: ts, Value: float64(report.Network.TotalDown)},
-		{MetricName: MetricTrafficUp, EntityID: entityID, Timestamp: ts, Value: float64(trafficUp)},
-		{MetricName: MetricTrafficDown, EntityID: entityID, Timestamp: ts, Value: float64(trafficDown)},
+		{MetricName: MetricTrafficUp, EntityID: entityID, Timestamp: ts, Value: float64(report.Network.CycleUp)},
+		{MetricName: MetricTrafficDown, EntityID: entityID, Timestamp: ts, Value: float64(report.Network.CycleDown)},
 		{MetricName: MetricProcess, EntityID: entityID, Timestamp: ts, Value: float64(report.Process)},
 		{MetricName: MetricConnections, EntityID: entityID, Timestamp: ts, Value: float64(report.Connections.TCP)},
 		{MetricName: MetricConnectionsUDP, EntityID: entityID, Timestamp: ts, Value: float64(report.Connections.UDP)},

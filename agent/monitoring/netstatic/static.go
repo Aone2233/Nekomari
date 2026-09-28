@@ -69,6 +69,54 @@ type NetStatic struct {
 	// 从 7 GB 抬到 160 GB。sampleOnceLocked 现在还会核对数值是否可信（见
 	// plausibleDeltaBytes），这条字段是让重启后仍有基线可用，而不是只能丢弃一个间隔。
 	LastCounters map[string]CounterSample `json:"last_counters,omitempty"`
+	// Cycles 是按"计费周期"累计的流量，每张网卡一份，随账本一起落盘。
+	//
+	// ## 为什么不能用 Interfaces 求和代替
+	//
+	// 原先的周期累计是"对账本里 [重置日, 现在] 的样本求和"，而 `purgeExpiredLocked` 会按
+	// `DataPreserveDay` 删除样本。于是**周期长度一旦超过保留天数，累计值就会自己变小** ——
+	// 而"变小"在下游被解读成计数器重置，让面板把整个累计值当成一次增量记下来。现场证据：
+	// 一台配置 `--month-rotate 9` 的节点（重置日距今 19 天）在 06:12 与 09:58 各上报了
+	// 一次 41 GB 的单点读数，而该网卡自开机累计只有 0.29 GB。
+	//
+	// 累加器在采样时就地把增量累加进去，**与样本是否还在账本里无关**，所以周期累计不再依赖
+	// TTL 保留期。它同时也是"今天用了多少"的来源：周期累计在一天内的增量就等于当天的流量，
+	// 不需要再按样本求和 —— 后者正是把累计值按采样次数反复累加的错法。
+	//
+	// 只由 `Clear` 与显式重置清零，不随 TTL 裁剪变化。
+	Cycles map[string]CycleTraffic `json:"cycles,omitempty"`
+}
+
+// CycleTraffic 是一张网卡自"上次计费周期重置日"以来的累计流量。
+type CycleTraffic struct {
+	Tx uint64 `json:"tx"`
+	Rx uint64 `json:"rx"`
+	// ResetDay 是这份累计所对应的重置日（unix 秒，当天 00:00）。它与当前的期望重置日不一致时，
+	// 说明跨过了计费周期，累计要从零重新开始 —— 这个判断放在采样路径上做，因为它必须发生在
+	// 任何读取之前，否则跨周期后的第一次读取会看到上一个周期的旧值。
+	ResetDay uint64 `json:"reset_day"`
+}
+
+// cycleResetDay 返回给定时刻所属周期的重置日（unix 秒）。day==0 表示不按周期统计。
+//
+// 与 `utils.GetLastResetDate` 同一语义，但这里只需要一个可比较的日期戳，所以不引入依赖。
+func cycleResetDay(monthRotate int, at time.Time) uint64 {
+	if monthRotate <= 0 {
+		return 0
+	}
+	year, month, _ := at.Date()
+	day := monthRotate
+	if day > 28 {
+		// 没有哪个月有 29~31 号都存在的保证，取 28 保证每个月都有这一天；
+		// 与 utils.GetLastResetDate 的边界处理保持一致。
+		day = 28
+	}
+	candidate := time.Date(year, month, day, 0, 0, 0, 0, at.Location())
+	if candidate.After(at) {
+		// 本月的重置日还没到，用上个月的
+		candidate = time.Date(year, month-1, day, 0, 0, 0, 0, at.Location())
+	}
+	return uint64(candidate.Unix())
 }
 
 // CounterSample 是一次采集到的累计值，以及读到它的时刻（unix 秒）。
@@ -85,6 +133,12 @@ type NetStaticConfig struct {
 	SaveInterval    float64  `json:"save_interval"`            // in seconds，写入到磁盘的间隔，避免大量IO操作
 	Nics            []string `json:"nics"`                     // 仅监控指定的网卡名称列表，空表示监控所有网卡
 	ConfigVersion   int      `json:"config_version,omitempty"` // 这份配置是哪一代默认值写出来的，用于迁移
+	// MonthRotate 是计费周期的重置日（1-28）。0 表示不按周期统计。
+	//
+	// 它必须在这里，而不是只由调用方按 `GetTotalTrafficBetween(重置日, 现在)` 使用：重置日决定了
+	// 周期账本何时归零（见 accumulateCycleLocked），而那件事必须发生在采样路径上。由调用方传日期的
+	// 做法还让累计依赖账本保留期，这是错误的来源之一。
+	MonthRotate int `json:"month_rotate,omitempty"`
 }
 
 type TrafficData struct {
@@ -457,6 +511,9 @@ func sampleOnceLocked() {
 				// 首次采样不记录
 				if dtx > 0 || drx > 0 {
 					staticCache[name] = append(staticCache[name], TrafficData{Timestamp: ts, Tx: dtx, Rx: drx})
+					// 累加到周期账本。**这是周期累计与"今日流量"的唯一来源**，与账本样本
+					// 是否会被 TTL 删除无关（见 NetStatic.Cycles 的说明）。
+					accumulateCycleLocked(name, dtx, drx, sampledAt)
 				}
 				// 即便为 0，也可以记录，但为了降低噪音与占用，这里忽略 0
 			} else if dtx > 0 || drx > 0 {
@@ -476,6 +533,32 @@ func sampleOnceLocked() {
 		lastCounters[name] = CounterSample{Tx: curTx, Rx: curRx, At: sampledAt}
 		storeDirty = true
 	}
+}
+
+// accumulateCycleLocked 把一个可信增量累加进该网卡的周期账本，并在跨周期时先归零。
+//
+// 归零必须在累加之前判断，且判断依据是**当次采样的时刻**而不是读取时刻：跨过重置日之后到达的
+// 第一个采样，它携带的增量有一部分属于上一个周期，无法切分，所以计入新周期 —— 这是刻意的取舍，
+// 误差上限是一个采样间隔（默认 30 秒），而另一种做法（计入旧周期）会让新周期的累计从负数开始。
+func accumulateCycleLocked(name string, dtx, drx uint64, sampledAt uint64) {
+	resetDay := cycleResetDay(config.MonthRotate, time.Unix(int64(sampledAt), 0))
+	if resetDay == 0 {
+		// 没有配置计费周期：不记账，也不留下 ResetDay=0 的条目 —— 后者会让「本周期累计」
+		// 与「没有周期」两种情况在读取时无法区分。
+		return
+	}
+	if store.Cycles == nil {
+		store.Cycles = map[string]CycleTraffic{}
+	}
+	entry := store.Cycles[name]
+	if entry.ResetDay != resetDay {
+		// 跨周期（或首次记录）：清空并从这一笔开始
+		entry = CycleTraffic{Tx: 0, Rx: 0, ResetDay: resetDay}
+	}
+	entry.Tx += dtx
+	entry.Rx += drx
+	store.Cycles[name] = entry
+	storeDirty = true
 }
 
 func flushCacheLocked(ts uint64) {
@@ -639,6 +722,35 @@ func GetNetStaticBetween(start, end uint64) (*NetStatic, error) {
 }
 
 // GetTotalTraffic 获取总流量统计数据, key为网卡名称, value为对应的流量数据总和
+// GetCycleTraffic 返回每张网卡自**当前计费周期**重置日以来的累计流量。
+//
+// 与 `GetTotalTrafficBetween(resetDay, now)` 的区别，也正是这个函数存在的理由：后者对账本里
+// 保留下来的样本求和，于是累计值会随 TTL 裁剪而**变小**；而这个值在采样时就地累加，与样本
+// 是否还在账本里无关。
+//
+// 返回的 ResetDay 是这份累计对应的重置日，调用方可以据此判断它是否已跨周期 —— 正常情况下
+// 采样路径已经处理过归零，这里返回的是当前周期的值。
+func GetCycleTraffic() (map[string]CycleTraffic, uint64, error) {
+	mu.RLock()
+	defer mu.RUnlock()
+	ensureInitLocked()
+
+	expected := cycleResetDay(config.MonthRotate, time.Now())
+	res := make(map[string]CycleTraffic, len(store.Cycles))
+	for name, entry := range store.Cycles {
+		if entry.ResetDay != expected {
+			// 账本停留在旧周期：说明自上次采样以来跨过了重置日（或刚配置了重置日）。
+			// 这里**不**就地归零 —— 归零属于采样路径的职责，在只读路径上改状态会让读取
+			// 产生副作用。返回零值表示"本周期还没有数据"，语义是准确的。
+			res[name] = CycleTraffic{Tx: 0, Rx: 0, ResetDay: expected}
+			continue
+		}
+		res[name] = entry
+	}
+	return res, expected, nil
+}
+
+// GetTotalTraffic 获取账本中全部网卡的流量总额
 func GetTotalTraffic() (map[string]TrafficData, error) {
 	mu.RLock()
 	defer mu.RUnlock()
@@ -723,6 +835,12 @@ func SetNewConfig(newCfg NetStaticConfig) error {
 	}
 	if newCfg.SaveInterval != 0 {
 		store.Config.SaveInterval = newCfg.SaveInterval
+	}
+	// MonthRotate: 0 表示不修改（与其它字段一致）。调用方只在配置了周期统计时才传非零值，
+	// 所以"显式清零"这个场景不存在 —— 取消周期统计时 agent 以 MonthRotate=0 重启，而那种情况下
+	// netstatic 根本不会启动。
+	if newCfg.MonthRotate != 0 {
+		store.Config.MonthRotate = newCfg.MonthRotate
 	}
 	// Nics: nil 表示不修改；非 nil 则更新（空切片表示监控所有网卡）
 	if newCfg.Nics != nil {

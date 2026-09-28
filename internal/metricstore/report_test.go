@@ -131,7 +131,7 @@ func TestReportBatchCounterRestoreFailureInitializesStateOnce(t *testing.T) {
 		UUID:      "counter-restore-failure",
 		UpdatedAt: base,
 		CPU:       v2.CPUReport{Usage: 10},
-		Network:   v2.NetworkReport{TotalUp: 100, TotalDown: 200},
+		Network:   v2.NetworkReport{TotalUp: 100, TotalDown: 200, CycleUp: 40, CycleDown: 60},
 	}
 
 	if _, err := writeReportBatch(ctx, []v2.Report{first}); err != nil {
@@ -162,8 +162,10 @@ func TestReportBatchCounterRestoreFailureInitializesStateOnce(t *testing.T) {
 	if fault.denied.Load() != 2 {
 		t.Fatalf("counter restore queries after second batch = %d, want no repeat", fault.denied.Load())
 	}
-	assertMetricValues(t, s, MetricTrafficUp, first.UUID, base.Add(-time.Second), base.Add(2*time.Second), []float64{0, 50})
-	assertMetricValues(t, s, MetricTrafficDown, first.UUID, base.Add(-time.Second), base.Add(2*time.Second), []float64{0, 60})
+	assertMetricValues(t, s, MetricNetTotalUp, first.UUID, base.Add(-time.Second), base.Add(2*time.Second), []float64{100, 150})
+	assertMetricValues(t, s, MetricTrafficUp, first.UUID, base.Add(-time.Second), base.Add(2*time.Second), []float64{40, 40})
+	assertMetricValues(t, s, MetricNetTotalDown, first.UUID, base.Add(-time.Second), base.Add(2*time.Second), []float64{200, 260})
+	assertMetricValues(t, s, MetricTrafficDown, first.UUID, base.Add(-time.Second), base.Add(2*time.Second), []float64{60, 60})
 }
 
 func TestWriteReportStoresMinuteMetricsAndResetAwareTraffic(t *testing.T) {
@@ -181,7 +183,7 @@ func TestWriteReportStoresMinuteMetricsAndResetAwareTraffic(t *testing.T) {
 		Swap:        v2.RamReport{Used: 20, Total: 200},
 		Load:        v2.LoadReport{Load1: 0.5},
 		Disk:        v2.DiskReport{Used: 300, Total: 3000},
-		Network:     v2.NetworkReport{Up: 3, Down: 4, TotalUp: 100, TotalDown: 200},
+		Network:     v2.NetworkReport{Up: 3, Down: 4, TotalUp: 100, TotalDown: 200, CycleUp: 40, CycleDown: 60},
 		Process:     7,
 		Connections: v2.ConnectionsReport{TCP: 8, UDP: 9},
 		GPU: &v2.GPUDetailReport{
@@ -198,22 +200,39 @@ func TestWriteReportStoresMinuteMetricsAndResetAwareTraffic(t *testing.T) {
 	report.UpdatedAt = base.Add(3 * time.Second)
 	report.Network.TotalUp = 150
 	report.Network.TotalDown = 260
+	report.Network.CycleUp = 90
+	report.Network.CycleDown = 140
 	if _, err := WriteReport(ctx, report); err != nil {
 		t.Fatalf("write second report: %v", err)
 	}
 
+	// A kernel counter that drops (host or interface restarted) while the cycle cumulative keeps rising.
+	//
+	// This is the shape that produced the phantom: the old code took a delta here, saw `current < previous`,
+	// and - because the current value was below its reset cap - recorded the whole cumulative as one
+	// interval's traffic. The cycle value must simply be stored, whatever the kernel counter did.
 	report.UpdatedAt = base.Add(6 * time.Second)
 	report.Network.TotalUp = 20
 	report.Network.TotalDown = 30
+	report.Network.CycleUp = 120
+	report.Network.CycleDown = 180
 	if _, err := WriteReport(ctx, report); err != nil {
 		t.Fatalf("write reset report: %v", err)
 	}
 
-	assertMetricValues(t, s, MetricTrafficUp, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{0, 50, 20})
-	assertMetricValues(t, s, MetricTrafficDown, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{0, 60, 30})
+	// `traffic.*` mirrors the agent's cycle cumulative, stored as-is: 40, then 90, then 120 - with the same
+	// value regardless of the kernel counter's dip. Reading it means taking the last value, never summing it
+	// (that would be "cumulative x sample count") and never differencing it.
+	assertMetricValues(t, s, MetricTrafficUp, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{40, 90, 120})
+	assertMetricValues(t, s, MetricTrafficDown, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{60, 140, 180})
+	// And the kernel counter is stored raw, which is what makes it the only legitimate subject of a delta.
 	assertMetricValues(t, s, MetricNetTotalUp, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{100, 150, 20})
-	assertMetricAggregate(t, s, MetricTrafficUp, report.UUID, base.Add(-time.Second), base.Add(time.Minute), metric.AggSum, 70, 3)
-	assertMetricAggregate(t, s, MetricTrafficDown, report.UUID, base.Add(-time.Second), base.Add(time.Minute), metric.AggSum, 90, 3)
+	// The sum aggregate is asserted because it is *available*, and the value documents why summing this
+	// metric is wrong for a reader: 40+90+120 = 250 is not "traffic used", it is three snapshots of one
+	// cumulative. The correct aggregate for `traffic.*` is `last`; the frontends were changed to use it.
+	assertMetricAggregate(t, s, MetricTrafficUp, report.UUID, base.Add(-time.Second), base.Add(time.Minute), metric.AggSum, 250, 3)
+	assertMetricAggregate(t, s, MetricTrafficUp, report.UUID, base.Add(-time.Second), base.Add(time.Minute), metric.AggLast, 120, 3)
+	assertMetricAggregate(t, s, MetricTrafficDown, report.UUID, base.Add(-time.Second), base.Add(time.Minute), metric.AggLast, 180, 3)
 
 	gpuPoints, err := s.Query(ctx, metric.Query{
 		MetricName: MetricGPUDeviceUsage,
@@ -237,11 +256,16 @@ func TestWriteReportStoresMinuteMetricsAndResetAwareTraffic(t *testing.T) {
 	report.UpdatedAt = now
 	report.Network.TotalUp = 35
 	report.Network.TotalDown = 50
+	report.Network.CycleUp = 130
+	report.Network.CycleDown = 200
 	if _, err := WriteReport(ctx, report); err != nil {
 		t.Fatalf("write after restoring rollup baseline: %v", err)
 	}
-	assertMetricValues(t, s, MetricTrafficUp, report.UUID, now.Add(-time.Second), now.Add(time.Second), []float64{15})
-	assertMetricValues(t, s, MetricTrafficDown, report.UUID, now.Add(-time.Second), now.Add(time.Second), []float64{20})
+	// The cycle cumulative continues from the previous report's 120/180 rather than restarting, even though
+	// the counter state was explicitly dropped — which is the point: it is a value the agent owns, not
+	// something derived from a baseline this process has to remember.
+	assertMetricValues(t, s, MetricTrafficUp, report.UUID, now.Add(-time.Second), now.Add(time.Second), []float64{130})
+	assertMetricValues(t, s, MetricTrafficDown, report.UUID, now.Add(-time.Second), now.Add(time.Second), []float64{200})
 }
 
 func TestWriteReportSkipsMetricsWithoutAgentData(t *testing.T) {
@@ -280,7 +304,7 @@ func TestReportBatcherFlushesQueuedReports(t *testing.T) {
 		UUID:      "batched-node",
 		UpdatedAt: base,
 		CPU:       v2.CPUReport{Usage: 10},
-		Network:   v2.NetworkReport{TotalUp: 100, TotalDown: 200},
+		Network:   v2.NetworkReport{TotalUp: 100, TotalDown: 200, CycleUp: 40, CycleDown: 60},
 	}
 	second := first
 	second.UpdatedAt = base.Add(3 * time.Second)
@@ -312,8 +336,10 @@ func TestReportBatcherFlushesQueuedReports(t *testing.T) {
 		t.Fatalf("flush report batch: %v", err)
 	}
 	assertMetricValues(t, s, MetricCPU, first.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{10, 20})
-	assertMetricValues(t, s, MetricTrafficUp, first.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{0, 50})
-	assertMetricValues(t, s, MetricTrafficDown, first.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{0, 60})
+	assertMetricValues(t, s, MetricNetTotalUp, first.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{100, 150})
+	assertMetricValues(t, s, MetricTrafficUp, first.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{40, 40})
+	assertMetricValues(t, s, MetricNetTotalDown, first.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{200, 260})
+	assertMetricValues(t, s, MetricTrafficDown, first.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{60, 60})
 	assertMetricAggregate(t, s, MetricCPU, first.UUID, base.Add(-time.Second), base.Add(time.Minute), metric.AggAvg, 15, 2)
 }
 
@@ -509,7 +535,7 @@ func TestWriteReportRebasesTrafficAfterAgentRestart(t *testing.T) {
 		UUID:      "restarted-node",
 		UpdatedAt: base,
 		Uptime:    1000,
-		Network:   v2.NetworkReport{TotalUp: 100, TotalDown: 200},
+		Network:   v2.NetworkReport{TotalUp: 100, TotalDown: 200, CycleUp: 40, CycleDown: 60},
 	}
 	if _, err := WriteReport(ctx, report); err != nil {
 		t.Fatalf("write first report: %v", err)
@@ -539,8 +565,12 @@ func TestWriteReportRebasesTrafficAfterAgentRestart(t *testing.T) {
 		t.Fatalf("write report after new baseline: %v", err)
 	}
 
-	assertMetricValues(t, s, MetricTrafficUp, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{0, 50, 5, 25})
-	assertMetricValues(t, s, MetricTrafficDown, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{0, 60, 5, 35})
+	// The kernel counter drops at the restart (1 → 155 after the uptime was reset), and the raw value is what
+	// is stored — the panel no longer derives anything from it here, so nothing has to be "rebased".
+	assertMetricValues(t, s, MetricNetTotalUp, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{100, 150, 155, 180})
+	assertMetricValues(t, s, MetricTrafficUp, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{40, 40, 40, 40})
+	assertMetricValues(t, s, MetricNetTotalDown, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{200, 260, 265, 300})
+	assertMetricValues(t, s, MetricTrafficDown, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{60, 60, 60, 60})
 }
 
 func TestWriteReportCountsTBScaleTrafficDeltas(t *testing.T) {
@@ -569,8 +599,8 @@ func TestWriteReportCountsTBScaleTrafficDeltas(t *testing.T) {
 		t.Fatalf("write growing report: %v", err)
 	}
 
-	assertMetricValues(t, s, MetricTrafficUp, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{0, float64(5 * oneGB)})
-	assertMetricValues(t, s, MetricTrafficDown, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{0, float64(7 * oneGB)})
+	assertMetricValues(t, s, MetricNetTotalUp, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{float64(2 * oneTB), float64(2*oneTB + 5*oneGB)})
+	assertMetricValues(t, s, MetricNetTotalDown, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{float64(3 * oneTB), float64(3*oneTB + 7*oneGB)})
 }
 
 func TestWriteReportRestoresTBScaleCountersFromStore(t *testing.T) {
@@ -619,8 +649,8 @@ func TestWriteReportRestoresTBScaleCountersFromStore(t *testing.T) {
 	if _, err := WriteReport(ctx, report); err != nil {
 		t.Fatalf("write after restoring tb-scale baseline: %v", err)
 	}
-	assertMetricValues(t, s, MetricTrafficUp, report.UUID, now.Add(-time.Second), now.Add(time.Second), []float64{float64(5 * oneGB)})
-	assertMetricValues(t, s, MetricTrafficDown, report.UUID, now.Add(-time.Second), now.Add(time.Second), []float64{float64(7 * oneGB)})
+	assertMetricValues(t, s, MetricNetTotalUp, report.UUID, now.Add(-time.Second), now.Add(time.Second), []float64{float64(2*oneTB + 123 + 5*oneGB)})
+	assertMetricValues(t, s, MetricNetTotalDown, report.UUID, now.Add(-time.Second), now.Add(time.Second), []float64{float64(4*oneTB + 456 + 7*oneGB)})
 }
 
 func TestWriteReportCountsTrafficAfterHighRateCounterWrap(t *testing.T) {
@@ -646,8 +676,11 @@ func TestWriteReportCountsTrafficAfterHighRateCounterWrap(t *testing.T) {
 		t.Fatalf("write wrapped report: %v", err)
 	}
 
-	assertMetricValues(t, s, MetricTrafficUp, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{0, 800_000_000})
-	assertMetricValues(t, s, MetricTrafficDown, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{0, 900_000_000})
+	// Both reports are stored raw, including the second whose counter is *lower* than the first: the kernel
+	// counter wrapped, and the raw value is what `net.total.*` records. Nothing here fabricates a delta from
+	// the wrap — that fabrication is what produced phantom traffic when the two meanings shared a field.
+	assertMetricValues(t, s, MetricNetTotalUp, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{float64(3*oneGB + 900_000_000), 800_000_000})
+	assertMetricValues(t, s, MetricNetTotalDown, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{float64(3*oneGB + 800_000_000), 900_000_000})
 }
 
 func TestWriteReportIgnoresTinyDipOfTBScaleCounter(t *testing.T) {
@@ -692,8 +725,12 @@ func TestWriteReportIgnoresTinyDipOfTBScaleCounter(t *testing.T) {
 		t.Fatalf("write recovered report: %v", err)
 	}
 
-	assertMetricValues(t, s, MetricTrafficUp, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{0, float64(5 * oneGB), 0, float64(oneGB + 1000)})
-	assertMetricValues(t, s, MetricTrafficDown, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{0, float64(7 * oneGB), 0, float64(oneGB + 2000)})
+	// Raw at every step, including the dip and the recovery. The point of the test is that a jittering counter
+	// is now merely *stored*: the old code had to decide whether a dip was a reset or a wrap and got it wrong
+	// in both directions (counting a dip as a jump, or discarding a real wrap), which is what the phantom
+	// samples were made of. `traffic.*` no longer participates in that decision at all.
+	assertMetricValues(t, s, MetricNetTotalUp, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{float64(2 * oneTB), float64(2*oneTB + 5*oneGB), float64(2*oneTB + 5*oneGB - 1000), float64(2*oneTB + 6*oneGB)})
+	assertMetricValues(t, s, MetricNetTotalDown, report.UUID, base.Add(-time.Second), base.Add(time.Minute), []float64{float64(3 * oneTB), float64(3*oneTB + 7*oneGB), float64(3*oneTB + 7*oneGB - 2000), float64(3*oneTB + 8*oneGB)})
 }
 
 func TestWriteReportNormalizesReceiveTimeToUTC(t *testing.T) {

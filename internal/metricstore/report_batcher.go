@@ -416,15 +416,17 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 		if !values.timestamp.IsZero() && !report.UpdatedAt.After(values.timestamp) {
 			report.UpdatedAt = values.timestamp.Add(time.Millisecond)
 		}
-		trafficUp := int64(0)
-		if values.hasUp {
-			trafficUp = TrafficCounterDelta(report.Network.TotalUp, values.totalUp)
-		}
-		trafficDown := int64(0)
-		if values.hasDown {
-			trafficDown = TrafficCounterDelta(report.Network.TotalDown, values.totalDown)
-		}
-		points = append(points, reportMetricPoints(report, trafficUp, trafficDown)...)
+		// `traffic.*` 存的是**周期累计本身**，不再是从内核计数器推出来的增量。
+		//
+		// 这两个值原先由 `TrafficCounterDelta(report.Network.TotalUp, 基线)` 计算，而 `TotalUp`
+		// 的语义随探针配置变化（`--month-rotate` 时是周期累计、否则是内核累计、netstatic 失败时
+		// 又回退），于是"用一种口径的基线减去另一种口径的当前值"会命中重置分支，把整个累计值
+		// 当成一次增量。现场：CLISP 记录过两次 41 GB 的单点读数，而该网卡自开机累计 0.29 GB。
+		//
+		// 探针现在分别上报两组字段，这里按各自的语义处理：
+		//   * `net.total.*` —— 内核累计，单调，是唯一适合做差的对象（见下面对的基线推进）
+		//   * `traffic.*`   —— 周期累计，直接存，读取方取最后值即可；求和或求差都是误用
+		points = append(points, reportMetricPoints(report)...)
 		values.timestamp = report.UpdatedAt
 		values.hasUp = true
 		values.totalUp = report.Network.TotalUp

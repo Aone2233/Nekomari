@@ -49,6 +49,17 @@ type networkReport struct {
 	Down      uint64 `json:"down"`
 	TotalUp   uint64 `json:"totalUp"`
 	TotalDown uint64 `json:"totalDown"`
+	// CycleUp / CycleDown 是自**计费周期重置日**以来的累计流量（`--month-rotate`），
+	// 与 TotalUp/TotalDown 的语义不同 —— 后者是内核自开机累计，单调，可以取差值。
+	//
+	// 分成两组字段是本轮修复的核心：两者原先共用一个字段，下游按内核计数器做增量时就会拿
+	// 一种口径的基线去减另一种口径的当前值，进而把整个周期累计当成一次增量。
+	// 现场证据：CLISP（`--month-rotate 9`）记录过两次 41 GB 的单点读数，而该网卡自开机
+	// 累计仅 0.29 GB。详见 unit.NetworkSpeed 的说明。
+	//
+	// 未配置 `--month-rotate` 时为 0。
+	CycleUp   uint64 `json:"cycleUp,omitempty"`
+	CycleDown uint64 `json:"cycleDown,omitempty"`
 }
 
 type connectionsReport struct {
@@ -96,11 +107,15 @@ func GenerateReport() []byte {
 	disk := unit.Disk()
 	data.Disk = usageReport{Total: disk.Total, Used: disk.Used}
 
-	totalUp, totalDown, networkUp, networkDown, err := unit.NetworkSpeed()
+	totalUp, totalDown, cycleUp, cycleDown, networkUp, networkDown, err := unit.NetworkSpeed()
 	if err != nil {
 		message += fmt.Sprintf("failed to get network speed: %v\n", err)
 	}
-	data.Network = networkReport{Up: networkUp, Down: networkDown, TotalUp: totalUp, TotalDown: totalDown}
+	data.Network = networkReport{
+		Up: networkUp, Down: networkDown,
+		TotalUp: totalUp, TotalDown: totalDown,
+		CycleUp: cycleUp, CycleDown: cycleDown,
+	}
 
 	tcpCount, udpCount, err := unit.ConnectionsCount()
 	if err != nil {

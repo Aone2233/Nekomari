@@ -229,8 +229,15 @@ type DiskReport struct {
 type NetworkReport struct {
 	Up        int64 `json:"up"`
 	Down      int64 `json:"down"`
+	// TotalUp / TotalDown 是内核自开机以来的累计字节数：单调，可以做差得到"这段时间用了多少"。
 	TotalUp   int64 `json:"totalUp"`
 	TotalDown int64 `json:"totalDown"`
+	// CycleUp / CycleDown 是自计费周期重置日以来的累计流量（--month-rotate）。
+	//
+	// 它**不是**计数器：跨周期会归零。面板必须按 gauge 存它的最后值，而不是对采样求和
+	// （求和等于"累计值 × 采样次数"），也不要对它取差值（那会把整个累计当增量）。
+	CycleUp   int64 `json:"cycleUp,omitempty"`
+	CycleDown int64 `json:"cycleDown,omitempty"`
 }
 
 type ConnectionsReport struct {

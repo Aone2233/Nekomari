@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Aone2233/nekomari/agent/monitoring/netstatic"
-	"github.com/Aone2233/nekomari/agent/utils"
 	"github.com/shirou/gopsutil/v4/net"
 )
 
@@ -309,43 +308,71 @@ type VnstatOutput struct {
 	Interfaces    []VnstatInterface `json:"interfaces"`
 }
 
-func NetworkSpeed() (totalUp, totalDown, upSpeed, downSpeed uint64, err error) {
+// NetworkSpeed 返回两组流量数字，**语义互不相同，调用方必须按名字区分**：
+//
+//   - `kernelUp/kernelDown`：内核自开机以来的累计字节数。单调（除非主机或网卡重启），
+//     是"取差值"这一操作的合法对象。
+//   - `cycleUp/cycleDown`：自**计费周期重置日**以来的累计字节数（`--month-rotate`）。
+//     它**不是**单调的：跨周期会归零，且历史实现里它还随账本保留期缩短而变小。
+//
+// ## 为什么必须分成两组
+//
+// 这两组数据原先共用一个字段（`Network.TotalUp/TotalDown` 按 `MonthRotate` 二选一），于是
+// 下游把它当内核计数器做增量时，会拿"一种口径的基线"去减"另一种口径的当前值"。结果被判定为
+// 计数器重置，`TrafficCounterDelta` 就把**整个累计值当成一次增量**记下来。
+//
+// 现场证据：CLISP（`--month-rotate 9`）在 06:12 与 09:58 各记录了一次 41 GB 的单点读数，而该
+// 网卡自开机累计仅 0.29 GB、实测速率折算约 0.05 GB/天。那些 41 GB 是周期累计被整份当成增量。
+//
+// 分开之后：内核累计永远是合法的计数器（增量正确），周期累计永远是一个可以直接展示的累计值
+// （不需要也不应该被求增量）。
+func NetworkSpeed() (kernelUp, kernelDown, cycleUp, cycleDown, upSpeed, downSpeed uint64, err error) {
 	includeNics := parseNics(flags.IncludeNics)
 	excludeNics := parseNics(flags.ExcludeNics)
 
-	// 如果设置了月重置（非0），统计totalUp、totalDown
-	if flags.MonthRotate != 0 {
-		netstatic.StartOrContinue() // 确保netstatic在运行
-		now := uint64(time.Now().Unix())
-		resetDay := uint64(utils.GetLastResetDate(flags.MonthRotate, time.Now()).Unix())
-		nicStatics, err := netstatic.GetTotalTrafficBetween(resetDay, now)
-		if err != nil {
-			// 如果netstatic失败，回退到原来的方法，并返回额外的错误信息
-			fallbackUp, fallbackDown, fallbackUpSpeed, fallbackDownSpeed, fallbackErr := getNetworkSpeedFallback(includeNics, excludeNics)
-			if fallbackErr != nil {
-				return fallbackUp, fallbackDown, fallbackUpSpeed, fallbackDownSpeed, fmt.Errorf("failed to call GetTotalTrafficBetween: %v; fallback error: %w", err, fallbackErr)
-			}
-			return fallbackUp, fallbackDown, fallbackUpSpeed, fallbackDownSpeed, fmt.Errorf("failed to call GetTotalTrafficBetween: %w", err)
-		}
-
-		for interfaceName, stats := range nicStatics {
-			if shouldInclude(interfaceName, includeNics, excludeNics) {
-				totalUp += stats.Tx
-				totalDown += stats.Rx
-			}
-		}
-
-		// 对于实时速度，仍然使用网卡累计计数器差值
-		_, _, upSpeed, downSpeed, err = getNetworkSpeedFallback(includeNics, excludeNics)
-		if err != nil {
-			return totalUp, totalDown, 0, 0, err
-		}
-
-		return totalUp, totalDown, upSpeed, downSpeed, nil
+	// 内核累计与实时速率走同一条路径，两者的接口范围一致 —— 这一点是有意为之：
+	// 只有两者口径相同，才能用"速率 × 时间"去独立校验累计值。
+	kernelUp, kernelDown, upSpeed, downSpeed, err = getNetworkSpeedFallback(includeNics, excludeNics)
+	if err != nil {
+		return kernelUp, kernelDown, 0, 0, upSpeed, downSpeed, err
 	}
 
-	// 如果没有设置月重置，使用原来的方法
-	return getNetworkSpeedFallback(includeNics, excludeNics)
+	if flags.MonthRotate == 0 {
+		// 不按周期统计时，周期累计没有意义，保持为零而不是重复内核累计 ——
+		// 否则下游会看到两组相同的数字，从而无法发现"其中一组是错的"。
+		return kernelUp, kernelDown, 0, 0, upSpeed, downSpeed, nil
+	}
+
+	cycle, err := currentCycleTraffic(includeNics, excludeNics)
+	if err != nil {
+		// 周期累计读不到时返回 0 并带上错误，**不回退到内核累计**。
+		//
+		// 回退是原先的行为，也正是错误数据的来源：一次回退就让调用方看到"周期累计突然变成
+		// 0.29 GB"，与上一次的 41 GB 相比是断崖式下跌，下游据此判定计数器重置。宁可这一轮
+		// 缺一个数（调用方会记录错误），也不要给出一个语义不同的数。
+		return kernelUp, kernelDown, 0, 0, upSpeed, downSpeed,
+			fmt.Errorf("cycle traffic unavailable: %w", err)
+	}
+	return kernelUp, kernelDown, cycle.Tx, cycle.Rx, upSpeed, downSpeed, nil
+}
+
+// currentCycleTraffic 汇总本周期内所有在范围内的网卡流量。
+func currentCycleTraffic(includeNics, excludeNics map[string]struct{}) (netstatic.TrafficData, error) {
+	if err := netstatic.StartOrContinue(); err != nil {
+		return netstatic.TrafficData{}, err
+	}
+	perNic, _, err := netstatic.GetCycleTraffic()
+	if err != nil {
+		return netstatic.TrafficData{}, err
+	}
+	var total netstatic.TrafficData
+	for name, entry := range perNic {
+		if shouldInclude(name, includeNics, excludeNics) {
+			total.Tx += entry.Tx
+			total.Rx += entry.Rx
+		}
+	}
+	return total, nil
 }
 
 func getNetworkSpeedFallback(includeNics, excludeNics map[string]struct{}) (totalUp, totalDown, upSpeed, downSpeed uint64, err error) {

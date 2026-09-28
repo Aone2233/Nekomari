@@ -133,6 +133,13 @@ var RootCmd = &cobra.Command{
 			}
 			err = netstatic.SetNewConfig(netstatic.NetStaticConfig{
 				Nics: nics,
+				// 周期重置日必须下发给 netstatic，而不是只在读取时传日期。
+				//
+				// 读取时传日期（原先的 `GetTotalTrafficBetween(重置日, 现在)`）意味着周期累计是
+				// "对账本里还在的样本求和"，于是保留期一过累计值就会变小 —— 而下游把"变小"解读为
+				// 计数器重置，把整个累计当成一次增量记下来（现场：41 GB 的单点幻影）。
+				// 采样路径知道重置日之后，累计就与样本是否还在账本里无关。
+				MonthRotate: flags.MonthRotate,
 			})
 			if err != nil {
 				log.Println("Failed to set netstatic config:", err)

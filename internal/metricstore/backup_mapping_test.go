@@ -17,7 +17,7 @@ func TestReportMetricPointsBackup(t *testing.T) {
 	}
 
 	// 未配置：不应出现任何 backup point
-	without := reportMetricPoints(base, 0, 0)
+	without := reportMetricPoints(base)
 	for _, p := range without {
 		if p.MetricName == MetricBackupAge || p.MetricName == MetricBackupOK {
 			t.Fatalf("未上报 backup 时不应写入 %s", p.MetricName)
@@ -27,7 +27,7 @@ func TestReportMetricPointsBackup(t *testing.T) {
 	// 已配置：应出现 age 与 ok 两个 point，且值正确
 	with := base
 	with.Backup = &v2.BackupReport{AgeSeconds: 93600, Ok: 1} // 26 小时
-	points := reportMetricPoints(with, 0, 0)
+	points := reportMetricPoints(with)
 
 	var gotAge, gotOK *float64
 	for i := range points {
@@ -58,7 +58,7 @@ func TestReportMetricPointsBackupUnknown(t *testing.T) {
 		UpdatedAt: time.Now().UTC(),
 		Backup:    &v2.BackupReport{AgeSeconds: -1, Ok: 0, Message: "status file missing"},
 	}
-	points := reportMetricPoints(rep, 0, 0)
+	points := reportMetricPoints(rep)
 	for _, p := range points {
 		if p.MetricName == MetricBackupAge && p.Value != -1 {
 			t.Errorf("未知状态的 age 应为 -1，实际 %v", p.Value)

@@ -410,7 +410,7 @@ func TestNetworkSpeedWithoutMonthRotate(t *testing.T) {
 	flags.IncludeNics = ""
 	flags.ExcludeNics = ""
 
-	totalUp, totalDown, upSpeed, downSpeed, err := NetworkSpeed()
+	totalUp, totalDown, _, _, upSpeed, downSpeed, err := NetworkSpeed()
 	if err != nil {
 		t.Fatalf("NetworkSpeed failed: %v", err)
 	}
@@ -437,7 +437,7 @@ func TestNetworkSpeedWithMonthRotate(t *testing.T) {
 	flags.IncludeNics = ""
 	flags.ExcludeNics = ""
 
-	totalUp, totalDown, upSpeed, downSpeed, err := NetworkSpeed()
+	totalUp, totalDown, _, _, upSpeed, downSpeed, err := NetworkSpeed()
 
 	// 如果vnstat不可用，可能会回退到原来的方法，这是正常的
 	if err != nil {
@@ -466,7 +466,7 @@ func TestNetworkSpeedWithNicFilters(t *testing.T) {
 	flags.IncludeNics = ""
 	flags.ExcludeNics = "lo,docker0"
 
-	totalUp, totalDown, upSpeed, downSpeed, err := NetworkSpeed()
+	totalUp, totalDown, _, _, upSpeed, downSpeed, err := NetworkSpeed()
 	if err != nil {
 		t.Fatalf("NetworkSpeed with excludeNics failed: %v", err)
 	}

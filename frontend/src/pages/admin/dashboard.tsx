@@ -502,8 +502,12 @@ const DashboardContent = () => {
         end: now.toISOString(),
         aggregation: "p95",
         aggregation_by_metric: {
-          "traffic.up": "sum",
-          "traffic.down": "sum",
+          // `traffic.*` is the agent's **cycle cumulative**, not a per-interval amount: it must be read with
+          // `last`. Summing it multiplies one running total by the number of samples — which is how a 41 GB
+          // cumulative became an ~80 GB "today" figure. `net.total.*` is a kernel counter and is also read
+          // with `last`; a difference is computed by the caller when one is wanted.
+          "traffic.up": "last",
+          "traffic.down": "last",
           "net.total.up": "last",
           "net.total.down": "last",
           "cpu.usage": "avg",
