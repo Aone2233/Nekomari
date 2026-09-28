@@ -106,19 +106,65 @@ case "$BIN" in
 esac
 [ -f "$BIN" ] || die "the agent process at pid $APID points at $BIN, which does not exist"
 
+# The user-level unit that owns this process, if any.
+#
+# A user unit needs three things root does not have by default: the target user, that user's bus address, and
+# that user's runtime directory. Running `systemctl --user` as root without them finds root's own (empty) user
+# manager and reports that nothing owns the agent — which is exactly what happened on the one node whose agent
+# is a user unit.
+#
+# The runtime directory is derived from the uid rather than assumed to be `/run/user/<something>`, and the bus
+# address from it too, so this works for any uid. It is read only if the directory exists, so a system without
+# user managers skips the whole branch.
+find_user_unit() {
+  owner="$1"
+  want_pid="$2"
+  [ -n "$owner" ] || return 1
+  uid=$(id -u "$owner" 2>/dev/null) || return 1
+  runtime="/run/user/$uid"
+  [ -d "$runtime" ] || return 1
+  # Reached the same way the restart is, and for the same reason: D-Bus authenticates by uid, so a root client
+  # cannot use this bus even with the right paths.
+  session="XDG_RUNTIME_DIR=$runtime DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus"
+  if [ "$(id -u)" = "0" ]; then
+    userctl="sudo -n -u $owner env $session systemctl --user"
+  else
+    userctl="env $session systemctl --user"
+  fi
+  found=$($userctl list-units --type=service --all --no-legend 2>/dev/null | awk '{print $1}')
+  for candidate in $found; do
+    pid=$($userctl show -p MainPID --value "$candidate" 2>/dev/null)
+    if [ "$pid" = "$want_pid" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # Which unit owns it, so the same service can be restarted rather than a guessed name.
 UNIT=""
 SHAPE=""
+OWNER=$(ps -o user= -p "$APID" 2>/dev/null | tr -d ' ')
 if command -v systemctl >/dev/null 2>&1; then
-  for u in $(systemctl list-units --type=service --all --no-legend 2>/dev/null | awk '{print $1}'); do
-    if systemctl show -p MainPID --value "$u" 2>/dev/null | grep -q "^$APID$"; then
-      UNIT="$u"; SHAPE=systemd; break
+  # User-level first when the process is not root's: a user unit is invisible to the system manager, so
+  # searching there first would be wasted work, and searching *only* there is what failed before.
+  if [ -n "$OWNER" ] && [ "$OWNER" != "root" ]; then
+    if candidate=$(find_user_unit "$OWNER" "$APID"); then
+      UNIT="$candidate"; SHAPE="systemd-user"
     fi
-    # supervise-daemon style units have the real process as a child, so match the control group too
-    if systemctl show -p ControlGroup --value "$u" 2>/dev/null | grep -q "komari"; then
-      UNIT="$u"; SHAPE=systemd; break
-    fi
-  done
+  fi
+  if [ -z "$UNIT" ]; then
+    for u in $(systemctl list-units --type=service --all --no-legend 2>/dev/null | awk '{print $1}'); do
+      if systemctl show -p MainPID --value "$u" 2>/dev/null | grep -q "^$APID$"; then
+        UNIT="$u"; SHAPE=systemd; break
+      fi
+      # supervise-daemon style units have the real process as a child, so match the control group too
+      if systemctl show -p ControlGroup --value "$u" 2>/dev/null | grep -q "komari"; then
+        UNIT="$u"; SHAPE=systemd; break
+      fi
+    done
+  fi
 fi
 if [ -z "$UNIT" ] && [ -x /etc/init.d/nekomari-agent ]; then
   UNIT=nekomari-agent; SHAPE=openrc
@@ -126,8 +172,29 @@ fi
 [ -n "$UNIT" ] || die "found the agent at $BIN (pid $APID) but no service manager reports owning it"
 
 case "$SHAPE" in
-  systemd) RESTART="systemctl restart $UNIT" ;;
-  openrc)  RESTART="rc-service $UNIT restart" ;;
+  systemd)      RESTART="systemctl restart $UNIT" ;;
+  # A user unit is restarted through that user's bus, with the same three things the search needed. Done as
+  # the owner rather than as root, because root's own user manager is a different, empty one.
+  # A user unit is reached only by becoming that user.
+  #
+  # Pointing at their runtime directory and bus socket is *not* enough: D-Bus authenticates the peer by uid, so
+  # a root client gets "Transport endpoint is not connected" on `/run/user/<uid>/bus`. Two other approaches were
+  # tried and both failed on the node this was written against — `su` prompts for a password (its PAM policy
+  # requires one), and running as the user without switching uid cannot open the bus at all.
+  #
+  # `sudo -n -u <owner>` needs no password when the caller is already root, which is how the fleet runner
+  # invokes this script, and it keeps the `-n` discipline: if it would need a password, it fails loudly instead
+  # of hanging on a prompt nobody is watching.
+  systemd-user) RUN_UID=$(id -u "$OWNER")
+                SESSION="XDG_RUNTIME_DIR=/run/user/$RUN_UID DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$RUN_UID/bus"
+                if [ "$(id -u)" = "0" ]; then
+                  RESTART="sudo -n -u $OWNER env $SESSION systemctl --user restart $UNIT"
+                  SYSCTL_USER="sudo -n -u $OWNER env $SESSION systemctl --user"
+                else
+                  RESTART="env $SESSION systemctl --user restart $UNIT"
+                  SYSCTL_USER="env $SESSION systemctl --user"
+                fi ;;
+  openrc)       RESTART="rc-service $UNIT restart" ;;
 esac
 
 log "shape=$SHAPE unit=$UNIT binary=$BIN"
@@ -235,6 +302,11 @@ sleep 10
 case "$SHAPE" in
   systemd) STATE=$(systemctl is-active "$UNIT" 2>/dev/null || echo unknown)
            ERRORS=$(journalctl -u "$UNIT" --since '1 min ago' --no-pager 2>/dev/null | grep -cE '401|Unauthorized' || true) ;;
+  # Same bus requirement as the restart: without it root queries its own empty user manager and every state
+  # reads "inactive", which would look like the upgrade had stopped the agent.
+  systemd-user)
+           STATE=$($SYSCTL_USER is-active "$UNIT" 2>/dev/null || echo unknown)
+           ERRORS=$($SYSCTL_USER -u "$UNIT" --since '1 min ago' --no-pager 2>/dev/null | grep -cE '401|Unauthorized' || true) ;;
   openrc)  STATE=$(rc-service "$UNIT" status 2>/dev/null | head -1 || echo unknown)
            # Only entries from the last minute, matched against the current wall clock.
            #
