@@ -136,6 +136,35 @@ the deployed page is now the last step before claiming one works. It is what fou
 The scripts are throwaway — they run on OC424 against the live panel, through nginx and the
 public hostname — but three things about them are worth keeping.
 
+### Prefer the API key: password login notifies the operator
+
+`POST /api/login` sends the operator a Telegram message when `login_notification` is enabled — **one per
+call**. A script that polls therefore looks exactly like someone signing in repeatedly, and the notification
+alone cannot tell the two apart. That makes routine automation noisy in a way that trains people to ignore the
+alert.
+
+The panel's API key authenticates without going near that endpoint:
+
+```bash
+export NEKOMARI_API_KEY='<panel: Settings -> API key>'   # optional; otherwise it is read from the database
+```
+
+```python
+from nekomari_auth import api_key_header, panel_call
+
+headers = api_key_header()                                # Authorization: Bearer <key>
+status, data = panel_call("/api/rpc2", "POST", {...}, headers=headers)
+```
+
+!!! warning "`configs.value` is JSON-encoded"
+    The stored `api_key` carries its own quotes — 42 bytes for a 40-byte key — and sending that value verbatim
+    produces a `401` that reads like a wrong key rather than a quoting mistake. `read_api_key_from_database()`
+    unquotes it; anything else reading the `configs` table must do the same.
+
+**A session is still needed to drive the admin UI**, because an API key authenticates requests but does not
+create a session. So: API key for API work, and log in in the browser only when the browser is the thing under
+test — the section below is still current for that case.
+
 ### Log in **in the browser**, do not inject the cookie
 
 A session cookie obtained in Python and added with `context.add_cookies` does **not**
