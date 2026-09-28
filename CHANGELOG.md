@@ -44,6 +44,15 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v0.1.47] — 2026-09-28
+
+- **Fixed: an asset with no content hash could be cached for four hours by an intermediate cache.** `serveAsset`
+  sent a long `immutable` lifetime for build outputs and *no `Cache-Control` at all* for everything else, so
+  Cloudflare chose — four hours. The theme's background images carry a manual version marker rather than a
+  content hash, and the 404 from the moment they were briefly missing got cached at the edge: after the files
+  were restored the page still had no background until a hard refresh. Assets without a content hash now state
+  `no-cache` (revalidated with the ETag already sent), and `index.html`/`sw.js` state `no-store`.
+
 ## [v0.1.43] — 2026-09-27
 
 - **Fixed: the front page's background image, which a theme rebuild had removed.** The theme's saved
