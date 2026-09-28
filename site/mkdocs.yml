@@ -1,0 +1,114 @@
+# Nekomari documentation site — https://nekomari-docs.66040321.xyz
+#
+# ## Why mkdocs-material
+#
+# The content is Markdown that already exists in this repository, the output is static HTML with no runtime,
+# and the build runs offline. The alternatives were a Node-based generator (another toolchain in a Go and
+# Vite repository) or hand-written HTML (no navigation, no search, and every page edited twice).
+#
+# ## What belongs here, and what does not
+#
+# **Product documentation for people running Nekomari.** The `docs/` directory in the repository root holds
+# the project's engineering record — reviews, post-mortems, roadmaps, release follow-ups — and that material
+# is deliberately *not* published here. A reader who wants to install and operate Nekomari should not have to
+# work out which of twenty-nine documents is for them, and internal records lose their value when written for
+# an audience.
+#
+# Actively-maintained internal docs are linked from `reference/repository-docs.md` rather than copied, so
+# there is exactly one place each is edited.
+
+site_name: Nekomari
+site_description: A Komari fork — server monitoring with an agent you can update from the panel.
+site_url: https://nekomari-docs.66040321.xyz/
+site_author: Aone2233
+copyright: Licensed MIT. Upstream Komari, Copyright (c) 2025 Komari Moniter, preserved under MIT.
+
+docs_dir: staging
+site_dir: dist
+
+theme:
+  name: material
+  custom_dir: theme
+  language: zh
+  features:
+    # Navigation that stays useful on a long page, and a copy button on every code block — this
+    # documentation is mostly commands people paste.
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+  palette:
+    # Dark first: the panel is used in a dark room and the site should not be the bright one.
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: 切换到浅色
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: 切换到深色
+
+extra_css:
+  - assets/nekomari.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+plugins:
+  - search:
+      # Chinese content needs the CJK tokenizer, or search matches nothing for the terms this audience
+      # actually types.
+      separator: '[\s\u200b\-]'
+
+nav:
+  - 首页: index.md
+  - 介绍:
+      - introduction/index.md
+      - 与上游 Komari 的关系: introduction/lineage.md
+  - 快速开始:
+      - get-started/index.md
+      - 安装: get-started/install.md
+      - 首次配置: get-started/quick-start.md
+  - 功能:
+      - features/index.md
+      - 监控与告警: features/monitoring.md
+      - 流量与成本: features/traffic-and-cost.md
+      - 运维能力: features/operations.md
+  - 指南:
+      - 部署: guides/deployment.md
+      - 探针: guides/agent.md
+      - 主题与插件: guides/themes-and-plugins.md
+      - 升级: guides/upgrading.md
+  - 参考:
+      - IP 信息接口: reference/ip-info-api.md
+      - 第三方组件: reference/third-party.md
+      - 仓库内其它文档: reference/repository-docs.md

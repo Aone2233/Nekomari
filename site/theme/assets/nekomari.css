@@ -1,0 +1,149 @@
+/* Nekomari documentation theme — only what mkdocs-material does not already do.
+ *
+ * The palette is taken from the panel so the documentation and the product look like one thing: the panel's
+ * accent is a soft mint/teal on a near-black surface, which is also why the site defaults to the dark scheme.
+ * Anything that can be expressed with mkdocs-material's own variables is, so a theme upgrade does not leave
+ * this file fighting it.
+ */
+
+:root {
+  --nk-accent: #63e2b6;
+  --nk-accent-strong: #3fc79a;
+  --nk-accent-dim: #2b6f5c;
+  --nk-surface: #16181d;
+  --nk-surface-raised: #1d2026;
+  --nk-border: #2b2f37;
+}
+
+/* Dark is the default scheme, so these are the primary customisations. */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: var(--nk-surface-raised);
+  --md-primary-bg-color: #e6e8ec;
+  --md-accent-fg-color: var(--nk-accent);
+  --md-default-bg-color: var(--nk-surface);
+  --md-code-bg-color: #12141a;
+  --md-typeset-a-color: var(--nk-accent);
+}
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #f7f8fa;
+  --md-primary-bg-color: #1c1f26;
+  --md-accent-fg-color: var(--nk-accent-strong);
+  --md-typeset-a-color: var(--nk-accent-strong);
+}
+
+/* Header and tab bar sit on the raised surface so the content area reads as the page. */
+.md-header,
+.md-tabs {
+  background-color: var(--nk-surface-raised);
+  border-bottom: 1px solid var(--nk-border);
+}
+
+/* Links carry the accent, and the header's are light on the raised surface. */
+.md-header__title,
+.md-header__topic,
+.md-tabs__link {
+  color: #e6e8ec;
+}
+
+.md-tabs__link--active,
+.md-tabs__link:hover {
+  color: var(--nk-accent);
+}
+
+/* ---- the landing page ---------------------------------------------------------------- */
+
+/* A hero that reads as a title block rather than a wall of text. Deliberately restrained: this is
+ * infrastructure documentation, and a marketing gradient would be the wrong signal. */
+.nk-hero {
+  padding: 1.4rem 0 1.8rem;
+  border-bottom: 1px solid var(--nk-border);
+  margin-bottom: 1.8rem;
+}
+
+.nk-hero h1 {
+  font-size: 2.6rem;
+  font-weight: 700;
+  margin: 0 0 0.6rem;
+  letter-spacing: -0.02em;
+}
+
+.nk-hero p {
+  font-size: 1.05rem;
+  line-height: 1.75;
+  max-width: 46rem;
+  color: var(--md-default-fg-color--light);
+}
+
+/* Buttons on the hero: the primary is filled, the rest are outlined. */
+.nk-hero .md-button {
+  margin: 0.6rem 0.5rem 0 0;
+}
+
+.nk-hero .md-button--primary {
+  background-color: var(--nk-accent-strong);
+  border-color: var(--nk-accent-strong);
+  color: #08130f;
+  font-weight: 600;
+}
+
+.nk-hero .md-button--primary:hover {
+  background-color: var(--nk-accent);
+  border-color: var(--nk-accent);
+  color: #08130f;
+}
+
+/* Cards for the feature grid. Two columns on desktop, one on narrow screens. */
+.nk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+  margin: 1.4rem 0;
+}
+
+.nk-card {
+  background-color: var(--nk-surface-raised);
+  border: 1px solid var(--nk-border);
+  border-radius: 0.5rem;
+  padding: 1rem 1.1rem;
+}
+
+.nk-card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--nk-accent);
+}
+
+.nk-card p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: var(--md-default-fg-color--light);
+}
+
+/* The light scheme needs its own card surface, or the cards vanish into the page. */
+[data-md-color-scheme="default"] .nk-card {
+  background-color: #ffffff;
+  border-color: #e3e6ea;
+}
+
+[data-md-color-scheme="default"] .nk-card h3 {
+  color: var(--nk-accent-strong);
+}
+
+/* ---- readability ------------------------------------------------------------------- */
+
+/* Tables are used heavily in this documentation and the default cell padding is tight for
+ * prose-heavy cells. */
+.md-typeset table:not([class]) th,
+.md-typeset table:not([class]) td {
+  padding: 0.6rem 0.75rem;
+}
+
+/* Admonitions carry several important warnings, so give them a little more room. */
+.md-typeset .admonition,
+.md-typeset details {
+  font-size: 0.82rem;
+  border-width: 2px;
+}
