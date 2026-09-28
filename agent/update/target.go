@@ -132,7 +132,12 @@ func findReleaseByTag(releases []githubRelease, target, assetName string) (snaps
 		if !ok {
 			continue
 		}
-		checksum, _ := findReleaseAsset(release, "checksums.txt")
+		// `SHA256SUMS.txt`, which is the name the release workflow writes (`sha256sum * | tee SHA256SUMS.txt`).
+// This said `checksums.txt` and the release has never contained such a file, so the lookup always returned
+// the zero asset and `applyRelease` then tried to download an empty URL — failing with "invalid release
+// asset URL" while the *selection* reported success. A targeted update could therefore never work, on any
+// node, and the message said nothing about which part was empty until it was made to name the asset.
+		checksum, _ := findReleaseAsset(release, "SHA256SUMS.txt")
 		return snapshotReleaseCandidate{
 			TagName: release.TagName, Name: release.Name, Body: release.Body,
 			HTMLURL: release.HTMLURL, PublishedAt: release.PublishedAt,
