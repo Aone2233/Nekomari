@@ -30,7 +30,7 @@ func TestVerifiedReleaseApplication(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(data)), Header: make(http.Header)}, nil
 	})}
-	candidate := snapshotReleaseCandidate{Asset: githubReleaseAsset{Name: "komari-agent-test", BrowserDownloadURL: "https://github.com/test/binary"}, Checksum: githubReleaseAsset{BrowserDownloadURL: "https://github.com/test/SHA256SUMS.txt"}}
+	candidate := snapshotReleaseCandidate{Asset: githubReleaseAsset{Name: "komari-agent-test", BrowserDownloadURL: "https://github.com/test/binary"}, Checksum: githubReleaseAsset{Name: "SHA256SUMS.txt", BrowserDownloadURL: "https://github.com/test/SHA256SUMS.txt"}}
 	target := filepath.Join(t.TempDir(), "agent")
 	if err := os.WriteFile(target, []byte("original"), 0755); err != nil {
 		t.Fatal(err)

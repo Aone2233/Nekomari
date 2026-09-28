@@ -403,6 +403,13 @@ func releaseChecksum(manifest []byte, name string) ([]byte, error) {
 }
 
 func applyRelease(release snapshotReleaseCandidate, target string) error {
+	// Checked here, where the answer is known, rather than letting an empty URL surface as "invalid release
+	// asset URL" from a download two calls away. A release without a SHA256SUMS.txt is the one case that
+	// reaches this with nothing to verify against, and saying so names the missing file.
+	if release.Checksum.Name == "" || release.Checksum.BrowserDownloadURL == "" {
+		return fmt.Errorf("release %s has no SHA256SUMS.txt asset to verify %s against",
+			release.TagName, release.Asset.Name)
+	}
 	manifest, err := downloadAsset(release.Checksum, 1<<20)
 	if err != nil {
 		return err

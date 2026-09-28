@@ -101,6 +101,14 @@ func CheckAndUpdateTo(target string) error {
 		return fmt.Errorf("failed to resolve current executable path: %w", err)
 	}
 
+	// The selection is logged before it is used, because a targeted update failed on one node with an error
+	// that named neither the asset nor the URL and there was no way to see what had actually been chosen —
+	// the only observable was the panel's version report, which does not change. These two lines are what
+	// make the next occurrence diagnosable from the agent's own log.
+	log.Printf("Targeted update to %s: asset=%q url=%q checksum=%q checksumUrl=%q",
+		release.TagName, release.Asset.Name, release.Asset.BrowserDownloadURL,
+		release.Checksum.Name, release.Checksum.BrowserDownloadURL)
+
 	log.Printf("Updating %s from %s to the requested %s\n", cmdPath, CurrentVersion, release.TagName)
 	if err := applyRelease(release, cmdPath); err != nil {
 		return fmt.Errorf("failed to update to %s: %w", release.TagName, err)

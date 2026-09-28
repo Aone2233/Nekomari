@@ -17,9 +17,9 @@ func TestTheChecksumAssetNameMatchesTheReleaseWorkflow(t *testing.T) {
 	releases := []githubRelease{
 		release("v1.2.3", false, false,
 			"komari-agent-linux-amd64", "SHA256SUMS.txt", "nekomari-linux-amd64"),
-		// A release whose checksum file is missing must still select the binary, because a targeted update
-		// without a checksum is worth attempting — `applyRelease` reports the missing checksum itself rather
-		// than the selection refusing on its behalf.
+		// A release whose checksum file is missing must still be selected, so that the failure names the
+		// missing file rather than the selection refusing on `applyRelease`'s behalf with a message about a
+		// URL. `applyRelease` rejects it explicitly — see the test below.
 		release("v1.2.4", false, false, "komari-agent-linux-amd64"),
 	}
 
@@ -41,6 +41,32 @@ func TestTheChecksumAssetNameMatchesTheReleaseWorkflow(t *testing.T) {
 	}
 	if noChecksum.Checksum.Name != "" {
 		t.Errorf("checksum asset = %q for a release that has none", noChecksum.Checksum.Name)
+	}
+}
+
+// A release with no checksum file is refused by name, not by an empty URL.
+//
+// This is the shape the real failure took: the lookup returned the zero asset, and `applyRelease` passed
+// that empty URL to `downloadAsset`, which reported "invalid release asset URL" — a message about a URL for
+// a problem that was a missing file. It now fails where the knowledge is.
+func TestAReleaseWithNoChecksumIsRefusedByName(t *testing.T) {
+	err := applyRelease(snapshotReleaseCandidate{
+		TagName: "v1.2.4",
+		Asset:   githubReleaseAsset{Name: "komari-agent-linux-amd64", BrowserDownloadURL: "https://github.com/x/y"},
+		// Checksum deliberately left as the zero value.
+	}, t.TempDir()+"/agent")
+
+	if err == nil {
+		t.Fatal("a release with no checksum asset must be refused")
+	}
+	message := err.Error()
+	for _, want := range []string{"SHA256SUMS.txt", "v1.2.4", "komari-agent-linux-amd64"} {
+		if !containsText(message, want) {
+			t.Errorf("the error does not mention %q: %s", want, message)
+		}
+	}
+	if containsText(message, "invalid release asset URL") {
+		t.Errorf("the error still reports a URL problem for a missing file: %s", message)
 	}
 }
 
