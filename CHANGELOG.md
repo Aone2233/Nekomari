@@ -44,6 +44,22 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v1.6.0] — 2026-09-28
+
+**The version now continues the upstream line, which is what makes the inherited plugin market work.**
+
+Every plugin is gated on the server's version, and 15 of the 19 official entries require more than `0.1.x`
+claimed — all seven notification plugins require `>=1.6.0`. Because the fork numbered its releases on a fresh
+sequence unrelated to its lineage, every one of them was judged incompatible and the market was unusable by
+construction. Releases from here are `1.6.0` onwards, against an upstream base of `1.5.0-fix1` and a last
+upstream release of `1.5.1`. The number is a compatibility statement rather than a lineage claim; `FORK.md`
+records that, and the residual risk that a plugin requiring `>=1.6.0` may use an API this fork's base predates.
+
+The version must also be a **plain** `X.Y.Z`: both ends split it on `.` and parse each part as an integer, and
+they fail *differently* on a suffix — the panel marks every plugin incompatible while the server silently
+allows them. `internal/plugin/version_market_test.go` holds the version to both properties against the
+captured market index.
+
 ## [v0.1.47] — 2026-09-28
 
 - **Fixed: an asset with no content hash could be cached for four hours by an intermediate cache.** `serveAsset`
