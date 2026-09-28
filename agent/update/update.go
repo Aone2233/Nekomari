@@ -339,10 +339,16 @@ func selectStableRelease(releases []githubRelease, name string, current semver.V
 func downloadAsset(asset githubReleaseAsset, limit int64) ([]byte, error) {
 	parsed, err := url.Parse(asset.BrowserDownloadURL)
 	if err != nil || parsed.Scheme != "https" || parsed.Host != "github.com" {
-		return nil, fmt.Errorf("invalid release asset URL")
+		// The name, the URL and the parse error are all reported, because this message fired on one node
+		// while the same build succeeded on nine others, and the original text — "invalid release asset
+		// URL" — named neither the asset nor the URL, so there was nothing to act on. The asset name in
+		// particular separates "this release has no asset for this platform" from "it has one whose URL
+		// cannot be used", which want different responses.
+		return nil, fmt.Errorf("invalid release asset URL: name=%q url=%q err=%v",
+			asset.Name, asset.BrowserDownloadURL, err)
 	}
 	if asset.Size < 0 || int64(asset.Size) > limit {
-		return nil, fmt.Errorf("release asset exceeds size limit")
+		return nil, fmt.Errorf("release asset %q is %d bytes, over the %d limit", asset.Name, asset.Size, limit)
 	}
 	req, err := http.NewRequest(http.MethodGet, asset.BrowserDownloadURL, nil)
 	if err != nil {
