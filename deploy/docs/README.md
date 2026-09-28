@@ -36,9 +36,9 @@ build does not take the site down.
 
 ## One-time setup
 
-Three things are outside this repository and have to be done in Cloudflare and in nginx. **None of them are
-done yet** — the section is written as the steps to follow, with the reasons, because each has a failure mode
-that is confusing if you meet it without knowing why.
+Three things are outside this repository — Cloudflare DNS, the certificate, and the nginx vhost. **All three
+are done**, on 2026-09-28; the steps below are kept as the record of what was configured and why, so that the
+next person does not have to rediscover which certificate covers what.
 
 ### 1. Cloudflare DNS
 
