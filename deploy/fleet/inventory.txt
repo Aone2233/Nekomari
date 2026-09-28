@@ -1,0 +1,31 @@
+# The fleet, by agent deployment shape
+#
+# Roadmap H6. This file exists because the nodes are not uniform, and a single script that assumed they
+# were upgraded the wrong service on three of them and produced three duplicate registrations. The shape
+# of each node is a property of how it was installed, so it is recorded rather than guessed.
+#
+# Format: `<ssh-alias> <shape> <notes>`
+#
+#   systemd    real agent at /opt/nekomari-agent/komari-agent-linux-<arch>, unit `nekomari-agent`
+#   openrc     real agent at /opt/nekomari-agent/komari-agent, init script `nekomari-agent` (Alpine)
+#   legacy     only the pre-`nekomari-agent` service exists; migrating it is a separate, manual step
+#   neither    no agent service found; investigate before touching anything
+#
+# Reached from the panel host, whose ~/.ssh/config holds these aliases. `MAC-WAN` and `PZYC` are not
+# reachable from there and are deployed from a workstation — see the note at the end.
+#
+# The `legacy` and `neither` rows are deliberately not acted on by the batch script: one needs a migration
+# rather than an upgrade, and the other needs to be understood first.
+
+AKKO06    systemd
+megabox   systemd
+HK04      systemd
+CLISP     systemd
+OC424     local    # the panel host itself: no ssh alias of its own, so the batch cannot reach it
+MAC-WAN   elsewhere  # only reachable from the workstation, not from the panel host
+
+PZYC      elsewhere  # reachable from the workstation via WSL; NAT node, vendor-default password, do not rotate
+
+NOSLA     legacy   # only /opt/komari/agent exists; the real service was never installed here
+JPKD2     openrc   # Alpine: OpenRC init script, `supervise-daemon`, binary without an arch suffix
+SDE9929   systemd  # "ShunDun DE 9929" in the panel; reported v0.1.32, so it had drifted from the rest
