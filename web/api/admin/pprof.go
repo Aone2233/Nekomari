@@ -29,9 +29,13 @@ var (
 	cpuProfileMu   sync.Mutex
 	traceProfileMu sync.Mutex
 
-	errPprofBusy            = errors.New("pprof collection is already in progress")
-	errPprofUnavailable     = errors.New("pprof profile is not available")
-	errPprofPreviewTooLarge = errors.New("pprof text preview exceeds the size limit")
+	errPprofBusy        = errors.New("pprof collection is already in progress")
+	errPprofUnavailable = errors.New("pprof profile is not available")
+	// There was an `errPprofPreviewTooLarge` here, and a handler case that turned it into HTTP 413 with no
+	// body. Both are gone: exceeding the preview limit is the expected, designed case, and it is reported by
+	// `pprofPreviewBuffer.Truncated` so the response can carry the part that fits plus a notice. Leaving the
+	// sentinel behind would leave a path that answers "download the file instead" to a request that could have
+	// been answered with content.
 )
 
 type pprofTarget struct {
@@ -41,21 +45,77 @@ type pprofTarget struct {
 
 // pprofPreviewBuffer keeps automatic browser previews bounded. Binary profile
 // downloads remain available for profiles that exceed this compact view.
+//
+// Truncation is the designed behaviour, not a failure. The first version returned an error from `Write` when
+// the limit was reached, that error travelled up through `collectPprof`, and the handler answered **HTTP 413
+// with no body** — so the panel showed "profile text preview is too large; download the pprof file instead"
+// and nothing else, which is not a preview. The comment already said the intent was to keep the view bounded;
+// returning nothing was the opposite of it.
+//
+// This is the common case rather than an edge: `heap` and `allocs` are around 70 KB as binary profiles and
+// exceed the limit as `debug=1` text, so the two profiles most worth looking at were the two that could not
+// be shown. `Truncated` is how the handler knows to say the content is partial.
 type pprofPreviewBuffer struct {
 	bytes.Buffer
-	limit int
+	// limit of zero means unlimited, which the binary download path relies on.
+	limit     int
+	truncated bool
 }
 
 func (buffer *pprofPreviewBuffer) Write(data []byte) (int, error) {
+	if buffer.limit <= 0 {
+		return buffer.Buffer.Write(data)
+	}
 	remaining := buffer.limit - buffer.Len()
 	if remaining <= 0 {
-		return 0, errPprofPreviewTooLarge
+		// **Reports every byte as accepted, deliberately, rather than a short write.**
+		//
+		// The `io.Writer` contract is "how much of my data did you consume", and the standard library's
+		// helpers — including `WriteTo` implementations — treat a short write as `io.ErrShortWrite` and stop.
+		// Returning `remaining` would therefore abort the collection at the first chunk past the limit and
+		// discard everything after it, which is the opposite of keeping a bounded preview. Nothing downstream
+		// uses the returned count to size a buffer, so over-reporting is safe; the truncation is recorded in
+		// `truncated` instead, where the handler reports it.
+		buffer.truncated = true
+		return len(data), nil
 	}
 	if len(data) > remaining {
 		_, _ = buffer.Buffer.Write(data[:remaining])
-		return remaining, errPprofPreviewTooLarge
+		buffer.truncated = true
+		return len(data), nil
 	}
 	return buffer.Buffer.Write(data)
+}
+
+// Truncated reports whether anything was dropped, so the response can say so.
+func (buffer *pprofPreviewBuffer) Truncated() bool { return buffer.truncated }
+
+// pprofPreviewTruncationNotice is appended to a preview that did not fit.
+//
+// It states the limit and points at the download, because a partial profile dump truncated mid-sample-list is
+// not analysable — the largest entries, which are the interesting ones, are exactly what is missing. Saying so
+// is the difference between a preview that is useful-with-a-caveat and one that misleads.
+func pprofPreviewTruncationNotice(limit int) string {
+	return fmt.Sprintf(
+		"\n\n---\n[preview truncated at %s] This is the beginning of the profile, not all of it, and the largest\n"+
+			"entries may be missing. Use the download button for the complete profile.\n",
+		humanizeBytes(limit))
+}
+
+// humanizeBytes renders a size for a message a person reads.
+func humanizeBytes(size int) string {
+	const unit = 1024
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+	value := float64(size)
+	for _, suffix := range []string{"KiB", "MiB", "GiB"} {
+		value /= unit
+		if value < unit {
+			return fmt.Sprintf("%.0f %s", value, suffix)
+		}
+	}
+	return fmt.Sprintf("%.0f GiB", value/unit)
 }
 
 type pprofProfileInfo struct {
@@ -214,6 +274,11 @@ func previewPprofTarget(c *gin.Context, target pprofTarget) {
 		return
 	}
 	preparePprofResponse(c, pprofFilename(target), 1)
+	// The truncation notice goes inside the body rather than in a header: the panel renders this as plain
+	// text, and a reader who sees a partial dump with no marker would reasonably treat it as complete.
+	if buffer.Truncated() {
+		buffer.WriteString(pprofPreviewTruncationNotice(maxPprofPreviewBytes))
+	}
 	c.Data(http.StatusOK, "text/plain; charset=utf-8", buffer.Bytes())
 }
 
@@ -314,8 +379,6 @@ func respondPprofCollectionError(c *gin.Context, err error) {
 		api.RespondError(c, http.StatusConflict, "profile collection is already in progress")
 	case errors.Is(err, errPprofUnavailable):
 		api.RespondError(c, http.StatusNotFound, "profile is not available")
-	case errors.Is(err, errPprofPreviewTooLarge):
-		api.RespondError(c, http.StatusRequestEntityTooLarge, "profile text preview is too large; download the pprof file instead")
 	default:
 		api.RespondError(c, http.StatusInternalServerError, "failed to collect profile")
 	}
