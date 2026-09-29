@@ -95,6 +95,11 @@ type CycleTraffic struct {
 	// 说明跨过了计费周期，累计要从零重新开始 —— 这个判断放在采样路径上做，因为它必须发生在
 	// 任何读取之前，否则跨周期后的第一次读取会看到上一个周期的旧值。
 	ResetDay uint64 `json:"reset_day"`
+	// StartedAt 是本累加器开始记账的时刻（unix 秒）。
+	//
+	// 读取时用它把账本样本切成两段：**早于**它的样本累加器没见过，需要补上；**不早于**它的样本已经
+	// 计入累加器，再加就重复。没有这条边界，两者相加必然重复计算。
+	StartedAt uint64 `json:"started_at,omitempty"`
 }
 
 // cycleResetDay 返回给定时刻所属周期的重置日（unix 秒）。day==0 表示不按周期统计。
@@ -551,9 +556,12 @@ func accumulateCycleLocked(name string, dtx, drx uint64, sampledAt uint64) {
 		store.Cycles = map[string]CycleTraffic{}
 	}
 	entry := store.Cycles[name]
-	if entry.ResetDay != resetDay {
-		// 跨周期（或首次记录）：清空并从这一笔开始
-		entry = CycleTraffic{Tx: 0, Rx: 0, ResetDay: resetDay}
+	if entry.ResetDay != resetDay || entry.StartedAt == 0 {
+		// 跨周期、首次记录、或来自还没有 StartedAt 字段的旧账本：从这一笔重新开始记账。
+		//
+		// 旧账本没有 StartedAt 时必须重设，否则读取时无法把账本样本切开、相加会重复计算。代价是
+		// 升级后第一轮的周期累计偏低（累计器从零起），准确性优先于"看起来连续"。
+		entry = CycleTraffic{Tx: 0, Rx: 0, ResetDay: resetDay, StartedAt: sampledAt}
 	}
 	entry.Tx += dtx
 	entry.Rx += drx
@@ -721,15 +729,26 @@ func GetNetStaticBetween(start, end uint64) (*NetStatic, error) {
 	return &res, nil
 }
 
-// GetTotalTraffic 获取总流量统计数据, key为网卡名称, value为对应的流量数据总和
 // GetCycleTraffic 返回每张网卡自**当前计费周期**重置日以来的累计流量。
 //
-// 与 `GetTotalTrafficBetween(resetDay, now)` 的区别，也正是这个函数存在的理由：后者对账本里
-// 保留下来的样本求和，于是累计值会随 TTL 裁剪而**变小**；而这个值在采样时就地累加，与样本
-// 是否还在账本里无关。
+// ## 两个来源相加，因为它们覆盖的时间不重叠
 //
-// 返回的 ResetDay 是这份累计对应的重置日，调用方可以据此判断它是否已跨周期 —— 正常情况下
-// 采样路径已经处理过归零，这里返回的是当前周期的值。
+//   - **累加器**（`store.Cycles`）：采样时就地累加，只覆盖**本进程开始记账之后**的流量。它不依赖账本
+//     保留期，所以周期长于 `DataPreserveDay` 时不会变小 —— 这是它存在的理由。
+//   - **账本样本**：累加器开始记账**之前**那段历史，如果还在保留期内就仍然留在账本里。
+//
+// 两者以 `StartedAt` 为界，时间上不重叠，因此相加不会重复计算。
+//
+// ## 为什么不能只用其中一个
+//
+// 只用累加器：周期累计会在部署当天从零开始。现场：一台节点的服务商侧本周期是 57 GB，而只算累加器时
+// 面板显示 0.14 GB —— 偏低到没有参考价值。
+//
+// 只用账本求和：即原先的实现，周期长于保留期时累计会变小，下游把它误判为计数器重置，把整个累计当成
+// 一次增量（41 GB 单点幻影）。
+//
+// 相加同时避开两者。边界取 `StartedAt` 而不是重置日，因为累加器只对它运行期间采到的增量累加，
+// 历史样本它读不到。
 func GetCycleTraffic() (map[string]CycleTraffic, uint64, error) {
 	mu.RLock()
 	defer mu.RUnlock()
@@ -737,15 +756,47 @@ func GetCycleTraffic() (map[string]CycleTraffic, uint64, error) {
 
 	expected := cycleResetDay(config.MonthRotate, time.Now())
 	res := make(map[string]CycleTraffic, len(store.Cycles))
-	for name, entry := range store.Cycles {
-		if entry.ResetDay != expected {
-			// 账本停留在旧周期：说明自上次采样以来跨过了重置日（或刚配置了重置日）。
-			// 这里**不**就地归零 —— 归零属于采样路径的职责，在只读路径上改状态会让读取
-			// 产生副作用。返回零值表示"本周期还没有数据"，语义是准确的。
-			res[name] = CycleTraffic{Tx: 0, Rx: 0, ResetDay: expected}
+
+	names := map[string]struct{}{}
+	for name := range store.Cycles {
+		names[name] = struct{}{}
+	}
+	for name := range store.Interfaces {
+		names[name] = struct{}{}
+	}
+	for name := range staticCache {
+		names[name] = struct{}{}
+	}
+
+	for name := range names {
+		var tx, rx, since uint64
+		if entry, ok := store.Cycles[name]; ok && entry.ResetDay == expected {
+			tx, rx, since = entry.Tx, entry.Rx, entry.StartedAt
+		}
+
+		// 补上账本里落在本周期内、且早于累加器起始时刻的样本。
+		//
+		// `since == 0` 表示这张网卡还没有累加器记录（刚配置、或本进程还没采到样），此时整个本周期都
+		// 由账本提供 —— 它是仅有的历史来源。
+		addFromLedger := func(arr []TrafficData) {
+			for _, td := range arr {
+				if td.Timestamp < expected {
+					continue
+				}
+				if since != 0 && td.Timestamp >= since {
+					continue
+				}
+				tx += td.Tx
+				rx += td.Rx
+			}
+		}
+		addFromLedger(store.Interfaces[name])
+		addFromLedger(staticCache[name])
+
+		if tx == 0 && rx == 0 {
 			continue
 		}
-		res[name] = entry
+		res[name] = CycleTraffic{Tx: tx, Rx: rx, ResetDay: expected}
 	}
 	return res, expected, nil
 }
