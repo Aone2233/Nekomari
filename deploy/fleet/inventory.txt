@@ -30,7 +30,29 @@ NOSLA     systemd  # migrated from the legacy service on 2026-09-28; token carri
 JPKD2     openrc   # Alpine: OpenRC init script, `supervise-daemon`, binary without an arch suffix
 SDE9929   systemd  # "ShunDun DE 9929" in the panel; reported v0.1.32, so it had drifted from the rest
 
-# Verified 2026-09-28, all ten nodes at v0.1.46.
+# Verified 2026-09-29, all ten nodes at v1.6.1, every one running `nekomari-agent`.
+#
+# ## The shapes are historical, and the fleet has converged
+#
+# The per-node shapes are recorded because the *batch script* needs them — a user unit is restarted differently
+# from a system one, and an OpenRC node has no `systemctl`. But the underlying differences were transitional:
+# every node now runs the same agent, under one of three service managers.
+#
+# Checked individually rather than inferred, because this list was wrong once already: an entry said `legacy`
+# for a node that had in fact been migrated, and the batch script therefore skipped it silently for weeks.
+# The check is `systemctl is-active nekomari-agent` / `rc-service nekomari-agent status`, plus reading the
+# running process's `/proc/<pid>/exe`. What was found:
+#
+#   AKKO06, megabox, HK04, CLISP   nekomari-agent, /opt/nekomari-agent/komari-agent-linux-amd64, legacy disabled
+#   NOSLA                          the same — the `legacy` entry here was stale
+#   SDE9929                        the same, binary under /root/nekomari-agent
+#   JPKD2                          nekomari-agent under OpenRC (`supervise-daemon`, rc-update registered)
+#   OC424                          the same, under a unit named `komari-agent-oc424-original-node`
+#   MAC-WAN                        the same, as a **user** unit (hence the file capability)
+#   PZYC                           the same
+#
+# No node has a legacy `komari-agent` service left: on the Linux nodes it is `disabled` or `not-found`, and on
+# JPKD2 the `/opt/komari` directory is gone entirely.
 #
 # ## The bootstrap threshold
 #
@@ -42,9 +64,14 @@ SDE9929   systemd  # "ShunDun DE 9929" in the panel; reported v0.1.32, so it had
 # This is not a limitation to design around so much as a fact to know: the first rollout of any new agent
 # capability is always manual, and a node that reports an old version cannot be moved by the panel.
 #
+# A second instance of the same rule, met while rolling to v1.6.1: the batch script was started before the
+# release was published, the download 404'd, and it fell back to the newest asset it could find — v1.6.0. It
+# reported `upgraded:` for six nodes that did not move. **Publish, wait for the release to be visible, then
+# roll.** The panel path (`admin:rollAgentUpdate`) got them in one attempt once the release was up.
+#
 # ## Nodes the panel cannot move
 #
 # `MAC-WAN` and `PZYC` are only reachable from the workstation. `PZYC` additionally cannot fetch release
 # assets from GitHub at all — `objects.githubusercontent.com` resets the TLS connection while `github.com`
-# answers — so its updates are always: download elsewhere, verify the SHA256, transfer, install, restart.
-# It is the one node that did not move when the panel rolled the fleet to v0.1.46.
+# answers — so its updates are always: download elsewhere, verify the SHA256, transfer, install, restart. It
+# is the one node the panel's own roll does not reach, at every version so far.
