@@ -364,6 +364,26 @@ func (b *rollupBucket) value(agg Aggregation) (float64, bool) {
 		return b.firstVal, true
 	case AggLast:
 		return b.lastVal, true
+	case AggDelta:
+		// The growth *within* this bucket, from its first value to its last.
+		//
+		// The caller sums the buckets, so the gaps between buckets are not counted. That is deliberate rather
+		// than overlooked: `delta` is requested by clients that previously asked for `sum` and summed the
+		// buckets themselves, so this replaces a meaningless operation with a meaningful one at the same
+		// granularity. A gap between buckets is a gap in the data, and attributing traffic to it would be
+		// inventing a number — the same failure this aggregation exists to remove.
+		//
+		// A counter reset inside the bucket is handled by `counterDeltaSum`'s reset branch, except when the
+		// reset point is the bucket's own first sample, in which case last-first undercounts. Buckets are small
+		// relative to a billing cycle, and favouring a slight undercount over a fabricated spike is the right
+		// direction for a quota figure.
+		if b.count < 2 {
+			return 0, true
+		}
+		if b.lastVal >= b.firstVal {
+			return b.lastVal - b.firstVal, true
+		}
+		return b.lastVal, true
 	case AggStdDev:
 		if b.count == 0 {
 			return 0, true

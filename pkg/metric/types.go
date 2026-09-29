@@ -73,6 +73,19 @@ const (
 	//
 	// AggSum 计算值的总和。
 	AggSum Aggregation = "sum"
+	// AggDelta sums the **positive** differences between consecutive points — i.e. how much a cumulative
+	// quantity grew across the group.
+	//
+	// It exists because `sum` on a cumulative is meaningless (it multiplies a running total by the sample
+	// count) and `last` answers a different question ("the total so far", not "how much was used"). Measured
+	// on a real fleet, the same day's `traffic.*` gave 3.87 PB under `sum` and under 1 TB under `delta`.
+	//
+	// A decrease is treated as a reset — the amount since the reset is the value itself — matching
+	// `counterRate` and the panel's `TrafficCounterDelta`. Without that, a cycle rollover inside the window
+	// would contribute a negative number, or a subtraction of the whole cumulative.
+	//
+	// AggDelta 累加相邻点之间的**正向**差值，即一个累计量在一组点内的增长量。
+	AggDelta Aggregation = "delta"
 	// AggCount counts the number of points.
 	//
 	// AggCount 计算点数量。
@@ -489,7 +502,7 @@ func (q AggregateQuery) Validate() error {
 		return fmt.Errorf("%w: bucket limit and offset cannot be negative", ErrInvalidArgument)
 	}
 	switch q.Aggregation {
-	case AggAvg, AggMin, AggMax, AggSum, AggCount, AggFirst, AggLast, AggRate, AggStdDev:
+	case AggAvg, AggMin, AggMax, AggSum, AggCount, AggFirst, AggLast, AggRate, AggStdDev, AggDelta:
 	default:
 		// Any percentile (p50, p95, p99, p99.9, ...) is also valid. The fixed
 		// AggP50/AggP95/AggP99 constants fall through to here as well.

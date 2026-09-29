@@ -189,6 +189,8 @@ func aggregateValue(points []Point, agg Aggregation) (float64, error) {
 		return points[0].Value, nil
 	case AggLast:
 		return points[len(points)-1].Value, nil
+	case AggDelta:
+		return counterDeltaSum(points), nil
 	case AggRate:
 		return counterRate(points), nil
 	case AggStdDev:
@@ -202,6 +204,35 @@ func aggregateValue(points []Point, agg Aggregation) (float64, error) {
 		}
 		return 0, fmt.Errorf("%w: unsupported aggregation %q", ErrInvalidArgument, agg)
 	}
+}
+
+// counterDeltaSum adds the positive differences between consecutive values in a time-ordered slice.
+//
+// This is the answer to "how much did this cumulative grow", and it is what `AggSum` is not: summing the
+// values of a running total multiplies it by the sample count. A decrease is treated as a counter reset — a
+// billing cycle rolling over, or a machine rebooting — and contributes the value itself, because that is the
+// amount accumulated since the reset.
+//
+// A slice with fewer than two points yields 0, which is the honest answer: with no interval there is no
+// growth to measure, and returning the single reading would present a cumulative as consumption.
+//
+// counterDeltaSum 累加按时间排序的相邻值之间的正向差值。
+func counterDeltaSum(points []Point) float64 {
+	if len(points) < 2 {
+		return 0
+	}
+	var total float64
+	previous := points[0].Value
+	for _, p := range points[1:] {
+		if p.Value >= previous {
+			total += p.Value - previous
+		} else {
+			// Reset: everything it has counted since restarting is the growth for this step.
+			total += p.Value
+		}
+		previous = p.Value
+	}
+	return total
 }
 
 // counterRate computes a per-second rate of change that is resilient to counter

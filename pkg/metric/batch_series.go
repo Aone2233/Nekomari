@@ -349,6 +349,9 @@ func rollupFieldsForAggregations(aggregations []Aggregation) rollupReadFields {
 			fields |= rollupReadFirst
 		case AggLast, AggRate:
 			fields |= rollupReadLast
+		case AggDelta:
+			// Delta needs both ends of the bucket to know how much it grew.
+			fields |= rollupReadFirst | rollupReadLast
 		case AggStdDev:
 			fields |= rollupReadSum | rollupReadSumSq
 		default:

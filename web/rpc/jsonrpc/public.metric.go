@@ -762,6 +762,25 @@ func resolveMetricMaxPoints(metricKey string, params publicMetricQueryParams) (i
 	return maxPoints, nil
 }
 
+// trafficQuantityAtCycleStart 说明 `traffic.*` 是**周期累计**而不是每区间的量。
+//
+// 面板存的是探针上报的周期累计值（自计费周期重置日以来的字节数），存储层忠实保存它。于是"对窗口内
+// 的取值求和"没有任何合理语义：那是把一个持续增长的总量按采样次数反复累加。
+//
+// 现场实测：全队 10 个节点、当日窗口，`sum` 得到 **3.87 PB**，而同一份数据取差值不到 **1 TB**。
+// 主题里那句"今日流量"就是这么算出来的，所以它显示的每个数字都大得离谱。
+//
+// 这里把 `sum` 重映射为 `delta`，而不是新增一个只有新客户端才用的聚合名。理由是兼容性：既有主题
+// （包括无法改源码的第三方主题）请求的就是 `sum`，重映射让它们无需改动就得到正确的数。语义上也站得住
+// —— 对一个单调累计量，"求和"唯一有意义的结果就是它在窗口内的增量。
+//
+// 想要累计本身的调用方请求 `last`，那是另一个问题（"本周期至今用了多少"），且不受影响。
+var trafficCumulativeMetrics = map[string]struct{}{
+	"traffic.up":   {},
+	"traffic.down": {},
+}
+
+// resolveMetricAggregation 决定某个指标用哪种算法取值。
 func resolveMetricAggregation(metricKey string, params publicMetricQueryParams) metric.Aggregation {
 	raw := firstNonEmpty(params.Aggregation, params.Algorithm)
 	if v := firstNonEmpty(
@@ -773,7 +792,13 @@ func resolveMetricAggregation(metricKey string, params publicMetricQueryParams) 
 	if raw == "" {
 		raw = string(metric.AggAvg)
 	}
-	return metric.Aggregation(normalizeMetricAggregation(raw))
+	normalized := normalizeMetricAggregation(raw)
+
+	// 见上面 trafficCumulativeMetrics 的说明。
+	if _, isCumulative := trafficCumulativeMetrics[metricKey]; isCumulative && normalized == string(metric.AggSum) {
+		return metric.AggDelta
+	}
+	return metric.Aggregation(normalized)
 }
 
 func resolveMetricFillEmpty(params publicMetricQueryParams) bool {
