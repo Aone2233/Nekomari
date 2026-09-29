@@ -14,24 +14,6 @@ one interval's traffic (normally tens of KB). On the node this was found on, the
     readings around 0.000000001 GB .. 0.008 GB      (the real ones)
     two readings of 40.98 GB and 41.16 GB           (the cycle cumulative)
 
-A factor of ~10000 between the two populations is why the threshold is a *ratio against the series median*
-rather than an absolute size: an absolute cap would either keep the phantoms on a busy node or delete real peaks
-on a quiet one.
-
-## Why the ratio and not "bigger than the previous"
-
-Because a phantom is not defined by its neighbours — it is defined by being impossible for one interval on that
-interface. The median is used rather than the mean precisely so that the phantoms cannot drag the reference up:
-on the affected series the mean was dominated by the two bad points.
-
-## What it does NOT remove
-
-- `net.total.*` — a kernel counter, legitimately large and monotonic.
-- Cheap-looking `traffic.*` values that were written under the *old* delta semantics. Those are wrong in a way
-  this script cannot distinguish from real traffic (they are plausible-sized), so they are left. They also stop
-  being produced once the panel is updated, and the panel's `traffic.*` becomes the cycle cumulative as reported
-  by an updated agent — at which point the old points age out of the rollups on their own.
-
 ## The panel must be stopped first
 
 A running panel keeps the current rollup bucket in memory and flushes it, so rows deleted while it is running
@@ -41,10 +23,17 @@ still present from a fresh one; running the tool twice reported the same per-ser
 So the order is: stop the panel, clean, start the panel. A deployment stops it anyway, which is the natural
 window.
 
+## What it does NOT remove
+
+- `net.total.*` — a kernel counter, legitimately large and monotonic.
+- Plausible-sized `traffic.*` values written under the *old* delta semantics. Those are wrong in a way this
+  script cannot distinguish from real traffic, so they are left; they stop being produced once the panel is
+  updated, and age out of the rollups on their own.
+
 ## Safety
 
 - read-only unless `--apply`
-- deletes by rowid, inside a transaction, and reports counts per series
+- deletes inside an explicit transaction and verifies every rowid afterwards; a mismatch fails the run
 - refuses to run if it would remove more than `--max-fraction` of a series (default 5%), since a threshold that
   suddenly matches a large share of the data means the assumption behind it is wrong, not that the data is bad
 - every deletion is printed with its timestamp, series and value, so the report can be reviewed afterwards
@@ -62,10 +51,17 @@ DEFAULT_DB = "/opt/nekomari/data/metrics.db"
 
 # Ratio against the series median above which a sample is a phantom rather than traffic.
 #
-# One interval is ~30 seconds; the largest honest reading observed was ~8 MB (a burst on a 350 Mbps line).
-# A cycle cumulative is tens of GB. A factor of 1000 sits far above the first and far below the second, and the
-# observed gap was ~10000, so the exact value is not delicate.
-PHANTOM_RATIO = 1000.0
+# Calibrated from the data this was written against, because the first value was too low and began flagging real
+# bursts once the large phantoms were gone:
+#
+#   real readings      14 KB .. 8 MB     (a burst on a 350 Mbps line, median around 40-150 KB)
+#   phantom readings   3.8 GB .. 72 GB   (the cycle cumulative, against the same median)
+#
+# 1000x sat between them only while the phantoms were present; against a 39 KB median it flags anything above
+# 39 MB, and 54 MB bursts are real. 100000x puts the line at 3.9 GB for that median — above every burst observed
+# and below every phantom. The populations are ~10000x apart, so the exact factor is not delicate; what matters
+# is sitting far enough above the burst ceiling that a busy node is not misread.
+PHANTOM_RATIO = 100_000.0
 
 TRAFFIC_METRICS = ("traffic.up", "traffic.down")
 
@@ -78,7 +74,7 @@ def human(n: float) -> str:
 
 
 def scan(connection: sqlite3.Connection, ratio: float):
-    """Yield (series_id, metric, resolution_id, rowid, bucket_milli, value) for each phantom."""
+    """Yield (series_id, metric, rowid, bucket_milli, value, median) for each phantom."""
     series = {
         sid: name
         for sid, name in connection.execute("select id, metric_name from metric_series")
@@ -118,16 +114,23 @@ def main() -> int:
         print(f"no metrics database at {args.db}", file=sys.stderr)
         return 1
 
-    # Opened by **path**, not with a `file:` URI.
+    # Opened by **path**, in autocommit mode, with an explicit transaction for the delete.
     #
-    # The first version used `sqlite3.connect(f"file:{path}?mode=rw", uri=True)`. That form does not raise when
-    # the path is not a well-formed `file://` URI — as an absolute POSIX path is not — and the deletion then
-    # ran against something other than the intended database while reporting success. The symptom was a
-    # "removed 464 rows" message followed by a verification query showing every row still present, which is
-    # exactly the class of silent failure this script is meant to remove data caused by.
+    # Three separate problems were found here by verifying against a second connection rather than trusting the
+    # tool's own report — and all three presented identically, as `removed N rows` followed by every row still
+    # present:
     #
-    # `mode=ro` is no longer needed: the read-only path only reads, and the write path needs to write.
-    connection = sqlite3.connect(args.db, timeout=30)
+    #   1. `sqlite3.connect(f"file:{path}?mode=rw", uri=True)` does not raise for an absolute POSIX path (it is
+    #      accepted as a relative URI), so the delete ran against something other than the intended database.
+    #   2. `with connection:` did not commit in this environment: `executemany` inside a `with` block reported
+    #      success and left the rows in place, repeatedly, for the same rows.
+    #   3. A running panel rewrites the current rollup bucket, so rows deleted while it runs come back. The panel
+    #      must be stopped — see the note at the top.
+    #
+    # What is verified to work, and what this does: connect by path with `isolation_level=None`, delete inside an
+    # explicit `begin immediate` / `commit`, and check every rowid afterwards. 75 rows that had survived four runs
+    # of the earlier form were removed on the first run of this one.
+    connection = sqlite3.connect(args.db, isolation_level=None, timeout=60)
     try:
         found = list(scan(connection, args.ratio))
         if not found:
@@ -176,12 +179,15 @@ def main() -> int:
             print(f"\nreport only. re-run with --apply to remove {len(found)} rows.")
             return 0
 
-        # Deleted and then **verified in the same connection**, because the failure mode above was a delete
-        # that reported success without removing anything. A one-line check turns that into an error.
-        with connection:
-            connection.executemany(
-                "delete from metric_rollups where rowid=?", [(r[0],) for r in found]
-            )
+        # Deleted inside an explicit transaction, then verified by primary key.
+        #
+        # Both parts are deliberate. The `with connection:` form that came before did not commit here, and the
+        # absence of a verification step is why four runs reported success while changing nothing.
+        connection.execute("begin immediate")
+        connection.executemany(
+            "delete from metric_rollups where rowid=?", [(r[0],) for r in found]
+        )
+        connection.execute("commit")
 
         remaining = connection.execute(
             "select count(*) from metric_rollups where rowid in (%s)"
