@@ -44,6 +44,19 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v1.6.3] — 2026-09-29
+
+- **Fixed: a cycle cumulative was being summed, so traffic figures scaled with the sampling rate.** `traffic.*`
+  is bytes since the billing cycle's reset day; requesting `sum` over it multiplied one running total by the
+  number of samples. One day across the fleet read **3.87 PB** where the real figure was under **1 TB**.
+  - new `delta` aggregation: the sum of positive differences, i.e. how much the cumulative grew. A decrease is
+    a reset and contributes the amount since the reset, never a negative or the whole total.
+  - `sum` on `traffic.*` is remapped to `delta`, so existing clients — including a third-party theme with no
+    source available — get the right number without changing. The only meaningful reading of "summing a
+    monotonic cumulative" is its growth, so the remap is the semantics rather than a compatibility shim.
+  - `last` is unaffected, so "this cycle so far" still works as before.
+  - both storage paths implement it: raw series, and rollups via each bucket's first and last values.
+
 ## [v1.6.2] — 2026-09-29
 
 - **Fixed: the cycle traffic total lost the history the new accumulator could not see.** v1.6.1 replaced the
