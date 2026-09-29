@@ -44,6 +44,19 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v1.6.2] — 2026-09-29
+
+- **Fixed: the cycle traffic total lost the history the new accumulator could not see.** v1.6.1 replaced the
+  retention-dependent `sum(samples in [reset day, now])` with a persistent accumulator, which removed one defect
+  and introduced another: an accumulator only counts from **its own first sample**, so period usage collapsed to
+  0.14 GB on a node whose provider billed **57 GB** for the same cycle. The two sources cover different spans —
+  the accumulator from its first sample onward, the ledger the history before it — so they are now summed with
+  `StartedAt` as the boundary, and samples at or after it are excluded to avoid double counting. An accumulator
+  written before `StartedAt` existed is re-baselined rather than trusted, since a zero boundary would inflate.
+
+  Measured on the node that prompted it: kernel lifetime 108.6 GB over 42 days of uptime, provider's own cycle
+  figure 57 GB, and the panel showing ~101 GB because the card falls back to the lifetime totals.
+
 ## [v1.6.1] — 2026-09-28
 
 **Traffic accounting.** The probe reported two different quantities through one field and the panel
