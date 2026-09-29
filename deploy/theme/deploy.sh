@@ -56,6 +56,36 @@ command -v npm >/dev/null 2>&1 || die "npm is not on PATH (source nvm, or instal
 # The build writes into the source directory (`dist/`, and Vite's cache). Building in place would mean the
 # repository's working tree is what gets deployed, including any uncommitted experiment — so a copy is made and
 # the copy is what is built.
+# --- refuse to deploy a theme the site is not using -------------------------------------------------
+#
+# This check exists because the opposite happened: three rounds of fix → build → deploy → verified-hash-change
+# all went to LuminaPlus while `configs.theme` said **SAO**, so the live page kept showing the values that were
+# being "fixed". The deployment was correct every time and irrelevant every time, and nothing in the output said
+# so. The bundle hash changing is not evidence that the site changed — it is evidence that a directory changed.
+#
+# Set ALLOW_INACTIVE_THEME=1 to deploy one anyway (e.g. preparing a theme before switching to it).
+THEME_NAME=$(basename "$TARGET")
+DB="${KOMARI_DB:-$(dirname "$TARGET")/../komari.db}"
+if [ "${ALLOW_INACTIVE_THEME:-0}" != "1" ] && [ -f "$DB" ]; then
+  ACTIVE=$(python3 - "$DB" <<'PY' 2>/dev/null || true
+import sqlite3, sys
+try:
+    c = sqlite3.connect("file:%s?mode=ro" % sys.argv[1], uri=True)
+    r = c.execute("select value from configs where key='theme'").fetchone()
+    print((r[0] or "").strip('"') if r else "")
+except Exception:
+    print("")
+PY
+)
+  if [ -n "$ACTIVE" ] && [ "$ACTIVE" != "$THEME_NAME" ]; then
+    log "REFUSING: the site is using theme '$ACTIVE', not '$THEME_NAME'."
+    log "          Deploying '$THEME_NAME' would change nothing on the live site."
+    log "          Target the active theme, or set ALLOW_INACTIVE_THEME=1 if this is deliberate."
+    exit 4
+  fi
+  [ -n "$ACTIVE" ] && log "active theme confirmed: $ACTIVE"
+fi
+
 log "staging $SOURCE -> $BUILD_DIR"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"

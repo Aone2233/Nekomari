@@ -58,4 +58,32 @@ minute. The asset filenames are content-hashed, so the new bundle is fetched aut
 references it — no cache purge needed, which is why the earlier stylesheet-cache incident does not repeat here.
 
 Compare **origin** and **edge** separately: when only the edge differs, the deployment worked and the cache has
-not expired yet.
+not expired yet.## The site has to be using the theme you deploy
+
+`configs.theme` in the panel database names the active theme. `deploy.sh` reads it and **refuses** to deploy a
+different one, because this happened:
+
+| round | deployed to | hash changed | tests passed | site changed |
+|---|---|---|---|---|
+| 1 | LuminaPlus | yes | yes | **no** |
+| 2 | LuminaPlus | yes | yes | **no** |
+| 3 | LuminaPlus | yes | yes | **no** |
+
+The active theme was `SAO` throughout. Every deployment was correct and irrelevant, and the output could not
+have told anyone: the bundle hash changes because the *directory* changed, which is not the same claim as the
+site changing, and the site returning 200 is true either way.
+
+```
+REFUSING: the site is using theme 'SAO', not 'LuminaPlus'.
+          Deploying 'LuminaPlus' would change nothing on the live site.
+```
+
+Set `ALLOW_INACTIVE_THEME=1` when the intent is to prepare a theme before switching to it.
+
+This is the third layer of the same mistake, and each one needed its own check:
+
+1. editing the source ≠ deploying it
+2. deploying ≠ the site reading it
+3. the site reading it ≠ the site reading **that** theme
+
+Only the third answers the question someone is actually asking when they say the page is still wrong.
