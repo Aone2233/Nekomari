@@ -25,8 +25,12 @@ type report struct {
 	Uptime      uint64            `json:"uptime"`
 	Process     int               `json:"process"`
 	// Backup 仅在配置了 --backup-status-file 时填充，否则为 nil（omitempty）。
-	Backup  *backupReport `json:"backup,omitempty"`
-	Message string        `json:"message"`
+	Backup                *backupReport     `json:"backup,omitempty"`
+	Message               string            `json:"message"`
+	SampledAt             time.Time         `json:"sampled_at"`
+	SampleIntervalSeconds float64           `json:"sample_interval_seconds"`
+	CounterEpoch          string            `json:"counter_epoch,omitempty"`
+	Quality               map[string]string `json:"quality"`
 }
 
 type cpuReport struct {
@@ -87,25 +91,37 @@ type gpuDeviceReport struct {
 
 func GenerateReport() []byte {
 	message := ""
-	data := report{}
+	data := report{SampleIntervalSeconds: flags.Interval, Quality: make(map[string]string)}
+	mark := func(key string, valid bool) {
+		data.Quality[key] = "unknown"
+		if valid {
+			data.Quality[key] = "ok"
+		}
+	}
 
 	cpu := unit.Cpu()
 	cpuUsage := cpu.CPUUsage
-	if cpuUsage <= 0.001 {
-		cpuUsage = 0.001
+	if !cpu.Valid {
+		cpuUsage = 0
 	}
 	data.CPU = cpuReport{Usage: cpuUsage}
+	mark("cpu", cpu.Valid)
 
 	ram := unit.Ram()
 	data.Ram = usageReport{Total: ram.Total, Used: ram.Used}
+	mark("ram", ram.Valid)
+	data.Quality["ram_mode"] = ram.Mode
 
 	swap := unit.Swap()
 	data.Swap = usageReport{Total: swap.Total, Used: swap.Used}
+	mark("swap", swap.Valid)
 	load := unit.Load()
 	data.Load = loadReport{Load1: load.Load1, Load5: load.Load5, Load15: load.Load15}
+	mark("load", load.Valid)
 
 	disk := unit.Disk()
 	data.Disk = usageReport{Total: disk.Total, Used: disk.Used}
+	mark("disk", disk.Valid)
 
 	totalUp, totalDown, cycleUp, cycleDown, networkUp, networkDown, err := unit.NetworkSpeed()
 	if err != nil {
@@ -116,20 +132,32 @@ func GenerateReport() []byte {
 		TotalUp: totalUp, TotalDown: totalDown,
 		CycleUp: cycleUp, CycleDown: cycleDown,
 	}
+	sampledAt, epoch, rateValid := unit.NetworkSampleMetadata()
+	data.SampledAt = sampledAt
+	data.CounterEpoch = epoch
+	mark("network", !sampledAt.IsZero())
+	mark("net_rate", rateValid)
+	mark("traffic_cycle", err == nil && flags.MonthRotate != 0 && !sampledAt.IsZero())
+	if data.SampledAt.IsZero() {
+		data.SampledAt = time.Now().UTC()
+	}
 
 	tcpCount, udpCount, err := unit.ConnectionsCount()
 	if err != nil {
 		message += fmt.Sprintf("failed to get connections: %v\n", err)
 	}
 	data.Connections = connectionsReport{TCP: tcpCount, UDP: udpCount}
+	mark("connections", err == nil)
 
 	uptime, err := unit.Uptime()
 	if err != nil {
 		message += fmt.Sprintf("failed to get uptime: %v\n", err)
 	}
 	data.Uptime = uptime
+	mark("uptime", err == nil)
 
 	data.Process = unit.ProcessCount()
+	mark("process", data.Process > 0)
 
 	// 备份新鲜度（可选）：未配置状态文件时不上报，避免写入无意义的零值序列。
 	if path := strings.TrimSpace(flags.BackupStatusFile); path != "" {
@@ -142,6 +170,7 @@ func GenerateReport() []byte {
 
 	// GPU监控 - 根据标志决定详细程度
 	if flags.EnableGPU {
+		mark("gpu", false)
 		// 详细GPU监控模式
 		gpuInfo, err := unit.GetDetailedGPUInfo()
 		if err != nil {
@@ -169,6 +198,7 @@ func GenerateReport() []byte {
 
 			avgGPUUsage := totalGPUUsage / float64(len(gpuInfo))
 			data.GPU = gpuReport{Count: len(gpuInfo), AverageUsage: avgGPUUsage, DetailedInfo: gpuData}
+			mark("gpu", true)
 		}
 	}
 	// 基础模式下，GPU信息已在basicInfo中处理

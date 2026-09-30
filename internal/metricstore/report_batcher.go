@@ -27,9 +27,12 @@ type reportTrafficValues struct {
 	totalUp     int64
 	hasDown     bool
 	totalDown   int64
+	epoch       string
+	uptime      int64
 }
 
 var reportTrafficStates sync.Map
+var reportBatchWriteMu sync.Mutex
 
 const (
 	reportBatchInterval     = 3 * time.Second
@@ -182,6 +185,9 @@ func WriteReport(ctx context.Context, report v2.Report) (v2.Report, error) {
 	saved, err := writeReportBatch(ctx, []v2.Report{report})
 	if err != nil {
 		return v2.Report{}, err
+	}
+	if len(saved) == 0 {
+		return report, nil
 	}
 	return saved[0], nil
 }
@@ -371,17 +377,19 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 		return nil, fmt.Errorf("wait for metric store operation before writing reports: %w", err)
 	}
 	defer storeOperations.ReleaseShared()
+	// Serialize baseline read/write/commit across synchronous and queued writers.
+	reportBatchWriteMu.Lock()
+	defer reportBatchWriteMu.Unlock()
 
 	s := GetStore()
 	if s == nil {
 		return nil, fmt.Errorf("metric store not enabled")
 	}
 
-	prepared := make([]v2.Report, len(reports))
-	copy(prepared, reports)
+	prepared := make([]v2.Report, 0, len(reports))
 	points := make([]metric.Point, 0, len(reports)*20)
 	pendingStates := make(map[*reportTrafficState]reportTrafficValues)
-	for i, report := range prepared {
+	for _, report := range reports {
 		stateValue, _ := reportTrafficStates.LoadOrStore(report.UUID, &reportTrafficState{})
 		state := stateValue.(*reportTrafficState)
 		values, ok := pendingStates[state]
@@ -414,7 +422,8 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 		}
 
 		if !values.timestamp.IsZero() && !report.UpdatedAt.After(values.timestamp) {
-			report.UpdatedAt = values.timestamp.Add(time.Millisecond)
+			// Never invent a timestamp for a replay or an out-of-order sample.
+			continue
 		}
 		// `traffic.*` 存的是**周期累计本身**，不再是从内核计数器推出来的增量。
 		//
@@ -427,13 +436,22 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 		//   * `net.total.*` —— 内核累计，单调，是唯一适合做差的对象（见下面对的基线推进）
 		//   * `traffic.*`   —— 周期累计，直接存，读取方取最后值即可；求和或求差都是误用
 		points = append(points, reportMetricPoints(report)...)
+		points = append(points, reportIntervalPoints(report, values)...)
 		values.timestamp = report.UpdatedAt
 		values.hasUp = true
 		values.totalUp = report.Network.TotalUp
 		values.hasDown = true
 		values.totalDown = report.Network.TotalDown
+		values.epoch = report.CounterEpoch
+		values.uptime = report.Uptime
+		if quality, exists := report.Quality["network"]; exists && quality != "ok" {
+			values.hasUp, values.hasDown = false, false
+		}
+		if quality, exists := report.Quality["uptime"]; exists && quality != "ok" {
+			values.hasUp, values.hasDown = false, false
+		}
 		pendingStates[state] = values
-		prepared[i] = report
+		prepared = append(prepared, report)
 	}
 
 	if err := s.WriteBatch(ctx, points); err != nil {

@@ -169,10 +169,11 @@ func RecordReport(report v2.Report) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if latest := latestReport[report.UUID]; latest == nil || !report.UpdatedAt.Before(latest.UpdatedAt) {
-		item := report
-		latestReport[report.UUID] = &item
+	if latest := latestReport[report.UUID]; latest != nil && !report.UpdatedAt.After(latest.UpdatedAt) {
+		return
 	}
+	item := report
+	latestReport[report.UUID] = &item
 	cutoff := time.Now().UTC().Add(-recentReportRetention)
 	reports := reportsAfter(recentReports[report.UUID], cutoff)
 	if report.UpdatedAt.Before(cutoff) {

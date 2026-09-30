@@ -61,28 +61,26 @@ const Index = () => {
 
   const summaryStats = useMemo(() => {
     const regions = new Set<string>();
-    let totalUp = 0;
-    let totalDown = 0;
-    let speedUp = 0;
-    let speedDown = 0;
+    let totalUp: number | null = 0;
+    let totalDown: number | null = 0;
+    let speedUp: number | null = 0;
+    let speedDown: number | null = 0;
 
     for (const node of nodeList ?? []) {
       if (!onlineSet.has(node.uuid)) continue;
 
       regions.add(node.region);
       const record = liveData.data[node.uuid];
-      if (!record) continue;
-
-      totalUp += record.network.totalUp || 0;
-      totalDown += record.network.totalDown || 0;
-      speedUp += record.network.up || 0;
-      speedDown += record.network.down || 0;
+      totalUp = totalUp !== null && record?.network.totalUp != null ? totalUp + record.network.totalUp : null;
+      totalDown = totalDown !== null && record?.network.totalDown != null ? totalDown + record.network.totalDown : null;
+      speedUp = speedUp !== null && record?.network.up != null ? speedUp + record.network.up : null;
+      speedDown = speedDown !== null && record?.network.down != null ? speedDown + record.network.down : null;
     }
 
     return {
       regionCount: regions.size,
       trafficText: `↑ ${formatBytes(totalUp)} / ↓ ${formatBytes(totalDown)}`,
-      speedText: `↑ ${formatSpeed(speedUp)} / ↓ ${formatSpeed(speedDown)}`,
+      speedText: `↑ ${speedUp === null ? "-" : formatSpeed(speedUp)} / ↓ ${speedDown === null ? "-" : formatSpeed(speedDown)}`,
     };
   }, [liveData.data, nodeList, onlineSet]);
 

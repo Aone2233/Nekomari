@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Aone2233/nekomari/internal/sqlitetune"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/Aone2233/nekomari/internal/sqlitetune"
 )
 
 // Store is the main metric storage handle.
@@ -74,8 +74,9 @@ type Store struct {
 	// coarseMu protects in-memory parent buckets. Coarser tiers are only
 	// materialized once their source window has remained closed long enough for
 	// the raw late-arrival window to pass.
-	coarseMu sync.RWMutex
-	coarse   map[coarseRollupKey]*coarseRollup
+	coarseMu              sync.RWMutex
+	coarse                map[coarseRollupKey]*coarseRollup
+	coarseRecoveryPending bool // protected by rollupViewMu after Open
 	// mu protects closed state.
 	//
 	// mu 保护 closed 状态。
@@ -133,10 +134,11 @@ func Open(ctx context.Context, cfg Config) (*Store, error) {
 			watermarks:  tableName(cfg.TablePrefix, "compaction_watermarks"),
 			state:       tableName(cfg.TablePrefix, "store_state"),
 		},
-		raw:        make(map[rawSeriesKey]*rawSeries),
-		hot:        make(map[hotRollupKey]*rollupBucket),
-		hotReplace: make(map[hotRollupKey]struct{}),
-		coarse:     make(map[coarseRollupKey]*coarseRollup),
+		raw:                   make(map[rawSeriesKey]*rawSeries),
+		hot:                   make(map[hotRollupKey]*rollupBucket),
+		hotReplace:            make(map[hotRollupKey]struct{}),
+		coarse:                make(map[coarseRollupKey]*coarseRollup),
+		coarseRecoveryPending: true,
 	}
 
 	if cfg.DB != nil {
@@ -220,6 +222,10 @@ func Open(ctx context.Context, cfg Config) (*Store, error) {
 
 	if cfg.AutoMigrate {
 		if err := s.Migrate(ctx); err != nil {
+			s.closeDBs()
+			return nil, err
+		}
+		if err := s.recoverPendingCoarseRollups(ctx); err != nil {
 			s.closeDBs()
 			return nil, err
 		}
@@ -398,8 +404,7 @@ func (s *Store) Close() error {
 	s.rawMu.Lock()
 	s.raw = nil
 	s.rawMu.Unlock()
-	// Coarse summaries deliberately remain process-local until their window is
-	// sealed. The configured behavior drops an unsealed parent on shutdown.
+	// Pending parents are reconstructed from durable child buckets on reopen.
 	s.coarseMu.Lock()
 	s.coarse = nil
 	s.coarseMu.Unlock()

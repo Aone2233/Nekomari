@@ -47,6 +47,17 @@ func ReportVerify(report v2.Report) error {
 	if err := checkFloat64("Load.Load1", report.Load.Load1); err != nil {
 		return err
 	}
+	for _, value := range []float64{report.Load.Load5, report.Load.Load15} {
+		if err := checkFloat64("Load", value); err != nil || value < 0 || value > 1000 {
+			return fmt.Errorf("Load must be finite and between 0 and 1000")
+		}
+	}
+	if err := checkFloat64("SampleIntervalSeconds", report.SampleIntervalSeconds); err != nil {
+		return err
+	}
+	if report.SampleIntervalSeconds != 0 && (report.SampleIntervalSeconds < 1 || report.SampleIntervalSeconds > 300) {
+		return fmt.Errorf("sample_interval_seconds must be between 1 and 300")
+	}
 	if report.GPU != nil {
 		if err := checkFloat64("GPU.AverageUsage", report.GPU.AverageUsage); err != nil {
 			return err
@@ -102,6 +113,12 @@ func ReportVerify(report v2.Report) error {
 	}
 	if err := checkInt64("Network.TotalDown", report.Network.TotalDown); err != nil {
 		return err
+	}
+	if report.Network.CycleUp < 0 || report.Network.CycleDown < 0 || report.Uptime < 0 {
+		return fmt.Errorf("cycle counters and uptime must be non-negative")
+	}
+	if report.Ram.Used > report.Ram.Total || report.Swap.Used > report.Swap.Total || report.Disk.Used > report.Disk.Total {
+		return fmt.Errorf("resource used value exceeds total")
 	}
 	// 拒绝所有负数Int
 	if report.Process < 0 {

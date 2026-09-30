@@ -15,6 +15,7 @@ import Tips from "./ui/tips";
 
 import { formatBytes } from "@/utils/unitHelper";
 import { formatUptime } from "@/utils/timeFormat";
+import { UNKNOWN_LIVE_RECORD, usagePercent } from "@/utils/liveData";
 
 interface NodeProps {
   basic: NodeBasicInfo;
@@ -23,33 +24,15 @@ interface NodeProps {
   isMobile: boolean;
   showIpTagsInCard: boolean;
 }
-const DEFAULT_NODE_LIVE = {
-  cpu: { usage: 0 },
-  ram: { used: 0 },
-  swap: { used: 0 },
-  load: { load1: 0, load5: 0, load15: 0 },
-  disk: { used: 0 },
-  network: { up: 0, down: 0, totalUp: 0, totalDown: 0 },
-  connections: { tcp: 0, udp: 0 },
-  uptime: 0,
-  process: 0,
-  message: "",
-  updated_at: "",
-} as Record;
-
 const Node = React.memo(
   ({ basic, live, online, isMobile, showIpTagsInCard }: NodeProps) => {
   const [t] = useTranslation();
-  const liveData = live || DEFAULT_NODE_LIVE;
+  const liveData = live || UNKNOWN_LIVE_RECORD;
   const osImage = React.useMemo(() => getOSImage(basic.os), [basic.os]);
   const osName = React.useMemo(() => getOSName(basic.os), [basic.os]);
 
-  const memoryUsagePercent = basic.mem_total
-    ? (liveData.ram.used / basic.mem_total) * 100
-    : 0;
-  const diskUsagePercent = basic.disk_total
-    ? (liveData.disk.used / basic.disk_total) * 100
-    : 0;
+  const memoryUsagePercent = usagePercent(liveData.ram.used, liveData.ram.total ?? basic.mem_total);
+  const diskUsagePercent = usagePercent(liveData.disk.used, liveData.disk.total ?? basic.disk_total);
 
   const uploadSpeed = formatBytes(liveData.network.up);
   const downloadSpeed = formatBytes(liveData.network.down);
@@ -344,12 +327,15 @@ export const NodeGrid = ({ nodes, liveData, onlineSet }: NodeGridProps) => {
 };
 
 function getTrafficPercentage(
-  totalUp: number,
-  totalDown: number,
+  totalUp: number | null,
+  totalDown: number | null,
   limit: number,
   type: "max" | "min" | "sum" | "up" | "down",
 ) {
   if (limit === 0) return 0;
+  if (type === "up") return totalUp === null ? null : totalUp / limit * 100;
+  if (type === "down") return totalDown === null ? null : totalDown / limit * 100;
+  if (totalUp === null || totalDown === null) return null;
   switch (type) {
     case "max":
       return (Math.max(totalUp, totalDown) / limit) * 100;
@@ -357,10 +343,6 @@ function getTrafficPercentage(
       return (Math.min(totalUp, totalDown) / limit) * 100;
     case "sum":
       return ((totalUp + totalDown) / limit) * 100;
-    case "up":
-      return (totalUp / limit) * 100;
-    case "down":
-      return (totalDown / limit) * 100;
     default:
       return 0;
   }

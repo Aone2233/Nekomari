@@ -277,14 +277,14 @@ func TestPublicPingStatsFromAggregateGroupsUsesTaskNamesAndLossMetric(t *testing
 	if got.Total != 4 || got.Valid != 3 {
 		t.Fatalf("unexpected totals: %#v", got)
 	}
-	if got.Loss != 25 || got.LossApproximate {
+	if got.Loss == nil || *got.Loss != 25 || got.LossApproximate {
 		t.Fatalf("loss should come from ping.loss metric: %#v", got)
 	}
-	if got.Min == nil || *got.Min != 12 || got.Max == nil || *got.Max != 92 || got.Avg == nil || *got.Avg != 30 {
+	if got.Min != nil || got.Max == nil || *got.Max != 92 || got.Avg == nil || math.Abs(*got.Avg-121.0/3) > 1e-9 {
 		t.Fatalf("latency stats mismatch: %#v", got)
 	}
-	if math.Abs(got.P99P50Ratio-1.6666666666666667) > 0.000001 {
-		t.Fatalf("unexpected volatility ratio: %#v", got)
+	if got.P50 != nil || got.P99 != nil || got.StdDev != nil || got.P99P50Ratio != nil || got.Quality != "legacy_quantiles_unknown" {
+		t.Fatalf("mixed legacy digests must not invent successful quantiles or moments: %#v", got)
 	}
 }
 
@@ -294,7 +294,7 @@ func TestPublicPingMetricStatsIncludesZeroVolatility(t *testing.T) {
 		TaskID:      "1",
 		Total:       1,
 		Valid:       1,
-		P99P50Ratio: 0,
+		P99P50Ratio: publicMetricValue(0),
 	})
 	if err != nil {
 		t.Fatalf("marshal ping stats: %v", err)
@@ -366,7 +366,7 @@ func TestLoadPublicMetricPointsReturnsAllRecentRawSamples(t *testing.T) {
 	got, err := loadPublicMetricPoints(ctx, store, metric.Query{
 		MetricName: metricName,
 		EntityID:   "node-a",
-		Start:      queryEnd.Add(-10 * time.Minute),
+		Start:      now.Add(-10 * time.Minute),
 		End:        queryEnd,
 		Order:      metric.OrderAsc,
 	}, metric.AggAvg, 1, false, now)
@@ -395,8 +395,8 @@ func TestPublicMetricUsesRawWindowOnlyForCurrentlyRetainedRange(t *testing.T) {
 		t.Fatal("exact ten-minute current range should use raw samples")
 	}
 	delayedEnd := now.Add(-3 * time.Second)
-	if !publicMetricUsesRawWindow(delayedEnd.Add(-10*time.Minute), delayedEnd, now) {
-		t.Fatal("client-side ten-minute range should tolerate transit delay while it overlaps raw retention")
+	if publicMetricUsesRawWindow(delayedEnd.Add(-10*time.Minute), delayedEnd, now) {
+		t.Fatal("partially retained windows must use rollups rather than silently truncate old samples")
 	}
 	cutoff := now.Add(-10 * time.Minute)
 	if publicMetricUsesRawWindow(cutoff.Add(-10*time.Minute), cutoff, now) {
@@ -520,7 +520,7 @@ func TestPublicPingStatsSplitByAddressFamily(t *testing.T) {
 		{EntityID: "node-a", Bucket: base, Count: 2, Value: 0, Tags: map[string]string{"task_id": "7", "family": "ipv6"}},
 	}
 	lossPoints := []metric.AggregatePoint{
-		{EntityID: "node-a", Bucket: base, Count: 2, Value: 0, Tags: map[string]string{"task_id": "7", "family": "ipv4"}},
+		{EntityID: "node-a", Bucket: base, Count: 4, Value: 0, Tags: map[string]string{"task_id": "7", "family": "ipv4"}},
 		{EntityID: "node-a", Bucket: base, Count: 2, Value: 1, Tags: map[string]string{"task_id": "7", "family": "ipv6"}},
 	}
 
@@ -561,13 +561,13 @@ func TestPublicPingStatsSplitByAddressFamily(t *testing.T) {
 		t.Fatalf("no ipv6 stat: %#v", stats)
 	}
 
-	if v4.Total != 4 || v4.Loss != 0 {
+	if v4.Total != 4 || v4.Loss == nil || *v4.Loss != 0 {
 		t.Fatalf("ipv4 stat should be all-ok: %#v", v4)
 	}
-	if v6.Total != 2 || v6.Loss != 100 {
+	if v6.Total != 2 || v6.Loss == nil || *v6.Loss != 100 {
 		t.Fatalf("ipv6 stat should be all-loss: %#v", v6)
 	}
-	if v4.Avg == nil || v6.Avg == nil || *v4.Avg == *v6.Avg {
+	if v4.Avg == nil || *v4.Avg != 25 || v6.Avg != nil {
 		t.Fatalf("the two families must not share an average: v4=%#v v6=%#v", v4.Avg, v6.Avg)
 	}
 }

@@ -69,11 +69,11 @@ export const DetailsGrid = ({
           className="km-details-item md:w-64 w-full flex-[0_0_calc(50%-0.5rem)]"
           up={t("nodeCard.networkSpeed")}
           down={` ↑ ${formatBytes(
-            currentRecord?.network.up || 0
+            currentRecord?.network.up
           )}/s
           ↓
           ${formatBytes(
-            currentRecord?.network.down || 0
+            currentRecord?.network.down
           )}/s`}
         />
         <UpDownStack
@@ -82,35 +82,35 @@ export const DetailsGrid = ({
           className="km-details-item flex-[0_0_calc(50%-0.5rem)]"
             down={`↑
           ${formatBytes(
-              currentRecord?.network.totalUp || 0
+              currentRecord?.network.totalUp
             )}
           ↓
           ${formatBytes(
-              currentRecord?.network.totalDown || 0
+              currentRecord?.network.totalDown
             )}`}
         />
         <UpDownStack
           className="km-details-item md:w-70 w-full flex-[0_0_calc(50%-0.5rem)]"
           up={t("nodeCard.ram")}
-          down={formatBytes(node?.mem_total || 0)}
+          down={formatBytes(currentRecord?.ram.total ?? node?.mem_total)}
         />
         <UpDownStack
           up={t("nodeCard.swap")}
           className="km-details-item flex-[0_0_calc(50%-0.5rem)]"
           align={align === "center" ? "end" : "start"}
-          down={formatBytes(node?.swap_total || 0)}
+          down={formatBytes(currentRecord?.swap.total ?? node?.swap_total)}
         />
         <UpDownStack
           className="km-details-item md:w-64 w-full flex-[0_0_calc(50%-0.5rem)]"
           up={t("nodeCard.disk")}
-          down={formatBytes(node?.disk_total || 0)}
+          down={formatBytes(currentRecord?.disk.total ?? node?.disk_total)}
         />
         <div className="flex-[0_0_calc(50%-0.5rem)]" />
         <UpDownStack
           up={t("nodeCard.uptime")}
           className="km-details-item flex-[0_0_calc(50%-0.5rem)]"
           down={
-            currentRecord?.uptime
+            currentRecord?.uptime != null
               ? formatUptime(currentRecord.uptime, t)
               : "-"
           }

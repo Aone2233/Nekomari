@@ -321,6 +321,11 @@ type BatchSeriesSpec struct {
 	Aggregations   []Aggregation
 	Interval       time.Duration
 	PreserveSeries bool
+	// WholeWindow merges backing moments and digests before computing statistics.
+	// Historical window edges still follow the selected backing tier's buckets.
+	WholeWindow bool
+	// FinestResolution keeps additive query coverage independent of output sizing.
+	FinestResolution bool
 }
 
 // BatchSeriesQuery combines per-metric rollup specifications that share the
@@ -339,6 +344,7 @@ type BatchSeriesQuery struct {
 type BatchSeriesResult struct {
 	Definitions map[string]Definition
 	Values      map[string]map[Aggregation][]AggregatePoint
+	Resolutions map[string]time.Duration
 }
 
 // Validate checks whether the value is well formed.
@@ -425,6 +431,9 @@ func (q BatchSeriesQuery) Validate() error {
 			return fmt.Errorf("%w: at least one aggregation is required for metric %q", ErrInvalidArgument, spec.MetricName)
 		}
 		for _, aggregation := range spec.Aggregations {
+			if spec.WholeWindow && (aggregation == AggRate || aggregation == AggDelta) {
+				return fmt.Errorf("%w: whole-window counter operations are not supported", ErrInvalidArgument)
+			}
 			if err := (AggregateQuery{
 				Query:          Query{MetricName: spec.MetricName, Start: q.Start, End: q.End, Tags: q.Tags, Order: q.Order},
 				Aggregation:    aggregation,

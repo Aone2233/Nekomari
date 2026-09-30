@@ -151,15 +151,26 @@ type Report struct {
 	Process     int               `json:"process"`
 	// Backup 是可选的备份新鲜度上报。agent 未配置备份状态文件时为 nil，
 	// 因此不影响未使用该功能的部署，也不会写入任何 point。
-	Backup    *BackupReport `json:"backup,omitempty"`
-	Message   string        `json:"message"`
-	Method    string        `json:"method,omitempty"`
-	UpdatedAt time.Time     `json:"updated_at"`
+	Backup                *BackupReport     `json:"backup,omitempty"`
+	Message               string            `json:"message"`
+	Method                string            `json:"method,omitempty"`
+	UpdatedAt             time.Time         `json:"updated_at"`
+	SampledAt             time.Time         `json:"sampled_at,omitempty"`
+	ReceivedAt            time.Time         `json:"received_at,omitempty"`
+	SampleIntervalSeconds float64           `json:"sample_interval_seconds,omitempty"`
+	CounterEpoch          string            `json:"counter_epoch,omitempty"`
+	Quality               map[string]string `json:"quality,omitempty"`
 }
 
 // BoundedPayload limits retained strings and GPU cardinality before queueing.
 func (r Report) BoundedPayload() bool {
-	size := len(r.UUID) + len(r.CPU.Name) + len(r.CPU.Arch) + len(r.Message) + len(r.Method)
+	size := len(r.UUID) + len(r.CPU.Name) + len(r.CPU.Arch) + len(r.Message) + len(r.Method) + len(r.CounterEpoch)
+	if len(r.CounterEpoch) > 128 || len(r.Quality) > 16 {
+		return false
+	}
+	for key, value := range r.Quality {
+		size += len(key) + len(value)
+	}
 	if r.Backup != nil {
 		size += len(r.Backup.Message)
 	}
@@ -227,8 +238,8 @@ type DiskReport struct {
 }
 
 type NetworkReport struct {
-	Up        int64 `json:"up"`
-	Down      int64 `json:"down"`
+	Up   int64 `json:"up"`
+	Down int64 `json:"down"`
 	// TotalUp / TotalDown 是内核自开机以来的累计字节数：单调，可以做差得到"这段时间用了多少"。
 	TotalUp   int64 `json:"totalUp"`
 	TotalDown int64 `json:"totalDown"`

@@ -605,6 +605,9 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		serveAdminAsset(c, source, path.Join(AdminDistDir, IndexFile))
 	}
 	r.GET("/admin", serveAdminDocument)
+	// The workbench belongs to the panel, not the selected public theme.
+	r.GET("/terminal", serveAdminDocument)
+	r.GET("/terminal/", serveAdminDocument)
 
 	r.GET("/admin/*path", func(c *gin.Context) {
 		filePath := c.Param("path")

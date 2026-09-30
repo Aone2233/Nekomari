@@ -538,6 +538,8 @@ func TestRetentionCleanupReportsDeleteFailure(t *testing.T) {
 }
 
 func TestGetRecordsByClientAndTimeReadsRollupsAfterRawCompaction(t *testing.T) {
+	clearReportTrafficStates()
+	t.Cleanup(clearReportTrafficStates)
 	ctx := context.Background()
 	s, err := metric.Open(ctx, metric.SQLite(":memory:",
 		metric.WithMaxOpenConns(1),

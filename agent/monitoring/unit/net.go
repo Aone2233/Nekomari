@@ -2,10 +2,13 @@ package monitoring
 
 import (
 	"bufio"
+	"crypto/rand"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -376,49 +379,92 @@ func currentCycleTraffic(includeNics, excludeNics map[string]struct{}) (netstati
 }
 
 func getNetworkSpeedFallback(includeNics, excludeNics map[string]struct{}) (totalUp, totalDown, upSpeed, downSpeed uint64, err error) {
-	totalUp, totalDown, err = collectNetworkTotals(includeNics, excludeNics)
+	totalUp, totalDown, names, err := collectNetworkSample(includeNics, excludeNics)
 	if err != nil {
+		networkSpeedSample.Lock()
+		networkSpeedSample.sampledAt = time.Time{}
+		networkSpeedSample.rateValid = false
+		networkSpeedSample.Unlock()
 		return 0, 0, 0, 0, err
 	}
 
-	upSpeed, downSpeed = updateNetworkSpeedSample(totalUp, totalDown, time.Now())
+	sort.Strings(names)
+	scope := strings.Join(names, ",") + "|" + flags.IncludeNics + "|" + flags.ExcludeNics
+	upSpeed, downSpeed = updateNetworkSpeedSampleWithScope(totalUp, totalDown, time.Now().UTC(), scope)
 	return totalUp, totalDown, upSpeed, downSpeed, nil
 }
 
 func collectNetworkTotals(includeNics, excludeNics map[string]struct{}) (totalUp, totalDown uint64, err error) {
+	totalUp, totalDown, _, err = collectNetworkSample(includeNics, excludeNics)
+	return
+}
+
+func collectNetworkSample(includeNics, excludeNics map[string]struct{}) (totalUp, totalDown uint64, names []string, err error) {
 	ioCounters, err := net.IOCounters(true)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to get network IO counters: %w", err)
+		return 0, 0, nil, fmt.Errorf("failed to get network IO counters: %w", err)
 	}
 
 	if len(ioCounters) == 0 {
-		return 0, 0, fmt.Errorf("no network interfaces found")
+		return 0, 0, nil, fmt.Errorf("no network interfaces found")
 	}
 
 	for _, interfaceStats := range ioCounters {
 		if shouldInclude(interfaceStats.Name, includeNics, excludeNics) {
+			names = append(names, interfaceStats.Name)
 			totalUp += interfaceStats.BytesSent
 			totalDown += interfaceStats.BytesRecv
 		}
 	}
 
-	return totalUp, totalDown, nil
+	if len(names) == 0 {
+		return 0, 0, nil, fmt.Errorf("no network interfaces selected")
+	}
+	return totalUp, totalDown, names, nil
 }
 
 type networkSpeedState struct {
 	sync.Mutex
-	totalUp   uint64
-	totalDown uint64
-	sampledAt time.Time
+	totalUp    uint64
+	totalDown  uint64
+	sampledAt  time.Time
+	scope      string
+	epoch      string
+	rateValid  bool
+	generation uint64
 }
 
 var networkSpeedSample networkSpeedState
+var networkSampleSession = func() string {
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("%x", nonce)
+}()
+
+// Metadata describes the same counter snapshot used for the reported rates.
+func NetworkSampleMetadata() (sampledAt time.Time, epoch string, rateValid bool) {
+	networkSpeedSample.Lock()
+	defer networkSpeedSample.Unlock()
+	return networkSpeedSample.sampledAt, networkSpeedSample.epoch, networkSpeedSample.rateValid
+}
 
 func updateNetworkSpeedSample(totalUp, totalDown uint64, now time.Time) (upSpeed, downSpeed uint64) {
+	return updateNetworkSpeedSampleWithScope(totalUp, totalDown, now, "")
+}
+
+func updateNetworkSpeedSampleWithScope(totalUp, totalDown uint64, now time.Time, scope string) (upSpeed, downSpeed uint64) {
 	networkSpeedSample.Lock()
 	defer networkSpeedSample.Unlock()
 
-	if networkSpeedSample.sampledAt.IsZero() {
+	reset := networkSpeedSample.sampledAt.IsZero() || scope != networkSpeedSample.scope || totalUp < networkSpeedSample.totalUp || totalDown < networkSpeedSample.totalDown
+	networkSpeedSample.rateValid = false
+	if reset {
+		networkSpeedSample.generation++
+		hash := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d", networkSampleSession, scope, networkSpeedSample.generation)))
+		networkSpeedSample.epoch = fmt.Sprintf("%x", hash)
+		networkSpeedSample.scope = scope
 		networkSpeedSample.totalUp = totalUp
 		networkSpeedSample.totalDown = totalDown
 		networkSpeedSample.sampledAt = now
@@ -436,6 +482,7 @@ func updateNetworkSpeedSample(totalUp, totalDown uint64, now time.Time) (upSpeed
 	networkSpeedSample.totalUp = totalUp
 	networkSpeedSample.totalDown = totalDown
 	networkSpeedSample.sampledAt = now
+	networkSpeedSample.rateValid = true
 
 	return uint64(float64(upDelta) / elapsed), uint64(float64(downDelta) / elapsed)
 }

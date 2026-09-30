@@ -87,7 +87,8 @@ export function stringToBytes(str: string): number {
   }
 }
 
-export function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number | null | undefined): string {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes)) return "-";
   const units = ["B", "KB", "MB", "GB", "TB", "PB"];
   let size = bytes;
   let unitIndex = 0;

@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/Aone2233/nekomari/database/clients"
@@ -20,7 +21,9 @@ import (
 // markPresence 为 true 时按 POST 上报会话刷新在线状态（WS 连接自行管理在线状态，应传 false）。
 func ingestReport(uuid string, report v2.Report, markPresence bool) error {
 	report.UUID = uuid
-	report.UpdatedAt = time.Now().UTC()
+	if err := normalizeReportTimestamp(&report, time.Now()); err != nil {
+		return err
+	}
 	if err := clients.ReportVerify(report); err != nil {
 		return err
 	}
@@ -32,6 +35,24 @@ func ingestReport(uuid string, report v2.Report, markPresence bool) error {
 	agent_runtime.MarkV2Client(uuid)
 	if markPresence {
 		refreshPostPresence(uuid)
+	}
+	return nil
+}
+
+func normalizeReportTimestamp(report *v2.Report, receivedAt time.Time) error {
+	report.ReceivedAt = receivedAt.UTC()
+	if report.SampledAt.IsZero() {
+		report.UpdatedAt = report.ReceivedAt
+		if report.Quality == nil {
+			report.Quality = make(map[string]string)
+		}
+		report.Quality["timestamp"] = "server_received_legacy"
+	} else {
+		// Reject implausible clocks rather than silently moving measured samples.
+		if report.SampledAt.After(report.ReceivedAt.Add(30*time.Second)) || report.SampledAt.Before(report.ReceivedAt.Add(-5*time.Minute)) {
+			return fmt.Errorf("sampled_at is outside the accepted clock window")
+		}
+		report.UpdatedAt = report.SampledAt.UTC()
 	}
 	return nil
 }

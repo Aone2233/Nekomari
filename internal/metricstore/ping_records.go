@@ -78,6 +78,9 @@ func writePingRecords(ctx context.Context, records []models.PingRecord) error {
 				Tags:       tags,
 			},
 		)
+		if rec.Value >= 0 {
+			points = append(points, metric.Point{MetricName: MetricPingSuccessLatency, EntityID: rec.Client, Timestamp: rec.Time, Value: float64(rec.Value), Tags: tags})
+		}
 	}
 	return s.WriteBatch(ctx, points)
 }

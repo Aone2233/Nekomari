@@ -27,7 +27,7 @@ func TestGetPingRecordsBatchMatchesPerNodeQueries(t *testing.T) {
 	}
 	defer s.Close()
 
-	for _, name := range []string{MetricPingLatency, MetricPingLoss} {
+	for _, name := range pingMetricNames {
 		if err := s.UpsertMetric(ctx, metric.Definition{
 			Name: name, Type: metric.TypeGauge, RetentionDays: 30,
 		}); err != nil {

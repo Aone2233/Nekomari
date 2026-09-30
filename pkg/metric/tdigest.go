@@ -206,7 +206,9 @@ func (t *TDigest) process() {
 		// Quantile at the center of the proposed combined centroid.
 		q := (weightBefore + proposed/2) / total
 		limit := 4 * total * q * (1 - q) / t.compression
-		if proposed <= limit || limit < 1 && proposed <= 1 {
+		// Equal means carry no additional spread. Coalesce them even when a
+		// sealed constant bucket already exceeds the normal centroid limit.
+		if next.mean == cur.mean || proposed <= limit || limit < 1 && proposed <= 1 {
 			// Weighted-mean update keeps the centroid's mean exact.
 			cur.mean += next.weight * (next.mean - cur.mean) / proposed
 			cur.weight = proposed
@@ -245,6 +247,15 @@ func (t *TDigest) Quantile(q float64) float64 {
 
 	// Head: between the observed min and the first centroid's center.
 	c0 := t.centroids[0]
+	// A constant bucket can become one heavy centroid during rollup merge.
+	// Its mass is at min, not spread across the gap to the next centroid.
+	if c0.mean == t.min && index < c0.weight {
+		return t.min
+	}
+	clast := t.centroids[n-1]
+	if clast.mean == t.max && index > t.count-clast.weight {
+		return t.max
+	}
 	if index < c0.weight/2 {
 		z := index / (c0.weight / 2)
 		return t.min + (c0.mean-t.min)*z

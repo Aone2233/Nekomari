@@ -38,6 +38,14 @@ test('a statistic key separates the two address families', () => {
   assert.equal(v6, 'node-a:7:ipv6');
 });
 
+test('parallel ping protocols and roles cannot overwrite one another', () => {
+  const keys = ['icmp', 'tcp'].flatMap(protocol =>
+    ['primary', 'secondary'].map(role => pingMetricStatKey('node-a', '7', 'ipv4', protocol, role)));
+  assert.equal(new Set(keys).size, 4);
+  assert.equal(pingMetricStatKey('node-a', '7', '', 'tcp', 'primary'),
+    pingMetricStatKey('node-a', '7', undefined, 'tcp', 'primary'));
+});
+
 test('the family is read from a series tag, and absent tags yield undefined', () => {
   assert.equal(pingSeriesFamily({ task_id: '7', family: 'ipv6' }), 'ipv6');
   assert.equal(pingSeriesFamily({ task_id: '7' }), undefined);

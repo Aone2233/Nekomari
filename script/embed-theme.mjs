@@ -30,6 +30,14 @@
  *     cd frontend && npm install && npm run build && cd ..
  *     node script/embed-theme.mjs --write
  *
+ * To update only the panel pages while preserving the existing theme byte-for-byte:
+ *
+ *     cd frontend && npm run build && cd ..
+ *     node script/embed-theme.mjs --refresh-panel
+ *
+ * This mode needs a tar executable with zstd support. It verifies the staged output
+ * before replacing the archive, without requiring the theme's source checkout.
+ *
  * Then commit `web/public/defaultTheme/dist.tar.zst`. `docs/THIRD-PARTY-LICENSES.md` records the
  * theme version and the licence obligation that comes with shipping it.
  *
@@ -39,6 +47,7 @@
 import { readdir, readFile, rm, stat, mkdir, cp, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import path from "node:path";
 
 const root = process.cwd();
@@ -50,6 +59,7 @@ const standalone = path.join(root, "frontend", "dist", "standalone");
 const stage = path.join(root, ".runtest", "embedded-theme");
 
 const write = process.argv.includes("--write");
+const refreshPanel = process.argv.includes("--refresh-panel");
 
 const problems = [];
 function check(condition, message) {
@@ -260,8 +270,69 @@ async function regenerate() {
   console.log(`embed-theme: wrote ${path.relative(root, archivePath)} (${((await stat(archivePath)).size / (1 << 20)).toFixed(2)} MiB)`);
 }
 
+async function fileHashes(dir, prefix = "", omitPanel = false) {
+  const hashes = new Map();
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (!prefix && omitPanel && ["admin", "standalone"].includes(entry.name)) continue;
+    const name = prefix + entry.name;
+    const source = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      for (const [key, value] of await fileHashes(source, name + "/")) hashes.set(key, value);
+    } else if (entry.isFile()) {
+      hashes.set(name, createHash("sha256").update(await readFile(source)).digest("hex"));
+    } else {
+      throw new Error(`unexpected non-regular entry: ${source}`);
+    }
+  }
+  return hashes;
+}
+
+function assertSameFiles(expected, actual, label) {
+  if (expected.size !== actual.size || [...expected].some(([name, hash]) => actual.get(name) !== hash)) {
+    throw new Error(`${label}: file contents differ`);
+  }
+}
+
+function extractArchive(source, destination) {
+  const result = spawnSync("tar", ["-xf", source, "-C", destination], { encoding: "utf8" });
+  if (result.status !== 0) throw new Error(`tar extraction failed: ${result.stderr || result.error}`);
+}
+
+async function refreshPanelPages() {
+  if (!check(existsSync(path.join(standalone, "admin", "index.html")), "build the panel frontend before --refresh-panel")) return;
+  const temporary = path.join(root, ".runtest", "refresh-panel");
+  const unpacked = path.join(temporary, "old");
+  const checked = path.join(temporary, "checked");
+  const output = path.join(temporary, "dist.tar.zst");
+  if (existsSync(temporary)) throw new Error(`remove or preserve the existing staging directory first: ${temporary}`);
+  await mkdir(unpacked, { recursive: true });
+  try {
+    extractArchive(archivePath, unpacked);
+    const themeBefore = await fileHashes(unpacked, "", true);
+    await rm(path.join(unpacked, "admin"), { recursive: true, force: true });
+    await rm(path.join(unpacked, "standalone"), { recursive: true, force: true });
+    await cp(standalone, path.join(unpacked, "standalone"), { recursive: true });
+    await cp(path.join(standalone, "admin"), path.join(unpacked, "admin"), { recursive: true });
+    const packed = spawnSync("go", ["run", ".", "-src", unpacked, "-out", output], { cwd: path.join(root, "tools", "zstdpack"), stdio: "inherit" });
+    if (packed.status !== 0) throw new Error(`zstdpack failed with status ${packed.status}`);
+    await mkdir(checked);
+    extractArchive(output, checked);
+    assertSameFiles(themeBefore, await fileHashes(checked, "", true), "preserved theme");
+    assertSameFiles(await fileHashes(standalone), await fileHashes(path.join(checked, "standalone")), "standalone pages");
+    assertSameFiles(await fileHashes(path.join(standalone, "admin")), await fileHashes(path.join(checked, "admin")), "admin pages");
+    await cp(output, archivePath);
+    console.log(`embed-theme: refreshed panel pages; preserved ${themeBefore.size} theme files byte-for-byte`);
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+}
+
+if (write && refreshPanel) throw new Error("choose --write or --refresh-panel, not both");
 if (write) {
   await regenerate();
+}
+if (refreshPanel) {
+  await refreshPanelPages();
 }
 await verify();
 

@@ -3,6 +3,7 @@ package monitoring
 import (
 	"bufio"
 	"bytes"
+	"math"
 	"os"
 	"os/exec"
 	"runtime"
@@ -17,6 +18,7 @@ type RamInfo struct {
 	Total uint64 `json:"total"`
 	Used  uint64 `json:"used"`
 	Mode  string
+	Valid bool `json:"-"`
 }
 
 type ProcMemInfo struct {
@@ -32,17 +34,27 @@ type ProcMemInfo struct {
 	SReclaimable uint64
 	Zswap        uint64
 	Zswapped     uint64
+	Seen         map[string]bool
+}
+
+func (info *ProcMemInfo) hasFields(keys ...string) bool {
+	for _, key := range keys {
+		if !info.Seen[key] {
+			return false
+		}
+	}
+	return true
 }
 
 // readProcMeminfo reads /proc/meminfo and returns a filled ProcMemInfo struct
 func ReadProcMeminfo() (*ProcMemInfo, error) {
-	file, err := os.Open("/proc/meminfo")
+	file, err := os.Open(procRoot() + "/meminfo")
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	info := &ProcMemInfo{}
+	info := &ProcMemInfo{Seen: make(map[string]bool)}
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -57,7 +69,11 @@ func ReadProcMeminfo() (*ProcMemInfo, error) {
 		if err != nil {
 			continue
 		}
+		if val > math.MaxUint64/1024 {
+			continue
+		}
 		val *= 1024 // Convert kB to bytes
+		info.Seen[key] = true
 
 		switch key {
 		case "MemTotal":
@@ -93,38 +109,43 @@ func GetMemHtopLike() RamInfo {
 	raminfo := RamInfo{Mode: "htoplike"}
 	if runtime.GOOS == "linux" {
 		info, err := ReadProcMeminfo()
-		if err == nil && info.MemTotal > 0 {
-			raminfo.Total = info.MemTotal
-			// htop logic:
-			// usedDiff = free + cached + sreclaimable + buffers
-			usedDiff := info.MemFree + info.Cached + info.SReclaimable + info.Buffers
-
-			if info.MemTotal >= usedDiff {
-				raminfo.Used = info.MemTotal - usedDiff
-			} else {
-				raminfo.Used = info.MemTotal - info.MemFree
-			}
-			raminfo.Used += info.Shmem
-
-			//if info.Zswap > 0 || info.Zswapped > 0 {
-			//	if raminfo.Used > info.Zswap {
-			//		raminfo.Used -= info.Zswap
-			//	} else {
-			//		raminfo.Used = 0
-			//	}
-			//}
-			return raminfo
+		if err == nil {
+			return memHtopLikeFrom(info)
 		}
 	}
 	return raminfo
 }
 
+func memHtopLikeFrom(info *ProcMemInfo) RamInfo {
+	r := RamInfo{Mode: "htoplike"}
+	if info == nil || info.MemTotal == 0 || info.MemFree > info.MemTotal || !info.hasFields("MemTotal", "MemFree", "Buffers", "Cached", "SReclaimable", "Shmem") {
+		return r
+	}
+	deductions := info.MemFree
+	for _, value := range []uint64{info.Cached, info.SReclaimable, info.Buffers} {
+		if value > math.MaxUint64-deductions {
+			return r
+		}
+		deductions += value
+	}
+	used := info.MemTotal - info.MemFree
+	if deductions <= info.MemTotal {
+		used = info.MemTotal - deductions
+	}
+	if info.Shmem > info.MemTotal-used {
+		return r
+	}
+	r.Total, r.Used, r.Valid = info.MemTotal, used+info.Shmem, true
+	return r
+}
+
 func GetMemGopsutil() RamInfo {
 	raminfo := RamInfo{Mode: "gopsutil"}
 	v, err := mem.VirtualMemory()
-	if err == nil {
+	if err == nil && v.Total > 0 && v.Available <= v.Total {
 		raminfo.Total = v.Total
 		raminfo.Used = v.Total - v.Available
+		raminfo.Valid = true
 	}
 	return raminfo
 }
@@ -172,6 +193,7 @@ func CallFree() RamInfo {
 				used, err := strconv.ParseUint(fields[2], 10, 64)
 				if err == nil {
 					raminfo.Used = used
+					raminfo.Valid = raminfo.Total > 0 && used <= raminfo.Total
 				}
 			}
 			break
@@ -185,13 +207,14 @@ func Ram() RamInfo {
 	// Use global config
 	if pkg_flags.GlobalConfig.MemoryIncludeCache {
 		v, err := mem.VirtualMemory()
-		if err != nil {
+		if err != nil || v.Total == 0 || v.Free > v.Total {
 			return RamInfo{}
 		}
 		return RamInfo{
 			Total: v.Total,
 			Used:  v.Total - v.Free,
 			Mode:  "includeCache",
+			Valid: true,
 		}
 	}
 
@@ -201,7 +224,7 @@ func Ram() RamInfo {
 
 	if runtime.GOOS == "linux" {
 		h := GetMemHtopLike()
-		if h.Total > 0 {
+		if h.Valid {
 			return h
 		}
 	}
@@ -215,16 +238,15 @@ func Swap() RamInfo {
 
 	if runtime.GOOS == "linux" {
 		info, err := ReadProcMeminfo()
-		if err == nil {
+		if err == nil && info.hasFields("SwapTotal", "SwapFree", "SwapCached") && info.SwapFree <= info.SwapTotal {
 			swapinfo.Total = info.SwapTotal
 			// used = total - free - cached
 			// Check for underflow
-			usedDeductions := info.SwapFree + info.SwapCached
-			if info.SwapTotal >= usedDeductions {
-				swapinfo.Used = info.SwapTotal - usedDeductions
-			} else {
-				swapinfo.Used = info.SwapTotal - info.SwapFree
+			swapinfo.Used = info.SwapTotal - info.SwapFree
+			if info.SwapCached <= swapinfo.Used {
+				swapinfo.Used -= info.SwapCached
 			}
+			swapinfo.Valid = swapinfo.Used <= swapinfo.Total
 			return swapinfo
 		}
 	}
@@ -235,5 +257,6 @@ func Swap() RamInfo {
 	}
 	swapinfo.Total = s.Total
 	swapinfo.Used = s.Used
+	swapinfo.Valid = s.Used <= s.Total
 	return swapinfo
 }

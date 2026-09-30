@@ -10,13 +10,15 @@ import (
 type DiskInfo struct {
 	Total uint64 `json:"total"`
 	Used  uint64 `json:"used"`
+	Valid bool   `json:"-"`
 }
 
 func Disk() DiskInfo {
-	diskinfo := DiskInfo{}
+	diskinfo := DiskInfo{Valid: true}
 	// 获取所有分区，使用 true 避免物理磁盘被 gopsutil 错误排除
 	usage, err := disk.Partitions(true)
 	if err != nil {
+		diskinfo.Valid = false
 		diskinfo.Total = 0
 		diskinfo.Used = 0
 	} else {
@@ -28,6 +30,7 @@ func Disk() DiskInfo {
 				if mountpoint != "" {
 					u, err := disk.Usage(mountpoint)
 					if err != nil {
+						diskinfo.Valid = false
 						continue
 					} else {
 						diskinfo.Total += u.Total
@@ -43,6 +46,7 @@ func Disk() DiskInfo {
 				if isPhysicalDisk(part) {
 					u, err := disk.Usage(part.Mountpoint)
 					if err != nil {
+						diskinfo.Valid = false
 						continue
 					}
 
@@ -72,6 +76,7 @@ func Disk() DiskInfo {
 			}
 		}
 	}
+	diskinfo.Valid = diskinfo.Valid && diskinfo.Total > 0 && diskinfo.Used <= diskinfo.Total
 	return diskinfo
 }
 

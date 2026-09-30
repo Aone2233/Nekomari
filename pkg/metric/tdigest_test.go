@@ -113,6 +113,34 @@ func TestTDigestMergeGroupingAccuracy(t *testing.T) {
 	}
 }
 
+func TestTDigestEncodedConstantBucketsRetainPointMass(t *testing.T) {
+	for _, compression := range []float64{30, 100} {
+		for _, bucketSize := range []int{1, 20, 60, 100} {
+			merged := NewTDigest(compression)
+			for start := 0; start < 101; start += bucketSize {
+				fine := NewTDigest(compression)
+				for i := start; i < start+bucketSize && i < 101; i++ {
+					value := 10.0
+					if i == 100 {
+						value = 1000
+					}
+					fine.Add(value, 1)
+				}
+				stored, err := DecodeTDigest(fine.Encode())
+				if err != nil {
+					t.Fatal(err)
+				}
+				merged.Merge(stored)
+			}
+			for _, q := range []float64{0.5, 0.95, 0.99} {
+				if got := merged.Quantile(q); got != 10 {
+					t.Fatalf("compression=%v bucket=%d q=%v got=%v", compression, bucketSize, q, got)
+				}
+			}
+		}
+	}
+}
+
 func TestTDigestMergeDefersProcessingUntilThreshold(t *testing.T) {
 	source := NewTDigest(30)
 	source.Add(42, 1)

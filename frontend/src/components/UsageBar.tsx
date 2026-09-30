@@ -2,7 +2,7 @@ import { Box, Flex, Text } from "@radix-ui/themes";
 import React from "react";
 
 interface UsageBarProps {
-  value: number; // Utilization percentage (0–100)
+  value: number | null; // Utilization percentage (0–100); null is unknown
   label: string; // Label for the bar (e.g., "CPU", "Memory", "Disk")
   compact?: boolean; // Whether to show in compact mode (for tables)
   max?: number; // Maximum value for the bar (e.g., total RAM, total disk space)
@@ -11,7 +11,9 @@ interface UsageBarProps {
 const UsageBar = React.memo(
   ({ value, label, compact = false, max = 100 }: UsageBarProps) => {
     // Ensure value is between 0 and 100
-    const clampedValue = Math.min(Math.max(value, 0), max);
+    const known = typeof value === "number" && Number.isFinite(value);
+    const clampedValue = known ? Math.min(Math.max(value, 0), max) : 0;
+    const valueLabel = known ? `${clampedValue.toFixed(1)}%` : "-";
 
     // Determine color based on thresholds
     const getColor = (val: number) => {
@@ -20,7 +22,7 @@ const UsageBar = React.memo(
       return "green";
     };
 
-    const barColor = getColor(clampedValue);
+    const barColor = known ? getColor(clampedValue) : "gray";
 
     if (compact) {
       return (
@@ -49,7 +51,7 @@ const UsageBar = React.memo(
             />
           </Box>
           <label color="gray" className="text-sm">
-            {clampedValue.toFixed(1)}%
+            {valueLabel}
           </label>
         </Box>
       );
@@ -62,7 +64,7 @@ const UsageBar = React.memo(
             {label}
           </Text>
           <Text size="2" weight="medium">
-            {clampedValue.toFixed(1)}%
+            {valueLabel}
           </Text>
         </Flex>
         <Box
