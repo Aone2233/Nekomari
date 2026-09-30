@@ -111,6 +111,56 @@ func TestClosedMinutePersistsAndAcceptsExactUpsert(t *testing.T) {
 	}
 }
 
+func TestLateCompressedInsertPreservesMinuteAndParentAfterRestart(t *testing.T) {
+	ctx := context.Background()
+	dsn := filepath.Join(t.TempDir(), "late-insert.db")
+	open := func() *Store {
+		s, err := Open(ctx, SQLite(dsn, WithMaxOpenConns(1)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	s := open()
+	defer func() { _ = s.Close() }()
+	if err := s.CreateMetric(ctx, Definition{Name: "late-insert", RetentionDays: 1}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	base := now.Truncate(time.Minute).Add(-5 * time.Minute)
+	write := func(seconds int, value float64) {
+		t.Helper()
+		if err := s.Write(ctx, Point{MetricName: "late-insert", EntityID: "node", Timestamp: base.Add(time.Duration(seconds) * time.Second), Value: value}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := func(want float64) {
+		t.Helper()
+		for _, interval := range []time.Duration{time.Minute, 5 * time.Minute} {
+			points, err := s.Series(ctx, AggregateQuery{Query: Query{MetricName: "late-insert", EntityID: "node", Start: base, End: base.Add(time.Minute - time.Millisecond)}, Aggregation: AggSum, Interval: interval}, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sum := 0.0
+			for _, point := range points {
+				sum += point.Value
+			}
+			if sum != want {
+				t.Fatalf("interval=%s sum=%v want=%v", interval, sum, want)
+			}
+		}
+	}
+	write(5, 10)
+	write(25, 20)
+	check(30)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s = open()
+	write(45, 7)
+	check(37)
+}
+
 func TestRawWindowKeepsCompressedAndDirectSamples(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC()

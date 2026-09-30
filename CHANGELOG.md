@@ -44,6 +44,20 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v1.6.5] — 2026-09-30
+
+- **Fixed recent traffic queries crossing partial minute buckets.** Verify raw
+  completeness against the same full-bucket coverage as durable rollups, but
+  return only samples in the requested window. Chart point budgets no longer
+  force complete raw windows into broader minute totals.
+- **Fixed late compressed inserts after a panel restart.** New samples merge
+  into persisted minute buckets instead of rebuilding from incomplete volatile
+  raw history. Coarser parents receive the full merged minute snapshot, not just
+  the latest delta. Existing timestamp replacements retain their rebuild path.
+- Panel-only hotfix discovered by the MAC-WAN v1.6.4 canary; agent source is
+  unchanged. Regression tests cover partial windows, restart and minute/5-minute
+  additive totals. Historical raw data already lost remains unrecoverable.
+
 ## [v1.6.4] — 2026-09-30
 
 - **Fixed monitoring accuracy across sampling, ingestion, rollups and display.**

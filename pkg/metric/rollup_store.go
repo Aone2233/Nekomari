@@ -207,6 +207,7 @@ func (s *Store) mergeRollupBucketsWithDictionaryTx(ctx context.Context, metricNa
 	}
 	sortRollupKeys(keys)
 	for _, key := range keys {
+		inputKey := key
 		bucket := buckets[key]
 		key.bucket = normalizeBucketMillis(key.bucket)
 		existing, err := s.readRollupBucketTx(ctx, metricName, key, interval, tx)
@@ -220,6 +221,9 @@ func (s *Store) mergeRollupBucketsWithDictionaryTx(ctx context.Context, metricNa
 		if err := s.upsertRollupWithDictionaryTx(ctx, metricName, interval, key, bucket, cache, tx); err != nil {
 			return 0, err
 		}
+		// Parents replace a child's snapshot, so propagate the full persisted
+		// minute rather than only this flush's late-arrival delta.
+		buckets[inputKey] = bucket
 	}
 	return len(keys), nil
 }
