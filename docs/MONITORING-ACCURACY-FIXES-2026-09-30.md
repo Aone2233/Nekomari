@@ -6,12 +6,13 @@
 
 ## 结论与状态边界
 
-**修复代码、嵌入面板资源及本地回归已完成；生产部署与新探针的真实采样验收尚未完成。**
+**已发布并部署 OC424 面板 v1.6.5；MAC-WAN 的 v1.6.4 新探针完成内核数据、查询结果与重启边界实测。本批次的限定范围验收通过。**
 
-- OC424 的现有数据库、主题及服务配置未修改；未重启生产服务。
-- 未执行 commit、push、tag、Release 发布或任何节点的探针升级。
-- 本次实测的生产面板仍为 v1.6.3；面板列出的探针版本为 v1.6.2，不据此宣称所有运行二进制均已逐台核验。
-- 已登录生产浏览器复现了服务器详情崩溃和工作台 404。下面的修复成功证据来自本地组件回归和最终打包产物，不能写成“线上已恢复”。
+- v1.6.4 首轮生产 canary 发现窄窗口误降级为整分钟桶；没有跳过失败门槛，而是独立修复、发布并复测 v1.6.5。
+- OC424 固定镜像 digest，保留 loopback 监听、数据挂载和现用 SAO 主题；切换前停写完整备份，两库 quick_check 均通过。
+- MAC-WAN 运行二进制已核验 SHA256、cap_net_raw 和实际服务进程。v1.6.5 未改变 Agent 源码，因此探针保留 v1.6.4。
+- 其余 9 台探针未升级，仍报告 v1.6.2/legacy；10 个注册节点均在线。不能据此宣称全网达到新探针准确性门槛。
+- 生产浏览器实点服务器名称和工作台入口、刷新工作台均通过。第 1～5 节保留本地测试范围；生产证据及其限制见第 8 节。
 - 原始审查报告及其故障复现样例保留，不覆盖历史结论。
 
 ## 1. 流量 counter/delta 契约与补点
@@ -89,7 +90,7 @@ SAO 验证脚本：`C:\Users\SRTco\Nekomari\docs\audits\2026-09-30\sao-interval-
 - TCP、UDP 与总连接数分别表达，总连接数为 TCP+UDP，不将总数伪装成 TCP。
 - 内核累计流量质量取 network，不能因为未配置计费周期而被 traffic_cycle=unknown 隐藏。
 
-本地质量回归、入口数据校验、旧报告兼容及 CPU=0/未知内存/未知速率回归通过。Linux Agent 的实际新二进制采样与系统源数据同窗口对账仍需在 MAC-WAN 上完成。
+本地质量回归、入口数据校验、旧报告兼容及 CPU=0/未知内存/未知速率回归通过。MAC-WAN 新二进制的网络、内存、Swap、磁盘及连接数同窗口对账已完成，结果见第 8 节。CPU 数值未做独立内核时间计数对账，不把 quality=ok 当作该项实测通过。
 
 ### 历史处理策略
 
@@ -131,7 +132,7 @@ SHA256：
 eea2017c98a9f9c785d7fc05710ddc7da67028ea7207d41bf49fc89b9f51c015
 ```
 
-这是本地构建身份，不是已发布 Release、ARM64 服务端或生产镜像的身份。
+这是本地资源归档身份，不能替代已发布 Release、ARM64 服务端或生产镜像身份；后者分别记录在第 8 节。
 
 ## 5. 测试结果与重放命令
 
@@ -169,11 +170,11 @@ python script/panel-smoke.spec.py http://127.0.0.1:25884
 - frontend 单元测试：108 项；mounted NodeTable：8 项；最终打包产物导航：4 项。
 - 最终资源的 panel smoke：13 个发现的路由，无同源资源错误和请求失败；不是全部管理操作或全部主题覆盖。
 - race 检查：5 个指定包通过，不等于整个项目完成 race 检查。
-- Linux AMD64/ARM64 Agent 本地交叉编译通过，未安装到服务器。
-- Linux ARM64 服务端的 CGO-disabled 编译尝试失败于已有 SQLite CGO 依赖，与 Release 工作流记录一致。本机没有可用 Linux Docker daemon/ARM64 GCC，没有为此安装工具链；正式 ARM64 服务端及镜像的构建、运行仍是未通过的上线门槛。
+- Linux AMD64/ARM64 Agent 本地交叉编译通过；本地测试阶段未安装，后续只在 MAC-WAN 安装了经校验的正式 v1.6.4 AMD64 Release 二进制。
+- Linux ARM64 服务端的 CGO-disabled 本地编译尝试失败于已有 SQLite CGO 依赖。本机没有可用 Linux Docker daemon/ARM64 GCC，没有为此安装工具链；后续正式 CI/Release 的原生 ARM64 构建、镜像 smoke 和 OC424 运行验收均通过。不要把这两种构建环境混淆。
 - 本地可丢弃测试服务已停止，25884 端口无监听。临时目录删除被执行策略拦截，未绕过：`C:\Users\SRTco\Nekomari\.accuracy-smoke` 与 `C:\Users\SRTco\Nekomari\frontend\.build-tmp` 仍保留，均为本次测试产物，不是生产发布产物。
 
-## 6. 生产验收仍待完成
+## 6. 生产验收门槛与历史基线
 
 2026-09-30 的只读生产取证仍显示旧问题：OC424 指定 10:00～11:30 窗口，上行 1 分钟桶少计约 17.62%，5 分钟桶少计约 2.23%；下行对应约 14.90% 和 1.70%。这些是修复前证据，不是修复后的误差结果。
 
@@ -187,7 +188,7 @@ python script/panel-smoke.spec.py http://127.0.0.1:25884
 6. 先对 MAC-WAN 做新探针 canary，保留旧二进制及配置用于回滚。按实际 sampled_at 对齐内核网络计数、内存/Swap/磁盘和连接数据，至少做 5 秒/60 秒有效窗口对账；再检验 reset/重启/缺口不制造流量。不要把计费周期累计值当作内核 counter。
 7. 按注册 UUID 关联新报告与运行二进制，明确哪些节点已升级、哪些仍为 legacy；首轮门槛通过后再决定是否扩展到其余节点。
 
-完整已验证备份、确定发布产物或上述验收任一缺失，都不能把本批次标记为“生产修复完成”。历史原始数据丢失造成的不可重建部分也不在上线后追认成已修复。
+完整已验证备份、确定发布产物或上述验收任一缺失，都不能把本批次标记为“生产修复完成”。本次限定门槛的实际证据见第 8 节；历史原始数据丢失造成的不可重建部分不在上线后追认成已修复。
 
 ## 7. 发布与 canary 发现的补丁（2026-09-30）
 
@@ -195,4 +196,67 @@ python script/panel-smoke.spec.py http://127.0.0.1:25884
 - OC424 停写完整备份位于 `/opt/nekomari/backups/v1.6.3-before-v1.6.4-20260930T111549Z`；MAC-WAN 旧探针及配置位于 `/home/macos/nekomari-agent/backups/agent-before-v1.6.4-20260930T111631Z`。
 - v1.6.4 真实浏览器两处入口通过：服务器名称打开详情，无 Radix slot 错误；工作台进入 `/terminal`，直接刷新也不再 404。闭合分钟 Ping 窗口与只读 SQLite 聚合对账通过，点数预算 1/500 不改变全窗口统计。
 - 120 秒新报告与内核快照对账揭示未达门槛项：近期窄窗口被错误降级为整分钟桶，上行返回 360211 字节，实际窗口应为 131033 字节。未把该次上线标记为数值验收完成。
-- 独立 v1.6.5 服务端补丁按相同桶覆盖检验 raw 完整性，仍只返回请求窗口内样本；补充重启后迟到插入测试，并修复分钟持久化及粗粒度父桶传播。新增回归测试必须通过，再执行独立版本发布和完整数值复测；不覆盖 v1.6.4 tag，不改写既有历史数据。
+- 独立 v1.6.5 服务端补丁按相同桶覆盖检验 raw 完整性，仍只返回请求窗口内样本；补充重启后迟到插入测试，并修复分钟持久化及粗粒度父桶传播。新增回归、本地全套测试、独立版本发布及生产数值复测均通过；没有覆盖 v1.6.4 tag，没有改写既有历史数据。
+
+## 8. 最终发布、部署与生产验收（2026-09-30）
+
+### 发布身份
+
+| 对象 | 已验证身份/结果 |
+|---|---|
+| 面板版本 | v1.6.5 / `4847bf8` |
+| v1.6.5 tag / 合并提交 | `4847bf84ba91b7b933e314431fe6d9ec0824a3d7`，PR #56 |
+| PR CI / 最终 main CI | `36711676091` / `36712628179`，均成功 |
+| Release / Docker 工作流 | `36713276555` / `36713988725`，均成功 |
+| Release 发布时间 | 2026-09-30 20:18:34 Asia/Shanghai（12:18:34 UTC） |
+| OC424 镜像 | `ghcr.io/aone2233/nekomari:v1.6.5@sha256:b780f99498765f25f86353258d4a9d04016e1229fbd6d7e929f24210992c3b56` |
+| ARM64 服务端 SHA256 | `f91698aa7285a9ed9ae470645e91815f8e1ff6f8c3b985fc519990664d46c261` |
+| MAC-WAN 探针 | v1.6.4，AMD64；v1.6.4～v1.6.5 的 Agent 目录 diff 为空 |
+| MAC-WAN 探针 SHA256 | `0fef5189327be752409c2904a3ac1c13081e0adc65e038069cb703ff87873d50` |
+
+ARM64 Release 下载文件、GitHub asset digest、SHA256SUMS 和匿名拉取镜像中 `/app/nekomari` 的校验值一致。镜像架构 ARM64、OCI revision 与 tag 提交一致；不把文档后续提交误当作生产二进制提交。
+
+### 备份与运行状态
+
+- v1.6.5 切换前完整停写备份：`/opt/nekomari/backups/v1.6.4-before-v1.6.5-20260930T122413Z`。
+- 备份包含 Compose、完整 bound data、`komari.db`、`metrics.db` 及主题；归档 SHA256 为 `7f5c858e7c8e9910d57afcf0af558796c56e1ee2b076cc83d74320ae6bd9517b`，manifest 与 checksum 已核验。
+- v1.6.4 前置面板备份和 MAC-WAN 旧二进制/配置备份保留在第 7 节的路径；旧固定 digest 镜像保留用于回滚。
+- 2026-09-30 20:33:46 Asia/Shanghai：面板 healthy、RestartCount=0；`127.0.0.1:25774` 和 `/opt/nekomari/data` 挂载未变化；两库只读 `PRAGMA quick_check` 均为 ok。
+- `/api/admin/client/list` 未登录返回 401，API key 认证返回 200；10 个注册节点全部在线。启动后日志未出现 panic/fatal/SQLite 锁定或损坏特征。
+- 2026-09-30 20:41:25 Asia/Shanghai：`nginx -t` 通过，实际 `panel-probe.service` 返回 Result=success、ExecMainStatus=0。该服务是 oneshot，执行后 inactive 并非失败。
+- OC424 与 MAC-WAN 均为 NTPSynchronized=yes。MAC-WAN 用户服务 active，NRestarts=0；二进制 root:root/0755、cap_net_raw=ep 保留。
+
+### MAC-WAN 数值门槛
+
+120 秒并行采集期间，按 sampled_at 对齐 23 份独立报告与 0.2 秒内核快照。有效窗口为 2026-09-30 20:25:59.566～20:27:51.612 Asia/Shanghai。网卡为 `enx00e04c073958` 与 `wlp1s0`；挂载点为 `/`、`/boot`、`/boot/efi`。
+
+| 检查 | 门槛 | 实际结果 |
+|---|---|---|
+| 内核累计网络计数 | 每份报告落在相邻快照计数之间 | 23/23 通过，0 次越界 |
+| 网络速率 | 使用实际时间间隔，最大相对误差 <2% | 最大 0.118205% |
+| 采样连续性 | 正间隔且不超过声明周期的 3 倍 | 实际 2.186984～6.000994 秒，通过 |
+| 内存 htoplike | 同口径相邻快照，差值 <总内存 1% | 最小相邻快照差值为 0 |
+| Swap | total 一致，used 落在相邻快照之间 | 23/23 通过 |
+| 磁盘 | total 一致，used 差值 <=1 MiB | total=251380572160 字节，最大 used 差值 0 字节 |
+| TCP/UDP | 同窗口数量区间、总数=TCP+UDP | 23/23 通过 |
+
+流量查询采用 `interval_delta_v2` / `exact_samples`。以下各窗均分别以 max_points=1/2/500 对账，API SUM 与连续内核累计计数差值**完全相等**，18 项检查均通过：
+
+| 有效窗口 | 上行字节 | 下行字节 |
+|---|---:|---:|
+| 5.000386 秒 | 5666 | 9956 |
+| 60.000497 秒 | 73641 | 111429 |
+| 112.045147 秒 | 136406 | 223025 |
+
+探针实际重启测试捕获两个 epoch（2 与 9 份报告）：新 epoch 首个速率为 null/net_rate=unknown，下一份正常；跨重启 interval.valid=0。逐 epoch 求差后，上行 74893、下行 297030 字节与 API 完全一致，没有计算未知跨 epoch 区间。
+
+### Ping、浏览器与验收边界
+
+- 闭合 `[20:32,20:34)` Asia/Shanghai 窗口有 5 个任务分组（2 个 TCP、3 个 ICMP），每组 total=2、valid=2、loss=0。API 的 count、sum/moments 推导的均值/标准差与只读 SQLite 分钟聚合一致；max_points=1/500 不改变统计。
+- 分位数仍明确为 approximate；只验证本窗口有序及上下界。没有在生产人为制造失败 Ping；混合失败、全部失败及 legacy unknown 的证明来自本地回归。
+- v1.6.5 的生产管理页实际点击 NOSLA 名称可打开详情；工作台侧栏进入 `/terminal`，刷新仍显示终端工作台，没有主题 404。恢复后捕获的浏览器 console error 为 0；切换期间旧连接的 WebSocket 断开不混入恢复后结果。
+- 2026-09-30 20:57 Asia/Shanghai：公开 SAO 的 MAC-WAN 详情实时负载与 5 条 Ping 线路均完成渲染，三个验收页面捕获的新 console error 为 0。此项证明页面可用，不把图表加载或截图当作数值对账。
+- 最新注册状态为 10/10 online；仅 MAC-WAN 的新探针逐项核验，其余 9 台仍为 v1.6.2/legacy，不宣称逐台二进制验证或完成新契约验收。
+- CPU 数值独立对账、全网探针升级、生产历史压缩各层的数值对账以及启动恢复性能基准不属于本次已通过结论。重启后迟到插入/父桶传播是持久化回归测试通过，不冒充生产面板重启故障注入。
+- 原始证据目录：`C:\Users\SRTco\Nekomari\.accuracy-smoke\release-v1.6.5`，包含 `accuracy-result.json`、`boundary-result.json`、`ping-result.json`、`runtime-result.json`、`fleet-result.json`、`host-check.txt`、`mac-identity.txt`、`browser-result.json` 和浏览器截图。
+- 复测脚本及安全使用说明：`C:\Users\SRTco\Nekomari\docs\audits\2026-09-30\README.md`。原始采样只在短期 raw 保留窗口内可直接重放；过期后需重新采集，不可把空结果当成数值通过。
