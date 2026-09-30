@@ -5,31 +5,34 @@ export type LiveData = {
 
 export type Record = {
   cpu: {
-    usage: number;
+    usage: number | null;
   };
   ram: {
-    used: number;
+    used: number | null;
+    total?: number | null;
   };
   swap: {
-    used: number;
+    used: number | null;
+    total?: number | null;
   };
   load: {
-    load1: number;
-    load5: number;
-    load15: number;
+    load1: number | null;
+    load5: number | null;
+    load15: number | null;
   };
   disk: {
-    used: number;
+    used: number | null;
+    total?: number | null;
   };
   network: {
-    up: number;
-    down: number;
-    totalUp: number;
-    totalDown: number;
+    up: number | null;
+    down: number | null;
+    totalUp: number | null;
+    totalDown: number | null;
   };
   connections: {
-    tcp: number;
-    udp: number;
+    tcp: number | null;
+    udp: number | null;
   };
   gpu?: {
     count: number;
@@ -42,8 +45,13 @@ export type Record = {
       temperature: number;
     }[];
   };
-  uptime: number;
-  process: number;
+  uptime: number | null;
+  process: number | null;
+  quality?: { [key: string]: string };
+  sampled_at?: string;
+  received_at?: string;
+  counter_epoch?: string;
+  sample_interval_seconds?: number;
   message: string;
   updated_at: string;
 };

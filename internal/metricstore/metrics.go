@@ -1,29 +1,33 @@
 package metricstore
 
 const (
-	MetricCPU            = "cpu.usage"
-	MetricGPU            = "gpu.usage"
-	MetricGPUDeviceUsage = "gpu.device.usage"
-	MetricGPUMem         = "gpu.memory.used"
-	MetricGPUMemTotal    = "gpu.memory.total"
-	MetricGPUTemp        = "gpu.temperature"
-	MetricRAM            = "memory.used"
-	MetricSwap           = "swap.used"
-	MetricLoad           = "load.average"
-	MetricDisk           = "disk.used"
-	MetricNetIn          = "net.in.rate"
-	MetricNetOut         = "net.out.rate"
-	MetricNetTotalUp     = "net.total.up"
-	MetricNetTotalDown   = "net.total.down"
-	MetricTrafficUp      = "traffic.up"
-	MetricTrafficDown    = "traffic.down"
-	MetricProcess        = "process.count"
-	MetricConnections    = "connections.tcp"
-	MetricConnectionsUDP = "connections.udp"
-	MetricPingLatency    = "ping.latency_ms"
-	MetricPingLoss       = "ping.loss"
-	MetricBackupAge      = "backup.age_seconds"
-	MetricBackupOK       = "backup.ok"
+	MetricCPU                  = "cpu.usage"
+	MetricGPU                  = "gpu.usage"
+	MetricGPUDeviceUsage       = "gpu.device.usage"
+	MetricGPUMem               = "gpu.memory.used"
+	MetricGPUMemTotal          = "gpu.memory.total"
+	MetricGPUTemp              = "gpu.temperature"
+	MetricRAM                  = "memory.used"
+	MetricSwap                 = "swap.used"
+	MetricLoad                 = "load.average"
+	MetricDisk                 = "disk.used"
+	MetricNetIn                = "net.in.rate"
+	MetricNetOut               = "net.out.rate"
+	MetricNetTotalUp           = "net.total.up"
+	MetricNetTotalDown         = "net.total.down"
+	MetricTrafficUp            = "traffic.up"
+	MetricTrafficDown          = "traffic.down"
+	MetricTrafficIntervalUp    = "traffic.interval.up"
+	MetricTrafficIntervalDown  = "traffic.interval.down"
+	MetricTrafficIntervalValid = "traffic.interval.valid"
+	MetricProcess              = "process.count"
+	MetricConnections          = "connections.tcp"
+	MetricConnectionsUDP       = "connections.udp"
+	MetricPingLatency          = "ping.latency_ms"
+	MetricPingSuccessLatency   = "ping.success_latency_ms"
+	MetricPingLoss             = "ping.loss"
+	MetricBackupAge            = "backup.age_seconds"
+	MetricBackupOK             = "backup.ok"
 )
 
 // loadRecordMetricNames are the entity-level metrics used to reconstruct the
@@ -41,10 +45,10 @@ var gpuDeviceRecordMetricNames = []string{
 	MetricGPUDeviceUsage, MetricGPUMem, MetricGPUMemTotal, MetricGPUTemp,
 }
 
-var recordMetricNames = joinMetricNames(loadRecordMetricNames, gpuDeviceRecordMetricNames)
+var recordMetricNames = joinMetricNames(loadRecordMetricNames, gpuDeviceRecordMetricNames, []string{MetricTrafficIntervalUp, MetricTrafficIntervalDown, MetricTrafficIntervalValid})
 
 // Ping has an independent retention and cleanup boundary.
-var pingMetricNames = []string{MetricPingLatency, MetricPingLoss}
+var pingMetricNames = []string{MetricPingLatency, MetricPingLoss, MetricPingSuccessLatency}
 
 var builtinMetricNames = joinMetricNames(recordMetricNames, pingMetricNames)
 

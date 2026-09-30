@@ -58,7 +58,7 @@ func get(t *testing.T, router *gin.Engine, path string) *httptest.ResponseRecord
 func TestTheAdminDocumentIsServedForItsPrefix(t *testing.T) {
 	router := newRouter(t)
 
-	for _, path := range []string{"/admin", "/admin/", "/admin/servers", "/admin/dashboard", "/admin/settings/site"} {
+	for _, path := range []string{"/admin", "/admin/", "/admin/servers", "/admin/dashboard", "/admin/settings/site", "/terminal", "/terminal/"} {
 		recorder := get(t, router, path)
 		if recorder.Code != http.StatusOK {
 			t.Errorf("GET %s = %d, want 200", path, recorder.Code)

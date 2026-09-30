@@ -25,13 +25,14 @@ func TestRecordReportKeepsLatestAndShortRecentWindow(t *testing.T) {
 	RecordReport(v2.Report{UUID: "node-a", UpdatedAt: now.Add(-2 * time.Minute), CPU: v2.CPUReport{Usage: 10}})
 	RecordReport(v2.Report{UUID: "node-a", UpdatedAt: now.Add(-30 * time.Second), CPU: v2.CPUReport{Usage: 20}})
 	RecordReport(v2.Report{UUID: "node-a", UpdatedAt: now.Add(-45 * time.Second), CPU: v2.CPUReport{Usage: 15}})
+	RecordReport(v2.Report{UUID: "node-a", UpdatedAt: now.Add(-30 * time.Second), CPU: v2.CPUReport{Usage: 99}})
 
 	recent := GetRecentReports("node-a")
-	if len(recent) != 2 || recent[0].CPU.Usage != 15 || recent[1].CPU.Usage != 20 {
+	if len(recent) != 1 || recent[0].CPU.Usage != 20 {
 		t.Fatalf("recent reports = %#v", recent)
 	}
 	recent[0].CPU.Usage = 99
-	if got := GetRecentReports("node-a"); len(got) != 2 || got[0].CPU.Usage != 15 {
+	if got := GetRecentReports("node-a"); len(got) != 1 || got[0].CPU.Usage != 20 {
 		t.Fatalf("recent report cache was mutated through returned slice: %#v", got)
 	}
 

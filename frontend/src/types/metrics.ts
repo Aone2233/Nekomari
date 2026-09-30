@@ -12,6 +12,12 @@ export type MetricPoint = MetricTagged & {
 };
 
 export type MetricSeries = MetricTagged & {
+	semantics?: string;
+	quality?: string;
+	window_semantics?: string;
+	coverage_start?: string;
+	coverage_end_exclusive?: string;
+	backing_interval_seconds?: number;
   metric_key: string;
   entity_id: string;
   type?: string;
@@ -62,22 +68,33 @@ export type PingMetricStat = {
    * family, which is the pre-change behaviour.
    */
   family?: string;
+  protocol?: string;
+  role?: string;
+  quality?: string;
+  semantics?: string;
+  percentiles_approximate?: boolean;
   name?: string;
   type?: string;
   interval?: number;
   tags?: MetricTags;
   total: number;
   valid: number;
-  loss: number;
+  loss: number | null;
+  valid_known?: boolean;
   loss_approximate?: boolean;
   min?: number | null;
   max?: number | null;
   avg?: number | null;
   latest?: number | null;
   p50?: number | null;
+  p95?: number | null;
   p99?: number | null;
   stddev?: number | null;
-  p99_p50_ratio?: number;
+  p99_p50_ratio?: number | null;
+  window_semantics?: string;
+  coverage_start?: string;
+  coverage_end_exclusive?: string;
+  backing_interval_seconds?: number;
 };
 
 export type PingMetricStatsResponse = {

@@ -2,6 +2,7 @@ package monitoring
 
 import (
 	"bufio"
+	"math"
 	"os"
 	"runtime"
 	"strings"
@@ -18,6 +19,7 @@ type CpuInfo struct {
 	CPUCores         int     `json:"cpu_cores"`
 	CPUPhysicalCores int     `json:"cpu_physical_cores"`
 	CPUUsage         float64 `json:"cpu_usage"`
+	Valid            bool    `json:"-"`
 }
 
 func Cpu() CpuInfo {
@@ -26,6 +28,7 @@ func Cpu() CpuInfo {
 	percentages, err := cpu.Percent(0, false)
 	if err == nil && len(percentages) > 0 {
 		cpuinfo.CPUUsage = percentages[0]
+		cpuinfo.Valid = !math.IsNaN(percentages[0]) && !math.IsInf(percentages[0], 0) && percentages[0] >= 0 && percentages[0] <= 100
 	}
 
 	return cpuinfo

@@ -54,6 +54,7 @@ type metricSeriesAccumulator struct {
 	needRate    bool
 	groups      map[rollupKey]*rollupAggregateState
 	rateGroups  map[rollupKey]*rollupAggregateState
+	windowStart int64
 }
 
 // SeriesBatch is the single rollup query implementation. It resolves metric
@@ -93,6 +94,7 @@ func (s *Store) seriesBatchAt(ctx context.Context, query BatchSeriesQuery, now t
 	result := BatchSeriesResult{
 		Definitions: definitions,
 		Values:      make(map[string]map[Aggregation][]AggregatePoint, len(query.Specs)),
+		Resolutions: make(map[string]time.Duration, len(query.Specs)),
 	}
 	accumulators := make(map[string]*metricSeriesAccumulator, len(query.Specs))
 	groups := make(map[batchSeriesGroupKey]*batchSeriesGroup)
@@ -100,7 +102,8 @@ func (s *Store) seriesBatchAt(ctx context.Context, query BatchSeriesQuery, now t
 		values := make(map[Aggregation][]AggregatePoint, len(spec.Aggregations))
 		accumulator := &metricSeriesAccumulator{
 			spec: spec, compression: s.cfg.RollupPolicy.compression(),
-			groups: make(map[rollupKey]*rollupAggregateState), rateGroups: make(map[rollupKey]*rollupAggregateState),
+			windowStart: query.Start.UnixMilli(),
+			groups:      make(map[rollupKey]*rollupAggregateState), rateGroups: make(map[rollupKey]*rollupAggregateState),
 		}
 		for _, aggregation := range spec.Aggregations {
 			values[aggregation] = []AggregatePoint{}
@@ -126,10 +129,24 @@ func (s *Store) seriesBatchAt(ctx context.Context, query BatchSeriesQuery, now t
 		if len(policy.Tiers) == 0 {
 			continue
 		}
-		resolution := seriesResolutionForPolicy(query.Start, spec.Interval, now, policy)
+		backingInterval := spec.Interval
+		if spec.WholeWindow {
+			backingInterval = time.Minute
+		}
+		resolution := seriesResolutionForPolicy(query.Start, backingInterval, now, policy)
+		if spec.WholeWindow || spec.FinestResolution {
+			resolution = policy.Tiers[len(policy.Tiers)-1].Interval
+			for _, tier := range policy.Tiers {
+				if !now.Add(-tier.Retention).After(query.Start) {
+					resolution = tier.Interval
+					break
+				}
+			}
+		}
 		if forced, ok := forcedResolutions[spec.MetricName]; ok {
 			resolution = forced
 		}
+		result.Resolutions[spec.MetricName] = resolution
 		key := batchSeriesGroupKey{resolution: resolution, needDigest: accumulator.needDigest}
 		group := groups[key]
 		if group == nil {
@@ -494,6 +511,9 @@ func stringSet(values []string) map[string]struct{} {
 
 func (a *metricSeriesAccumulator) consume(meta *seriesReadMeta, sourceBucket, count int64, sum, sumSq, min, max, firstVal float64, firstTS int64, lastVal float64, lastTS int64, digest *TDigest) *rollupAggregateState {
 	key := rollupKey{bucket: bucketStartMillis(sourceBucket, a.spec.Interval.Milliseconds())}
+	if a.spec.WholeWindow {
+		key.bucket = a.windowStart
+	}
 	if a.spec.PreserveSeries {
 		key.entityID = meta.entityID
 		key.tagsHash = meta.tagsHash

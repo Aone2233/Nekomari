@@ -365,7 +365,7 @@ func TestPingBatcherFlushesLatencyAndLossTogether(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{MetricPingLatency, MetricPingLoss} {
+	for _, name := range pingMetricNames {
 		points, err := s.Query(ctx, metric.Query{
 			MetricName: name,
 			EntityID:   "ping-node",
@@ -415,7 +415,7 @@ func TestPingBatcherFlushesLatencyAndLossTogether(t *testing.T) {
 	}
 }
 
-func TestReportBatchKeepsEverySample(t *testing.T) {
+func TestReportBatchDiscardsDuplicateTimestamp(t *testing.T) {
 	ctx := context.Background()
 	s := useReportTestStore(t, nil)
 	base := time.Now().UTC().Truncate(time.Second)
@@ -432,7 +432,7 @@ func TestReportBatchKeepsEverySample(t *testing.T) {
 	if len(pending) != 0 {
 		t.Fatalf("pending reports = %d, want 0", len(pending))
 	}
-	assertMetricValues(t, s, MetricCPU, "node-a", base.Add(-time.Second), base.Add(time.Minute), []float64{10, 20})
+	assertMetricValues(t, s, MetricCPU, "node-a", base.Add(-time.Second), base.Add(time.Minute), []float64{10})
 	assertMetricValues(t, s, MetricCPU, "node-b", base.Add(-time.Second), base.Add(time.Minute), []float64{30, 40})
 }
 

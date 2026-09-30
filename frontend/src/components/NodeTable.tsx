@@ -23,6 +23,7 @@ import { DetailsGrid } from "./DetailsGrid";
 import MiniPingChart from "./MiniPingChart";
 import { getOSImage } from "@/utils";
 import { usePublicInfo } from "@/contexts/PublicInfoContext";
+import { UNKNOWN_LIVE_RECORD, compareNullable, usagePercent } from "@/utils/liveData";
 
 interface NodeTableProps {
   nodes: NodeBasicInfo[];
@@ -48,20 +49,6 @@ interface SortState {
   field: SortField | null;
   order: SortOrder;
 }
-
-const DEFAULT_TABLE_LIVE = {
-  cpu: { usage: 0 },
-  ram: { used: 0 },
-  swap: { used: 0 },
-  load: { load1: 0, load5: 0, load15: 0 },
-  disk: { used: 0 },
-  network: { up: 0, down: 0, totalUp: 0, totalDown: 0 },
-  connections: { tcp: 0, udp: 0 },
-  uptime: 0,
-  process: 0,
-  message: "",
-  updated_at: "",
-} as Record;
 
 const NodeTable: React.FC<NodeTableProps> = ({ nodes, liveData, onlineSet }) => {
   const [t] = useTranslation();
@@ -121,7 +108,7 @@ const NodeTable: React.FC<NodeTableProps> = ({ nodes, liveData, onlineSet }) => 
   }, [sortState.field, sortState.order]);
 
   const getNodeData = useCallback(
-    (uuid: string): Record => liveData.data[uuid] || DEFAULT_TABLE_LIVE,
+    (uuid: string): Record => liveData.data[uuid] || UNKNOWN_LIVE_RECORD,
     [liveData.data],
   );
 
@@ -163,48 +150,31 @@ const NodeTable: React.FC<NodeTableProps> = ({ nodes, liveData, onlineSet }) => 
         break;
       }
       case "cpu": {
-        comparison = aData.cpu.usage - bData.cpu.usage;
-        break;
+        return compareNullable(aData.cpu.usage, bData.cpu.usage, sortState.order === "desc");
       }
       case "ram": {
-        const aRamPercent = a.mem_total
-          ? (aData.ram.used / a.mem_total) * 100
-          : 0;
-        const bRamPercent = b.mem_total
-          ? (bData.ram.used / b.mem_total) * 100
-          : 0;
-        comparison = aRamPercent - bRamPercent;
-        break;
+        return compareNullable(usagePercent(aData.ram.used, aData.ram.total ?? a.mem_total),
+          usagePercent(bData.ram.used, bData.ram.total ?? b.mem_total), sortState.order === "desc");
       }
       case "disk": {
-        const aDiskPercent = a.disk_total
-          ? (aData.disk.used / a.disk_total) * 100
-          : 0;
-        const bDiskPercent = b.disk_total
-          ? (bData.disk.used / b.disk_total) * 100
-          : 0;
-        comparison = aDiskPercent - bDiskPercent;
-        break;
+        return compareNullable(usagePercent(aData.disk.used, aData.disk.total ?? a.disk_total),
+          usagePercent(bData.disk.used, bData.disk.total ?? b.disk_total), sortState.order === "desc");
       }
       case "price": {
         comparison = a.price - b.price;
         break;
       }
       case "networkUp": {
-        comparison = aData.network.up - bData.network.up;
-        break;
+        return compareNullable(aData.network.up, bData.network.up, sortState.order === "desc");
       }
       case "networkDown": {
-        comparison = aData.network.down - bData.network.down;
-        break;
+        return compareNullable(aData.network.down, bData.network.down, sortState.order === "desc");
       }
       case "totalUp": {
-        comparison = aData.network.totalUp - bData.network.totalUp;
-        break;
+        return compareNullable(aData.network.totalUp, bData.network.totalUp, sortState.order === "desc");
       }
       case "totalDown": {
-        comparison = aData.network.totalDown - bData.network.totalDown;
-        break;
+        return compareNullable(aData.network.totalDown, bData.network.totalDown, sortState.order === "desc");
       }
       default:
         comparison = 0;
@@ -337,12 +307,8 @@ const NodeTable: React.FC<NodeTableProps> = ({ nodes, liveData, onlineSet }) => 
             const nodeData = getNodeData(node.uuid);
             const isExpanded = expandedRows.has(node.uuid);
 
-            const memoryUsagePercent = node.mem_total
-              ? (nodeData.ram.used / node.mem_total) * 100
-              : 0;
-            const diskUsagePercent = node.disk_total
-              ? (nodeData.disk.used / node.disk_total) * 100
-              : 0;
+            const memoryUsagePercent = usagePercent(nodeData.ram.used, nodeData.ram.total ?? node.mem_total);
+            const diskUsagePercent = usagePercent(nodeData.disk.used, nodeData.disk.total ?? node.disk_total);
 
             return (
               <React.Fragment key={node.uuid}>

@@ -23,7 +23,7 @@ func TestWritePingRecordsKeepsRolesDistinct(t *testing.T) {
 		t.Fatalf("open metric store: %v", err)
 	}
 	defer s.Close()
-	for _, name := range []string{MetricPingLatency, MetricPingLoss} {
+	for _, name := range pingMetricNames {
 		if err := s.UpsertMetric(ctx, metric.Definition{
 			Name: name, Type: metric.TypeGauge, RetentionDays: 30,
 		}); err != nil {
@@ -110,7 +110,7 @@ func TestWritePingRecordsOmitsEmptyRole(t *testing.T) {
 		t.Fatalf("open metric store: %v", err)
 	}
 	defer s.Close()
-	for _, name := range []string{MetricPingLatency, MetricPingLoss} {
+	for _, name := range pingMetricNames {
 		if err := s.UpsertMetric(ctx, metric.Definition{
 			Name: name, Type: metric.TypeGauge, RetentionDays: 30,
 		}); err != nil {

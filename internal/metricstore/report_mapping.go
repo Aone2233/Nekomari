@@ -20,7 +20,8 @@ import (
 //     读取方取最后值；对它求和会得到"累计值 × 采样次数"，取差会把整个累计当成一次增量 ——
 //     后者正是 41 GB 单点幻影的成因。
 //
-// 未配置 `--month-rotate` 的探针上报 0，此时 `traffic.*` 是零值序列，与"该节点没有周期统计"一致。
+// 新探针未配置 `--month-rotate` 时将周期质量标记为未知，不写入伪零值。
+// 缺少质量标志的旧上报保持兼容，其历史语义不可据此确认为有效周期统计。
 func reportMetricPoints(report v2.Report) []metric.Point {
 	entityID := report.UUID
 	ts := report.UpdatedAt
@@ -40,6 +41,20 @@ func reportMetricPoints(report v2.Report) []metric.Point {
 		{MetricName: MetricConnections, EntityID: entityID, Timestamp: ts, Value: float64(report.Connections.TCP)},
 		{MetricName: MetricConnectionsUDP, EntityID: entityID, Timestamp: ts, Value: float64(report.Connections.UDP)},
 	}
+	qualityKeys := map[string]string{
+		MetricCPU: "cpu", MetricRAM: "ram", MetricSwap: "swap", MetricLoad: "load", MetricDisk: "disk",
+		MetricNetIn: "net_rate", MetricNetOut: "net_rate", MetricNetTotalUp: "network", MetricNetTotalDown: "network",
+		MetricTrafficUp: "traffic_cycle", MetricTrafficDown: "traffic_cycle", MetricProcess: "process",
+		MetricConnections: "connections", MetricConnectionsUDP: "connections",
+	}
+	filtered := points[:0]
+	for _, point := range points {
+		if quality, exists := report.Quality[qualityKeys[point.MetricName]]; exists && quality != "ok" {
+			continue
+		}
+		filtered = append(filtered, point)
+	}
+	points = filtered
 	// 备份新鲜度：仅在 agent 配置了状态文件时上报，避免给未使用该功能的
 	// 部署凭空写入零值序列（那样会让图表显示成「备份一直是 0 秒前」）。
 	if report.Backup != nil {
@@ -48,7 +63,7 @@ func reportMetricPoints(report v2.Report) []metric.Point {
 			metric.Point{MetricName: MetricBackupOK, EntityID: entityID, Timestamp: ts, Value: float64(report.Backup.Ok)},
 		)
 	}
-	if report.GPU == nil {
+	if quality, exists := report.Quality["gpu"]; report.GPU == nil || (exists && quality != "ok") {
 		return points
 	}
 	points = append(points, metric.Point{MetricName: MetricGPU, EntityID: entityID, Timestamp: ts, Value: report.GPU.AverageUsage})

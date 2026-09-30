@@ -44,6 +44,26 @@ the measurement that found it.
   `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
   look like a bug.
 
+## [v1.6.4] — 2026-09-30
+
+- **Fixed monitoring accuracy across sampling, ingestion, rollups and display.**
+  - Verified interval bytes are additive; billing-cycle counters remain cumulative.
+    Counter resets, changed interface scope, duplicate/out-of-order reports and sampling gaps
+    no longer become fabricated traffic. Legacy history is explicitly marked unknown.
+  - Ping latency includes successful attempts only, while loss includes every attempt.
+    Whole-window mean, standard deviation and approximate quantiles merge distributions,
+    not per-bucket summary values. Failed-only and unknown windows stay missing.
+  - CPU, memory, swap and disk validation preserves valid zero readings and distinguishes
+    unavailable readings. Latest status exposes sampling time, quality and counter epoch.
+  - Traffic window totals no longer depend on chart point count; historical rollups disclose
+    effective coverage. Existing sealed history is not rewritten as invented raw samples.
+- **Fixed panel navigation:** server names open the detail drawer without a Radix slot crash;
+  `/terminal` is served by the standalone admin application regardless of the active theme.
+  Regression coverage includes the real embedded bundle and authenticated navigation.
+- Both the panel and agent change. Upgrade the panel first; validate a new-agent canary
+  against kernel counters before rolling out the rest of the fleet. See
+  `docs/MONITORING-ACCURACY-FIXES-2026-09-30.md` for acceptance gates and known limits.
+
 ## [v1.6.3] — 2026-09-29
 
 - **Fixed: a cycle cumulative was being summed, so traffic figures scaled with the sampling rate.** `traffic.*`

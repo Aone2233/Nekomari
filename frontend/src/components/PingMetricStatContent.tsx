@@ -12,9 +12,9 @@ const PingMetricStatContent = ({ stat, t }: PingMetricStatContentProps) => {
   const rows: Array<[string, string]> = [
     [
       t("chart.lossRate"),
-      `${Number(stat.loss ?? 0).toFixed(1)}%${
+      typeof stat.loss === "number" ? `${stat.loss.toFixed(1)}%${
         stat.loss_approximate ? ` ${t("chart.approximate")}` : ""
-      }`,
+      }` : "-",
     ],
   ];
 
@@ -31,7 +31,7 @@ const PingMetricStatContent = ({ stat, t }: PingMetricStatContentProps) => {
     rows.push([t("chart.volatility"), stat.p99_p50_ratio.toFixed(2)]);
   }
   rows.push([t("chart.total"), String(stat.total)]);
-  rows.push([t("chart.valid"), String(stat.valid)]);
+  rows.push([t("chart.valid"), stat.valid_known === false ? "-" : String(stat.valid)]);
   if (stat.interval) rows.push([t("chart.interval"), `${stat.interval}s`]);
   if (stat.type) rows.push([t("common.type"), stat.type.toUpperCase()]);
 

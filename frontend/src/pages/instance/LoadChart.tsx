@@ -1228,7 +1228,7 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
   ]);
 
   const pingStatsMap = useMemo(
-    () => new Map(pingStats.map((stat) => [pingMetricStatKey(stat.entity_id, stat.task_id, stat.family), stat])),
+    () => new Map(pingStats.map((stat) => [pingMetricStatKey(stat.entity_id, stat.task_id, stat.family, stat.protocol ?? stat.tags?.protocol, stat.role ?? stat.tags?.role), stat])),
     [pingStats],
   );
 
@@ -1633,6 +1633,8 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
                                 uuid,
                                 taskId,
                                 pingSeriesFamily(item.tags),
+                                item.tags?.protocol,
+                                item.tags?.role,
                               ),
                             )
                           : undefined;

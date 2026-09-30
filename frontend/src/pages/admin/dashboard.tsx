@@ -56,8 +56,6 @@ import {
   metricSeriesColor,
   normalizeMetricSeriesList,
   pingMetricStatKey,
-  pingSeriesFamily,
-  pingTaskId,
   pingTaskName,
 } from "@/utils/metricSeries";
 import { DAY_MS, daysUntilExpiry, getExpiringNodes } from "./expiry";
@@ -72,26 +70,6 @@ const formatSpeed = (bytes: number): string => {
   if (i <= 1) decimals = 0;
   if (size >= 100) decimals = 0;
   return `${size.toFixed(decimals)} ${units[i]}`;
-};
-
-const weightedP95 = (
-  points: { value: number; count?: number }[],
-): number | null => {
-  const valid = points.filter(
-    (point) =>
-      Number.isFinite(point.value) &&
-      point.value >= 0 &&
-      (point.count ?? 1) > 0,
-  );
-  if (valid.length === 0) return null;
-  const total = valid.reduce((sum, point) => sum + (point.count ?? 1), 0);
-  const sorted = [...valid].sort((a, b) => a.value - b.value);
-  let cumulative = 0;
-  for (const point of sorted) {
-    cumulative += point.count ?? 1;
-    if (cumulative >= total * 0.95) return point.value;
-  }
-  return sorted[sorted.length - 1].value;
 };
 
 const weightedAverage = (
@@ -198,8 +176,8 @@ type PingRankItem = {
   taskId: string;
   label: string;
   p95: number | null;
-  volatility: number;
-  loss: number;
+  volatility: number | null;
+  loss: number | null;
   valid: number;
 };
 
@@ -692,31 +670,6 @@ const DashboardContent = () => {
     },
   } satisfies ChartConfig;
 
-  const pingP95Map = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const series of metricsRes?.series ?? []) {
-      const taskId = pingTaskId(series.tags);
-      if (!taskId) continue;
-      const p95 = weightedP95(
-        (series.points ?? []).map((point) => ({
-          value: point.value ?? NaN,
-          count: point.count,
-        })),
-      );
-      if (p95 != null) {
-        map.set(
-          pingMetricStatKey(
-            series.entity_id,
-            taskId,
-            pingSeriesFamily(series.tags),
-          ),
-          p95,
-        );
-      }
-    }
-    return map;
-  }, [metricsRes]);
-
   const pingRankItems = useMemo(() => {
     const taskMap = new Map(
       pingTasks.map((task) => [String(task.id), task]),
@@ -729,42 +682,39 @@ const DashboardContent = () => {
       );
       const nodeName =
         nodeNameMap.get(stat.entity_id) ?? stat.entity_id.slice(0, 8);
-      const p95 =
-        pingP95Map.get(
-          pingMetricStatKey(stat.entity_id, stat.task_id, stat.family),
-        ) ?? null;
+      const p95 = stat.p95 ?? null;
       return {
-        key: pingMetricStatKey(stat.entity_id, stat.task_id, stat.family),
+        key: pingMetricStatKey(stat.entity_id, stat.task_id, stat.family, stat.protocol ?? stat.tags?.protocol, stat.role ?? stat.tags?.role),
         entityId: stat.entity_id,
         taskId: stat.task_id,
-        label: `${nodeName} · ${taskName}`,
+        label: `${nodeName} · ${taskName}${stat.protocol ? ` · ${stat.protocol.toUpperCase()}` : ""}${stat.role ? ` · ${stat.role}` : ""}`,
         p95,
-        volatility: stat.p99_p50_ratio ?? 0,
-        loss: stat.loss ?? 0,
+        volatility: stat.p99_p50_ratio ?? null,
+        loss: stat.loss ?? null,
         valid: stat.valid,
       } satisfies PingRankItem;
     });
-  }, [pingStats, pingP95Map, pingTasks, nodeNameMap, t]);
+  }, [pingStats, pingTasks, nodeNameMap, t]);
 
   // 无有效延迟样本(如 100% 丢包)的节点波动无意义，不参与稳定性排名
   const stableLatencyItems = useMemo(
     () =>
       [...pingRankItems]
-        .filter((item) => item.valid > 0)
-        .sort((a, b) => a.volatility - b.volatility),
+        .filter((item) => item.valid > 0 && item.volatility !== null)
+        .sort((a, b) => (a.volatility ?? 0) - (b.volatility ?? 0)),
     [pingRankItems],
   );
 
   const unstableLatencyItems = useMemo(
     () =>
       [...pingRankItems]
-        .filter((item) => item.valid > 0)
-        .sort((a, b) => b.volatility - a.volatility),
+        .filter((item) => item.valid > 0 && item.volatility !== null)
+        .sort((a, b) => (b.volatility ?? 0) - (a.volatility ?? 0)),
     [pingRankItems],
   );
 
   const highestLossItems = useMemo(
-    () => [...pingRankItems].sort((a, b) => b.loss - a.loss),
+    () => [...pingRankItems].filter((item) => item.loss !== null).sort((a, b) => (b.loss ?? 0) - (a.loss ?? 0)),
     [pingRankItems],
   );
 
@@ -850,8 +800,8 @@ const DashboardContent = () => {
         {item.p95 != null ? `${Math.round(item.p95)} ms` : "-"}
       </Text>{" "}
       ·{" "}
-      <Text size="2" color={volatilityColor(item.volatility)}>
-        {t("chart.volatility", "Volatility")} {item.volatility.toFixed(2)}
+      <Text size="2" color={item.volatility === null ? "gray" : volatilityColor(item.volatility)}>
+        {t("chart.volatility", "Volatility")} {item.volatility === null ? "-" : item.volatility.toFixed(2)}
       </Text>
     </Text>
   );
@@ -1424,7 +1374,7 @@ const DashboardContent = () => {
               highestLossItems,
               (item) => (
                 <Text size="2" className="whitespace-nowrap">
-                  {item.loss.toFixed(1)}%
+                  {item.loss?.toFixed(1) ?? "-"}%
                 </Text>
               ),
             )}

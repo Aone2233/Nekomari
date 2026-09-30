@@ -3,6 +3,7 @@ package metric
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"sort"
 	"time"
 )
@@ -110,6 +111,9 @@ func (s *Store) flushClosedCoarseRollups(ctx context.Context, now time.Time) (in
 }
 
 func (s *Store) flushClosedCoarseRollupsUnderView(ctx context.Context, now time.Time) (int, error) {
+	if err := s.recoverPendingCoarseRollups(ctx); err != nil {
+		return 0, err
+	}
 	now = now.UTC()
 	written := 0
 	for {
@@ -140,6 +144,61 @@ func (s *Store) flushClosedCoarseRollupsUnderView(ctx context.Context, now time.
 			})
 		}
 	}
+}
+
+// Recover only absent parents, never overwrite a sealed historical bucket.
+// Durable children, rather than raw samples, make restart recovery idempotent.
+func (s *Store) recoverPendingCoarseRollups(ctx context.Context) error {
+	if !s.coarseRecoveryPending {
+		return nil
+	}
+	definitions, err := s.ListMetrics(ctx)
+	if err != nil {
+		return err
+	}
+	for _, def := range definitions {
+		if def.RetentionDays <= 0 {
+			continue
+		}
+		policy := s.cfg.RollupPolicy.withMetricRetention(time.Duration(def.RetentionDays) * 24 * time.Hour)
+		for i := 1; i < len(policy.Tiers); i++ {
+			fine, coarse := policy.Tiers[i-1].Interval, policy.Tiers[i].Interval
+			// Bucket timestamps are nonnegative Unix milliseconds. Integer division
+			// works with SQLite, PostgreSQL and MySQL without dialect-specific dates.
+			parentStart := fmt.Sprintf("(r.bucket_milli / %d) * %d", coarse.Milliseconds(), coarse.Milliseconds())
+			query := fmt.Sprintf(`SELECT s.entity_id, s.tags_hash, s.tags, l.labels_hash, l.labels,
+				r.bucket_milli, r.count, r.sum, r.sum_sq, r.min_val, r.max_val,
+				r.first_val, r.first_ts_milli, r.last_val, r.last_ts_milli, r.digest
+				FROM %s r JOIN %s s ON s.id = r.series_id
+				JOIN %s d ON d.id = r.resolution_id JOIN %s l ON l.id = r.label_id
+				WHERE s.metric_name = %s AND d.resolution_milli = %s
+				AND NOT EXISTS (SELECT 1 FROM %s p JOIN %s pd ON pd.id = p.resolution_id
+					WHERE p.series_id = r.series_id AND p.label_id = r.label_id
+					AND pd.resolution_milli = %s AND p.bucket_milli = %s)
+				ORDER BY r.bucket_milli ASC`, s.tables.rollups, s.tables.series, s.tables.resolutions,
+				s.tables.labels, s.dialect.placeholder(1), s.dialect.placeholder(2), s.tables.rollups,
+				s.tables.resolutions, s.dialect.placeholder(3), parentStart)
+			rows, err := s.reader().QueryContext(ctx, query, def.Name, fine.Milliseconds(), coarse.Milliseconds())
+			if err != nil {
+				return err
+			}
+			children, err := scanStoredRollupsForMaintenance(rows, true, policy.compression())
+			_ = rows.Close()
+			if err != nil {
+				return err
+			}
+			higher := make([]time.Duration, 0, len(policy.Tiers)-i-1)
+			for _, tier := range policy.Tiers[i+1:] {
+				higher = append(higher, tier.Interval)
+			}
+			for _, child := range children {
+				key := rollupKey{entityID: child.entityID, tagsHash: child.bucketData.tagsHash, labelsHash: child.bucketData.labelsHash, bucket: child.bucket}
+				s.addCoarseChildren(def.Name, coarse, higher, map[rollupKey]*rollupBucket{key: child.bucketData})
+			}
+		}
+	}
+	s.coarseRecoveryPending = false
+	return nil
 }
 
 func (s *Store) filterClosedCoarseRollups(ctx context.Context, closed []closedCoarseRollup) ([]closedCoarseRollup, error) {

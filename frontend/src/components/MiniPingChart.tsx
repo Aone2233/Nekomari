@@ -147,7 +147,7 @@ const MiniPingChart = ({
   const statsMap = useMemo(() => {
     const map = new Map<string, PingMetricStat>();
     for (const stat of stats) {
-      map.set(pingMetricStatKey(stat.entity_id, stat.task_id, stat.family), stat);
+      map.set(pingMetricStatKey(stat.entity_id, stat.task_id, stat.family, stat.protocol ?? stat.tags?.protocol, stat.role ?? stat.tags?.role), stat);
     }
     return map;
   }, [stats]);
@@ -274,6 +274,8 @@ const MiniPingChart = ({
                       uuid,
                       item.taskId,
                       pingSeriesFamily(item.tags),
+                      item.tags?.protocol,
+                      item.tags?.role,
                     ),
                   )
                 : undefined;

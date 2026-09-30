@@ -1,8 +1,8 @@
 import type { TFunction } from "i18next";
 
 /** 格式化秒*/
-export function formatUptime(seconds: number, t: TFunction): string {
-  if (!seconds || seconds < 0) return t("nodeCard.time_second", { val: 0 });
+export function formatUptime(seconds: number | null | undefined, t: TFunction): string {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return "-";
   const d = Math.floor(seconds / 86400);
   const h = Math.floor((seconds % 86400) / 3600);
   const m = Math.floor((seconds % 3600) / 60);

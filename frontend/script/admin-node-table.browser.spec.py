@@ -127,6 +127,21 @@ class AdminNodeTableBrowserTest(unittest.TestCase):
 
     # -- helpers ------------------------------------------------------------
 
+    def test_server_details_opens_without_slot_error(self):
+        self.mount({"body": [node("alpha", name="Detail regression")]})
+        self.page.get_by_test_id("node-row").get_by_text("Detail regression", exact=True).click()
+        expect(self.page.get_by_role("dialog")).to_be_visible()
+        expect(self.page.get_by_role("dialog").get_by_text("Machine details", exact=True)).to_be_visible()
+        self.page.keyboard.press("Escape")
+        self.advance(500)
+        expect(self.page.get_by_role("dialog")).not_to_be_visible()
+
+    def test_server_details_opens_on_mobile(self):
+        self.page.set_viewport_size({"width": 390, "height": 844})
+        self.mount({"body": [node("alpha", name="Mobile details")]})
+        self.page.get_by_test_id("node-row").get_by_text("Mobile details", exact=True).click()
+        expect(self.page.get_by_role("dialog")).to_be_visible()
+
     def mount(self, *responses):
         """Open the page with these node-list responses already queued.
 

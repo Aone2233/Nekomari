@@ -24,7 +24,7 @@ func TestWritePingRecordsKeepsProtocolsDistinct(t *testing.T) {
 	}
 	defer s.Close()
 
-	for _, name := range []string{MetricPingLatency, MetricPingLoss} {
+	for _, name := range pingMetricNames {
 		if err := s.UpsertMetric(ctx, metric.Definition{
 			Name: name, Type: metric.TypeGauge, RetentionDays: 30,
 		}); err != nil {
@@ -113,7 +113,7 @@ func TestWritePingRecordsOmitsEmptyProtocol(t *testing.T) {
 	}
 	defer s.Close()
 	// writePingRecords 每条记录会写 latency + loss 两个指标，两个都要先定义
-	for _, name := range []string{MetricPingLatency, MetricPingLoss} {
+	for _, name := range pingMetricNames {
 		if err := s.UpsertMetric(ctx, metric.Definition{
 			Name: name, Type: metric.TypeGauge, RetentionDays: 30,
 		}); err != nil {

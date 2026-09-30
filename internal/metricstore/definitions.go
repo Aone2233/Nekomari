@@ -76,18 +76,31 @@ func createMetricDefinitionsWithDefaultRetention(ctx context.Context, s *metric.
 		{Name: MetricNetOut, Type: metric.TypeGauge, Unit: "bytes/s", Description: "Network out rate", RetentionDays: defaultRetentionDays},
 		{Name: MetricNetTotalUp, Type: metric.TypeCounter, Unit: "bytes", Description: "Network total upload", RetentionDays: defaultRetentionDays},
 		{Name: MetricNetTotalDown, Type: metric.TypeCounter, Unit: "bytes", Description: "Network total download", RetentionDays: defaultRetentionDays},
-		{Name: MetricTrafficUp, Type: metric.TypeGauge, Unit: "bytes", Description: "Traffic upload delta", RetentionDays: defaultRetentionDays},
-		{Name: MetricTrafficDown, Type: metric.TypeGauge, Unit: "bytes", Description: "Traffic download delta", RetentionDays: defaultRetentionDays},
+		{Name: MetricTrafficUp, Type: metric.TypeGauge, Unit: "bytes", Description: "Billing-cycle cumulative upload (last only; legacy history may have mixed semantics)", RetentionDays: defaultRetentionDays},
+		{Name: MetricTrafficDown, Type: metric.TypeGauge, Unit: "bytes", Description: "Billing-cycle cumulative download (last only; legacy history may have mixed semantics)", RetentionDays: defaultRetentionDays},
+		{Name: MetricTrafficIntervalUp, Type: metric.TypeGauge, Unit: "bytes", Description: "v2 validated upload interval delta; sum is additive; missing intervals are unknown", RetentionDays: defaultRetentionDays},
+		{Name: MetricTrafficIntervalDown, Type: metric.TypeGauge, Unit: "bytes", Description: "v2 validated download interval delta; sum is additive; missing intervals are unknown", RetentionDays: defaultRetentionDays},
+		{Name: MetricTrafficIntervalValid, Type: metric.TypeGauge, Unit: "ratio", Description: "v2 counter continuity: 1 validated interval, 0 unknown interval", RetentionDays: defaultRetentionDays},
 		{Name: MetricProcess, Type: metric.TypeGauge, Unit: "count", Description: "Process count", RetentionDays: defaultRetentionDays},
 		{Name: MetricConnections, Type: metric.TypeGauge, Unit: "count", Description: "TCP connections", RetentionDays: defaultRetentionDays},
 		{Name: MetricConnectionsUDP, Type: metric.TypeGauge, Unit: "count", Description: "UDP connections", RetentionDays: defaultRetentionDays},
 		{Name: MetricPingLatency, Type: metric.TypeGauge, Unit: "ms", Description: "Ping latency", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingSuccessLatency, Type: metric.TypeGauge, Unit: "ms", Description: "v2 successful Ping latency only; negative failures excluded", RetentionDays: defaultRetentionDays},
 		{Name: MetricPingLoss, Type: metric.TypeGauge, Unit: "ratio", Description: "Ping packet loss indicator", RetentionDays: defaultRetentionDays},
 		{Name: MetricBackupAge, Type: metric.TypeGauge, Unit: "s", Description: "Seconds since the last successful backup", RetentionDays: defaultRetentionDays},
 		{Name: MetricBackupOK, Type: metric.TypeGauge, Unit: "bool", Description: "Last backup succeeded (1) or not (0)", RetentionDays: defaultRetentionDays},
 	}
 
 	for _, def := range definitions {
+		companion := map[string]string{MetricTrafficIntervalUp: MetricTrafficUp, MetricTrafficIntervalDown: MetricTrafficDown, MetricTrafficIntervalValid: MetricTrafficUp, MetricPingSuccessLatency: MetricPingLatency}[def.Name]
+		if companion != "" {
+			base, err := s.GetMetric(ctx, companion)
+			if err == nil {
+				def.RetentionDays = base.RetentionDays
+			} else if !errors.Is(err, metric.ErrNotFound) {
+				return err
+			}
+		}
 		existing, err := s.GetMetric(ctx, def.Name)
 		if err != nil && !errors.Is(err, metric.ErrNotFound) {
 			return fmt.Errorf("failed to get metric %s: %w", def.Name, err)

@@ -57,7 +57,6 @@ function DrawerContent({
 
   return (
     <DrawerPortal data-slot="drawer-portal">
-      {" "}
       <Theme
         appearance={resolvedAppearance}
         accentColor={color}
@@ -77,7 +76,7 @@ function DrawerContent({
         >
           <div className="bg-muted mx-auto mt-4 hidden h-2 w-[100px] shrink-0 rounded-full group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />
           {children}
-        </DrawerPrimitive.Content>{" "}
+        </DrawerPrimitive.Content>
       </Theme>
     </DrawerPortal>
   );

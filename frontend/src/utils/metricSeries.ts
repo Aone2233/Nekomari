@@ -165,8 +165,13 @@ export const pingMetricStatKey = (
   entityId: string,
   taskId: string,
   family?: string,
+  protocol?: string,
+  role?: string,
 ) => {
   const normalized = family?.trim();
+  if (protocol?.trim() || role?.trim()) {
+    return JSON.stringify([entityId, taskId, normalized ?? "", protocol?.trim() ?? "", role?.trim() ?? ""]);
+  }
   return normalized
     ? `${entityId}:${taskId}:${normalized}`
     : `${entityId}:${taskId}`;

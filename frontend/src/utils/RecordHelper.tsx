@@ -43,17 +43,17 @@ export function liveDataToRecords(
   return liveData.map((data) => ({
     client: client,
     time: data.updated_at || "",
-    cpu: data.cpu.usage ?? 0,
-    gpu: 0,
-    gpu_usage: data.gpu?.average_usage ?? 0,
-    gpu_memory: data.gpu ?
+    cpu: data.cpu.usage,
+    gpu: data.gpu?.average_usage ?? null,
+    gpu_usage: data.gpu?.average_usage ?? null,
+    gpu_memory: data.gpu && data.gpu.count > 0 && data.gpu.detailed_info.length === data.gpu.count && data.gpu.detailed_info.every(gpu => gpu.memory_total > 0) ?
       data.gpu.detailed_info?.reduce((acc, gpu) =>
         acc + (gpu.memory_used / gpu.memory_total) * 100, 0) / data.gpu.count || 0
-      : 0,
+      : null,
     gpu_detailed: data.gpu?.detailed_info?.reduce((acc, gpu, index) => {
       acc[index] = {
         usage: gpu.utilization ?? null,
-        memory: (gpu.memory_used / gpu.memory_total) * 100,
+        memory: gpu.memory_total > 0 ? (gpu.memory_used / gpu.memory_total) * 100 : null,
         temperature: gpu.temperature ?? null,
         device_index: index,
         device_name: gpu.name,
@@ -72,21 +72,21 @@ export function liveDataToRecords(
         mem_used?: number;
       };
     }) || undefined,
-    ram: data.ram.used ?? 0,
-    ram_total: 0,
-    swap: data.swap.used ?? 0,
-    swap_total: 0,
-    load: data.load.load1 ?? 0,
-    temp: 0,
-    disk: data.disk.used ?? 0,
-    disk_total: 0,
-    net_in: data.network?.down ?? 0,
-    net_out: data.network?.up ?? 0,
-    net_total_up: data.network?.totalUp ?? 0,
-    net_total_down: data.network?.totalDown ?? 0,
-    process: data.process ?? 0,
-    connections: data.connections.tcp ?? 0,
-    connections_udp: data.connections.udp ?? 0,
+    ram: data.ram.used,
+    ram_total: data.ram.total ?? null,
+    swap: data.swap.used,
+    swap_total: data.swap.total ?? null,
+    load: data.load.load1,
+    temp: null,
+    disk: data.disk.used,
+    disk_total: data.disk.total ?? null,
+    net_in: data.network.down,
+    net_out: data.network.up,
+    net_total_up: data.network.totalUp,
+    net_total_down: data.network.totalDown,
+    process: data.process,
+    connections: data.connections.tcp !== null && data.connections.udp !== null ? data.connections.tcp + data.connections.udp : null,
+    connections_udp: data.connections.udp,
   }));
 }
 

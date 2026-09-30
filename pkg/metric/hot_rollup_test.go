@@ -386,7 +386,7 @@ func TestLateReplacementChangesSealedPercentile(t *testing.T) {
 	}
 }
 
-func TestRestartDropsUnsealedCoarseParents(t *testing.T) {
+func TestRestartRecoversUnsealedCoarseParents(t *testing.T) {
 	ctx := context.Background()
 	policy := RollupPolicy{Tiers: []RollupTier{
 		{Interval: time.Minute, Retention: 24 * time.Hour},
@@ -421,15 +421,41 @@ func TestRestartDropsUnsealedCoarseParents(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	if written, err := reopened.FlushCoarse(ctx, base.Add(15*time.Minute)); err != nil || written != 0 {
-		t.Fatalf("reopened coarse flush = %d, %v; want 0, nil", written, err)
+	if written, err := reopened.FlushCoarse(ctx, base.Add(15*time.Minute)); err != nil || written != 1 {
+		t.Fatalf("reopened coarse flush = %d, %v; want 1, nil", written, err)
 	}
 	rows, err := reopened.scanRollupRows(ctx, reopened.reader(), "restart-parent", 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 0 {
-		t.Fatalf("unsealed parent survived restart: %#v", rows)
+	if len(rows) != 1 || rows[0].bucketData.count != 1 || rows[0].bucketData.sum != 7 {
+		t.Fatalf("parent did not recover durable child: %#v", rows)
+	}
+	if written, err := reopened.FlushCoarse(ctx, base.Add(time.Hour)); err != nil || written != 0 {
+		t.Fatalf("duplicate recovery = %d, %v", written, err)
+	}
+	late, err := prepareMetricPoints([]Point{{MetricName: "restart-parent", EntityID: "n1", Timestamp: base.Add(30 * time.Second), Value: 50}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rebuild = reopened.writeRawPointsAt(late, base.Add(time.Hour))
+	if err := reopened.writePreparedHotRollups(ctx, late, base.Add(time.Hour), rebuild); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := Open(ctx, SQLite(path, WithRollupPolicy(policy)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recovered.Close()
+	if _, err := recovered.FlushCoarse(ctx, base.Add(2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = recovered.scanRollupRows(ctx, recovered.reader(), "restart-parent", 5*time.Minute)
+	if err != nil || len(rows) != 1 || rows[0].bucketData.count != 1 || rows[0].bucketData.sum != 7 {
+		t.Fatalf("restart rewrote sealed parent: %#v, %v", rows, err)
 	}
 }
 
