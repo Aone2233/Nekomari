@@ -72,6 +72,62 @@ func TestPublicTrafficSumSurvivesMaxPointsCompactionAndRestart(t *testing.T) {
 	}
 }
 
+func TestPublicTrafficRecentPartialBucketsRemainExact(t *testing.T) {
+	ctx := context.Background()
+	dsn := filepath.Join(t.TempDir(), "partial-window.db")
+	open := func() *metric.Store {
+		s, err := metric.Open(ctx, metric.SQLite(dsn, metric.WithMaxOpenConns(1)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	s := open()
+	defer func() { _ = s.Close() }()
+	name := metricstore.MetricTrafficIntervalUp
+	if err := s.CreateMetric(ctx, metric.Definition{Name: name, Type: metric.TypeGauge, RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	base := now.Truncate(time.Minute).Add(-5 * time.Minute)
+	write := func(seconds int, value float64) {
+		t.Helper()
+		if err := s.Write(ctx, metric.Point{MetricName: name, EntityID: "node", Timestamp: base.Add(time.Duration(seconds) * time.Second), Value: value}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 4; i++ {
+		write(i*20+5, float64((i+1)*10))
+	}
+	query := metric.Query{MetricName: metricstore.MetricTrafficUp, EntityID: "node", Start: base.Add(25*time.Second + time.Millisecond), End: base.Add(65*time.Second + time.Millisecond), Order: metric.OrderAsc}
+	check := func(want float64, raw bool) {
+		t.Helper()
+		for _, budget := range []int{1, 2, 500} {
+			got, err := loadPublicMetricPoints(ctx, s, query, metric.AggSum, budget, false, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sum := 0.0
+			for _, point := range got.points {
+				if point.Value != nil {
+					sum += *point.Value
+				}
+			}
+			if sum != want || (budget == 500 && got.downsampled == raw) {
+				t.Fatalf("budget=%d want=%v raw=%v result=%+v sum=%v", budget, want, raw, got, sum)
+			}
+		}
+	}
+	check(70, true)
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s = open()
+	// A new sample cannot certify raw coverage lost in the same bucket on restart.
+	write(55, 7)
+	check(107, false)
+}
+
 func TestPublicPingUsesSuccessfulWholeWindowDistribution(t *testing.T) {
 	ctx := context.Background()
 	s, err := metric.Open(ctx, metric.SQLite(":memory:", metric.WithMaxOpenConns(1)))

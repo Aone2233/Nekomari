@@ -191,11 +191,13 @@ func (s *Store) writeRawPointsAt(points []preparedMetricPoint, now time.Time) ma
 			old, replaced := series.replaceCompressed(sample)
 			if replaced {
 				markRawRebuild(rebuild, point, series.labelHashes[old.labelID])
+				markRawRebuild(rebuild, point, point.labelsHash)
 				if old.labelID != sample.labelID {
 					dirtyLabels[series] = struct{}{}
 				}
 			}
-			markRawRebuild(rebuild, point, point.labelsHash)
+			// A new late sample is a delta, not a replacement built from volatile raw.
+			// After restart, that raw cache may lack the persisted bucket's other samples.
 			continue
 		}
 		index := sort.Search(len(series.samples), func(i int) bool {

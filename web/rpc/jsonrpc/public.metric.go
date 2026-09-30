@@ -325,12 +325,28 @@ func publicQueryMetrics(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 		}
 	}
 
+	var coverageRawValues map[string][]metric.Point
+	if useRaw && len(entityIDs) > 0 {
+		var err error
+		coverageRawValues, err = queryRawTrafficBucketCoverage(ctx, store, metric.BatchQuery{
+			MetricNames: storageKeys,
+			EntityIDs:   entityIDs,
+			Start:       start,
+			End:         end,
+			Tags:        params.Tags,
+			Order:       metric.OrderAsc,
+		}, backingResolutions)
+		if err != nil {
+			return nil, rpc.MakeError(rpc.InternalError, "Failed to verify raw traffic coverage: "+err.Error(), nil)
+		}
+	}
+
 	series := make([]publicMetricSeries, 0, len(metricKeys)*maxInt(1, len(entityIDs)))
 	responsePoints := 0
 	for _, spec := range loadSpecs {
 		specRaw := useRaw
 		if specRaw && isIntervalTrafficMetric(spec.storageKey) {
-			specRaw = rawTrafficMatchesRollups(rawValues[spec.storageKey], rollupValues[spec.storageKey][spec.algorithm])
+			specRaw = rawTrafficMatchesRollups(coverageRawValues[spec.storageKey], rollupValues[spec.storageKey][spec.algorithm])
 		}
 		def := definitions[spec.storageKey]
 		item := publicMetricSeries{
@@ -455,7 +471,18 @@ func loadPublicMetricPoints(
 			if err != nil {
 				return publicMetricPointResult{}, err
 			}
-			rawComplete = rawTrafficMatchesRollups(points, rollups)
+			entityIDs := []string(nil)
+			if query.EntityID != "" {
+				entityIDs = []string{query.EntityID}
+			}
+			coverage, err := queryRawTrafficBucketCoverage(ctx, store, metric.BatchQuery{
+				MetricNames: []string{query.MetricName}, EntityIDs: entityIDs,
+				Start: query.Start, End: query.End, Tags: query.Tags, Order: metric.OrderAsc,
+			}, map[string]time.Duration{query.MetricName: time.Minute})
+			if err != nil {
+				return publicMetricPointResult{}, err
+			}
+			rawComplete = rawTrafficMatchesRollups(coverage[query.MetricName], rollups)
 		}
 		if rawComplete {
 			result := publicMetricPointResult{points: make([]publicMetricPoint, 0, len(points))}
@@ -530,6 +557,34 @@ func publicMetricUsesRawWindow(start, end, now time.Time) bool {
 
 func isIntervalTrafficMetric(name string) bool {
 	return name == metricstore.MetricTrafficIntervalUp || name == metricstore.MetricTrafficIntervalDown
+}
+
+// Completeness compares identical bucket coverage, not a narrow sample window
+// with its wider durable buckets. Returned samples still use the requested window.
+func queryRawTrafficBucketCoverage(ctx context.Context, store *metric.Store, query metric.BatchQuery, resolutions map[string]time.Duration) (map[string][]metric.Point, error) {
+	byResolution := make(map[time.Duration][]string)
+	for _, name := range query.MetricNames {
+		if resolution := resolutions[name]; isIntervalTrafficMetric(name) && resolution > 0 {
+			byResolution[resolution] = append(byResolution[resolution], name)
+		}
+	}
+	result := make(map[string][]metric.Point)
+	for resolution, names := range byResolution {
+		lower, upper := metricBucketCoverage(query.Start, query.End, resolution)
+		coverageQuery := query
+		coverageQuery.MetricNames = names
+		coverageQuery.Start = *lower
+		// Storage timestamps have millisecond precision and Query.End is inclusive.
+		coverageQuery.End = upper.Add(-time.Millisecond)
+		points, err := store.QueryBatch(ctx, coverageQuery)
+		if err != nil {
+			return nil, err
+		}
+		for name, values := range points {
+			result[name] = values
+		}
+	}
+	return result, nil
 }
 
 // Exact samples are volatile; compare every series against the durable view so
