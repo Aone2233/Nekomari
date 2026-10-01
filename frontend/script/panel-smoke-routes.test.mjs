@@ -3,40 +3,40 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 /**
- * `panel-smoke.spec.py`'s route coverage, pinned where CI can actually see it.
+ * `panel-smoke.spec.py`'s route contracts, pinned where CI can actually see them.
  *
- * The spec itself cannot run here: it drives a real instance through Playwright. But the part
- * of it that let a defect through is static, and that is exactly what is asserted below.
+ * The spec itself cannot run here: it drives a real instance through Playwright. But the part of
+ * it that was wrong is static, and that is what is asserted below.
  *
- * F5/P2-1 is why this file exists. `/install` and `/database-recovery` are the panel's own
- * routes, and on a themed installation the server answered them with the *theme's* document —
- * a 404 page the theme rendered for paths its own router did not know. The sweep never noticed
- * because it built its route list out of `a[href]` read from the served document, and a theme
- * only ever links to its own paths; the panel's own routes are reachable only by name. Adding
- * them to a test that is always run by hand was not the missing piece — *defaulting* them, and
- * asserting whose document came back, is.
+ * Two corrections are protected, both from the same mistake — asserting one document for two
+ * routes the server treats differently:
  *
- * So three properties are pinned: the panel's routes are visited with no environment variable
- * set, the markers they are checked against are the panel document's own, and failing that
- * check can fail the run.
+ *   * `/install` is a route of the panel's **front-end app** (`frontend/src/routes.ts`). It is
+ *     answered from the *built-in default front end*, so the admin package's markers
+ *     (`<title>Nekomari</title>`, `/admin/assets/`) are the wrong target; those belong to
+ *     `/admin` and `/terminal`. What must hold is the exclusion: not the admin package, and not
+ *     the installed theme's document.
+ *   * `/database-recovery` is a **registered** route of the normal server and answers 307 to `/`
+ *     (`internal/server/runtime.go`) — the recovery UI belongs to the temporary restricted
+ *     listener. "It must serve a panel document" can never hold there.
  */
 const source = readFileSync(new URL('./panel-smoke.spec.py', import.meta.url), 'utf8');
 
-test('the panel-owned routes are visited by default, with no environment variable set', () => {
+test('the routes a theme never links to are visited by default, with no environment variable set', () => {
   const declaration = source.match(/^PANEL_OWNED_ROUTES = \(([^)]*)\)/m);
   assert.ok(declaration, 'PANEL_OWNED_ROUTES must be a module-level default');
   const routes = [...declaration[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(
     routes,
-    ['/install', '/database-recovery'],
-    'the two routes the theme used to answer for',
+    ['/install', '/install/'],
+    'the front-end route the theme used to answer for, in both spellings the prefix rule covers',
   );
 
-  // Declared is not visited: the default has to reach the set the sweep iterates.
+  // Declared is not visited: both defaults have to reach the set the sweep iterates.
   assert.match(
     source,
-    /routes = sorted\([^\n]*PANEL_OWNED_ROUTES[^\n]*\)/,
-    'the defaults must be merged into the route list the sweep walks',
+    /routes = sorted\([^\n]*PANEL_OWNED_ROUTES[^\n]*REDIRECTED_ROUTES[^\n]*\)/,
+    'the visited set must merge both default lists',
   );
 
   // And it has to be independent of the operator-supplied list, which is parsed from the
@@ -48,35 +48,72 @@ test('the panel-owned routes are visited by default, with no environment variabl
   );
 });
 
-test("the panel-owned routes are checked against the panel's own document", () => {
-  assert.match(source, /^PANEL_DOC_TITLE = "<title>Nekomari<\/title>"$/m);
-  assert.match(source, /^PANEL_BUNDLE_MARKER = "\/admin\/assets\/"$/m);
-
-  // Both markers, together: the embedded default theme is titled "Nekomari Monitor", so a
-  // looser title check would call the theme's document the panel's.
+test("/install is judged as a front-end route, never by the admin package's markers", () => {
+  // The admin package is a different build and serves `/admin` and `/terminal`. Its title may be
+  // *mentioned* (the comment above the constants explains which build is which) but must never be
+  // a marker the check requires: that was the error. So no code line may carry it, and no
+  // containment test may look for it.
+  const codeLines = source.split('\n').filter((line) => !/^\s*#/.test(line));
   assert.ok(
-    source.includes('if PANEL_BUNDLE_MARKER not in document:') &&
-      source.includes('if PANEL_DOC_TITLE not in document:'),
-    'the ownership check must require the panel bundle and the panel title',
+    !codeLines.some((line) => line.includes('<title>Nekomari</title>')),
+    "the admin package's title must never be asserted in code for a front-end route",
+  );
+  assert.ok(!source.includes('PANEL_DOC_TITLE'), 'the admin title constant must be gone');
+  assert.match(source, /^ADMIN_BUNDLE_MARKER = "\/admin\/assets\/"$/m);
+  assert.match(
+    source,
+    /if ADMIN_BUNDLE_MARKER in document:/,
+    'the admin bundle must be a *negative* check on a panel-owned front-end path',
   );
 
-  // Read from what the server sent rather than from the hydrated DOM: which document was
-  // served is a property of the response, and hydration may rewrite either marker.
+  // "Not the installed theme's document" needs to know whether a theme is installed, and the
+  // answer comes from the panel itself rather than from a guess at the markup: `/api/public`'s
+  // `data.theme`, the field the front end reads. Equality with the document `/` serves is the
+  // theme answering for the path; with no theme installed there is nothing to judge.
+  assert.match(source, /^PUBLIC_SETTINGS_ENDPOINT = "\/api\/public"$/m);
+  assert.match(source, /^DEFAULT_THEME = "default"$/m);
   assert.ok(
-    source.includes('panel_problem = panel_document_problem(served.text())'),
+    source.includes('installed_theme == DEFAULT_THEME'),
+    'an unthemed instance must skip the comparison instead of comparing two built-in documents',
+  );
+  assert.match(
+    source,
+    /if document == landing_document:/,
+    "the theme's document is the one `/` serves; equality with it is the failure",
+  );
+
+  // Read from what the server sent rather than from the hydrated DOM: which document was served
+  // is a property of the response, and the href harvest from the DOM is what missed this defect.
+  assert.ok(
+    source.includes('return response.text(), ""'),
     'the check must run against the response body',
-  );
-  assert.ok(
-    /served = page\.request\.get\(BASE \+ route/.test(source),
-    "the document must be read with the session's own request client",
   );
 });
 
-test('a panel-owned route is never excused as a theme page, and failing the check fails the run', () => {
+test('/database-recovery asserts the redirect the normal server actually performs', () => {
   assert.match(
     source,
-    /if [^\n]*panel_problem[^\n]*:/,
-    'the ownership result must be part of the failure condition',
+    /^REDIRECTED_ROUTES = \{"\/database-recovery": "\/"\}$/m,
+    'the registered route and its destination, exactly as runtime.go registers them',
+  );
+  assert.ok(
+    !/^PANEL_OWNED_ROUTES = \([^)]*database-recovery/m.test(source),
+    'it must not be in the list that is required to serve a panel document',
+  );
+  assert.match(
+    source,
+    /page\.request\.get\(BASE \+ route, max_redirects=0/,
+    'the 307 has to be observed without following it',
+  );
+  assert.match(source, /hop\.status != 307/, 'the status is the assertion');
+  assert.match(source, /hop\.headers\.get\("location"/, 'and so is the destination');
+});
+
+test('a failing contract fails the run, and a panel-owned route is never excused', () => {
+  assert.match(
+    source,
+    /if [^\n]*contract_problem[^\n]*:/,
+    'the contract result must be part of the failure condition',
   );
   assert.ok(
     source.includes('route not in PANEL_OWNED_ROUTES'),
