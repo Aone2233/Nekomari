@@ -220,6 +220,26 @@ icmp_capability unchanged for every node (MAC Server: none, as before; the other
   log immediately afterwards shows `Basic info uploaded successfully` and `WebSocket connected
   using v2 protocol`, and the panel shows it reporting within the minute.
 
+**A duplicate agent on the panel host, found by chasing a version that flipped back.** Straight
+after the fleet move the panel reported all ten nodes on `v1.6.9` — and then `甲骨文 OC424` read
+`v1.6.7` again, on a *fresh* report. The host was running **two** agents: the unit's
+(`komari-agent-oc424-original-node`, started `16:59:53`, `sha256:d3204a01…` — the release) and a
+**manual `sudo nohup`** process started at `12:07` that had survived every binary replacement,
+because replacing a file does not stop a process already running the old inode. Both hold the same
+credential and report as the same node, so the version column is simply whichever reported last.
+That is why "10/10 on `v1.6.9`" was true when it was read and false a minute later: it was a race
+between two processes, not a stale reading. The manual pair was killed and only the unit remains.
+
+It also explains a contradiction between two notes in this file: the v1.6.7 section calls OC424's
+agent "a bare root process, not managed by a unit", while the fleet inventory calls it
+`komari-agent-oc424-original-node`. Both were true at the same time, which is the state worth
+knowing about.
+
+Every node was then swept for the same condition rather than assuming it was unique to the panel
+host — one agent process per node, each running the release binary (`93fcd808…` on amd64,
+`d3204a01…` on arm64). JPKD2's second match is its OpenRC `supervise-daemon` wrapper, which is
+expected. Three checks 45 seconds apart afterwards: ten nodes, ten times `v1.6.9`, no flip.
+
 **Also done in this window:**
 
 - The nginx query-string redaction was extended from `token=` to
