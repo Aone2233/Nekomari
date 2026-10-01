@@ -26,7 +26,7 @@ the commit that added them.
 
 Frontend checks run from `frontend` after `npm ci`: `npm test`, `npm run lint`
 and `npm run build`. A separate CI job starts Vite on loopback and drives
-Chromium against five mounted fixtures. To run them locally:
+Chromium against the mounted fixtures listed below. To run them locally:
 
 ```bash
 cd frontend
@@ -39,6 +39,7 @@ python script/file-manager.browser.spec.py
 python script/selector-state.browser.spec.py
 python script/number-picker.browser.spec.py
 python script/remote-file-tree.browser.spec.py
+python script/account-sso-2fa.browser.spec.py
 ```
 
 | Spec | Fixture mounts | Covers |
@@ -50,6 +51,15 @@ python script/remote-file-tree.browser.spec.py
 | `selector-state.browser.spec.py` | `components/SelectorDialog`, `components/NodeSelectorDialog` | cancel/confirm and external value updates, an uncontrolled node dialog's open/cancel/confirm, and a parent-controlled open without a trigger |
 | `number-picker.browser.spec.py` | `components/ui/number-picker`, and the real `pages/admin/log` | one `onChange` per valid keystroke, an out-of-range draft kept then clamped on blur, a `defaultValue` change re-syncing without reporting, an unrelated parent render reporting nothing, and the log page's pagination: page 2 stays page 2, and editing the limit returns to page 1 exactly once |
 | `remote-file-tree.browser.spec.py` | `pages/terminal/RemoteFileTree` | the root listing exactly once on mount, the directory memo (expanding lists once and re-expanding does not re-list), refresh forcing a re-list, reveal expanding and listing its ancestor chain, a root-path change dropping the memo, and selection and context-menu targeting |
+| `account-sso-2fa.browser.spec.py` | `pages/admin/account` | the SSO bind/unbind buttons against the `RequireSensitive2FA` gate: an account without a factor keeps the bare URL and is shown no prompt, an account with one gets the OTP dialog, an empty code sends no request at all, the code reaches the query percent-encoded, and a `401` renders the server's message instead of navigating away to a raw JSON page |
+
+**On Windows, `npm run build` can die with `[vite:esbuild-transpile] remove
+C:\...\esbuild-<hash>: Access is denied`.** That is not a source error and `tsc -b` will
+still be green: above an inline size threshold esbuild writes each input to a temp file
+under `%TEMP%` and then removes it, and something on the host — a scanner holding the
+freshly written file — denies that removal. It reproduces with synthetic input that never
+touches this repository. Point `TEMP`/`TMP` at a directory inside the workspace for that
+one command and the build completes; CI runs on Linux and never sees it.
 
 Two limits are worth knowing before trusting a green run. The fixtures mount
 components directly rather than routing to a page, so a page-level wiring bug is

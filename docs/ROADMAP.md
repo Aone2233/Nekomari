@@ -1052,6 +1052,78 @@ become its own outage) and visible in the agent's output.
    invisible in everyone else's noise. Full measurements in
    `docs/DEPLOY-OC424.md`.
 
+5. **`latest` follows only a verified release.** Decided 2026-10-01. A release whose
+   own verification fails now gets its images under the version tag but does not move
+   `latest`, which stays on the last release that passed. v1.6.6 is why: its
+   verification failed (13 passed, 2 failed, the agent's WebSocket handshake refused
+   with `403 Forbidden`) and the image had moved `latest` anyway. Cancelled runs still
+   build and publish — that skip was deliberate and is kept. Mechanism and truth table
+   in `.github/workflows/docker.yml`; policy in `RELEASING.md`.
+6. **The real-network test in CI.** Decided 2026-10-01. `agent/update`'s
+   `TestProbeRealTargetedUpdateSelection` talks to the GitHub API, and unauthenticated
+   it fails on the rate limit — it turned a documentation-only PR red. It now skips
+   when no credential is present and runs authenticated in CI
+   (`GITHUB_TOKEN`), instead of joining the `-skip` denylist, which would have been a
+   quiet decision to stop testing it.
+7. **`--token` on the agent command line.** Decided 2026-10-01: keep it working, warn
+   on use and point at `--token-file`, and **set no removal date**. It is a public
+   compatibility surface (deploy scripts, docs, other people's installs) while the
+   hardened path is already what the whole fleet uses — see D1.
+8. **The theme versus the panel's PWA assets.** Decided 2026-10-01: **stay
+   compatible.** An installed theme may still supply `dist/sw.js` and
+   `manifest.json`, and `/plugin/*` is still the theme's. The panel took back only its
+   own pages (`/admin`, `/install`, `/database-recovery`, `/terminal`). Tightening
+   this further would break installed themes, so it needs its own decision.
+9. **The legacy agent units.** Decided and executed 2026-10-01: HK04's and NOSLA's
+   second, legacy `komari-agent.service` (the `/opt/komari/agent … --auto-discovery`
+   one) is now **masked**, so a stray `systemctl start` can no longer enrol the node
+   twice. Disabled was not enough — it only keeps a unit out of boot. The unit files
+   were archived to `/root/legacy-units/` first, and reversal is unmask + copy back.
+   Reporting units were untouched. Evidence in `DEPLOY-OC424.md`.
+10. **What the next batch of audit findings is.** Decided 2026-10-01 by default:
+    security first, then data safety, then wrong numbers. That means P1-5 (anonymous
+    per-uuid egress IP), P1-7 (OAuth bypassing 2FA) and P1-6 (a fully successful probe
+    reported as 100% loss) — this is the v1.6.9 batch. Because P1-6 lives in `agent/`,
+    the fleet moves with this release, per item 3 above. Everything still open is
+    enumerated in `docs/audits/2026-10-01/FINDINGS-STATUS-2026-10-01.md`; the next
+    batch is picked from that table.
+11. **The second half of the off-host backup — this one is still yours.** F3c
+    delivered one full, verified, off-host copy (MAC-WAN, 510 MB, both databases
+    `quick_check=ok`). The archives the **panel writes itself**
+    (`data/backup/upgrade-*.zip`) are still on the same disk as the databases, and by
+    design they exclude `metrics.db`. Covering that path needs a scheduled copy and a
+    destination, so it waits on a target and an authorisation from you.
+12. **SSO + 2FA is fail-closed now, and the second step is a follow-up.** Decided
+    2026-10-01: ship the gate, do not build half of the follow-up. P1-7 is closed by
+    requiring the same second factor `login.go` requires — same rules, same wording,
+    same rate limiter, so an SSO login cannot be used to brute-force TOTP either. But
+    the browser has no way to *answer* that challenge yet: the only route to
+    `/api/oauth_callback` is the provider redirect, and its pending state is
+    single-use (pinned by `TestOAuthCallbackReplayIsRejected`). So on a panel with
+    OIDC enabled **and** 2FA on, SSO login is refused rather than silently bypassing
+    the factor — password login is unaffected, and OIDC is disabled in this
+    deployment, so today's production impact is zero. Making it usable needs a second
+    confirmation (server: short-lived one-time pending token + a `POST /api/oauth/2fa`
+    that consumes it and only then creates the session; client: a code prompt on the
+    SSO page). That is a new piece of authentication state machine, it is unit-testable
+    but not end-to-end exercisable without its client, and it is the wrong thing to add
+    unexercised at the end of a security batch.
+13. **What happens to an SSO binding when the password changes.** Deferred
+    2026-10-01, now a policy question rather than a hole: with item 12 in place,
+    whoever holds the provider identity still has to answer TOTP after a password
+    change, so `sso_id` surviving `UpdateUser` is no longer a bypass. Options, in
+    increasing strength: (a) clear `sso_id` on both password paths — every routine
+    password change would also unbind SSO; (b) clear it only in `ForceResetPassword`,
+    the lost-device recovery path, at the cost of a re-bind there; (c) add an explicit
+    "unbind SSO" action. Recommendation: (b) + (c). Related and separate:
+    `DeleteAllSessions()` is **global**, so changing any one account's password logs
+    out every account, other administrators included — that deserves its own entry
+    rather than being folded into this one.
+14. **API keys are exempt from sensitive 2FA.** Noted, not changed 2026-10-01. An
+    API key can call `/api/admin/oauth2/bind`, `/2fa/disable` and `/task/exec` without
+    a TOTP code, because `VerifySensitive2FACore` lets API keys through by design.
+    Consistent across all three, so tightening it is its own decision.
+
 ## G. Not on this list on purpose
 
 - **Increasing SQLite concurrency** (see B5) — no evidence.

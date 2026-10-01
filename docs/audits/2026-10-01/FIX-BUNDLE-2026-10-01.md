@@ -2,7 +2,9 @@
 
 配套 [排查报告](./BUG-AUDIT-2026-10-01.md) 与 [修复方案](./FIX-PLAN-2026-10-01.md)。
 
-**这批改动已经落在分支 `codex/bug-audit-2026-10-01` 上，并以 PR #58 提交评审。** 下面的补丁文件只是当初"改动还只在工作区"时的恢复手段，现已由提交取代（保留它作为离线副本）。
+> **当前计分板是 [FINDINGS-STATUS-2026-10-01.md](./FINDINGS-STATUS-2026-10-01.md)。** 它逐条核对报告里每一个编号项在当前代码上的真实状态（**55 个编号项 / 51 条带严重度的 finding**，不是早期任务描述里写的 49），比本文与 FIX-PLAN 的状态表都新；三者冲突时以它为准。
+
+**这批改动已并入 `main`（PR #58，merge `c87df36`）。** 下面是当时分支上的提交。
 
 ## 分支上的提交（19 个）
 
@@ -32,13 +34,12 @@ aa47ae7 fix(metrics): give legacy agents their cycle traffic back
 
 ## 恢复（若分支丢失）
 
+> 这里原本指向 `docs/audits/2026-10-01/fixes-tracked.patch`（最初 29 个已跟踪文件的补丁），并记录过 `git apply --reverse --check` → **exit 0** 的自洽性校验。**该补丁已于 2026-10-01 删除**：这 19 个提交已全部并入 `main`（PR **#58**，merge `c87df36`），补丁只是同一内容的第二份副本，留着只会随 main 漂移，也会让复核者误以为它是权威来源。
+
 ```bash
-# 已跟踪文件的改动（29 个文件）
-git apply docs/audits/2026-10-01/fixes-tracked.patch   # 注意：该补丁只覆盖最初的 29 个文件
+# 这批修复的权威位置就是 main
+git log --oneline 01dccaf..c87df36        # 审计基线 01dccaf → PR #58 合并提交 c87df36
 ```
-
-
-补丁做过自洽性校验：`git apply --reverse --check docs/audits/2026-10-01/fixes-tracked.patch` → **exit 0**，即它与当前工作区逐字节一致。
 
 ## 改了什么（26 个已跟踪文件）
 

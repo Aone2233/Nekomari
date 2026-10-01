@@ -558,10 +558,47 @@ the newest sample under a minute old.
 | MAC-WAN | credential file (rotated) | non-root + `cap_net_raw` |
 | JPKD2 | credential file (rotated) | root, OpenRC |
 | AKKO06, megabox, HK04, HNJP01, CLISP | credential file (not rotated) | root |
-| **NOSLA** | **still `-t` on the command line** | unknown — no SSH route from OC424 or this workstation (`root@176.119.148.158` and `ubuntu@` both refuse the key) |
+| **NOSLA** | credential file (`--token-file`, `600 komari:komari`) | root, reporting unit `nekomari-agent` |
 
-NOSLA is the one node left, and it is not blocked on tooling: it needs an SSH
-route. It is healthy and reporting in the meantime.
+**Corrected 2026-10-01: NOSLA was never on `-t`.** This row used to read "still `-t`
+on the command line / unknown — no SSH route", and both halves were wrong. Read live
+on the host, NOSLA's reporting unit is `nekomari-agent` (pid 6207) running
+
+```
+/opt/nekomari-agent/komari-agent-linux-amd64 -e https://komari.orderly2233.org \
+  --token-file /opt/nekomari-agent/.agent-credentials -i 5 --info-report-interval 10 --disable-auto-update
+```
+
+with `.agent-credentials` and `auto-discovery.json` both `600 komari:komari` and the
+credential file's mtime at **2026-09-20** — before this rollout. Its legacy sibling
+(`/opt/komari/agent`) also passed `-token-file /opt/komari/.agent-credentials`, so
+the `-t` reading matches neither unit. The SSH route had been fixed on 2026-09-26 as
+well (below). **No node is left on a command-line credential**, and NOSLA needed
+nothing from anyone.
+
+### Legacy units are masked (2026-10-01)
+
+Two hosts carry a second, legacy unit beside the reporting one — HK04 and NOSLA, each
+`/opt/komari/agent … --auto-discovery` behind `komari-agent.service`. Both were
+already disabled, but "disabled" only keeps a unit out of boot; nothing stopped a
+`systemctl start` from enrolling the node a second time. Both are masked now, and the
+mask was *proved* rather than assumed:
+
+```
+systemctl start komari-agent      →  rc=1
+Failed to start komari-agent.service: Unit komari-agent.service is masked.
+```
+
+`systemctl mask` refuses to act while a real unit file occupies the path, so the file
+was first archived out of systemd's search path
+(`/root/legacy-units/komari-agent.service.pre-mask-<ts>`; 336 B on HK04, 946 B on
+NOSLA), then `daemon-reload`, then mask. Reversal is exactly: `systemctl unmask
+komari-agent`, copy the file back, `daemon-reload`.
+
+The reporting unit was untouched by this — `nekomari-agent` kept its PID (52265 on
+HK04, 6207 on NOSLA), `/proc/<pid>/exe` still resolves to
+`/opt/nekomari-agent/komari-agent-linux-amd64`, and each process still holds an
+established connection to the panel.
 
 ### NOSLA's access route, fixed 2026-09-26
 
