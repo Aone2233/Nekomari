@@ -839,11 +839,14 @@ Next: move the systemd nodes onto the NOSLA pattern; for Alpine, either install
 ### D3. Release checks that still need a human
 
 `deploy/deploy-verify.sh` runs in the release pipeline and proves a fresh install
-end to end, including an authenticated admin flow. What it does not do: exercise
-the **installed production theme** (only the embedded default UI), or an
-authenticated admin smoke test against the real panel. Both were proposed in the
-v0.1.19 review and remain open; the theme half could reuse
-`deploy/theme-contract-check.mjs`.
+end to end, including an authenticated admin flow. Since 2026-10-01 it also asserts
+that the panel-owned routes serve the **panel's own** documents on an instance with
+no theme installed (`/install` by title and entry naming, `/database-recovery` by
+its `307` to `/`, `/admin` by title). What it still does not do: exercise the
+**installed production theme** — it installs none, so the theme-takeover case can
+only be observed on a themed instance — or an authenticated admin smoke test
+against the real panel. Both were proposed in the v0.1.19 review and remain open;
+the theme half could reuse `deploy/theme-contract-check.mjs`.
 
 ## E. Agent-side improvements
 

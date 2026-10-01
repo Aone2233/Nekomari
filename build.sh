@@ -47,13 +47,10 @@ if [ ! -f frontend/dist/index.html ]; then
   exit 1
 fi
 
-echo "==> [3/5] 打包内嵌主题 -> web/public/defaultTheme/dist.tar.zst"
-mkdir -p web/public/defaultTheme
-./tools/zstdpack/zstdpack$EXT -src frontend/dist -out web/public/defaultTheme/dist.tar.zst
-cp -f frontend/komari-theme.json web/public/defaultTheme/
-for f in preview.png perview.png preview.webp; do
-  [ -f "frontend/$f" ] && cp -f "frontend/$f" web/public/defaultTheme/ || true
-done
+echo "==> [3/5] 打包内嵌默认主题 -> web/public/defaultTheme/{dist.tar.zst,komari-theme.json}"
+# 装配规则（面板前台 + admin/ + standalone/ + 清单，以及 preview 为什么要重写）都在脚本里，
+# 与 CI/发布走同一份，避免以前 build.sh 与工作流各打各的、产出两个不同的面板。
+node script/embed-theme.mjs
 
 echo "==> [4/5] 构建服务端"
 # 注入版本与 hash：main.go 用「hash == unknown」判断这是不是开发构建，并据此决定

@@ -16,10 +16,12 @@ import (
 // The admin interface's artefact contract (roadmap H7).
 //
 // The panel's admin pages used to come from the embedded default theme, which meant swapping that theme
-// silently removed them: LuminaPlus declares no admin route, and everything under `/admin` is its
-// service-worker recovery screen. A fresh installation had no way to administer the panel. The admin is now
-// built separately (`frontend/vite.admin.config.ts`, base `/admin/`) and served out of the `admin/` subtree
-// of the embedded archive.
+// silently removed them: the theme it was swapped for declares no admin route, and everything under
+// `/admin` is its service-worker recovery screen. A fresh installation had no way to administer the panel.
+// The admin is now built separately (`frontend/vite.admin.config.ts`, base `/admin/`) and served out of the
+// `admin/` subtree of the embedded archive — which `script/embed-theme.mjs` produces by copying
+// `frontend/dist/standalone/admin` to the archive root, so `/admin/...` and `/standalone/admin/...` carry
+// the same build.
 //
 // These tests are about the half that fails silently: a wrong path serves a *document* whose script 404s,
 // which is a blank page and no error in the log. So both halves are asserted — the document is reachable at

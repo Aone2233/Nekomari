@@ -150,7 +150,14 @@ func serveAsset(c *gin.Context, source assetSource, name string, hashedAssets ma
 	} else {
 		// 服务外壳与 Service Worker 不能走协商缓存：`no-cache` 仍允许中间层保留一份副本，
 		// 而这两者一旦被保留，下一次部署就拖住了整个应用。
-		switch name {
+		//
+		// 比的是 path.Base(name) 而不是 name：调用方交上来的是**相对主题根**的路径
+		// （SPA 分支给的是 path.Join(DistDir, reqPath)，即 "dist/sw.js"；主题路由给的是
+		// URL 参数 "/dist/sw.js"）。按整串比较时 "sw.js" 这一支永远不会命中，于是面板
+		// 自己的 Service Worker 拿的是 `no-cache` —— 而这段注释一直写着它拿的是
+		// `no-store`。归档换成面板自己的前台构建之前，归档里根本没有 sw.js，
+		// 这条路径从未被真正服务过，所以这个不一致一直没被看见。
+		switch path.Base(name) {
 		case "index.html", "sw.js":
 			header.Set("Cache-Control", "no-store")
 		default:
@@ -160,12 +167,51 @@ func serveAsset(c *gin.Context, source assetSource, name string, hashedAssets ma
 	http.ServeContent(c.Writer, c.Request, name, source.modTime, source.reader)
 }
 
+// panelPinnedMimeTypes 是面板**依赖**其 Content-Type 的少数几个扩展名。
+//
+// 为什么不能只用 mime.TypeByExtension：那个表随宿主变化。Windows 上它读注册表
+// (HKEY_CLASSES_ROOT\<ext>\Content Type)，Linux 上读 /usr/share/mime/globs2 或
+// /etc/mime.types，而一个精简容器里这些文件可能一个都没有。同一份二进制因此在开发机、
+// CI 与生产上给出不同的响应头，而下面这两个扩展名的类型**决定了功能能不能用**：
+//
+//   - .js / .mjs：Service Worker 与它的 workbox 依赖（sw.js、registerSW.js、
+//     workbox-<hash>.js）只要拿到的不是 JavaScript 类型，浏览器就拒绝注册
+//     ("The script has an unsupported MIME type")，表现是「离线/PWA 功能静默失效」而
+//     页面本身照常渲染。Go 内置表给 .js 的是 text/javascript; charset=utf-8，但注册表
+//     会覆盖它 —— 本机实测 .js 得到 application/javascript（合法），而 .mjs 得到
+//     text/plain; charset=utf-8（**不合法**：模块脚本会被直接拒绝执行）。钉死这两个，
+//     响应就不再取决于运行它的机器。
+//   - .webmanifest：Go 的内置表**根本没有**这个扩展名（本机实测
+//     mime.TypeByExtension(".webmanifest") == ""），而 serveAsset 在 mimeType 为空时会
+//     把 Content-Type 显式置空 —— 于是 PWA 清单会以「没有任何 Content-Type」的形式发出
+//     去。清单是这几条路径里唯一必须靠类型才被认下的文件：浏览器按 JSON 类型解析它
+//     (vite-plugin-pwa 的默认产物名就是 manifest.webmanifest)，而空 Content-Type 连
+//     JSON 都不是。Chromium 正在把「必须是 JSON 类型」变成显式要求
+//     (issues.chromium.org/issues/562035733)。
+//
+// 只钉这三个：其余扩展名（.json/.css/.ico/.png ...）即使宿主给出的类型不可意，浏览器
+// 仍然按内容使用它 —— 为它们引入一张私有表只会制造「本机与生产不一致」的新来源，而
+// 这正是这里要消除的东西。
+var panelPinnedMimeTypes = map[string]string{
+	".js":          "text/javascript; charset=utf-8",
+	".mjs":         "text/javascript; charset=utf-8",
+	".webmanifest": "application/manifest+json",
+}
+
+// assetMimeType 返回某个扩展名对应的 Content-Type：面板依赖的先钉死，其余交给 mime。
+func assetMimeType(extension string) string {
+	if pinned, ok := panelPinnedMimeTypes[strings.ToLower(extension)]; ok {
+		return pinned
+	}
+	return mime.TypeByExtension(extension)
+}
+
 // embeddedAsset 把嵌入内容包装成 assetSource。
 func embeddedAsset(embedPath string, content []byte) assetSource {
 	return assetSource{
 		reader:   bytes.NewReader(content),
 		modTime:  embeddedAssetModTime,
-		mimeType: mime.TypeByExtension(filepath.Ext(embedPath)),
+		mimeType: assetMimeType(filepath.Ext(embedPath)),
 		size:     int64(len(content)),
 	}
 }
@@ -265,6 +311,66 @@ func isPanelOwned(requestPath string) bool {
 	return false
 }
 
+// assetOnlyExtensions 是「光看扩展名就能断定客户端在要一个**文件**、而不是在要一条前端
+// 路由」的扩展名集合。它决定 SPA 分支在什么都找不到时回 404 还是回 index.html。
+//
+// 为什么需要这条规则：SPA 分支对任何没命中的路径都回外壳。对一个过期的构建产物
+// （/assets/chunk-<hash>.js）来说，那是把 text/html 当成 JavaScript 交出去 —— 浏览器报
+// 的是 "Failed to load module script: Expected a JavaScript module script but the server
+// responded with a MIME type of text/html"，而不是一个一眼能看懂的 404。真正的原因
+// （「这份文件没有部署上去 / 浏览器还拿着上一版的 chunk 名字」）被 HTTP 200 掩盖：服务器
+// 日志、CDN 日志、网络面板的状态码全都正常。改成这条规则之前实测到的就是这个形状：
+// `GET /assets/bg-desktop-light.v2.jpeg`（主题的背景图，当时不在内嵌归档里）回的是
+// 200 + 外壳 HTML，Cache-Control 是外壳的 `public, max-age=60, must-revalidate` ——
+// 一个状态码完全正常、内容却是一个文档的响应，唯一表现出来的是浏览器控制台里的 MIME 错误。
+//
+// **边界**（这一段就是选择本身，改动前请先读它）：
+//
+//   - 在下面这张表里：404，绝不回外壳。表里的类型来自两处证据 —— 内嵌归档与面板前端
+//     构建里**真实出现过**的扩展名（.js .css .json .webmanifest .txt .ico .svg .webp
+//     .ttf），加上主题会提供的常见图片/字体/媒体类型。
+//   - `.html` / `.htm`：**回落**，不 404。外壳本身就是 HTML 文档，客户端的期望类型因此
+//     得到满足，不存在 MIME 错配；而面板恰好把文档放在 .html 这类 URL 上（独立页面
+//     /sla.html 就是 roadmap H0/H1 定下的地址），服务端无法区分「文件不存在」与
+//     「前端路由」。这里是策略选择而不是安全边界：判错的代价是给了一个文档。
+//   - 没有扩展名：**回落**。这正是前端路由的形状（/、/dashboard、/instance/<uuid>、
+//     /plugin/<short>/...）。
+//   - 其余任何未知扩展名（.5、.com、.local …）：**回落**。一个我们没见过的后缀不是
+//     「客户端在要文件」的证据，而真实的前端路由里就有带点的（/version/1.2.3、
+//     /server/example.com）；为了多抓几个 404 把它们变成错误页是不划算的。代价是这些
+//     后缀上的过期文件仍然会拿到外壳 —— 但它们不是构建产物，不会带内容哈希。
+//
+// 判据必须是这张固定的表，**不能**用 mime.TypeByExtension(ext) != ""：那张表取决于宿主
+// （Windows 注册表、/etc/mime.types、/usr/share/mime/globs2），.webmanifest 在 Go 的
+// 内置表里就不存在 —— 用「查得到 MIME 类型吗」当判据，会让这条规则在开发机、CI 与生产
+// 之间行为不同，而 .webmanifest 恰恰是面板 PWA 清单的扩展名。
+var assetOnlyExtensions = map[string]struct{}{
+	".js": {}, ".mjs": {}, ".cjs": {}, ".css": {}, ".map": {}, ".json": {},
+	".webmanifest": {}, ".txt": {}, ".xml": {}, ".wasm": {}, ".csv": {},
+	".ico": {}, ".png": {}, ".jpg": {}, ".jpeg": {}, ".gif": {}, ".webp": {},
+	".avif": {}, ".bmp": {}, ".svg": {},
+	".woff": {}, ".woff2": {}, ".ttf": {}, ".otf": {}, ".eot": {},
+	".mp4": {}, ".webm": {}, ".mp3": {}, ".ogg": {}, ".wav": {},
+	".pdf": {}, ".zip": {}, ".gz": {}, ".zst": {}, ".br": {},
+}
+
+// isAssetRequest 报告请求路径是否在要一个文件（而不是一条前端路由），即「查不到就必须
+// 404」的那一类。边界的选取与理由见 assetOnlyExtensions 的注释。
+//
+// 用 path.Ext 而不是 filepath.Ext：这里分级的是 URL 路径，它永远用 "/" 分隔，path.Ext 就是
+// 为这种输入准备的（servePanelPath 用的也是它）。两者在 URL 路径上结论一致 —— Windows 的
+// os.IsPathSeparator 同时接受 '/' 与 '\\' —— 所以这不是在修一个差异，只是让函数与输入的
+// 性质对上；真正会出错的是把 URL 路径交给 filepath 家族里那些**只认 os 分隔符**的函数
+// （Clean/Join），那正是 openAsset 里每处都补了 filepath.ToSlash 的原因。
+func isAssetRequest(requestPath string) bool {
+	ext := path.Ext(requestPath)
+	if ext == "" {
+		return false
+	}
+	_, ok := assetOnlyExtensions[strings.ToLower(ext)]
+	return ok
+}
+
 // isSafePath 验证路径是否在指定的基础目录内，防止路径穿透攻击
 func isSafePath(basePath, targetPath string) bool {
 	// 获取基础目录的绝对路径
@@ -356,7 +462,7 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 					return assetSource{
 						reader:   file,
 						modTime:  info.ModTime(),
-						mimeType: mime.TypeByExtension(filepath.Ext(localPath)),
+						mimeType: assetMimeType(filepath.Ext(localPath)),
 						size:     info.Size(),
 						close:    func() { _ = file.Close() },
 					}, true
@@ -735,13 +841,22 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 			return
 		}
 
-		// 如果资源不存在，且路径包含扩展名 (如 .js, .css, .png)，则返回 404
-		// 避免将 index.html 作为 js 文件返回导致 "Failed to fetch dynamically imported module"
-		//ext := filepath.Ext(reqPath)
-		//if ext != "" && ext != ".html" {
-		//	c.Status(http.StatusNotFound)
-		//	return
-		//}
+		// 资源不存在：如果这个请求要的是一个**文件**（扩展名本身就能证明，见
+		// assetOnlyExtensions 的注释），就以 404 结束，绝不让下面的 SPA 分支用
+		// index.html 回答它 —— 那会把 text/html 当 JS/CSS/图片交出去，浏览器报的是
+		// MIME 错误而不是「这个文件不存在」。
+		//
+		// 本项目自己的 PWA 文件也走这条判断：/sw.js、/registerSW.js、
+		// /workbox-<hash>.js、/manifest.webmanifest、/manifest.json 都在表内，所以
+		// 归档里少了任何一个都是 404，而不是「一个带着 200 的 HTML 外壳」——后者会让
+		// Service Worker 的注册以「不支持的 MIME 类型」失败，而页面照常渲染。
+		//
+		// 前端路由（/dashboard、/instance/<uuid>、/plugin/<short>/...）、.html 文档与
+		// 未知后缀仍然回外壳，理由同注释。
+		if isAssetRequest(reqPath) {
+			c.Status(http.StatusNotFound)
+			return
+		}
 
 		// 路由 (如 /dashboard, /settings) -> 返回 index.html
 		serveIndex(c)

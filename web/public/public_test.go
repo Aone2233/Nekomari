@@ -124,8 +124,14 @@ func TestStaticRestrictedDoesNotServeCustomAssetOverride(t *testing.T) {
 		request := httptest.NewRequest("GET", requestPath, nil)
 		recorder := httptest.NewRecorder()
 		router.ServeHTTP(recorder, request)
-		if recorder.Code != 200 {
-			t.Fatalf("restricted asset %s status = %d, want 200", requestPath, recorder.Code)
+		// 这里**不再要求 200**。这个文件只存在于自定义主题里，内置归档并没有它，所以正确答案是
+		// 404：它以前能拿到 200，是因为请求落进了 SPA 兜底、返回了一份外壳 HTML。那正是
+		// `assetOnlyExtensions` 修掉的行为——客户端把 text/html 当 .css/.js 解析，报的是 MIME
+		// 错误而不是 404，极难排查（见 public.go 里该类扩展名的注释）。
+		// 这条测试真正要守住的是下面那条：绝不吐出主题的覆盖内容。
+		if recorder.Code != 404 {
+			t.Errorf("restricted asset %s status = %d, want 404: a file only the custom theme has must not be answered with the SPA shell",
+				requestPath, recorder.Code)
 		}
 		body, err := io.ReadAll(recorder.Result().Body)
 		if err != nil {

@@ -200,6 +200,32 @@ immediate, and it is the thing that decides whether the upgrade landed:
 sha256sum /proc/$(systemctl show nekomari-agent -p MainPID --value)/exe   # vs the release's amd64/arm64 asset
 ```
 
+### After this rollout: the embedded default theme becomes the panel's own front end
+
+**Not in v1.6.7** — measured: on v1.6.7 the embedded archive is still the LuminaPlus build, so
+`GET /install` returns that theme's document (`<title>Komari-Theme-LuminaPlus</title>`). The change
+is in the working tree after this rollout and will ship with the next panel release.
+
+What changes is what the binary carries: `web/public/defaultTheme/dist.tar.zst` was an external
+theme's build output and is now assembled by `script/embed-theme.mjs` from this repository — the
+panel's own front end (`frontend/dist`), its admin subtree at `admin/`, and
+`frontend/komari-theme.json`. What that means for an instance after the upgrade depends on whether a
+theme is installed, and the two cases are worth keeping apart:
+
+| Instance | Effect |
+|---|---|
+| a theme installed (this deployment is one) | **no visible change.** An installed theme still answers `/` and its own routes; `/admin` still answers the panel's admin interface. What changes is the panel-owned paths: `/install` now returns the panel's own document instead of falling through to the installed theme's unknown-route page — the production defect recorded in `docs/audits/2026-10-01/BUG-AUDIT-2026-10-01.md` (`curl /install` returned the installed theme's page while `curl /admin` returned the panel). |
+| no theme installed (the embedded default *is* the front end) | the **appearance changes**: `/` is the panel's own front end rather than LuminaPlus, and `/install` changes with it — on v1.6.7 it served the embedded theme's document, since that archive had no install route either, and it now serves the panel's install screen. `/admin` and `/database-recovery` are unaffected. |
+
+Nothing else moves: `/database-recovery` still answers `307` to `/` on the normal listener (the
+recovery UI belongs to its temporary restricted listener), and `/admin` is unchanged. So an upgrade
+on a themed instance is not a user-visible change and needs no rollout note of its own; an upgrade on
+an unthemed instance changes the front page, which is worth saying out loud before it happens.
+
+`deploy/deploy-verify.sh` now asserts all three after the install. Run against v1.6.7 it fails the
+`/install` assertion on purpose (`21 passed, 2 failed`) while `/database-recovery` and `/admin` pass —
+that is what makes it able to catch this class of change rather than describe it.
+
 ## v0.1.27 — released 2026-09-25, **partly verified 2026-09-26**
 
 `v0.1.27` is tagged (`6a1e875`, 2026-09-25 18:11 +08:00) and, unlike v0.1.26, it

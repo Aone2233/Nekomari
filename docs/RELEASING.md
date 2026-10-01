@@ -80,7 +80,9 @@ It used to point at `ghcr.io/komari-monitor/komari-agent:latest` — upstream's 
 from another project, without the flags this fork added, and depending on
 `--auto-discovery` for the node's identity. Both images are built from the release
 assets rather than recompiled here, so the binary in the image is the binary on the
-release page.
+release page — including the embedded default theme, which the release workflow
+rebuilt from source before `go build` (see “The embedded default theme” below).
+The images need no step of their own for it.
 
 A container cannot update itself: the agent's self-updater replaces its own binary,
 while a container is updated by replacing its image. The dialog therefore passes
@@ -122,11 +124,44 @@ than discovered by a user.
 
 | Artifact | Contents |
 |---|---|
-| `nekomari-<os>-<arch>` | Server + web panel. The default theme is embedded, so it is a single self-contained binary. |
+| `nekomari-<os>-<arch>` | Server + web panel. The default theme is embedded — the panel's own front end, assembled as described below — so it is a single self-contained binary. |
 | `komari-agent-<os>-<arch>[.exe]` | The monitoring agent. |
 | `SHA256SUMS.txt` | Checksums for the above. |
 
 Platforms: `linux/amd64`, `linux/arm64`, `windows/amd64`.
+
+### The embedded default theme
+
+`web/public/defaultTheme/dist.tar.zst` is what `//go:embed` puts inside the binary, and it is
+**assembled from this repository** by `script/embed-theme.mjs`: the panel's own front-end build
+(`frontend/dist`), the admin interface copied to `admin/`, the remaining standalone pages, and
+`frontend/komari-theme.json` as the manifest. Until 2026-10-01 it was a separate theme repository's
+build output instead, which is how `/install` came to serve a theme's unknown-route page while
+`/admin` served the panel.
+
+Two things about it look redundant and are not:
+
+- **CI and the release workflow rebuild it before `go build`** (`ci.yml`, `release.yml`), and so does
+  `build.sh`, so a shipped binary is always assembled from the sources in the tag. That is the point
+  of the rebuild: the archive is a build output, and a stale copy would ship a stale front end.
+- **The archive is still committed** even though CI regenerates it. `//go:embed` requires both
+  `defaultTheme/dist.tar.zst` and `defaultTheme/komari-theme.json` to exist at build time, and
+  producing `frontend/dist` needs a Node toolchain — without the committed copy a plain Go
+  environment could not run `go build`, `go test` or `go vet` at all. `web/public/.gitignore` ignores
+  `defaultTheme/*` and excepts exactly those two files.
+
+When the front end changes, rebuild both and commit the regenerated archive with the change:
+
+```bash
+cd frontend && npm install && npm run build && cd ..
+node script/embed-theme.mjs      # build.sh does these two in order
+```
+
+`docs/THIRD-PARTY-LICENSES.md` records what the archive contains and whose licence that requires.
+`deploy/deploy-verify.sh` verifies the served result after installing: `/install` must be the panel's
+own document (its title **and** its `/assets/entry-*` naming — a theme build of the previous kind
+uses Vite's default `assets/index-<hash>.js`), `/database-recovery` must still answer `307` to `/` on
+the normal listener, and `/admin` must still be the panel's admin interface.
 
 ## Two things to be careful about
 
@@ -201,7 +236,9 @@ Check that the version actually landed in the binary — a wrong package path in
 `deploy/deploy-verify.sh` treats the Release as a user would: it downloads the
 assets, verifies them against `SHA256SUMS.txt`, starts the server on its own port
 with its own data directory, completes the first-run install through the API,
-connects an agent, and confirms the node reports. It cleans up after itself.
+confirms the panel's own routes serve the panel's own documents rather than a
+theme's (`/install`, `/database-recovery`, `/admin`), connects an agent, and
+confirms the node reports. It cleans up after itself.
 
 ```bash
 bash deploy/deploy-verify.sh                 # latest release, throwaway temp dir

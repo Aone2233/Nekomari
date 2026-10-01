@@ -185,14 +185,13 @@ jobs:
 
       - name: Pack embedded theme
         shell: bash
-        # 服务端用 //go:embed defaultTheme/dist.tar.zst，这一步必须先于 go build，
-        # 否则编译会直接失败（pattern: no matching files found）。
+        # 服务端用 //go:embed defaultTheme/dist.tar.zst 与 defaultTheme/komari-theme.json，
+        # 这一步必须先于 go build，否则编译会直接失败（pattern: no matching files found）。
         run: |
-          # The archive is committed and must not be rebuilt here: it is the *theme's* build output, from
-          # a separate repository this one does not contain, so this can only check it. It used to be
-          # rebuilt from frontend/dist and frontend/komari-theme.json -- the panel's own UI and
-          # komari-web's manifest -- which meant the committed default theme never survived a build.
-          # See the header of script/embed-theme.mjs.
+          # 从仓库内的 frontend/dist 装配：面板自己的前台 + admin/ + standalone/ + 清单。
+          # 归档提交在仓库里，是为了让纯 Go 环境也能 go build（frontend/dist 需要 Node 工具链）；
+          # 而这里重建一次，保证**发出去的二进制**用的是当前源码。两者能同时成立的前提是输入
+          # 都在本仓库 —— 2026-10-01 之前它来自另一个主题仓库，那时重建不可复现，所以只能提交。
           node script/embed-theme.mjs
 
       - name: Test server

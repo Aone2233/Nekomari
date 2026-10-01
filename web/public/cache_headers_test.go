@@ -13,10 +13,10 @@ import (
 // `serveAsset` set `Cache-Control: public, max-age=31536000, immutable` for build outputs and **nothing at
 // all** for everything else, and the comment claimed the others were "left as they were". Left as they were
 // meant no header, which meant Cloudflare substituted its own default — four hours, as the same comment says
-// elsewhere in the file. That decision produced a real outage: the theme's background images are files under
-// `public/` with no content hash, they were briefly missing while the theme was replaced, and the 404 was
-// cached at the edge. After the files were back the page still had no background for anyone whose browser had
-// the cached failure, and only a hard refresh cleared it.
+// elsewhere in the file. That decision produced a real outage: the then-default theme's background images were
+// files under `public/` with no content hash, they were briefly missing while the theme was replaced, and the
+// 404 was cached at the edge. After the files were back the page still had no background for anyone whose
+// browser had the cached failure, and only a hard refresh cleared it.
 //
 // A file whose name does not change when its content does must not be given a long lifetime by anything —
 // neither this server nor a cache in front of it. `no-cache` (revalidate every time, with the ETag already
@@ -64,21 +64,42 @@ func TestHashedAssetsAreImmutable(t *testing.T) {
 
 // A file whose name does not carry its content must revalidate, and must say so.
 //
-// The background images are the case that failed: `/assets/bg-desktop-light.v2.jpeg` — the `v2` is a manual
-// version marker, not a content hash, so the file can and did change under a name clients already had.
+// The archive's `public/` files are the case: `/assets/pwa-icon.webp` is named by both PWA manifests
+// and `/assets/edit_117847723_p0.webp` by the theme manifest's `preview`, and neither name carries a
+// content hash — Vite copies them verbatim, so they can and do change under a name clients already
+// have. (The previous default theme's background JPEGs were the same shape, and it was one of them,
+// briefly absent during a theme swap, whose 404 was cached at the edge and outlived the fix.)
+//
+// Both cases are checked against the archive before the request: a file that is no longer there would
+// otherwise be answered by the SPA shell — 200, HTML, the shell's own cache header — and the failure
+// would read as a caching bug rather than a moved file.
 func TestAssetsWithoutAContentHashRevalidate(t *testing.T) {
 	router := newRouter(t)
 
+	files, _ := loadEmbeddedTheme(t)
+	hashed := hashedAssetsFromManifest(files[".vite/manifest.json"])
+
 	cases := []string{
-		"/assets/bg-desktop-light.v2.jpeg",
-		"/assets/bg-desktop-dark.v2.jpg",
-		"/assets/bg-mobile-light.v2.jpg",
-		"/assets/bg-mobile-dark.v2.jpg",
+		"/assets/pwa-icon.webp",
+		"/assets/edit_117847723_p0.webp",
 	}
 	for _, path := range cases {
+		name := strings.TrimPrefix(path, "/")
+		if _, ok := files[name]; !ok {
+			t.Errorf("%s is not in the embedded archive, so this case no longer tests anything", path)
+			continue
+		}
+		if _, isBuildOutput := hashed[name]; isBuildOutput {
+			t.Errorf("%s is a build output listed in .vite/manifest.json, so it is not a name without a content hash", path)
+			continue
+		}
 		response := get(t, router, path)
 		if response.Code != http.StatusOK {
 			t.Errorf("GET %s = %d, so the caching header cannot be judged", path, response.Code)
+			continue
+		}
+		if strings.Contains(response.Header().Get("Content-Type"), "text/html") {
+			t.Errorf("GET %s served HTML, so the asset route fell through to the SPA shell", path)
 			continue
 		}
 		got := response.Header().Get("Cache-Control")
