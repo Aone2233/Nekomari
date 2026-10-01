@@ -6,6 +6,7 @@ import (
 
 	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/internal/sla"
+	"github.com/Aone2233/nekomari/pkg/metric"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
@@ -67,8 +68,13 @@ func publicGetSlaReport(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 	if err := req.BindParams(&params); err != nil {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request body: "+err.Error(), nil)
 	}
+	return publicGetSlaReportWithStore(ctx, params, metricstore.GetStore())
+}
 
-	store := metricstore.GetStore()
+// publicGetSlaReportWithStore answers a report against an explicit store. The handler
+// above passes the process-wide one; taking it as a parameter is what lets the
+// empty-entity guard below be tested without a configured deployment.
+func publicGetSlaReportWithStore(ctx context.Context, params publicSlaReportParams, store *metric.Store) (any, *rpc.JsonRpcError) {
 	if store == nil {
 		return nil, rpc.MakeError(rpc.InternalError, "metric store not initialized", nil)
 	}
@@ -91,6 +97,28 @@ func publicGetSlaReport(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 		return nil, rpcErr
 	}
 
+	presets := make(map[string]float64, len(slaWindowPresets))
+	for name, duration := range slaWindowPresets {
+		presets[name] = duration.Hours()
+	}
+
+	if len(entityIDs) == 0 {
+		// An empty entity list means "no entity to report on", and the store reads an
+		// empty list as "no filter at all" — which would answer with the whole fleet,
+		// hidden nodes included. The sibling getPingMetricStats has always returned an
+		// empty result here; do the same, with the window the caller asked for.
+		return publicSlaReportResponse{
+			Start:           start.UTC(),
+			End:             end.UTC(),
+			Window:          label,
+			IntervalSeconds: slaBucketInterval(window).Seconds(),
+			Clamped:         clampReason,
+			Nodes:           []sla.NodeReport{},
+			Count:           0,
+			Presets:         presets,
+		}, nil
+	}
+
 	interval := slaBucketInterval(window)
 	if compatible := store.CompatibleSeriesInterval(start, now, interval); compatible > 0 {
 		interval = compatible
@@ -108,11 +136,6 @@ func publicGetSlaReport(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 	})
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to build the SLA report: "+err.Error(), nil)
-	}
-
-	presets := make(map[string]float64, len(slaWindowPresets))
-	for name, duration := range slaWindowPresets {
-		presets[name] = duration.Hours()
 	}
 
 	return publicSlaReportResponse{
