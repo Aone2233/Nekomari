@@ -332,7 +332,33 @@ fi
 # failure that motivated it was invisible from the panel except as a warning badge, and took a manual log
 # inspection to explain. Print the conclusion instead, from the same check the agent makes: a raw socket, then
 # an unprivileged ping socket.
-if [ -n "$BIN_CAPS" ] || [ "$(ps -o user= -p "$APID" 2>/dev/null | tr -d ' ')" != "root" ]; then
+#
+# Two ways this check lied, both found on JPKD2 (Alpine) after the v1.6.9 rollout:
+#
+#   * `ps -o user=` prints nothing under busybox ps, so the owner read as the empty string — which is not
+#     "root", so the block ran for a root agent that needs no capability at all — and the message said
+#     "the agent runs as  and neither socket type opens", with a blank name in it.
+#   * with no python3 on the node there is nothing to open a probe socket with, and that was reported as
+#     UNAVAILABLE. The panel's own record for that node said `raw` before and after the upgrade, which is
+#     how a perfectly good upgrade came with a warning that ICMP had just broken.
+#
+# The owner now comes from /proc — and the decision is made on the **uid**, not on a name. Two busybox
+# quirks made the name unreliable on Alpine, where they were measured: `ps -o user=` prints nothing at all,
+# and `id -un 0` *also* prints nothing (a bare `id -un` answers `root`, which is why this looks fine in a
+# terminal and wrong in a script). A node that cannot be probed now says so instead of claiming a failure.
+AGENT_UID=$(awk '/^Uid:/{print $2}' "/proc/$APID/status" 2>/dev/null || true)
+if [ -z "$AGENT_UID" ]; then
+  AGENT_UID=$(ps -o uid= -p "$APID" 2>/dev/null | tr -d ' ')
+fi
+AGENT_OWNER=$(ps -o user= -p "$APID" 2>/dev/null | tr -d ' ')
+if [ -z "$AGENT_OWNER" ]; then
+  AGENT_OWNER=$(id -un "$AGENT_UID" 2>/dev/null || true)
+fi
+if [ -z "$AGENT_OWNER" ]; then
+  if [ "$AGENT_UID" = "0" ]; then AGENT_OWNER=root; else AGENT_OWNER="uid $AGENT_UID"; fi
+fi
+
+if [ -n "$BIN_CAPS" ] || [ "$AGENT_UID" != "0" ]; then
   ICMP="no"
   if command -v python3 >/dev/null 2>&1; then
     if python3 -c "import socket,sys; socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP).close()" 2>/dev/null; then
@@ -340,13 +366,18 @@ if [ -n "$BIN_CAPS" ] || [ "$(ps -o user= -p "$APID" 2>/dev/null | tr -d ' ')" !
     elif python3 -c "import socket,sys; socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_ICMP).close()" 2>/dev/null; then
       ICMP="unprivileged ping socket"
     fi
-  fi
-  if [ "$ICMP" = "no" ]; then
-    log "ICMP: UNAVAILABLE — the agent runs as $(ps -o user= -p "$APID" 2>/dev/null | tr -d ' ') and neither socket type opens."
-    log "       Give the binary the capability:  setcap cap_net_raw+ep $BIN"
-    log "       Or widen net.ipv4.ping_group_range to cover that user's group."
+    if [ "$ICMP" = "no" ]; then
+      log "ICMP: UNAVAILABLE — the agent runs as $AGENT_OWNER (uid $AGENT_UID) and neither socket type opens."
+      log "       Give the binary the capability:  setcap cap_net_raw+ep $BIN"
+      log "       Or widen net.ipv4.ping_group_range to cover that user's group."
+    else
+      log "ICMP: available via $ICMP"
+    fi
   else
-    log "ICMP: available via $ICMP"
+    # Not a failure, and saying so is the point: the agent reports the socket it actually opened, and the
+    # panel stores it as `clients.icmp_capability`. Read that column instead of this line.
+    log "ICMP: not verified here — no python3 on this node to open a probe socket with."
+    log "       The agent reports the socket it obtained to the panel; check clients.icmp_capability."
   fi
 fi
 
