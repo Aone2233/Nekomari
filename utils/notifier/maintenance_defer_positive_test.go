@@ -12,7 +12,9 @@ package notifier
 // 完成，中间经过真实的时间判断与 maintenance 规则，只把消息发送器换成测试内的记录器。
 
 import (
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,9 +29,13 @@ import (
 
 // recordSender 实现 IEventMessageSender，把被真正投递出去的事件记下来。
 // 用它替换真实 provider，用例才能断言"补发了"而不是"没报错"。
+//
+// onSend 让用例在"一条通知正在发送"的那一瞬间插进一段代码，用来复现判定与发送之间
+// 的竞态（节点在这一瞬重连、或再次离线并排队）。它在事件被记录之后、锁之外调用。
 type recordSender struct {
 	mu     sync.Mutex
 	events []models.EventMessage
+	onSend func(models.EventMessage)
 }
 
 func (s *recordSender) GetName() string                         { return "notifier-test-recorder" }
@@ -42,8 +48,12 @@ func (s *recordSender) SendTextMessage(message, title string) error {
 
 func (s *recordSender) SendEvent(event models.EventMessage) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.events = append(s.events, event)
+	hook := s.onSend
+	s.mu.Unlock()
+	if hook != nil {
+		hook(event)
+	}
 	return nil
 }
 
@@ -51,6 +61,15 @@ func (s *recordSender) sent() []models.EventMessage {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]models.EventMessage(nil), s.events...)
+}
+
+func (s *recordSender) sawEvent(kind string) bool {
+	for _, event := range s.sent() {
+		if event.Event == kind {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *recordSender) reset() {
@@ -63,6 +82,17 @@ var testRecorder = &recordSender{}
 
 func init() {
 	factory.RegisterMessageSender(func() factory.IMessageSender { return testRecorder })
+}
+
+// notifierTestSeq 让同一个测试进程里的每次运行都拿到不同的节点 UUID。
+//
+// 测试库是进程内的内存库，而 dbcore.Initialize 只会真正执行一次，所以 `-count=2` 会复用
+// 同一个库和库里的数据：固定的 UUID / token 会让第二轮直接
+// `UNIQUE constraint failed: clients.token` 失败。计数器就是可重复性的来源。
+var notifierTestSeq atomic.Int64
+
+func uniqueNode(base string) string {
+	return fmt.Sprintf("%s-%d", base, notifierTestSeq.Add(1))
 }
 
 // setupNotifierTestDB 建一个进程内的 SQLite 库（内存、不落盘），并把通知总开关打开。
@@ -90,19 +120,11 @@ func setupNotifierTestDB(t *testing.T) {
 	t.Cleanup(func() { testRecorder.reset() })
 }
 
-// deferredOfflineScenario 跑完整条链并断言补发确实发生：
-// 窗口内离线（走真实的抑制分支）→ 窗口结束后仍离线 → 真实清扫器补发 1 条离线通知。
-// 返回 clientID，供"节点随后重连"的用例接着走真实上线路径。
-//
-// clientID 由调用方传入：内存库在整个测试进程里是同一个，用例之间靠不同的 UUID 隔离。
-func deferredOfflineScenario(t *testing.T, clientID string) string {
+// notifierTestNode 建一个客户端和它的离线通知配置，返回唯一且可重复的 clientID。
+func notifierTestNode(t *testing.T, base string) string {
 	t.Helper()
-	clearDeferred(t)
-	setupNotifierTestDB(t)
-	Invalidate() // 窗口缓存是全局的，用例前后都清掉
 
-	const connID = int64(4242)
-
+	clientID := uniqueNode(base)
 	db := dbcore.GetDBInstance()
 	if err := db.Create(&models.Client{
 		UUID: clientID, Token: "token-" + clientID, Name: "node",
@@ -115,17 +137,39 @@ func deferredOfflineScenario(t *testing.T, clientID string) string {
 	}).Error; err != nil {
 		t.Fatalf("建离线通知配置失败: %v", err)
 	}
+	return clientID
+}
+
+// notifierTestWindow 建一个覆盖给定节点的维护窗口。
+func notifierTestWindow(t *testing.T, name string, start, end time.Time, clientIDs ...string) {
+	t.Helper()
+
+	if err := dbcore.GetDBInstance().Create(&models.MaintenanceWindow{
+		Name:    name,
+		Start:   start,
+		End:     end,
+		Clients: models.StringArray(clientIDs),
+	}).Error; err != nil {
+		t.Fatalf("建维护窗口 %s 失败: %v", name, err)
+	}
+}
+
+// deferredOfflineScenario 跑完整条链并断言补发确实发生：
+// 窗口内离线（走真实的抑制分支）→ 窗口结束后仍离线 → 真实清扫器补发 1 条离线通知。
+// 返回 clientID，供"节点随后重连"的用例接着走真实上线路径。
+func deferredOfflineScenario(t *testing.T, base string) string {
+	t.Helper()
+	clearDeferred(t)
+	setupNotifierTestDB(t)
+	Invalidate() // 窗口缓存是全局的，用例前后都清掉
+
+	const connID = int64(4242)
+
+	clientID := notifierTestNode(t, base)
 
 	windowStart := time.Now().UTC().Add(-time.Minute)
 	windowEnd := time.Now().UTC().Add(400 * time.Millisecond)
-	if err := db.Create(&models.MaintenanceWindow{
-		Name:    "reboot",
-		Start:   windowStart,
-		End:     windowEnd,
-		Clients: models.StringArray{clientID},
-	}).Error; err != nil {
-		t.Fatalf("建维护窗口失败: %v", err)
-	}
+	notifierTestWindow(t, "reboot", windowStart, windowEnd, clientID)
 	Invalidate() // 让新窗口立刻可见，而不是等 30 秒缓存过期
 
 	// 先走真实的上线路径登记连接：isConnExist 由生产代码写成 true。
@@ -171,6 +215,7 @@ func deferredOfflineScenario(t *testing.T, clientID string) string {
 		t.Fatalf("补发之后队列应清空，实际长度 %d", queueLen())
 	}
 
+	db := dbcore.GetDBInstance()
 	var noti models.OfflineNotification
 	if err := db.Where("client = ?", clientID).First(&noti).Error; err != nil {
 		t.Fatalf("读回离线通知配置失败: %v", err)
@@ -232,5 +277,173 @@ func TestReconnectAfterADeferredAlertDeliversAnOnlineNotification(t *testing.T) 
 			t.Fatalf("重连后 3 秒内没有投递在线恢复通知；已记录的事件: %+v", testRecorder.sent())
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// 窗口 A 结束前又进了窗口 B：告警必须改排到 B 结束，而不是被清扫器删掉。
+//
+// 这是 A7-2 的回归用例。旧代码里 sendDeferredOfflineAlert 看到窗口 B 仍覆盖节点，于是
+// 重新入队并 return nil；清扫器紧接着无条件 forgetDeferredAlert，把刚写进去的那条删了，
+// 于是"在 A 内离线、B 结束前一直没恢复"的节点永久丢掉了这条通知。
+//
+// 时钟是受控的：窗口用远超用例耗时的长度建立，清扫则用显式传入的 now 驱动，
+// 所以既不需要 sleep，也不会因为机器慢而踩到窗口边界。
+func TestDeferredAlertSurvivesASecondWindowTakingOver(t *testing.T) {
+	clearDeferred(t)
+	setupNotifierTestDB(t)
+	Invalidate()
+
+	clientID := notifierTestNode(t, "node-second-window")
+
+	now := time.Now().UTC()
+	// A 先结束（Evaluate 取最近结束的窗口，所以抑制这条通知的是 A），B 比它晚得多。
+	windowAEnd := now.Add(30 * time.Second)
+	windowBEnd := now.Add(4 * time.Minute)
+	notifierTestWindow(t, "window-a", now.Add(-time.Minute), windowAEnd, clientID)
+	notifierTestWindow(t, "window-b", now.Add(-time.Minute), windowBEnd, clientID)
+	Invalidate()
+
+	if shouldNotify := updateOnlineState(clientID, 4242); shouldNotify {
+		t.Fatal("首次连接不应产生上线通知")
+	}
+	OfflineNotification(clientID, 4242)
+
+	if queueLen() != 1 {
+		t.Fatalf("窗口内离线没有被排队（队列长度 %d）", queueLen())
+	}
+	deferredMu.Lock()
+	queued := deferredAlerts[clientID]
+	deferredMu.Unlock()
+	if !queued.deliverAt.Equal(windowAEnd.UTC()) {
+		t.Fatalf("抑制它的应是先结束的窗口 A（deliverAt = %s，期望 %s）", queued.deliverAt, windowAEnd.UTC())
+	}
+
+	// A 结束、B 仍在：清扫器必须把它改排到 B 结束。
+	sweepDeferredAlerts(windowAEnd.Add(time.Second))
+
+	if queueLen() != 1 {
+		t.Fatalf("窗口 B 接管之后告警被删掉了（队列长度 %d）：节点在 A 内离线、B 结束前一直没恢复，"+
+			"通知于是永久丢失", queueLen())
+	}
+	deferredMu.Lock()
+	queued = deferredAlerts[clientID]
+	deferredMu.Unlock()
+	if !queued.deliverAt.Equal(windowBEnd.UTC()) {
+		t.Fatalf("改排后的 deliverAt = %s，期望窗口 B 的结束 %s", queued.deliverAt, windowBEnd.UTC())
+	}
+	if len(testRecorder.sent()) != 0 {
+		t.Fatalf("窗口 B 还没结束就发了通知: %+v", testRecorder.sent())
+	}
+
+	// B 结束、节点仍然离线：这时候才补发。
+	sweepDeferredAlerts(windowBEnd.Add(time.Second))
+
+	sent := testRecorder.sent()
+	if len(sent) != 1 {
+		t.Fatalf("窗口 B 结束后应补发 1 条离线通知，实际 %d 条", len(sent))
+	}
+	if sent[0].Event != messageevent.Offline {
+		t.Fatalf("补发的事件类型 = %q，期望 %q", sent[0].Event, messageevent.Offline)
+	}
+	if queueLen() != 0 {
+		t.Fatalf("补发之后队列应清空，实际长度 %d", queueLen())
+	}
+}
+
+// A7-3 的回归用例：stillOffline 判定与真正发送之间，节点重连。
+//
+// 判定本身没法原子化，代码能保证的是"判定"与"标记这次离线已上报"落在同一个临界区里，
+// 也就是在发送之前认领。旧代码把清零放在发送之后：发送途中的重连看到 wasPending=true，
+// updateOnlineState 于是返回 false —— 操作员收到一条迟到的"掉了"，而"回来了"永远不发。
+//
+// 重连用真实生产入口 OnlineNotification，不手工改任何标志。
+func TestReconnectDuringTheSendStillProducesARecovery(t *testing.T) {
+	clearDeferred(t)
+	setupNotifierTestDB(t)
+	Invalidate()
+
+	clientID := notifierTestNode(t, "node-reconnect-during-send")
+
+	now := time.Now().UTC()
+	windowEnd := now.Add(30 * time.Second)
+	notifierTestWindow(t, "reboot", now.Add(-time.Minute), windowEnd, clientID)
+	Invalidate()
+
+	if shouldNotify := updateOnlineState(clientID, 4242); shouldNotify {
+		t.Fatal("首次连接不应产生上线通知")
+	}
+	OfflineNotification(clientID, 4242)
+	if queueLen() != 1 {
+		t.Fatalf("窗口内离线没有被排队（队列长度 %d）", queueLen())
+	}
+
+	// 告警正在发送的那一瞬间，节点连了上来。
+	var once sync.Once
+	testRecorder.onSend = func(event models.EventMessage) {
+		if event.Event != messageevent.Offline {
+			return
+		}
+		once.Do(func() { OnlineNotification(clientID, 4243) })
+	}
+	t.Cleanup(func() { testRecorder.onSend = nil })
+
+	sweepDeferredAlerts(windowEnd.Add(time.Second))
+
+	// 那次离线是真的，所以这条迟到的离线告警应该发出去……
+	if !testRecorder.sawEvent(messageevent.Offline) {
+		t.Fatalf("离线告警没有发出；已记录的事件: %+v", testRecorder.sent())
+	}
+	// ……而且随后的重连必须被当成"恢复"并真的投递，而不是被 wasPending 吞掉。
+	deadline := time.Now().Add(3 * time.Second)
+	for !testRecorder.sawEvent(messageevent.Online) {
+		if time.Now().After(deadline) {
+			t.Fatalf("发送过程中重连之后没有投递在线恢复通知（重连被当成「仍在待离线」而吞掉）；"+
+				"已记录的事件: %+v", testRecorder.sent())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// 发送途中节点在新的连接（999）下再次离线并排队：那条新条目不能被这次发送的清理顺手删掉。
+//
+// 同一个 client id 下只有一条队列项，靠 client id 删就会把新条目当成刚投递的那条删掉 ——
+// 与 A7-2 同一种形状的 bug，只是低一层。
+func TestANewerQueuedAlertSurvivesTheOlderOnesCleanup(t *testing.T) {
+	clearDeferred(t)
+	setupNotifierTestDB(t)
+	Invalidate()
+
+	clientID := notifierTestNode(t, "node-newer-queue-entry")
+
+	now := time.Now().UTC()
+	windowEnd := now.Add(30 * time.Second)
+	notifierTestWindow(t, "reboot", now.Add(-time.Minute), windowEnd, clientID)
+	Invalidate()
+
+	if shouldNotify := updateOnlineState(clientID, 4242); shouldNotify {
+		t.Fatal("首次连接不应产生上线通知")
+	}
+	OfflineNotification(clientID, 4242)
+
+	newerEnd := windowEnd.Add(10 * time.Minute)
+	var once sync.Once
+	testRecorder.onSend = func(event models.EventMessage) {
+		if event.Event != messageevent.Offline {
+			return
+		}
+		once.Do(func() { deferOfflineAlert(clientID, newerEnd, 999) })
+	}
+	t.Cleanup(func() { testRecorder.onSend = nil })
+
+	sweepDeferredAlerts(windowEnd.Add(time.Second))
+
+	if queueLen() != 1 {
+		t.Fatalf("新排队的条目被旧告警的清理删掉了（队列长度 %d）", queueLen())
+	}
+	deferredMu.Lock()
+	queued := deferredAlerts[clientID]
+	deferredMu.Unlock()
+	if queued.connectionID != 999 || !queued.deliverAt.Equal(newerEnd.UTC()) {
+		t.Fatalf("留下的条目 = %+v，期望新连接 999 在 %s 的排队", queued, newerEnd.UTC())
 	}
 }
