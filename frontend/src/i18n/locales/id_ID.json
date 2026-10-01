@@ -43,7 +43,7 @@
     "sso_bound": "Akun Eksternal Terhubung",
     "sso_not_bound": "Belum Terhubung",
     "unbind_sso": "Putuskan Tautan Akun Eksternal",
-    "unbind_sso_failed": "Gagal membatalkan ikatan",
+    "unbind_sso_failed": "Gagal membatalkan ikatan: {{error}}",
     "unbind_sso_success": "Berhasil membatalkan ikatan",
     "unbind_sso_warning": "Apakah Anda yakin ingin memutuskan tautan akun {{provider}}?",
     "upload_success": "Unggah berhasil"

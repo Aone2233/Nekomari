@@ -43,7 +43,7 @@
     "sso_bound": "Bound External Account",
     "sso_not_bound": "Unbound",
     "unbind_sso": "Unbind External Account",
-    "unbind_sso_failed": "Unbinding failed",
+    "unbind_sso_failed": "Unbinding failed: {{error}}",
     "unbind_sso_success": "Successfully unbound",
     "unbind_sso_warning": "Are you sure you want to unbind the {{provider}} account?",
     "upload_success": "Upload success"

@@ -43,7 +43,7 @@
     "sso_bound": "已绑定外部账户",
     "sso_not_bound": "未绑定",
     "unbind_sso": "解绑外部账户",
-    "unbind_sso_failed": "解绑失败",
+    "unbind_sso_failed": "解绑失败：{{error}}",
     "unbind_sso_success": "成功解绑",
     "unbind_sso_warning": "确定要解绑 {{provider}} 账号吗？",
     "upload_success": "上传成功"

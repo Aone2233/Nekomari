@@ -43,7 +43,7 @@
     "sso_bound": "外部アカウントがバインド済み",
     "sso_not_bound": "未バインド",
     "unbind_sso": "外部アカウントのバインド解除",
-    "unbind_sso_failed": "解除に失敗しました",
+    "unbind_sso_failed": "解除に失敗しました：{{error}}",
     "unbind_sso_success": "解除に成功しました",
     "unbind_sso_warning": "{{provider}} アカウントのバインド解除を確認しますか？",
     "upload_success": "アップロードに成功しました"
