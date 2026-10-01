@@ -11,12 +11,22 @@ real API, which is the only check that catches a page that loops, crashes on
 mount, or is wired to a route that does not exist. `/admin/settings/sign-on`
 looped on every visit for exactly that reason while every fixture stayed green.
 
+Two kinds of route are walked:
+
+* the navigation routes the *served document* links to, visited as found; and
+* the routes `PANEL_OWNED_ROUTES` names, which the panel serves itself and a theme
+  therefore never links to. Harvesting `a[href]` cannot discover those, which is how a
+  panel route answered with the installed theme's document stayed invisible: `/install`
+  and `/database-recovery` returned the theme's own 404 until F5/P2-1 (2026-10-01). They
+  are visited by default and asserted to be the panel's own document, not the theme's.
+
 Usage:
     python script/panel-smoke.spec.py [base_url]
 
 Environment:
     PANEL_USER, PANEL_PASSWORD   credentials for the instance (default admin/E2e-verify1)
-    PANEL_EXTRA_ROUTES           comma-separated extra routes to visit
+    PANEL_EXTRA_ROUTES           comma-separated extra routes to visit (visited only;
+                                 ownership is asserted for PANEL_OWNED_ROUTES)
 
 External origins (the panel's update check calls api.github.com) are reported as
 warnings and never fail the run: a blocked or rate-limited third party is not a
@@ -33,6 +43,20 @@ USER = os.environ.get("PANEL_USER", "admin")
 PASSWORD = os.environ.get("PANEL_PASSWORD", "E2e-verify1")
 EXTRA = [r for r in os.environ.get("PANEL_EXTRA_ROUTES", "").split(",") if r]
 
+# Routes the panel's own interface serves, and that no theme links to -- so they can never
+# arrive through the href harvest above. Visited unconditionally: the defect this covers is a
+# panel route being answered with the *theme's* document, and while the route list came only
+# from the served DOM the check could not see it at all. (`web/public/public.go`'s
+# `panelOwnedPrefixes` is the server-side list this mirrors; keep the two in step.)
+PANEL_OWNED_ROUTES = ("/install", "/database-recovery")
+
+# What the panel's own document looks like: `frontend/admin.html` carries this exact title and
+# loads its bundle from `/admin/assets/`. Both markers are asserted together, because a title
+# alone is not enough to tell the panel's document from a theme's -- the embedded default theme
+# is titled "Nekomari Monitor" and would match a looser substring check.
+PANEL_DOC_TITLE = "<title>Nekomari</title>"
+PANEL_BUNDLE_MARKER = "/admin/assets/"
+
 HOST = urlparse(BASE).netloc
 # A page that renders nothing is a failure; a page whose *content* is short is not, and the difference
 # matters for a themed installation. The panel's own theme renders a dashboard at `/`, but a theme may
@@ -48,6 +72,20 @@ MIN_BODY = 10
 
 def same_origin(url: str) -> bool:
     return urlparse(url).netloc == HOST
+
+
+def panel_document_problem(document: str) -> str:
+    """Return "" when `document` is the panel's own HTML, else a short reason it is not.
+
+    This is asserted against what the server sent, not against the DOM the browser hydrated:
+    "the theme was served here" is a property of the response, and hydration is free to drop
+    or rewrite the markers.
+    """
+    if PANEL_BUNDLE_MARKER not in document:
+        return f"not the panel's document: it does not load {PANEL_BUNDLE_MARKER}"
+    if PANEL_DOC_TITLE not in document:
+        return f"not the panel's document: no {PANEL_DOC_TITLE}"
+    return ""
 
 
 def main() -> int:
@@ -151,8 +189,9 @@ def main() -> int:
             href = anchor.get_attribute("href") or ""
             if href.startswith("/") and not href.startswith("//") and "." not in href.rsplit("/", 1)[-1]:
                 hrefs.add(href)
-        routes = sorted(hrefs | {"", "/admin"} | set(EXTRA))
-        print(f"discovered {len(hrefs)} navigation routes; visiting {len(routes)}\n")
+        routes = sorted(hrefs | {"", "/admin"} | set(PANEL_OWNED_ROUTES) | set(EXTRA))
+        print(f"discovered {len(hrefs)} navigation routes; visiting {len(routes)}"
+              f" (including the panel's own {', '.join(PANEL_OWNED_ROUTES)})\n")
 
         print(f"{'route':<40}{'body':>7}{'errs':>6}{'reqfail':>8}  first problem")
         for route in routes:
@@ -178,7 +217,25 @@ def main() -> int:
                 c for c in console
                 if c[0] in ("error", "pageerror") and "Failed to load resource" not in c[1]
             ]
-            sample = (errors[0][1] if errors else (bad_responses[0] if bad_responses else (failed[0] if failed else nav_error)))[:90]
+
+            # The panel-owned routes get one assertion the harvested ones cannot have: the
+            # document served for them must be the panel's own, not the theme's. Read with the
+            # session's own cookie jar, straight from the server, and *after* the navigation so
+            # the browser's console/request recording above still describes the same visit.
+            # `page.request` is the browser context's request client, so this is the same
+            # authenticated fetch a person's reload would make, minus the JavaScript.
+            panel_problem = ""
+            if route in PANEL_OWNED_ROUTES:
+                try:
+                    served = page.request.get(BASE + route, timeout=25000)
+                    if not served.ok:
+                        panel_problem = f"panel-owned route answered {served.status}"
+                    else:
+                        panel_problem = panel_document_problem(served.text())
+                except Exception as exc:  # noqa: BLE001
+                    panel_problem = f"could not read the served document: {exc}"[:90]
+
+            sample = (panel_problem or (errors[0][1] if errors else (bad_responses[0] if bad_responses else (failed[0] if failed else nav_error))))[:90]
             print(f"{route or '/':<40}{len(body):>7}{len(errors):>6}{len(bad_responses) + len(failed):>8}  {sample}")
 
             # A route the *theme* serves with a deliberately minimal page is not a panel regression.
@@ -198,14 +255,19 @@ def main() -> int:
             # that moves its admin route needs no change here. Console errors and failed requests on such a
             # route still fail the run: only the absence of content is excused, because that is the screen's
             # whole design.
-            theme_owned_minimal = len(body) < MIN_BODY and any(
-                marker in body for marker in ("正在恢复后台入口", "restoring the admin")
+            #
+            # Never excused on a panel-owned route: there the theme's screen *is* the defect (F5/P2-1),
+            # and `/install` rendering a theme's short 404 is exactly what this test is for.
+            theme_owned_minimal = (
+                route not in PANEL_OWNED_ROUTES
+                and len(body) < MIN_BODY
+                and any(marker in body for marker in ("正在恢复后台入口", "restoring the admin"))
             )
             if theme_owned_minimal:
                 print(f"{'':<40}{'':>7}{'':>6}{'':>8}  theme's own minimal route, excused")
                 continue
 
-            if errors or bad_responses or failed or nav_error or len(body.strip()) < MIN_BODY:
+            if errors or bad_responses or failed or nav_error or panel_problem or len(body.strip()) < MIN_BODY:
                 problems.append((route or "/", len(body), len(errors), len(bad_responses) + len(failed), nav_error, sample))
 
         browser.close()

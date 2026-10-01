@@ -229,6 +229,32 @@ func stripServiceWorkerRegistration(html string) string {
 	return strings.ReplaceAll(html, `<script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script>`, "")
 }
 
+// panelOwnedPrefixes are the paths whose document belongs to the panel itself rather than
+// to whichever theme is installed.
+//
+// A theme replaces the public front end, and with it the router: everything a route in
+// `frontend/src/routes.ts` under a themed prefix needs is gone. `/install` and
+// `/database-recovery` are exactly that — routes of the panel's own app — and they used to
+// fall through to `noRoute`/`serveIndex`, which answered them with the *installed theme's*
+// document. Production returned the SAO theme page for `curl /install` while `/admin`
+// correctly returned the panel. Anything added here must also have a route registered
+// below, or the theme takes it back.
+//
+// `/plugin/*` is deliberately absent: plugin pages and plugin assets share the prefix and
+// need their own decision, so it is left to a separate change rather than half-fixed here.
+var panelOwnedPrefixes = []string{"/admin", "/terminal", "/install", "/database-recovery"}
+
+// isPanelOwned reports whether path is the panel's own document or a client-side route
+// under one of its prefixes.
+func isPanelOwned(requestPath string) bool {
+	for _, prefix := range panelOwnedPrefixes {
+		if requestPath == prefix || strings.HasPrefix(requestPath, prefix+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // isSafePath 验证路径是否在指定的基础目录内，防止路径穿透攻击
 func isSafePath(basePath, targetPath string) bool {
 	// 获取基础目录的绝对路径
@@ -471,7 +497,7 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		shouldReplace := true
 
 		// 特殊页面：强制使用 default 主题，且不进行内容替换
-		if forceDefaultTheme || strings.HasPrefix(reqPath, "/admin") || strings.HasPrefix(reqPath, "/terminal") {
+		if forceDefaultTheme || isPanelOwned(reqPath) {
 			currentTheme = DefaultTheme
 			shouldReplace = false
 		}
@@ -609,7 +635,13 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 	r.GET("/terminal", serveAdminDocument)
 	r.GET("/terminal/", serveAdminDocument)
 
-	r.GET("/admin/*path", func(c *gin.Context) {
+	// servePanelPath answers a path under a panel-owned prefix the way `/admin/*path` does: the
+	// embedded admin subtree first, the panel document for extensionless client-side routes, 404
+	// otherwise. `/install` and `/database-recovery` are routes of the panel's own app
+	// (frontend/src/routes.ts) and were previously answered by noRoute with the *installed theme's*
+	// document — which has no such route and renders its own 404. Production measured exactly that:
+	// `curl /install` returned the SAO theme page while `/admin` returned the panel.
+	servePanelPath := func(c *gin.Context) {
 		filePath := c.Param("path")
 		// /admin/ → admin/index.html, anything else by its own path.
 		relative := path.Join(DistDir, AdminDistDir, strings.TrimPrefix(filePath, "/"))
@@ -632,7 +664,16 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 			return
 		}
 		c.Status(http.StatusNotFound)
-	})
+	}
+	r.GET("/admin/*path", servePanelPath)
+
+	// The install wizard and the metric-store recovery page are the panel's own screens, not part of any
+	// theme's front end. Registering them as real routes is what keeps the theme from answering them; the
+	// wildcard form covers the trailing slash and any client-side path under the same prefix.
+	r.GET("/install", serveAdminDocument)
+	r.GET("/install/*path", servePanelPath)
+	r.GET("/database-recovery", serveAdminDocument)
+	r.GET("/database-recovery/*path", servePanelPath)
 
 	// 3. SPA 路由 (noRoute)
 	noRoute(func(c *gin.Context) {
