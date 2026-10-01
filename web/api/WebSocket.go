@@ -82,7 +82,13 @@ func CheckWebSocketOrigin(r *http.Request) bool {
 	if security.IsAPIKeyRequest(r) {
 		return true
 	}
-	if origin == "" && r.URL.Query().Get("token") != "" {
+	// 无 Origin 的客户端不是浏览器，因此不可能被"恶意页面借浏览器 cookie 发起跨站
+	// WebSocket 劫持"这条威胁命中；它们靠凭据而不是 Origin 证明身份。
+	//
+	// 凭据既可能在查询串里（旧 agent 的 `?token=`），也可能在 Authorization 头里
+	// （新 agent 的推荐路径，见 agent/server/v2auth.go）。两种都要认：只认查询串的话，
+	// 把凭据挪进请求头之后 agent 会被这里拦成 403——v1.6.6 的发布校验就是这么失败的。
+	if origin == "" && (r.URL.Query().Get("token") != "" || security.HasBearerCredential(r)) {
 		return true
 	}
 	enabled, _ := config.GetAs[bool](config.WsOriginCheckEnabledKey, true)
