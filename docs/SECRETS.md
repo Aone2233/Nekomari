@@ -140,6 +140,27 @@ works as a systemd `EnvironmentFile=` and the unit can carry
 be group- or world-readable; the agent refuses to start with a 0644 file rather
 than pretend the exposure was fixed.
 
+### `-t` / `--token` is deprecated, and no removal date is set
+
+Since v1.6.9 the agent prints a one-time deprecation warning when the token arrives
+through `-t` / `--token`, naming the flag and pointing at `--token-file`. The warning
+**never contains the token**: the neighbouring exposure warning reports its length
+("28 characters") and nothing else. The precedence above is unchanged, and there is
+deliberately no removal date — the panel's install dialog still hands out
+`-t <token>`, existing unit files are not going to be rewritten by a release, and
+this repository does not retire a working flag on a schedule.
+
+Two details that will otherwise be rediscovered the hard way:
+
+- The flag is **not** registered as deprecated through pflag, because pflag's
+  `MarkDeprecated` also hides the flag from `--help` — and the panel's generated
+  install command still uses it. The warning is emitted by the agent instead.
+- Recognising `-t` on the command line follows **pflag's own shorthand parsing**,
+  which includes the attached form: `-tv` is `-t v`. The same rule means
+  `-token-file` is parsed as `-t oken-file`, not as the long flag — spell the long
+  one `--token-file`. The check and pflag are held to each other by a test that parses
+  real argument lists rather than hard-coding which spellings count.
+
 To move an existing node by hand, without reinstalling:
 
 ```bash
@@ -243,6 +264,13 @@ even when the password itself stays. And `sudo tee` truncates — writing root's
 
 ## Notes
 
+- **A TOTP code does travel in the query string, on two admin actions.** Binding or
+  unbinding an SSO account now sits behind `RequireSensitive2FA`, and binding is a
+  top-level navigation, so the code can only go in `?2fa_code=…` — the same shape
+  `/2fa/disable` already used. It can therefore reach the panel's access log and the
+  operator's browser history. The code is single-window (30 s) and the redirect flow has
+  no better carrier, but this is one more reason the nginx query-string redaction in
+  `docs/DEPLOY-OC424.md` should cover `2fa_code`/`otp`, not only `token`.
 - Tokens from both incidents remain in git history. They are worthless now, so the
   history was **not** rewritten: rewriting `main` on a public repository would
   invalidate every clone and fork to remove something that no longer grants access.

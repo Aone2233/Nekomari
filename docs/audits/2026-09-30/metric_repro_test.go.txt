@@ -1,0 +1,62 @@
+package metric
+
+// Audit fixture: PASS confirms the old defect, not correctness after a fix.
+
+import (
+	"context"
+	"testing"
+	"time"
+)
+
+func TestAccuracyAuditDeltaGranularityAndReset(t *testing.T) {
+	ctx := context.Background()
+	s := newRollupStore(t, RollupPolicy{RawRetention: 10 * time.Minute, Tiers: []RollupTier{{Interval: time.Minute, Retention: 24 * time.Hour}}})
+	if err := s.CreateMetric(ctx, Definition{Name: "audit.cumulative", Type: TypeGauge, RetentionDays: 1}); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Now().UTC().Truncate(2 * time.Minute).Add(-30 * time.Minute)
+	input := []Point{
+		{MetricName: "audit.cumulative", EntityID: "node", Timestamp: base.Add(5 * time.Second), Value: 100},
+		{MetricName: "audit.cumulative", EntityID: "node", Timestamp: base.Add(55 * time.Second), Value: 150},
+		{MetricName: "audit.cumulative", EntityID: "node", Timestamp: base.Add(65 * time.Second), Value: 200},
+		{MetricName: "audit.cumulative", EntityID: "node", Timestamp: base.Add(115 * time.Second), Value: 250},
+	}
+	if err := s.WriteBatch(ctx, input); err != nil {
+		t.Fatal(err)
+	}
+	for _, interval := range []time.Duration{time.Minute, 2 * time.Minute} {
+		got, err := s.SeriesBatch(ctx, BatchSeriesQuery{
+			Specs:     []BatchSeriesSpec{{MetricName: "audit.cumulative", Aggregations: []Aggregation{AggDelta}, Interval: interval}},
+			EntityIDs: []string{"node"}, Start: base, End: base.Add(2 * time.Minute), Order: OrderAsc,
+		}, base.Add(30*time.Minute))
+		if err != nil {
+			t.Fatal(err)
+		}
+		total := 0.0
+		for _, p := range got.Values["audit.cumulative"][AggDelta] {
+			total += p.Value
+		}
+		t.Logf("CONTIGUOUS interval=%s total=%.0f exact_growth=150", interval, total)
+		expected := 100.0
+		if interval == 2*time.Minute {
+			expected = 150
+		}
+		if total != expected {
+			t.Fatalf("audit fixture changed: interval=%s total=%v", interval, total)
+		}
+	}
+	reset := points(900, 1200, 100, 200)
+	raw, err := aggregateValue(reset, AggDelta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bucket := &rollupBucket{}
+	for _, p := range reset {
+		bucket.addPoint(p.Value, p.Timestamp.UnixMilli())
+	}
+	rolled, _ := bucket.value(AggDelta)
+	t.Logf("RESET values=[900,1200,100,200] raw_delta=%.0f rollup_delta=%.0f", raw, rolled)
+	if raw != 500 || rolled != 200 {
+		t.Fatal("audit fixture no longer reproduces reset behavior")
+	}
+}

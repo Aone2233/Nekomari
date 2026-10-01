@@ -15,7 +15,23 @@ Response envelope: `{"ok":true,"data":{…},"meta":{…}}` on success,
 `{"error":{"message":"…"}}` with a non-2xx status on failure. This differs
 from the RPC2 envelope (`status`/`message`/`data`) used elsewhere in the
 server, so these routes are plain gin handlers rather than `jsonRpc.Bind`
-targets. `uuid` is echoed back verbatim; the server does not resolve it.
+targets.
+
+**`uuid` is resolved, and only readable nodes answer** (since v1.6.9). A non-empty
+`uuid` must name a node the caller may read, or the request is refused with
+`404 {"error":{"message":"unknown node: <uuid>"}}` and no IP, geo or unlock data in
+the body. "May read" is the panel's usual rule — the node exists **and** is not
+hidden, or the caller is an administrator — so a hidden node and a node that does
+not exist are indistinguishable from the outside. That is deliberate: answering them
+differently would be a hidden-node existence oracle. An **empty** `uuid` is not an
+error and still returns `200`: that is the documented per-address call the themes
+make (`lookup?uuid=&ip=`), it resolves no node at all, and it cannot leak one.
+
+Before v1.6.9 the parameter was neither resolved nor checked, so an anonymous caller
+could read *any* node's `egress_ip` by uuid — finding P1-5 in
+[`docs/audits/2026-10-01/BUG-AUDIT-2026-10-01.md`](./audits/2026-10-01/BUG-AUDIT-2026-10-01.md).
+The sentence that used to stand here ("the server does not resolve it") described the
+code accurately and was the bug.
 
 `POST /refresh` takes `{"uuid","ip","force","include_latency"}`. `force`
 defaults to **true** (the endpoint exists to refresh); pass `false` to allow a
@@ -250,6 +266,11 @@ Query key name for `/latency`, not a separate route.
 | per-address lookup | `GET /api/public/ip-info/v1/lookup?uuid=&ip=` |
 | "全球延迟" panel | `GET /api/public/ip-info/v1/latency?uuid=&ip=` |
 | 刷新 button | `POST /api/admin/ip-info/v1/refresh` |
+
+The empty `uuid=` in the first two rows is the reason an empty uuid must keep
+answering `200` after the v1.6.9 access check: it is how the theme asks a question
+about a bare address, with no node involved. Only a **non-empty** uuid is resolved
+and checked.
 
 Two details of the theme's own logic are worth keeping in mind when changing this API:
 

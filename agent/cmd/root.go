@@ -53,23 +53,91 @@ func warnIfTokenOnCommandLine() {
 	log.Printf("WARNING: the API token is on the command line (%d characters), so any local user can read it from `ps` or `systemctl show`. Move it to a file: `--token-file <path>` (mode 0600), or an AGENT_TOKEN environment file.", len(token))
 }
 
+// tokenDeprecationNotice is the one thing an operator using -t/--token has to
+// change. Two properties are deliberate:
+//
+//   - No removal deadline. The panel's generated install command still writes
+//     `-t`, so the flag has to keep working; announcing a version would promise a
+//     break that is not scheduled.
+//   - No token value, not even a prefix. Only the flag name and its replacement
+//     are named, so this line is safe in a journal, a CI log or a bug report.
+const tokenDeprecationNotice = "WARNING: --token/-t is deprecated. Anything passed on the command line is readable by every local user through `ps` and `systemctl show -p ExecStart`, so pass the token with --token-file <path> (mode 0600), or put AGENT_TOKEN in an environment file (AGENT_TOKEN_FILE works too). The flag keeps working and no removal date is set."
+
+// warnIfTokenFlagDeprecated says, once, the part warnIfTokenOnCommandLine does
+// not: the flag itself is on its way out. It is keyed on the same detector, so
+// the exposure warning and the deprecation warning can never disagree about
+// whether -t/--token was used.
+func warnIfTokenFlagDeprecated() {
+	if !tokenFlagProvided(os.Args) {
+		return
+	}
+	log.Print(tokenDeprecationNotice)
+}
+
 // commandLineToken returns the token spelled out in args, or ok=false when the
-// token is not there. It handles the `-t v`, `-t=v` and `--token=v` spellings;
-// the bare `--token v` form consumes the following argument.
+// token is not there.
+//
+// It follows pflag's own parse order for the `-t` shorthand, because a spelling
+// pflag accepts has to be recognised here too: anything that slips past this
+// function slips past BOTH the exposure warning and the deprecation warning.
+// `-tv` did exactly that — pflag reads a string shorthand as "the character after
+// the dash is the flag, the rest is its value", so `-tv` is `-t v`, and
+// `-token-file x` is `-t oken-file`, not the long `--token-file`.
+//
+//	pflag order, per argument        value
+//	------------------------------   -------------------------
+//	--token v                        next argument
+//	--token=v                        inline value
+//	-t=v                             value after '=' ("-t=" is "=")
+//	-tv / -token-file x              everything after 't'
+//	-t v                             next argument
+//	--token-file, --anything-else    not this flag, left alone
+//	--                               ends flag parsing here
+//
+// Two spellings pflag accepts are deliberately not chased, because following them
+// means re-implementing its cluster walker and its per-flag value table — the kind
+// of second parser this function exists to avoid: a `t` that only appears after a
+// boolean shorthand in one cluster (`-ut v`, where `-u` is boolean and pflag keeps
+// walking), and a `--token` that is really the *value* of an earlier flag
+// (`-e --token x`). The panel, the installers and the docs spell the flag the ways
+// listed above.
 func commandLineToken(args []string) (string, bool) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		switch {
-		case arg == "-t" || arg == "--token":
-			if i+1 < len(args) {
-				return args[i+1], true
-			}
+		if arg == "--" {
+			// pflag stops parsing flags at a bare `--`; everything after it is a
+			// positional argument, even if it looks like `-t`.
 			return "", false
-		case strings.HasPrefix(arg, "--token="):
-			return strings.TrimPrefix(arg, "--token="), true
-		case strings.HasPrefix(arg, "-t="):
-			return strings.TrimPrefix(arg, "-t="), true
 		}
+		if strings.HasPrefix(arg, "--") {
+			switch {
+			case arg == "--token":
+				if i+1 < len(args) {
+					return args[i+1], true
+				}
+				return "", false
+			case strings.HasPrefix(arg, "--token="):
+				return strings.TrimPrefix(arg, "--token="), true
+			}
+			continue
+		}
+		// A single-dash argument is a shorthand cluster. `t` is the only shorthand
+		// in this CLI whose letter is 't', so an argument whose first shorthand is
+		// not `t` cannot set the token — and pflag reads the rest of the argument as
+		// that shorthand's value, which is why the forms below take the tail.
+		if len(arg) < 2 || arg[0] != '-' || arg[1] != 't' {
+			continue
+		}
+		rest := arg[1:]
+		switch {
+		case len(rest) > 2 && rest[1] == '=':
+			return rest[2:], true
+		case len(rest) > 1:
+			return rest[1:], true
+		case i+1 < len(args):
+			return args[i+1], true
+		}
+		return "", false
 	}
 	return "", false
 }
@@ -114,6 +182,7 @@ var RootCmd = &cobra.Command{
 		}
 		defer stopWarning()
 		warnIfTokenOnCommandLine()
+		warnIfTokenFlagDeprecated()
 		go func() {
 			<-stopCtx.Done()
 			log.Printf("shutting down gracefully...")

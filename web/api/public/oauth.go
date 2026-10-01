@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Aone2233/nekomari/database/accounts"
@@ -173,6 +174,14 @@ func OAuthCallback(c *gin.Context) {
 		return
 	}
 
+	// P1-7：SSO 只证明「你是谁」，不构成第二因子。这里必须走与密码登录同一套
+	// 判定（login.go 的 2FA 分支：未开 2FA 放行；开了 2FA 必须给出有效 TOTP），
+	// 否则任何持有 provider 凭据的人都能跳过 TOTP 直接拿到会话。
+	if status, message := verifySSOSecondFactor(c, user.UUID, user.Username); status != 0 {
+		c.JSON(status, gin.H{"status": "error", "message": message})
+		return
+	}
+
 	// 创建会话
 	session, err := accounts.CreateSession(user.UUID, sessionCookieMaxAge, c.Request.UserAgent(), c.ClientIP(), "oauth")
 	if err != nil {
@@ -184,4 +193,41 @@ func OAuthCallback(c *gin.Context) {
 	setSessionCookie(c, session, sessionCookieMaxAge)
 	auditlog.Log(c.ClientIP(), user.UUID, "logged in (OAuth)", "login")
 	c.Redirect(302, "/admin/dashboard")
+}
+
+// verifySSOSecondFactor applies the password login's second-factor rules to an
+// SSO login, which has no password step to carry them.
+//
+// It answers with (0, "") when the login may proceed, and (status, message) to
+// refuse. Both come from the shared implementation: api.VerifySensitive2FA reads
+// the code from the same places login.go's request body provides it as a field
+// (2fa_code / two_factor_code / otp, as a query parameter, or in the
+// X-2FA-Code / X-Two-Factor-Code headers) and delegates to
+// api.VerifySensitive2FACore, whose rules and messages are exactly login.go's:
+// no factor enrolled passes, a missing code answers "2FA code is required" and a
+// wrong one "Invalid 2FA code".
+//
+// The account is handed over through the context key the auth middleware normally
+// sets; this route is public and has no middleware, so it is set for the duration
+// of the check only.
+//
+// Refusals spend the same login budget as a refused password step, so an SSO
+// round trip cannot be used to grind TOTP codes that the login limiter would have
+// stopped.
+func verifySSOSecondFactor(c *gin.Context, uuid, username string) (int, string) {
+	ip := c.ClientIP()
+	account := strings.ToLower(username)
+	if allowed, retryAfter := defaultLoginLimiter.Allow(ip, account, time.Now()); !allowed {
+		c.Header("Retry-After", strconv.Itoa(retryAfterSeconds(retryAfter)))
+		return http.StatusTooManyRequests, "Too many login attempts. Try again later."
+	}
+
+	c.Set("uuid", uuid)
+	if err := api.VerifySensitive2FA(c); err != nil {
+		defaultLoginLimiter.RecordFailure(ip, account, time.Now())
+		return http.StatusUnauthorized, err.Error()
+	}
+
+	defaultLoginLimiter.Reset(account)
+	return 0, ""
 }

@@ -75,6 +75,35 @@ ghcr.io/aone2233/nekomari-agent:<tag>    # the agent
 ghcr.io/aone2233/nekomari-agent:latest
 ```
 
+**`<tag>` is published for every build; `latest` is not.** `latest` follows only a
+release that passed its own verification. A release whose check fails still gets its
+images under the version tag — the version is always pullable, and the tag is the
+honest record of what shipped — but `latest` stays on the last release that actually
+passed, so nobody pulling `latest` is handed a broken panel. The rule applies to both
+images.
+
+**A cancelled release run is the one case that publishes nothing at all** — no
+version tag, no `latest`: `docker.yml`'s job is skipped outright by its job-level
+`if`, which is deliberate and predates this rule. A cancelled run was never published,
+so there is nothing to package; the "publish the version tag anyway" behaviour above
+is about runs that *completed* and failed. Do not read the truth table as "a cancelled
+release still gets its images".
+
+The one thing to know when reading the implementation: **only the automatic path has
+a conclusion to read.** A release created by `release.yml` reaches `docker.yml`
+through `workflow_run` (GitHub suppresses `release: published` for events raised by
+`GITHUB_TOKEN`), and there the gate is `github.event.workflow_run.conclusion ==
+'success'` — anything else, `failure` included, keeps `latest` back. A **hand-published
+release** or a `workflow_dispatch` run carries no conclusion, so it publishes `latest`
+as it always did; if you publish by hand, you are the verification step. Both are
+spelled out at the tag-resolution step in `docker.yml`.
+
+It exists because of v1.6.6: its release verification failed (13 passed, 2 failed —
+the agent's WebSocket handshake was refused with `403 Forbidden`) **and the image had
+already moved `latest` anyway.** The v1.6.6 image is deliberately kept rather than
+deleted: removing a published image version is not reversible, and its release page
+carries a note pointing at the release that replaced it.
+
 The agent image exists because the panel's install dialog offers a Docker option.
 It used to point at `ghcr.io/komari-monitor/komari-agent:latest` — upstream's image,
 from another project, without the flags this fork added, and depending on

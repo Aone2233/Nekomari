@@ -1,0 +1,98 @@
+package jsonrpc
+
+// Audit fixture: PASS confirms the old defect, not correctness after a fix.
+
+import (
+	"context"
+	"math"
+	"testing"
+	"time"
+
+	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/pkg/metric"
+)
+
+func TestAccuracyAuditRawTrafficAndPing(t *testing.T) {
+	ctx := context.Background()
+	store, err := metric.Open(ctx, metric.SQLite(":memory:", metric.WithMaxOpenConns(1), metric.WithRollupPolicy(metric.RollupPolicy{
+		RawRetention: metricstore.DefaultRollupRawRetention,
+		Tiers:        []metric.RollupTier{{Interval: time.Minute, Retention: 24 * time.Hour}},
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, name := range []string{metricstore.MetricTrafficUp, metricstore.MetricPingLatency, metricstore.MetricPingLoss} {
+		if err := store.CreateMetric(ctx, metric.Definition{Name: name, Type: metric.TypeGauge, RetentionDays: 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	base := now.Truncate(time.Minute).Add(-30 * time.Minute)
+	var input []metric.Point
+	for i, value := range []float64{1000, 1010, 1020} {
+		input = append(input, metric.Point{MetricName: metricstore.MetricTrafficUp, EntityID: "node", Timestamp: now.Add(-time.Minute + time.Duration(i)*10*time.Second), Value: value})
+	}
+	for i, value := range []float64{100, -1, 100} {
+		loss := 0.0
+		if value < 0 {
+			loss = 1
+		}
+		for _, item := range []struct {
+			name  string
+			value float64
+		}{{metricstore.MetricPingLatency, value}, {metricstore.MetricPingLoss, loss}} {
+			input = append(input, metric.Point{MetricName: item.name, EntityID: "node", Timestamp: base.Add(time.Duration(5+i*10) * time.Second), Value: item.value, Tags: map[string]string{"task_id": "7"}})
+		}
+	}
+	if err := store.WriteBatch(ctx, input); err != nil {
+		t.Fatal(err)
+	}
+	algorithm := resolveMetricAggregation(metricstore.MetricTrafficUp, publicMetricQueryParams{Aggregation: "sum"})
+	got, err := loadPublicMetricPoints(ctx, store, metric.Query{MetricName: metricstore.MetricTrafficUp, EntityID: "node", Start: now.Add(-2 * time.Minute), End: now, Order: metric.OrderAsc}, algorithm, 10, false, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := 0.0
+	for _, p := range got.points {
+		if p.Value != nil {
+			total += *p.Value
+		}
+	}
+	t.Logf("RAW_TRAFFIC mapped_algorithm=%s downsampled=%v returned_samples=%d consumer_sum=%.0f exact_growth=20", algorithm, got.downsampled, len(got.points), total)
+	if total != 3030 || got.downsampled {
+		t.Fatal("raw-path audit fixture no longer reproduces behavior")
+	}
+	groups, err := loadPublicPingMetricAggregateGroups(ctx, store, []string{"node"}, base, base.Add(time.Minute), time.Minute, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats := publicPingStatsFromAggregateGroups("node", groups["node"], nil, nil)
+	if len(stats) != 1 || stats[0].Avg == nil {
+		t.Fatalf("unexpected ping stats: %#v", stats)
+	}
+	t.Logf("PING_FAILURE samples=[100,-1,100] valid=%d total=%d loss=%.6f avg=%.6f min=%v expected_valid_avg=100 expected_valid_min=100", stats[0].Valid, stats[0].Total, stats[0].Loss, *stats[0].Avg, stats[0].Min)
+	if stats[0].Valid != 2 || stats[0].Total != 3 || math.Abs(*stats[0].Avg-199.0/3) > 1e-9 || stats[0].Min != nil {
+		t.Fatal("ping-failure audit fixture no longer reproduces behavior")
+	}
+}
+
+func TestAccuracyAuditPingGlobalStatistics(t *testing.T) {
+	base := time.Now().UTC().Truncate(time.Minute)
+	points := []metric.AggregatePoint{{Bucket: base, Count: 100, Value: 10}, {Bucket: base.Add(time.Minute), Count: 1, Value: 1000}}
+	zeroVariance := []metric.AggregatePoint{{Bucket: base, Count: 100, Value: 0}, {Bucket: base.Add(time.Minute), Count: 1, Value: 0}}
+	groups := publicPingMetricAggregateGroups{
+		Avg: map[string][]metric.AggregatePoint{"7": points}, P50: map[string][]metric.AggregatePoint{"7": points},
+		P99: map[string][]metric.AggregatePoint{"7": points}, StdDev: map[string][]metric.AggregatePoint{"7": zeroVariance},
+	}
+	stats := publicPingStatsFromAggregateGroups("node", groups, nil, nil)
+	if len(stats) != 1 || stats[0].P50 == nil || stats[0].StdDev == nil {
+		t.Fatalf("unexpected stats: %#v", stats)
+	}
+	mean := (100*10.0 + 1000) / 101
+	exactStdDev := math.Sqrt((100*math.Pow(10-mean, 2) + math.Pow(1000-mean, 2)) / 101)
+	t.Logf("GLOBAL_PING values=100x10ms+1x1000ms p50=%.6f expected_p50=10 stddev=%.6f expected_stddev=%.6f", *stats[0].P50, *stats[0].StdDev, exactStdDev)
+	if math.Abs(*stats[0].P50-2000.0/101) > 1e-9 || *stats[0].StdDev != 0 {
+		t.Fatal("global-statistics audit fixture no longer reproduces behavior")
+	}
+}

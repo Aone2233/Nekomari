@@ -14,6 +14,7 @@ import {
 } from "@radix-ui/themes";
 import { Github, Globe, User } from "lucide-react";
 import Loading from "@/components/loading";
+import { oauth2BindUrl, oauth2UnbindUrl } from "@/lib/oauth2Binding";
 
 const Account = () => {
   return (
@@ -29,6 +30,17 @@ const InnerLayout = () => {
   const [usernameSaving, setUsernameSaving] = React.useState(false);
   const [passwordSaving, setPasswordSaving] = React.useState(false);
   const [passwordTwoFa, setPasswordTwoFa] = React.useState("");
+  // The SSO actions are sensitive operations server-side — `/api/admin/oauth2/bind` and
+  // `/unbind` both sit behind `api.RequireSensitive2FA()` — so they collect the same one-time
+  // code the 2FA buttons further down this page collect, with the same field, prompt key and
+  // empty-code guard. One piece of state serves both directions; only one dialog can be open.
+  const [ssoCode, setSsoCode] = React.useState("");
+  const [ssoBindOpen, setSsoBindOpen] = React.useState(false);
+  const [ssoSaving, setSsoSaving] = React.useState(false);
+  // The server lets an account without a factor through (`VerifySensitive2FACore`), so the code
+  // is collected and attached only when there is one to attach. Otherwise the request stays
+  // exactly the bare one it was before the gate existed.
+  const ssoNeedsCode = Boolean(account?.["2fa_enabled"]);
   if (loading) {
     return <Loading />;
   }
@@ -162,31 +174,83 @@ const InnerLayout = () => {
     }
   }
   
-  const handleSSOAuth = async () => {
-    try {
-      const ssoInfo = getSSOInfo();
-      if (ssoInfo?.isBound) {
-        // 解绑SSO
-        const response = await fetch("/api/admin/oauth2/unbind", {
-          method: "POST",
-        });
+  // The failure text this page already shows for the same class of refusal: the server's own
+  // message, and never nothing. A 429 arrives here as `Too many attempts. Try again later.` from
+  // the limiter; the status is appended only when the body carries no message at all, so a
+  // refusal can never look like a button that did nothing.
+  const ssoErrorText = (status: number, message?: string) =>
+    message || `${t("account_settings.sso_auth_failed")} (${status})`;
 
-        if (response.ok) {
-          toast.success(t("account_settings.unbind_sso_success", { provider: getSSODisplayName(ssoInfo.platform) }));
-          refresh(); // 刷新用户信息
-        } else {
-          const error = await response.json();
-          toast.error(t("account_settings.unbind_sso_failed", { 
-            provider: getSSODisplayName(ssoInfo.platform),
-            error: error.message || t("common.unknownError")
-          }));
-        }
-      } else {
-        window.location.href = "/api/admin/oauth2/bind";
+  // Unbind is a same-origin POST, so its refusal is shown in place — the shape
+  // `TwoFactorEnabled.disable2fa` uses on this same page.
+  const unbindSso = async (provider: string, code: string) => {
+    setSsoSaving(true);
+    try {
+      const response = await fetch(oauth2UnbindUrl(ssoNeedsCode ? code : ""), {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(ssoErrorText(response.status, data?.message));
       }
+      toast.success(t("account_settings.unbind_sso_success", { provider }));
+      setSsoCode("");
+      refresh(); // 刷新用户信息
     } catch (error) {
-      console.error("处理SSO认证失败:", error);
-      toast.error(t("account_settings.sso_auth_failed"));
+      toast.error(t("account_settings.unbind_sso_failed", {
+        provider,
+        error: error instanceof Error ? error.message : t("common.unknownError"),
+      }));
+    } finally {
+      setSsoSaving(false);
+    }
+  };
+
+  // Bind has to be a top-level navigation (the endpoint answers 302 to the provider), so its code
+  // can only ride the query string, and the browser — not this component — is what reports a
+  // refusal. `redirect: "manual"` is how a 401/429 stays visible *here* instead of leaving the
+  // operator on a bare JSON page: the probe returns the error response for a refusal and an
+  // opaque redirect for an accepted code, and the navigation then does the actual binding.
+  // The code is not spent by the probe (`accounts.Verify2Fa` keeps no replay or attempt budget),
+  // so a valid code is still valid for the navigation that follows.
+  const bindSso = async (code: string) => {
+    const url = oauth2BindUrl(ssoNeedsCode ? code : "");
+    if (!ssoNeedsCode) {
+      // Unchanged from before the gate: no prompt, no code, no extra request.
+      window.location.href = url;
+      return;
+    }
+    setSsoSaving(true);
+    try {
+      const probe = await fetch(url, { redirect: "manual", credentials: "same-origin" });
+      const redirecting =
+        probe.type === "opaqueredirect" || (probe.status >= 300 && probe.status < 400);
+      if (!probe.ok && !redirecting) {
+        const data = await probe.json().catch(() => ({}));
+        toast.error(ssoErrorText(probe.status, data?.message));
+        return;
+      }
+      window.location.href = url;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("account_settings.sso_auth_failed"));
+    } finally {
+      setSsoSaving(false);
+    }
+  };
+
+  const confirmSSOAuth = () => {
+    const ssoInfo = getSSOInfo();
+    if (ssoNeedsCode && !ssoCode) {
+      // Same guard, same key as the 2FA buttons: an empty code is not worth a round trip that the
+      // server would only answer with 401 `2FA code is required`.
+      toast.error(t("account.otp_empty_error"));
+      return;
+    }
+    if (ssoInfo?.isBound) {
+      void unbindSso(getSSODisplayName(ssoInfo.platform), ssoCode);
+    } else {
+      void bindSso(ssoCode);
     }
   };
   return (
@@ -319,20 +383,79 @@ const InnerLayout = () => {
                           <Dialog.Description>
                             {t("account_settings.unbind_sso_warning", { provider: displayName })}
                           </Dialog.Description>
+                          {ssoNeedsCode ? (
+                            <Flex direction="column" gap="2" className="mt-4">
+                              <label htmlFor="unbind_sso_2fa_code">
+                                {t("account.2fa_otp_input_prompt")}
+                              </label>
+                              <TextField.Root
+                                id="unbind_sso_2fa_code"
+                                type="number"
+                                placeholder="000000"
+                                value={ssoCode}
+                                onChange={(e) =>
+                                  setSsoCode((e.target as HTMLInputElement).value)
+                                }
+                              />
+                            </Flex>
+                          ) : null}
                           <Flex gap="2" justify="end" className="mt-4">
                             <Dialog.Close>
                               <Button variant="soft">
                                 {t("common.cancel")}
                               </Button>
                             </Dialog.Close>
-                            <Button color="red" onClick={handleSSOAuth}>
+                            <Button color="red" disabled={ssoSaving} onClick={confirmSSOAuth}>
                               {t("account_settings.confirm_unbind")}
                             </Button>
                           </Flex>
                         </Dialog.Content>
                       </Dialog.Root>
+                    ) : ssoNeedsCode ? (
+                      // Binding is a sensitive operation too, but unlike unbind it has no dialog to
+                      // add the field to and it must end in a top-level navigation, so the code is
+                      // collected in the same confirm dialog shape the rest of this page uses.
+                      // Without a factor this branch is not taken at all: the plain button below
+                      // stays a single click, with no prompt and no query parameter.
+                      <Dialog.Root open={ssoBindOpen} onOpenChange={setSsoBindOpen}>
+                        <Dialog.Trigger>
+                          <Button>
+                            <User className="size-4" />
+                            {t("account_settings.bind_sso")}
+                          </Button>
+                        </Dialog.Trigger>
+                        <Dialog.Content>
+                          <Dialog.Title>
+                            {t("account_settings.bind_sso")}
+                          </Dialog.Title>
+                          <Flex direction="column" gap="2" className="mt-4">
+                            <label htmlFor="bind_sso_2fa_code">
+                              {t("account.2fa_otp_input_prompt")}
+                            </label>
+                            <TextField.Root
+                              id="bind_sso_2fa_code"
+                              type="number"
+                              placeholder="000000"
+                              value={ssoCode}
+                              onChange={(e) =>
+                                setSsoCode((e.target as HTMLInputElement).value)
+                              }
+                            />
+                          </Flex>
+                          <Flex gap="2" justify="end" className="mt-4">
+                            <Dialog.Close>
+                              <Button variant="soft">
+                                {t("common.cancel")}
+                              </Button>
+                            </Dialog.Close>
+                            <Button disabled={ssoSaving} onClick={confirmSSOAuth}>
+                              {t("common.confirm")}
+                            </Button>
+                          </Flex>
+                        </Dialog.Content>
+                      </Dialog.Root>
                     ) : (
-                      <Button onClick={handleSSOAuth}>
+                      <Button onClick={confirmSSOAuth}>
                         <User className="size-4" />
                         {t("account_settings.bind_sso")}
                       </Button>

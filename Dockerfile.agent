@@ -22,6 +22,13 @@ ARG TARGETARCH
 COPY komari-agent-${TARGETOS}-${TARGETARCH} /usr/local/bin/komari-agent
 RUN chmod 755 /usr/local/bin/komari-agent
 
+# 容器标记：agent 看到它就跳过自我更新（agent/update/update.go 的 isContainerAgent）。
+# 这一行原来只存在于 agent/Dockerfile，而发布镜像是由【本文件】构建的
+# （docker.yml 的 dockerfile: Dockerfile.agent），于是手工 `docker run` 起来的探针
+# 会在下一个版本发布后替换自身并 exit(42) —— 面板生成的命令恰好带了
+# --disable-auto-update 才没暴露它。标记必须在这里，不是在那里。
+RUN touch /.komari-agent-container
+
 # 探针把状态写在【工作目录】里，两种文件都靠它：
 #   * net_static.json    —— 开了 --month-rotate 时的流量增量账本；
 #   * auto-discovery.json —— 用 --auto-discovery 注册后保存的 uuid/token。

@@ -78,3 +78,14 @@ node_modules/
 # panel's git status into a list of someone else's files -- with a real risk of committing the
 # whole theme into the panel by accident.
 /theme-luminaplus/
+
+# Raw evidence from the accuracy smoke runs: release binaries, machine reports and databases.
+# README.md states the rule this encodes -- the scripts, the write-up and the redacted final
+# report are committed, the raw machine output is not. It was left untracked for that reason,
+# which cost 1271 lines in every `git status`; ignoring it keeps the evidence local and the
+# status readable at the same time.
+/.accuracy-smoke/
+
+# Python bytecode from the audit scripts (docs/audits/**/*.py).
+__pycache__/
+*.pyc

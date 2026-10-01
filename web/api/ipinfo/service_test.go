@@ -294,7 +294,7 @@ func TestIpInfoContractJSONShapes(t *testing.T) {
 	// reputation 的四个集合字段同理。
 	lookupRaw, err := json.Marshal(buildLookupData("", net.ParseIP("1.2.3.4"), 4, lookupSnapshot{
 		Reputation: buildReputation(nil, "", []string{}, []string{}),
-	}))
+	}, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
