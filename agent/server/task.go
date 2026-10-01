@@ -502,8 +502,9 @@ func runPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget string) {
 	timeout := 3 * time.Second // 默认超时时间
 
 	// family 由 measure 写入。measureWithRetries 返回的延迟总是来自最后一次成功的
-	// measure 调用（首次够快就用首次，否则用那次重试），所以这里记下的族与最终上报
-	// 的延迟同源，不会出现「报了 A 的延迟、写了 B 的族」。
+	// measure 调用（首次够快就用首次，否则用那次重试；全部偏慢时用最后一次探测的
+	// 延迟），所以这里记下的族与最终上报的延迟同源，不会出现「报了 A 的延迟、写了 B
+	// 的族」。pingResult 只有在那次调用真的失败时才是 -1（丢包）。
 	var family string
 	measure := func() (int64, error) {
 		switch pingType {
@@ -558,10 +559,18 @@ func tcpRetransmitSuspected(pingType string, firstLatency, second int64) bool {
 // measureWithRetries 执行一次测量，首次偏慢时按 highLatencyThreshold 重试，
 // 返回最终应当上报的延迟以及本次是否成功。
 //
-// 这里曾经把「判定为 SYN 重传」当成失败（上报 -1 = 丢包）。那是错的：走到那个
-// 分支时握手【已经完成】，重试还测到了真实 RTT。后果是成功的握手在面板上变成
-// 整分钟 100% 丢包 —— 实测 OC424 对天津电信显示的 12% 丢包全部来自这一支，
-// 而同一目标直连 30 次一次没丢。丢包只应表示「真的没连上」。
+// 返回值语义（这是与面板的契约，不要靠魔法值推断）：
+//   - ok == false **只**表示探测真的失败/超时（measure 返回了 error），此时返回 -1，
+//     面板把 Value<0 记为 ping.loss=1，这才是丢包。
+//   - ok == true 表示测量成功，返回的延迟来自最后一次成功的 measure 调用（family 由
+//     同一次调用写入，两者同源）；延迟多高都不影响这一点。
+//
+// 这里曾经有两处把「慢」当成「丢」：一处把「判定为 SYN 重传」当失败（虽然握手【已经
+// 完成】、重试还测到了真实 RTT），另一处在 4 次测量全部 >1000ms 时也返回 -1 —— 哪怕
+// 每一次 measure 都是 err == nil。后果是成功的探测在面板上变成整分钟 100% 丢包并触发
+// SLA 误报：实测 OC424 对天津电信显示的 12% 丢包全部来自第一处，而同一目标直连 30 次
+// 一次没丢；对 >1s 的 http 任务（httpPing 计的是整次 GET 耗时）或拥塞链路，第二处必然
+// 触发。丢包只应表示「真的没连上」，慢就是慢。
 func measureWithRetries(taskID uint, pingType string, measure func() (int64, error)) (int64, bool) {
 	latency, err := measure()
 	if err != nil {
@@ -573,26 +582,29 @@ func measureWithRetries(taskID uint, pingType string, measure func() (int64, err
 	}
 
 	firstLatency := latency
+	lastLatency := latency
 	for i := 0; i < pingHighLatencyRetries; i++ {
-		second, retryErr := measure()
+		retryLatency, retryErr := measure()
 		if retryErr != nil {
 			log.Printf("Ping task %d failed: %v", taskID, retryErr)
 			return -1, false
 		}
-		if second <= highLatencyThreshold {
-			if tcpRetransmitSuspected(pingType, firstLatency, second) {
+		lastLatency = retryLatency
+		if retryLatency <= highLatencyThreshold {
+			if tcpRetransmitSuspected(pingType, firstLatency, retryLatency) {
 				// 第一次的延迟被重传撑大了，不能采信；重试这次是真实的。
 				log.Printf("Ping task %d: tcp handshake retransmitted (first=%dms retry=%dms), reporting the retry",
-					taskID, firstLatency, second)
+					taskID, firstLatency, retryLatency)
 			}
-			return second, true
-		}
-		if i == pingHighLatencyRetries-1 { // 最后一次仍然高
-			log.Printf("Ping task %d failed: latency remains high after retries", taskID)
-			return -1, false
+			return retryLatency, true
 		}
 	}
-	return -1, false
+
+	// 重试次数用尽且每一次 measure 都成功了（有 error 的分支都已提前返回）：这是一个
+	// 慢但通畅的目标，不是丢包。上报最后一次实测延迟，面板据此记 latency 而不是 loss。
+	log.Printf("Ping task %d: latency stayed above %dms for %d attempts (first=%dms last=%dms); reporting the measured latency, not packet loss",
+		taskID, highLatencyThreshold, pingHighLatencyRetries+1, firstLatency, lastLatency)
+	return lastLatency, true
 }
 
 // uploadPingResult 统一上报一条 ping 结果（WebSocket 优先，否则退回 POST）。
