@@ -6,13 +6,18 @@ import (
 	"testing"
 )
 
-// The standalone pages' artefact contract: the Vite build writes each page, `tools/zstdpack`
-// packs `frontend/dist` into the embedded archive, and `static()` serves whatever is in that
+// The standalone pages' artefact contract: the Vite build writes each page, `script/embed-theme.mjs`
+// copies `frontend/dist` into the embedded archive, and `static()` serves whatever is in that
 // archive. Three steps that fail independently, and a break anywhere produces a URL that
 // 404s — which is exactly the failure this arrangement exists to stop repeating: v0.1.31
 // shipped the SLA report as a route in the built-in router, an installed theme replaced that
 // router, and the production panel answered its own 404 for a feature whose server half was
 // live and tested.
+//
+// The archive is the panel's own front-end build (the split described in embedded_theme_test.go), so
+// these pages sit beside the panel's document rather than inside a theme's output — which is also why
+// `frontend/dist/standalone/admin` is *additionally* copied to the archive root's `admin/`: `/admin`
+// is served from there, while the standalone copy is what `/standalone/admin/...` resolves to.
 //
 // Written as a table rather than per page, so a new page is a row. The source-level half of
 // the same contract is `frontend/script/standalone-pages.test.mjs`.
@@ -30,10 +35,10 @@ type standalonePage struct {
 //
 // The admin interface is deliberately not in this list. It is the same kind of artefact — a separate
 // build, served from a path a theme does not claim — but it is served from `/admin` out of the archive's
-// `admin/` subtree, so its entry is `admin/index.html` rather than `admin/admin.html`. Bending this table
-// to hold both shapes would make every assertion here conditional; `admin_theme_test.go` holds its
-// contract instead, with the same concerns (the document is embedded, its assets resolve, it carries a
-// manifest, it is a plausible size).
+// `admin/` subtree, which is a copy of `standalone/admin`, so its entry is `admin/index.html` rather than
+// `admin/admin.html`. Bending this table to hold both shapes would make every assertion here conditional;
+// `admin_theme_test.go` holds its contract instead, with the same concerns (the document is embedded, its
+// assets resolve, it carries a manifest, it is a plausible size).
 var standalonePages = []standalonePage{
 	{name: "sla", minBundleBytes: 200_000},
 	{name: "bulk", minBundleBytes: 200_000},

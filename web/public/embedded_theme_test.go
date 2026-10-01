@@ -1,6 +1,7 @@
 package public
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -9,23 +10,32 @@ import (
 	"testing"
 )
 
-// The embedded default theme's own contract.
+// The embedded archive's contract.
 //
-// This exists because the archive at `defaultTheme/dist.tar.zst` is produced outside this repository
-// — it is the build output of a separate theme project — and every way it can be wrong fails the
-// same way: a blank page. A missing asset, a wrong path prefix or a manifest that names a file the
-// archive does not contain all look identical from the outside, and none of them produces an error
-// in the server log.
+// The archive at `defaultTheme/dist.tar.zst` is assembled by `script/embed-theme.mjs` from this
+// repository's own front-end build (`frontend/dist`), with `frontend/dist/standalone/admin` also
+// copied to `admin/` at the archive root and `frontend/komari-theme.json` written in as the theme
+// manifest. Until 2026-10-01 it was the build output of a **separate theme repository**; it is now
+// the panel's own front end, which is what makes `/install`, `/database-recovery` and the PWA files
+// the panel's screens rather than whichever theme is installed.
 //
-// The path rule these pin down is the one that differs from an installed theme and is easiest to get
-// backwards: **an installed theme is served from `data/theme/<short>/dist/`, while the embedded
-// archive holds the *contents* of `dist/` and has that prefix stripped** (see DistDir handling in
-// public.go). Packing `dist/` itself, rather than what is inside it, produces a theme whose every
-// asset is one directory deeper than the HTML expects.
+// Every way the archive can be wrong fails the same way: a blank page. A missing asset, a wrong path
+// prefix or a manifest that names a file the archive does not contain all look identical from the
+// outside, and none of them produces an error in the server log.
 //
-// There is also a regression this caught on the way in: replacing the archive with the new theme's
-// build dropped the panel's own standalone pages from it, because those live in the same archive and
-// come from the panel's build rather than the theme's.
+// The path rule that is easiest to get backwards: an **installed** theme is served from
+// `data/theme/<short>/dist/`, while this archive holds the *contents* of a dist directory with that
+// prefix stripped (see DistDir handling in public.go). Packing `dist/` itself, rather than what is
+// inside it, produces a front end whose every asset is one directory deeper than the HTML expects.
+//
+// Two failures this file exists for, both caught here rather than in production:
+//   - replacing the archive with a theme's build dropped the panel's own standalone pages and its PWA
+//     files, because those live in the same archive and are not a theme's to supply;
+//   - `/install` was answered with the *installed theme's* document, and the assertion that existed —
+//     "not the installed theme's document" — could not see it: with no theme installed, the built-in
+//     theme's document and the panel's document were indistinguishable under an exclusion.
+//     TestTheEmbeddedArchiveRootDocumentBelongsToThePanel is that missing tooth, and it is positive:
+//     it asks for what only the panel's own build can supply.
 
 // embeddedThemeManifest is the subset of the embedded manifest these tests read.
 type embeddedThemeManifest struct {
@@ -44,10 +54,10 @@ func loadEmbeddedTheme(t *testing.T) (map[string][]byte, embeddedThemeManifest) 
 	t.Helper()
 	files, err := loadEmbeddedDist()
 	if err != nil {
-		t.Fatalf("the embedded theme archive does not load: %v", err)
+		t.Fatalf("the embedded archive does not load: %v", err)
 	}
 	if len(files) == 0 {
-		t.Fatal("the embedded theme archive is empty")
+		t.Fatal("the embedded archive is empty")
 	}
 	raw, err := PublicFS.ReadFile("defaultTheme/komari-theme.json")
 	if err != nil {
@@ -60,8 +70,12 @@ func loadEmbeddedTheme(t *testing.T) (map[string][]byte, embeddedThemeManifest) 
 	return files, manifest
 }
 
-// The manifest has to describe the theme that is actually embedded, and — because the licence's one
-// condition is that its notice travels with the software — it has to carry the attribution.
+// The manifest has to describe the theme that is actually embedded — the panel's own front end — and
+// it has to name a preview the archive really carries.
+//
+// The manifest's source is `frontend/komari-theme.json`, whose paths are relative to the theme's own
+// `dist/`. The archive has no `dist/`, so `preview` has to be rewritten on the way in; a preview that
+// still carries the `dist/` prefix is a theme card with a broken image and nothing in any log.
 func TestEmbeddedThemeManifestDescribesTheEmbeddedTheme(t *testing.T) {
 	files, manifest := loadEmbeddedTheme(t)
 
@@ -75,31 +89,34 @@ func TestEmbeddedThemeManifestDescribesTheEmbeddedTheme(t *testing.T) {
 	if manifest.URL == "" {
 		t.Error("manifest must link to the theme's source")
 	}
-	// The attribution requirement, not decoration: the theme is MIT and this archive is distributed
-	// inside the binary. See docs/THIRD-PARTY-LICENSES.md.
-	if manifest.License == "" {
-		t.Error("manifest must state the embedded theme's licence")
-	}
-	if !strings.Contains(strings.ToLower(manifest.Copyright), "shanyang") {
-		t.Errorf("manifest must carry the theme author's copyright notice, got %q", manifest.Copyright)
-	}
-
-	// And it must not still be describing the theme it replaced.
-	if manifest.Name == "Komari" || manifest.Author == "Akizon77" {
-		t.Error("the manifest still describes the previous default theme")
-	}
-
 	// A preview that is not in the archive is a theme card with a broken image. The upstream theme's
-	// preview sits above dist/, so it is *not* in the archive — the trap this asserts against.
+	// preview sat above dist/, so it was *not* in the archive — the trap this asserts against.
 	if manifest.Preview != "" {
 		if _, ok := files[manifest.Preview]; !ok {
 			t.Errorf("manifest preview %q is not in the archive", manifest.Preview)
 		}
 	}
+
+	// The archive also carries the manifest at its root, and that is the copy the panel serves from
+	// `/themes/default/komari-theme.json` (the one the theme page reads). It is written from the same
+	// source as the embedded copy, so the two disagreeing means the archive was assembled against a
+	// different manifest than the binary was built with.
+	archived, ok := files["komari-theme.json"]
+	if !ok {
+		t.Fatalf("the archive carries no %q at its root", "komari-theme.json")
+	}
+	var served embeddedThemeManifest
+	if err := json.Unmarshal(archived, &served); err != nil {
+		t.Fatalf("the manifest inside the archive is not valid JSON: %v", err)
+	}
+	if served != manifest {
+		t.Errorf("the manifest inside the archive describes a different theme than the embedded one:\n"+
+			"archive:  %+v\nembedded: %+v", served, manifest)
+	}
 }
 
 // The archive has to be the contents of a dist directory, not the directory itself. Getting this
-// backwards serves a theme whose every asset 404s, with no error anywhere.
+// backwards serves a front end whose every asset 404s, with no error anywhere.
 func TestTheEmbeddedArchiveHasItsDistPrefixStripped(t *testing.T) {
 	files, _ := loadEmbeddedTheme(t)
 
@@ -115,28 +132,36 @@ func TestTheEmbeddedArchiveHasItsDistPrefixStripped(t *testing.T) {
 		t.Fatalf("%q is not at the archive root; the archive holds the contents of dist/, not dist/ itself.\nFirst entries: %v",
 			IndexFile, names)
 	}
-	if _, ok := files["dist/"+IndexFile]; ok {
-		t.Fatalf("the archive contains %q, so it was packed one directory too deep", "dist/"+IndexFile)
+
+	prefixed := make([]string, 0, 8)
+	for name := range files {
+		if name == DistDir || strings.HasPrefix(name, DistDir+"/") {
+			prefixed = append(prefixed, name)
+		}
 	}
+	if len(prefixed) > 0 {
+		sort.Strings(prefixed)
+		t.Errorf("%d entries are under the %q prefix, so the archive was packed one directory too deep (first: %v)",
+			len(prefixed), DistDir+"/", prefixed[:min(5, len(prefixed))])
+	}
+
 	// `.vite/manifest.json` is how the server identifies which asset names carry a content hash and
 	// can therefore be cached indefinitely. Without it `isHashedAsset` returns false for everything,
 	// so assets are still served correctly — they simply lose the long Cache-Control header, and
 	// behind Cloudflare every POP re-fetches them on the provider's default (measured at four hours)
 	// rather than keeping them until the content changes.
 	//
-	// The embedded theme does not have one: the theme project's Vite config does not enable
-	// `build.manifest`, while the panel's own build does. So this is reported rather than required —
-	// it is a performance regression a build flag would fix, not a fault that breaks the panel, and
-	// asserting a failure here would be asserting something untrue.
+	// Required rather than merely reported since the archive became the panel's own build:
+	// `frontend/vite.config.ts` sets `build.manifest = true`, so its absence means a build flag was
+	// turned off — a silent performance regression, not a fault that breaks the panel.
 	if _, ok := files[".vite/manifest.json"]; !ok {
-		t.Log("no .vite/manifest.json in the embedded theme: hashed assets will be served without " +
-			"long-lived Cache-Control. Fixable in the theme's vite config with build.manifest = true.")
+		t.Error("the embedded archive has no .vite/manifest.json, so no asset can be known to be a build output and none gets a long-lived Cache-Control")
 	}
 }
 
 // serverHandledReferences are paths the HTML references that the server answers itself, without
 // consulting the archive. `/favicon.ico` is the one: public.go handles it separately so a site can
-// override the icon without rebuilding the theme, and the file lives in the data directory.
+// override the icon without rebuilding the front end, and the file lives in the data directory.
 var serverHandledReferences = map[string]bool{
 	"/favicon.ico": true,
 }
@@ -152,7 +177,7 @@ func TestEveryAssetTheEmbeddedIndexReferencesExists(t *testing.T) {
 	}
 
 	// src/href attributes, plus the modulepreload links Vite emits. Both are absolute paths under
-	// the theme's own base, so a leading slash has to be stripped before the lookup.
+	// the front end's own base, so a leading slash has to be stripped before the lookup.
 	pattern := regexp.MustCompile(`(?:src|href)="(/[^"]+)"`)
 	matches := pattern.FindAllStringSubmatch(string(index), -1)
 	if len(matches) == 0 {
@@ -182,59 +207,245 @@ func TestEveryAssetTheEmbeddedIndexReferencesExists(t *testing.T) {
 	}
 }
 
-// The panel's own standalone pages live in this archive too, because the archive is the panel's
-// default theme *and* the source of every static file it serves. Replacing it with a theme build
-// drops them, and the only symptom is a 404 on a page that was working.
+// The panel's own front end *is* this archive: its document, the PWA files the build emits, the
+// standalone pages and the admin subtree. Replacing the archive with a theme build drops them, and the
+// only symptom is a blank page or a 404 on a page that was working.
 func TestTheEmbeddedArchiveCarriesThePanelsOwnPages(t *testing.T) {
 	files, _ := loadEmbeddedTheme(t)
 
+	if _, ok := files[IndexFile]; !ok {
+		t.Errorf("%q is missing from the embedded archive", IndexFile)
+	}
 	for _, page := range standalonePages {
 		entry := fmt.Sprintf("standalone/%s/%s.html", page.name, page.name)
 		if _, ok := files[entry]; !ok {
 			t.Errorf("%q is missing from the embedded archive: a theme build replaced it rather than being merged into it", entry)
 		}
 	}
-	if _, ok := files[IndexFile]; !ok {
-		t.Errorf("%q is missing from the embedded archive", IndexFile)
+	// The panel's document registers the service worker its build generates, and the PWA manifests are
+	// what make the panel installable: without them every first visit logs a 404 and installs nothing.
+	for _, name := range []string{
+		"sw.js",
+		"registerSW.js",
+		"manifest.json",
+		"manifest.webmanifest",
+		"favicon.ico",
+	} {
+		if _, ok := files[name]; !ok {
+			t.Errorf("%q is missing from the embedded archive: it belongs to the panel's own build, not to a theme", name)
+		}
+	}
+	// Workbox's runtime is named after its own version, so it is matched rather than named.
+	workbox := false
+	for name := range files {
+		if strings.HasPrefix(name, "workbox-") && strings.HasSuffix(name, ".js") {
+			workbox = true
+			break
+		}
+	}
+	if !workbox {
+		t.Error("no workbox-*.js in the embedded archive, so the service worker the panel ships cannot run")
+	}
+	// The admin is the panel's own interface, served out of this subtree for `/admin`
+	// (see admin_theme_test.go). A theme build at the archive root would drop it.
+	if _, ok := files[AdminDistDir+"/"+IndexFile]; !ok {
+		t.Errorf("%q is missing: /admin would render nothing", AdminDistDir+"/"+IndexFile)
 	}
 }
 
-// The embedded theme must carry the background images its own saved configuration names.
+// panelFrontEndTitle is the title of the panel's own front-end document. It is the string public.go's
+// site-name replacer keys on, so it is part of the server's contract with the front end, not
+// decoration.
+const panelFrontEndTitle = "<title>Nekomari Monitor</title>"
+
+// panelFrontEndEntryPrefix is how the panel's build names its entry scripts:
+// `frontend/vite.config.ts` sets `entryFileNames: "assets/entry-[name]-[hash].js"`. A theme build uses
+// Vite's default `assets/index-<hash>.js` (the previous default theme, LuminaPlus, does), so this
+// prefix is itself evidence of which build a document came from — and the bundle behind it has to be
+// the panel's app for that evidence to hold.
+const panelFrontEndEntryPrefix = "/assets/entry-"
+
+// panelAppRoutes are routes that exist only in the panel's own front end (frontend/src/routes.ts):
+// the installer and the database-recovery screen. A theme has no route for either — it would render
+// its own 404. They are matched as the route table writes them into the bundle.
+var panelAppRoutes = []string{`path:"/install"`, `path:"/database-recovery"`}
+
+// panelFrontEndEntry returns the module script a document loads, e.g.
+// "/assets/entry-index-uglIRtEP.js", or "" when it loads none.
+func panelFrontEndEntry(document string) string {
+	match := regexp.MustCompile(`<script[^>]*\btype="module"[^>]*\bsrc="([^"]+)"`).FindStringSubmatch(document)
+	if match == nil {
+		return ""
+	}
+	return match[1]
+}
+
+// panelDocumentProblems reports why document is not a build of the panel's own front end. It returns
+// reasons rather than failing so the check itself can be exercised against a theme's document by
+// TestThePanelOwnershipCheckRejectsAThemeDocument.
 //
-// This is the defect that made the front page's background disappear: a rebuild of the theme produced a
-// `dist/assets/` holding only the built bundle and the video, the eight background images had been added to the
-// installed deployment by hand and were not in the theme's source, and replacing the theme with that build
-// removed them. The page then asked for `/assets/bg-desktop-light.v2.jpeg` and got a 404 — a missing background
-// and one console error, with nothing in any log to say why.
+// Why the assertion is positive and not "not the installed theme's document": production answered
+// `/install` with the *built-in* theme's document, and an exclusion cannot tell that apart from the
+// panel's own document when no theme is installed — before 2026-10-01 the built-in theme *was* that
+// document, so the check passed while the defect shipped. Only the panel's build carries the panel's
+// title, the panel's entry naming and the panel's own routes.
+func panelDocumentProblems(files map[string][]byte, document string) []string {
+	var problems []string
+
+	if !strings.Contains(document, panelFrontEndTitle) {
+		problems = append(problems, fmt.Sprintf(
+			"it does not carry %s, which is the panel front end's own title", panelFrontEndTitle))
+	}
+
+	entry := panelFrontEndEntry(document)
+	switch {
+	case entry == "":
+		return append(problems, "it loads no module entry at all")
+	case !strings.HasPrefix(entry, panelFrontEndEntryPrefix):
+		return append(problems, fmt.Sprintf(
+			"it loads %q, but the panel's build names its entries %s*", entry, panelFrontEndEntryPrefix))
+	}
+
+	content, ok := files[strings.TrimPrefix(entry, "/")]
+	if !ok {
+		return append(problems, fmt.Sprintf("it loads %q, which is not in the embedded archive", entry))
+	}
+	for _, route := range panelAppRoutes {
+		if !bytes.Contains(content, []byte(route)) {
+			problems = append(problems, fmt.Sprintf(
+				"%q is not the panel's app: it has no %s route", entry, route))
+		}
+	}
+	return problems
+}
+
+// assertDocumentIsThePanelsOwnFrontEnd fails the test unless document is a build of the panel's own
+// front end. source names the response or file in the failure message.
+func assertDocumentIsThePanelsOwnFrontEnd(t *testing.T, files map[string][]byte, source, document string) {
+	t.Helper()
+	for _, problem := range panelDocumentProblems(files, document) {
+		t.Errorf("%s is not the panel's own front end: %s", source, problem)
+	}
+}
+
+// The root document of the embedded archive must be the panel's own front end, not a theme's.
 //
-// Asserted by name against the configuration, not "some images exist": the paths come from the theme's saved
-// settings, so a rename on either side is what this catches.
-func TestTheEmbeddedThemeCarriesItsBackgroundImages(t *testing.T) {
+// This is the tooth the `/install` defect got past. public.go answers a panel-owned path (`/install`,
+// `/database-recovery`, `/admin`, `/terminal`) from the *built-in* front end, and the assertion that
+// existed only required "the installed theme's document does not answer it" — which the built-in
+// theme's document satisfies. The root document is now the panel's own build, so the positive
+// assertion below is both available and the only one that distinguishes the two.
+func TestTheEmbeddedArchiveRootDocumentBelongsToThePanel(t *testing.T) {
 	files, _ := loadEmbeddedTheme(t)
 
-	// The paths the deployed theme's configuration refers to. Kept as a list here because the assertion is about
-	// what a saved configuration will ask for, and that configuration lives in a database this test has no
-	// access to — the same reason the theme's own settings are read from its manifest elsewhere.
-	wanted := []string{
-		"assets/bg-desktop-light.v2.jpeg",
-		"assets/bg-desktop-dark.v2.jpg",
-		"assets/bg-mobile-light.v2.jpg",
-		"assets/bg-mobile-dark.v2.jpg",
+	document, ok := files[IndexFile]
+	if !ok {
+		t.Fatalf("%q is missing from the embedded archive", IndexFile)
 	}
-	for _, name := range wanted {
-		content, ok := files[name]
+	assertDocumentIsThePanelsOwnFrontEnd(t, files, "the embedded archive's "+IndexFile, string(document))
+}
+
+// The check above must fail for a theme's document, or it is not the tooth it claims to be.
+//
+// The document below is shaped like a real theme build — the previous default theme's, in fact: its
+// own title, its own entry name (`assets/index-<hash>.js`, Vite's default), and a bundle with no panel
+// route. The second case is the one an exclusion-based check could never catch: a theme that copies
+// the panel's title still loads a theme's entry.
+func TestThePanelOwnershipCheckRejectsAThemeDocument(t *testing.T) {
+	const themeDocument = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8" />` +
+		`<title>Komari-Theme-LuminaPlus</title>` +
+		`<script type="module" crossorigin src="/assets/index-Bz70e-cf.js"></script>` +
+		`</head><body><div id="root" class="relative z-30"></div></body></html>`
+	files := map[string][]byte{
+		IndexFile: []byte(themeDocument),
+		"assets/index-Bz70e-cf.js": []byte(
+			`import{createRoot}from"./chunk-react-B6sZ2b7g.js";createRoot(document.getElementById("root"));`),
+	}
+
+	if problems := panelDocumentProblems(files, themeDocument); len(problems) == 0 {
+		t.Fatal("a theme document passed the panel-ownership check, so the check has no teeth")
+	}
+
+	impersonating := strings.Replace(themeDocument, "Komari-Theme-LuminaPlus", "Nekomari Monitor", 1)
+	if problems := panelDocumentProblems(files, impersonating); len(problems) == 0 {
+		t.Fatal("a theme document that copies the panel's title passed the check: the title alone is not the criterion")
+	}
+}
+
+// Every image the archive's own documents name must be in the archive.
+//
+// This replaces an assertion about the previous theme's four background JPEGs, which this archive does
+// not contain and does not serve. What it keeps is the failure that assertion was written for: a
+// rebuild replaces a theme's assets, and an image a document or a saved configuration still points at
+// goes missing — a broken image and one console error, with nothing in any log to say why. The
+// documents checked here are the ones the panel itself ships: its shell, its two PWA manifests and the
+// theme manifest's preview.
+func TestTheEmbeddedArchiveCarriesEveryImageItsDocumentsReference(t *testing.T) {
+	files, manifest := loadEmbeddedTheme(t)
+
+	// archive name -> the document that names it.
+	referenced := map[string]string{}
+	for _, document := range []string{IndexFile, "manifest.json", "manifest.webmanifest"} {
+		content, ok := files[document]
 		if !ok {
-			t.Errorf("%q is not in the embedded archive, so a deployment whose theme settings point at it would show no background", name)
+			t.Errorf("%q is missing from the archive, so the images it references cannot be checked", document)
 			continue
 		}
-		if len(content) < 10_000 {
-			t.Errorf("%q is %d bytes, too small to be a background image", name, len(content))
+		for _, reference := range imageReferences(string(content)) {
+			referenced[reference] = document
+		}
+	}
+	if manifest.Preview != "" {
+		referenced[manifest.Preview] = "komari-theme.json (preview)"
+	}
+
+	if len(referenced) == 0 {
+		t.Fatal("no document in the archive names an image, so this test would pass vacuously")
+	}
+	names := make([]string, 0, len(referenced))
+	for name := range referenced {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if serverHandledReferences["/"+name] {
+			continue
+		}
+		if _, ok := files[name]; !ok {
+			t.Errorf("%s references %q, which is not in the archive: the image would be missing, with nothing logged",
+				referenced[name], name)
 		}
 	}
 }
 
-// The archive must be small enough to ship and large enough to be a page. Both bounds are loose; the
-// point is to catch an archive that is empty, or one that accidentally swallowed a build directory.
+// imageReferences pulls the archive-relative paths of the images a document names.
+//
+// Both the HTML shell and the PWA manifests use absolute paths, but they spell the attribute
+// differently (`src="/x.png"` against `"src": "/x.png"`), and only `src`/`href` are read: the shell
+// carries commented-out `content="/images/komari-preview.png"` social-card references that name files
+// the archive was never meant to contain.
+func imageReferences(document string) []string {
+	var out []string
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?:src|href)="(/[^"]+)"`),
+		regexp.MustCompile(`"(?:src|href)"\s*:\s*"(/[^"]+)"`),
+	}
+	isImage := regexp.MustCompile(`(?i)\.(ico|png|jpe?g|webp|gif|svg|avif)$`)
+	for _, pattern := range patterns {
+		for _, match := range pattern.FindAllStringSubmatch(document, -1) {
+			reference := match[1]
+			if !isImage.MatchString(reference) {
+				continue
+			}
+			out = append(out, strings.TrimPrefix(reference, "/"))
+		}
+	}
+	return out
+}
+
+// The archive must be small enough to ship and large enough to be a front end. Both bounds are loose;
+// the point is to catch an archive that is empty, or one that accidentally swallowed a build
+// directory.
 func TestTheEmbeddedArchiveIsAPlausibleSize(t *testing.T) {
 	files, _ := loadEmbeddedTheme(t)
 
@@ -242,11 +453,11 @@ func TestTheEmbeddedArchiveIsAPlausibleSize(t *testing.T) {
 	for _, content := range files {
 		total += int64(len(content))
 	}
-	// The theme's own images are the bulk of it: several JPEG backgrounds around 0.3 MB each.
+	// The panel's bundle and the Monaco language chunks the editor loads on demand are the bulk of it.
 	const minBytes = 1 << 20  // 1 MiB
 	const maxBytes = 40 << 20 // 40 MiB
 	if total < minBytes {
-		t.Errorf("the embedded archive holds %d bytes, which is too little to be a theme", total)
+		t.Errorf("the embedded archive holds %d bytes, which is too little to be the panel's front end", total)
 	}
 	if total > maxBytes {
 		t.Errorf("the embedded archive holds %d bytes, which is too much to embed in a binary", total)
