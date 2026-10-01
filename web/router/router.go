@@ -139,10 +139,12 @@ func registerAdminRoutes(r *gin.Engine) {
 	}
 
 	// oauth2 绑定走重定向，保留 REST handler。
+	// 绑定/解绑外部账号等于改动一项登录凭据：和 /2fa/disable、/task/exec 一样，
+	// 必须有敏感操作 2FA（GET 从 query 读码，POST 从 query/头/体读码）。
 	oauth2 := g.Group("/oauth2")
 	{
-		oauth2.GET("/bind", admin.BindingExternalAccount)
-		oauth2.POST("/unbind", admin.UnbindExternalAccount)
+		oauth2.GET("/bind", api.RequireSensitive2FA(), admin.BindingExternalAccount)
+		oauth2.POST("/unbind", api.RequireSensitive2FA(), admin.UnbindExternalAccount)
 	}
 
 	// --- 以下全部 JSON -> RPC2 ---
