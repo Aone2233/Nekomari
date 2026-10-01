@@ -5,6 +5,10 @@ restored, and the two hostname/TLS traps that cost the most time.
 
 ## What is actually deployed (verified 2026-09-26)
 
+> **This table is the 2026-09-26 snapshot, kept for the D1/D2 evidence it carries; it is not
+> current.** The newest deployment record is the **v1.6.9 rollout** section below, then
+> **v1.6.7**. Read those for what is running now.
+
 A commit or a tag proves *release*, never *deployment*. Each row below is a
 separate claim with the evidence that produced it. "Verified" means a command ran
 against the host on 2026-09-26 and the output is quoted.
@@ -145,6 +149,86 @@ host and the first that needed an IPv4 preference, so both are recorded here.
   rather than a JPKD2 one, and it is the reason a token that leaked during this
   deployment was rotated twice rather than once. Moving the token to a config file or an
   environment file is worth doing on its own.
+
+## v1.6.9 rollout (2026-10-01): panel, then the whole fleet
+
+**Panel.** The image was pulled and verified by digest before anything was replaced.
+
+| Step | Evidence |
+|---|---|
+| Release | `v1.6.9` on `610ab68` (PR #62); the release run is green, including its own deploy check |
+| First real test of the `latest` policy | `latest` and `v1.6.9` resolve to the same digest, `sha256:a5a7c31e…`, while `v1.6.8` keeps its own. The gate moved `latest` because this release's verification passed — the behaviour `RELEASING.md` now documents, exercised end to end for the first time |
+| Image verified on the host | `docker pull ghcr.io/aone2233/nekomari:v1.6.9` → `RepoDigests` exactly `sha256:a5a7c31e…`; `arch=arm64` on an `aarch64` host |
+| One trap worth knowing | pulling `repo:tag@digest` does **not** create the tag locally, so `docker image inspect repo:tag` immediately afterwards answers `No such image`. Pull by tag and compare `RepoDigests`; the first attempt at this check produced exactly that false alarm, and the guard refused to continue |
+| Databases backed up first | `/opt/nekomari/backups/pre-v1.6.9-20261001T165033Z`, taken with `sqlite3.Connection.backup` (WAL-safe) and verified: both `quick_check=ok`, `integrity=ok`, `sha256sum -c` OK |
+| Compose | `image: …:v1.6.9@sha256:a5a7c31e…`, written under a full-digest regex guard plus `docker compose config`; the empty-digest mistake from the v1.6.8 rollout cannot recur |
+| After the switch | `Up (healthy)`, `RestartCount=0`, `/api/version` → `{"hash":"610ab68","version":"v1.6.9"}` |
+
+Live checks after the switch, against `http://127.0.0.1:25774` so nginx and Cloudflare stay
+out of the picture:
+
+```
+/install                200  <title>Nekomari Monitor</title>, /assets/entry-index-DSVHwSg9.js → 200
+/database-recovery      307  Location: /
+/admin                  200  <title>Nekomari</title>
+/sw.js                  200  text/javascript; charset=utf-8
+/manifest.webmanifest   200  application/manifest+json
+/assets/does-not-exist-abc123.js
+                        404  a missing asset is not the SPA shell
+```
+
+**Fleet.** This release changes the agent, so the fleet moves with it — the rule in
+`RELEASING.md`. Seven nodes went through `deploy/fleet/fleet-upgrade.sh v1.6.9`, run **as
+`ubuntu`** from the panel host: the batch refuses to run as root, because the node aliases live
+in that user's ssh configuration. Per node it downloads the asset, verifies it against the
+release's `SHA256SUMS.txt`, executes the new binary with `--help` **before** replacing anything,
+keeps the old one aside, and restarts:
+
+```
+upgraded: AKKO06 megabox HK04 CLISP NOSLA JPKD2 SDE9929
+```
+
+Three nodes the batch skips by design needed doing by hand, each for a different reason:
+
+| Node | Why not the batch | How it was done |
+|---|---|---|
+| 甲骨文 OC424 | `local` in the inventory — it is the panel host and has no ssh alias of its own. It also reports under a unit the script does not look for, `komari-agent-oc424-original-node`; an older note in this file describes it as a bare process, which is wrong | arm64 asset downloaded on the host, checksum verified, `cp` aside, `mv` over, unit restarted. **The running binary's hash needs `sudo`**: `/proc/<pid>/exe` is unreadable for anyone but the owner of a root process, which is exactly what the per-node script's header warns about, and my first check reported a mismatch for that reason alone |
+| MAC Server (MAC-WAN) | `elsewhere` — not reachable from the panel host, only from the workstation | reached from the workstation. The agent is a **user** unit and the binary sits in a `macos`-owned directory, so replacing it needs no `sudo` at all; the backup uses plain `cp`, since `cp -a` fails as a non-root user on a root-owned source |
+| 并行智算云服务器 (PZYC) | `elsewhere`, and the node cannot fetch release assets at all (`curl https://github.com` → `000`) | downloaded and checksum-verified on the workstation, transferred with `scp`, verified again on arrival, installed with `install` + `mv` (writing into a running binary's inode earns `ETXTBSY`), `sudo systemctl restart nekomari-agent` |
+
+Verified from the panel afterwards, which is the only authority on what a node actually runs:
+
+```
+total clients: 10        versions: {'v1.6.9': 10}        duplicate names: none
+every node last reported within 120 s
+icmp_capability unchanged for every node (MAC Server: none, as before; the other nine: raw)
+0 panic/fatal lines in the panel log across the move
+```
+
+**Two warnings that were not real, and what produced them:**
+
+- **JPKD2** printed `ICMP: UNAVAILABLE … the agent runs as  and neither socket type opens`
+  (note the empty user name). The panel's own store says `icmp_capability=raw` **before and
+  after**, so nothing was lost; the per-node script's post-restart probe cannot resolve the user
+  on Alpine, and its OpenRC branch therefore reports a false negative. That belongs in the script,
+  not in another investigation here.
+- **HK04** reported `auth errors in the last minute: 1`. That is the restart window: the unit's
+  log immediately afterwards shows `Basic info uploaded successfully` and `WebSocket connected
+  using v2 protocol`, and the panel shows it reporting within the minute.
+
+**Also done in this window:**
+
+- The nginx query-string redaction was extended from `token=` to
+  `token|2fa_code|two_factor_code|otp` (`/etc/nginx/sites-available/nekomari`, backup
+  `…bak-pre-2fa-redaction-20261001T163638Z`), verified with a marker value: the log line reads
+  `/api/admin/oauth2/unbind?[redacted]` and the marker appears nowhere in the access log. It
+  matters because of `SECRETS.md`: binding an SSO account is a redirect, so its TOTP code can only
+  travel in the query string.
+- All three remaining legacy `komari-agent` units are now **masked** — HK04 and NOSLA earlier in
+  the session, OC424 here. The original unit files are archived to `/root/legacy-units/`, and the
+  refusal is proved rather than assumed: `systemctl start komari-agent` → `rc=1`,
+  `Unit komari-agent.service is masked`, legacy PID still 0, reporting unit keeps its PID.
+  Reversal is `systemctl unmask` plus copying the file back.
 
 ## v1.6.7 rollout (2026-10-01): panel then fleet
 
