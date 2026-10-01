@@ -119,7 +119,7 @@ func sweepDeferredAlerts(now time.Time) {
 			continue
 		}
 
-		if err := sendDeferredOfflineAlert(alert.clientID, now); err != nil {
+		if err := sendDeferredOfflineAlert(alert.clientID, now, alert.connectionID); err != nil {
 			logger.ErrorArgs("notifier", "Failed to send a deferred offline notification:", err)
 			// Left queued: a transport failure is worth retrying, unlike a stale alert.
 			continue
@@ -128,7 +128,13 @@ func sweepDeferredAlerts(now time.Time) {
 	}
 }
 
-func sendDeferredOfflineAlert(clientID string, now time.Time) error {
+// sendDeferredOfflineAlert delivers a queued alert and settles the state that queued it.
+//
+// connectionID is the outage this alert was about. It is checked before the state is settled
+// because the send above is not instantaneous: the node can reconnect (and even go down again)
+// while it is in flight, and clearing the marker of a *different*, newer outage would swallow that
+// one's notification.
+func sendDeferredOfflineAlert(clientID string, now time.Time, connectionID int64) error {
 	client, err := clients.GetClientByUUID(clientID)
 	if err != nil {
 		return err
@@ -154,6 +160,25 @@ func sendDeferredOfflineAlert(clientID string, now time.Time) error {
 			logger.Errorf("notifier", "Failed to update last_notified for client %s: %v", clientID, err)
 		}
 	}
+
+	// The outage has now been reported, so the pending marker has done its job and must be
+	// cleared — exactly what the immediate path does when it actually sends (offline.go's
+	// grace-period goroutine sets pendingOfflineSince to zero and leaves isConnExist false).
+	//
+	// Leaving it set breaks the chain "offline inside the window -> alert delivered after it ->
+	// node reconnects": updateOnlineState sees wasPending true and returns false, so the operator
+	// is told (late) that the node went down and never told that it came back.
+	//
+	// Only settle the state while it still describes this outage. If the node reconnected during
+	// the send, updateOnlineState has already cleared the marker and recorded a new connection;
+	// this must not overwrite that, and a node that flapped has its own pending entry to keep.
+	state := getOrInitState(clientID)
+	state.mu.Lock()
+	if state.connectionID == connectionID && !state.isConnExist {
+		state.pendingOfflineSince = time.Time{}
+		state.isConnExist = false
+	}
+	state.mu.Unlock()
 	return nil
 }
 
