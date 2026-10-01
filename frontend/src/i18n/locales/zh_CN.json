@@ -394,6 +394,7 @@
     },
     "highestLoss": "丢包最高",
     "mainDb": "主数据库",
+    "memoryCaliberTip": "已用 = 总内存 − 空闲 − 可回收缓存（buffers/cache）。与 htop 及新版 free 的 used（= 总量 − available）口径不同，本页读数通常更低。",
     "monitoringDb": "监控数据库",
     "noData": "暂无数据",
     "noExpiring": "无服务器即将到期",

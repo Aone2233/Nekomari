@@ -52,7 +52,7 @@ export const emptyForm = (): BulkForm => ({
   weight: makeField(0),
   hidden: makeField(false),
   price: makeField(0),
-  billingCycle: makeField(1),
+  billingCycle: makeField(30),
   currency: makeField("$"),
   trafficLimit: makeField(0),
   trafficLimitType: makeField("max"),
@@ -80,15 +80,18 @@ export function enabledFieldCount(form: BulkForm): number {
   return Object.values(form).filter((field) => field.enabled).length;
 }
 
-/** The billing cycles the panel offers, in months; 0 means one-off. */
+/** The billing cycles the panel offers, in **days** — the unit every other part of the
+ *  system uses (`utils/renewal/renewal.go`, `NodeDialogs.tsx`, `PriceTags.tsx`). The server
+ *  treats 27–32 as a calendar month, 87–95 as a quarter, and so on; anything else is a plain
+ *  day count. -1 means one-off. */
 export const BILLING_CYCLES: Array<{ value: number; label: string }> = [
-  { value: 0, label: "one-off" },
-  { value: 1, label: "monthly" },
-  { value: 3, label: "quarterly" },
-  { value: 6, label: "half-yearly" },
-  { value: 12, label: "yearly" },
-  { value: 24, label: "biennial" },
-  { value: 36, label: "triennial" },
+  { value: -1, label: "one-off" },
+  { value: 30, label: "monthly" },
+  { value: 92, label: "quarterly" },
+  { value: 184, label: "half-yearly" },
+  { value: 365, label: "yearly" },
+  { value: 730, label: "biennial" },
+  { value: 1095, label: "triennial" },
 ];
 
 /** The traffic-limit kinds the panel supports. */

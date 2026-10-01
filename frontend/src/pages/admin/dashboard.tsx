@@ -1344,6 +1344,10 @@ const DashboardContent = () => {
               icon={<MemoryStick size={18} />}
               items={topMem}
               metricKeys={MEM_METRIC_KEYS}
+              hint={t(
+                "dashboard.memoryCaliberTip",
+                "Used = total − free − reclaimable cache (buffers/cache). Different from htop and modern free's used (= total − available), so readings here are usually lower.",
+              )}
               t={t}
             />
           </Card>
@@ -1446,12 +1450,16 @@ const TopRankCard = ({
   icon,
   items,
   metricKeys,
+  hint,
   t,
 }: {
   title: string;
   icon: React.ReactNode;
   items: TopRankItem[];
   metricKeys: string[];
+  /** One line under the heading explaining the metric's definition, when the raw number
+   *  invites a comparison the panel does not actually make (e.g. the memory caliber). */
+  hint?: string;
   t: TFunction;
 }) => {
   return (
@@ -1496,6 +1504,11 @@ const TopRankCard = ({
           </Flex>
         </RankListPopover>
       </Flex>
+      {hint ? (
+        <Text size="1" color="gray">
+          {hint}
+        </Text>
+      ) : null}
       {items.length === 0 ? (
         <Text size="2" color="gray">
           {t("dashboard.noData", "No data")}

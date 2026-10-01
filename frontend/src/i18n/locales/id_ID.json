@@ -386,6 +386,7 @@
     },
     "highestLoss": "Packet loss tertinggi",
     "mainDb": "Basis data utama",
+    "memoryCaliberTip": "Terpakai = total − kosong − cache yang dapat diklaim ulang (buffers/cache). Berbeda dari used pada htop dan free modern (= total − available), sehingga angkanya biasanya lebih rendah.",
     "monitoringDb": "Basis data pemantauan",
     "noData": "Tidak ada data",
     "noExpiring": "Tidak ada server yang segera kedaluwarsa",

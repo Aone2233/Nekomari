@@ -386,6 +386,7 @@
     },
     "highestLoss": "丟包最高",
     "mainDb": "主資料庫",
+    "memoryCaliberTip": "已用 = 總記憶體 − 空閒 − 可回收快取（buffers/cache）。與 htop 及新版 free 的 used（= 總量 − available）口徑不同，本頁讀數通常更低。",
     "monitoringDb": "監控資料庫",
     "noData": "暫無資料",
     "noExpiring": "無伺服器即將到期",

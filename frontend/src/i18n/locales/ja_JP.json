@@ -386,6 +386,7 @@
     },
     "highestLoss": "パケットロス最大",
     "mainDb": "メインデータベース",
+    "memoryCaliberTip": "使用中 = 総メモリ − 空き − 回収可能なキャッシュ（buffers/cache）。htop や現代の free の used（= 総量 − available）とは集計方法が異なるため、通常はこちらの値が低くなります。",
     "monitoringDb": "監視データベース",
     "noData": "データなし",
     "noExpiring": "期限切れ間近のサーバーはありません",
