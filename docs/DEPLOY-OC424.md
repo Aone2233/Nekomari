@@ -209,9 +209,13 @@ icmp_capability unchanged for every node (MAC Server: none, as before; the other
 
 - **JPKD2** printed `ICMP: UNAVAILABLE … the agent runs as  and neither socket type opens`
   (note the empty user name). The panel's own store says `icmp_capability=raw` **before and
-  after**, so nothing was lost; the per-node script's post-restart probe cannot resolve the user
-  on Alpine, and its OpenRC branch therefore reports a false negative. That belongs in the script,
-  not in another investigation here.
+  after**, so nothing was lost. Two busybox quirks produced the alarm: `ps -o user=` prints
+  nothing, so the empty owner was read as "not root" and the check ran for an agent that needs no
+  capability at all; and the node has no `python3`, so there was no probe to run and "could not
+  check" came out as a failure. **Fixed in `deploy/fleet/upgrade-agent.sh`** (PR #64) — the
+  decision now comes from the uid in `/proc/<pid>/status`, and a node with no python3 says it
+  could not be checked. The capability test asserts both, and those assertions were run against
+  the old script to confirm they fail.
 - **HK04** reported `auth errors in the last minute: 1`. That is the restart window: the unit's
   log immediately afterwards shows `Basic info uploaded successfully` and `WebSocket connected
   using v2 protocol`, and the panel shows it reporting within the minute.
