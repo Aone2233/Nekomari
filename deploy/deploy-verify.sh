@@ -4,8 +4,9 @@
 #
 # This is the check that answers "can someone else deploy this?": download the
 # release binaries, verify them against SHA256SUMS.txt, start the server, complete
-# the first-run install through its API, connect an agent, and confirm the node
-# reports. Automatic runs use a throwaway directory; explicit workdirs retain
+# the first-run install through its API, confirm the panel's own routes serve the
+# panel's own documents rather than a theme's, connect an agent, and confirm the
+# node reports. Automatic runs use a throwaway directory; explicit workdirs retain
 # each run's artifacts for inspection.
 #
 # It deliberately avoids any running instance: its own port, its own data
@@ -118,7 +119,86 @@ pub=$(curl -fsS "http://127.0.0.1:${PORT}/api/public" 2>/dev/null)
 case "$pub" in *'"sitename":"Deploy Verify"'*) ok "sitename applied";; *) bad "public api: ${pub:0:120}";; esac
 case "$pub" in *'"theme"'*) ok "theme reported";; *) bad "no theme in public api";; esac
 
-step "7. log in and create an agent token"
+step "7. the panel serves its own documents, not a theme's"
+# The defect this step exists for: `/install` is a route of the panel's *front end*
+# (`frontend/src/routes.ts`), not of a theme, and a theme's document has no such route. It used to be
+# answered with whichever document the current theme provided, so a themed panel showed the theme's
+# unknown-route page instead of the install screen — while `/admin` correctly returned the panel.
+#
+# The assertion is deliberately **positive**: only the panel's own front-end build carries this
+# title, and the built-in default theme is now that same build (`script/embed-theme.mjs`). An
+# exclusion ("not the installed theme") cannot work here — this instance installs no theme at all,
+# so on it a theme document and the panel document are indistinguishable by exclusion. That is
+# exactly how the original defect shipped: the built-in theme *was* the document being served, so
+# an exclusion was satisfied while `/install` showed a theme's unknown-route page.
+#
+# The title stays literal because `serveIndex` pins a panel-owned path to the built-in front end and
+# skips the sitename substitution on that branch; on any other path this response would say
+# "Deploy Verify", the sitename installed below.
+inst_code=$(curl -sS -o install.html -w '%{http_code}' "http://127.0.0.1:${PORT}/install" 2>/dev/null)
+case "$inst_code" in
+  200) ok "/install answers 200";;
+  *)   bad "/install status: ${inst_code:-no response}";;
+esac
+inst_title=$(sed -n 's:.*<title>\([^<]*\)</title>.*:\1:p' install.html 2>/dev/null | head -1)
+case "$inst_title" in
+  "Nekomari Monitor") ok "/install serves the panel's own front end (title: ${inst_title})";;
+  *) bad "/install did not serve the panel's own front end (title: ${inst_title:-none})";;
+esac
+# A title alone is not the whole criterion: a theme document that copies the panel's title would
+# pass it. The entry *naming* is the second, independent stamp — `frontend/vite.config.ts` sets
+# `entryFileNames: "assets/entry-[name]-[hash].js"`, while a theme build uses Vite's default
+# `assets/index-<hash>.js` (the previous embedded theme did). The Go unit test that guards the same
+# contract makes the same two-part argument (web/public/embedded_theme_test.go).
+inst_entry=$(sed -n 's:.*type="module"[^>]*src="\([^"]*\)".*:\1:p' install.html 2>/dev/null | head -1)
+case "$inst_entry" in
+  /assets/entry-*) ok "/install loads the panel front end's entry naming (${inst_entry})";;
+  "") bad "/install loads no module entry at all";;
+  *) bad "/install loads ${inst_entry}; the panel's build names its entries /assets/entry-*";;
+esac
+# A document whose assets 404 is a blank page and no log line, so the entry it names is fetched too.
+# This is the prefix rule (the archive holds the contents of `dist/`, not `dist/` itself) holding on
+# the request path a browser actually takes.
+if [ -n "$inst_entry" ]; then
+  entry_code=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${PORT}${inst_entry}" 2>/dev/null)
+  case "$entry_code" in
+    200) ok "the document's entry bundle loads (${inst_entry})";;
+    *)   bad "entry bundle ${inst_entry} answered ${entry_code:-no response}";;
+  esac
+fi
+
+# `/database-recovery` is registered by the normal server as a 307 to `/`: the recovery UI belongs to
+# its temporary restricted listener, so on the normal listener there is nothing to serve. Read
+# *without* following the redirect — with `-L` this looks like an ordinary 200 landing page and the
+# redirect, which is the contract, goes unnoticed. The status line and `Location` are read from the
+# headers; the body of a 307 is not a document anyone should be judging.
+dr_headers=$(curl -sS -o /dev/null -D - "http://127.0.0.1:${PORT}/database-recovery" 2>/dev/null | tr -d '\r')
+dr_code=$(printf '%s\n' "$dr_headers" | sed -n '1s:^HTTP/[^ ]* \([0-9]\{3\}\).*:\1:p')
+dr_loc=$(printf '%s\n' "$dr_headers" | sed -n 's|^[Ll]ocation: *||p' | head -1)
+case "$dr_code" in
+  307) ok "/database-recovery answers 307 without following it";;
+  *)   bad "/database-recovery status: ${dr_code:-no response} (expected 307)";;
+esac
+case "$dr_loc" in
+  "/") ok "/database-recovery Location: ${dr_loc}";;
+  *)   bad "/database-recovery Location: ${dr_loc:-none} (expected /)";;
+esac
+
+# Existing behaviour, and the check that keeps this step from being satisfied by breaking `/admin`:
+# the admin interface is its own build (`frontend/admin.html`), served from the archive's `admin/`
+# subtree, and it must not follow the default theme.
+admin_code=$(curl -sS -o admin.html -w '%{http_code}' "http://127.0.0.1:${PORT}/admin" 2>/dev/null)
+case "$admin_code" in
+  200) ok "/admin answers 200";;
+  *)   bad "/admin status: ${admin_code:-no response}";;
+esac
+admin_title=$(sed -n 's:.*<title>\([^<]*\)</title>.*:\1:p' admin.html 2>/dev/null | head -1)
+case "$admin_title" in
+  "Nekomari") ok "/admin still serves the panel's admin interface (title: ${admin_title})";;
+  *) bad "/admin did not serve the panel's admin interface (title: ${admin_title:-none})";;
+esac
+
+step "8. log in and create an agent token"
 curl -fsS -c cookie.txt -X POST "http://127.0.0.1:${PORT}/api/login" \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"Deploy-Verify-2026"}' >/dev/null 2>&1
@@ -128,7 +208,7 @@ tok=$(curl -fsS -b cookie.txt -X POST "http://127.0.0.1:${PORT}/api/rpc2" \
   | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
 if [ -n "$tok" ]; then ok "agent token issued"; else bad "could not create an agent token"; fi
 
-step "8. the agent connects and the node reports"
+step "9. the agent connects and the node reports"
 if [ -n "$tok" ]; then
   ./komari-agent-linux-amd64 -e "http://127.0.0.1:${PORT}" -t "$tok" -i 3 \
     --disable-auto-update --disable-web-ssh > agent.log 2>&1 &
@@ -151,7 +231,7 @@ if [ -n "$tok" ]; then
   kill $AG 2>/dev/null; AG=""
 fi
 
-step "9. shutdown and cleanup"
+step "10. shutdown and cleanup"
 kill $SRV 2>/dev/null; SRV=""
 sleep 1
 printf '\n===== %d passed, %d failed =====\n' "$pass" "$fail"
