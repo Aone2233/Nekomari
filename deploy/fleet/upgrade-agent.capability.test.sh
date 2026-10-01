@@ -80,4 +80,16 @@ grep -q 'ICMP' "$FLEET" || fail "$FLEET does not report ICMP availability after 
 grep -q 'ping_group_range' "$FLEET" || fail "$FLEET does not name the non-capability remedy (ping_group_range)"
 pass "fleet script reports ICMP availability and both remedies"
 
+# And the report must not invent a failure it could not measure.
+#
+# Measured on JPKD2 (Alpine) after the v1.6.9 rollout: busybox `ps -o user=` prints nothing, `id -un 0` prints
+# nothing either, and the node has no python3 — so the owner read as the empty string, which is not "root", and
+# the check therefore ran for an agent that needs no capability, found no probe it could run, and reported
+# UNAVAILABLE. The panel's own column for that node said `raw` before and after. The decision has to come from
+# the uid in /proc (0 is root), and a node that cannot be probed has to say so.
+grep -Fq "awk '/^Uid:/{print \$2}'" "$FLEET" || fail "$FLEET does not read the agent uid from /proc/status"
+grep -Fq 'AGENT_UID" != "0"' "$FLEET" || fail "$FLEET decides 'is root' from something other than the uid"
+grep -Fq 'not verified here' "$FLEET" || fail "$FLEET reports a missing python3 as an ICMP failure"
+pass "fleet script decides root from the uid, and does not call an unmeasured node broken"
+
 printf '\n  all capability-preservation assertions passed\n'
