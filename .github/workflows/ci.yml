@@ -60,6 +60,7 @@ jobs:
           python script/maintenance.browser.spec.py
           python script/config-export.browser.spec.py
           python script/forecast.browser.spec.py
+          python script/account-sso-2fa.browser.spec.py
 
   # The fixtures above mount one component against stubs. This job boots the
   # built server and walks the real panel instead, which is the only check that
@@ -139,6 +140,27 @@ jobs:
         # shows packet loss that belongs to the tooling rather than the target. This has already happened once.
         run: sh deploy/fleet/upgrade-agent.capability.test.sh
 
+  # The docker workflow's own contracts, asserted against the workflow file instead of
+  # against a human's memory: which releases are allowed to move `latest`, that no
+  # ref-derived value reaches a `run:` script, and that the released agent image carries
+  # the container marker. Deliberately a separate job rather than a step in
+  # `deploy-scripts`: that job is offline and hermetic on purpose, and this one needs
+  # PyYAML. The script itself exits 2 when the dependency is missing, so a broken
+  # environment fails loudly instead of reporting a green run over nothing.
+  workflow-contracts:
+    name: workflow contracts (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Check the docker workflow's contracts
+        run: |
+          python -m pip install --quiet pyyaml
+          python deploy/docker-workflow-check.py
+
   build-and-test:
     name: build & test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -216,7 +238,18 @@ jobs:
       - name: Test agent
         # 全部用例，只排除三个真实网络/权限用例（需要 root、IPv6 与目标可达），
         # 它们在未改动的上游代码上同样失败，详见 docs/TESTING.md。
+        # 黑名单而非白名单的理由见上面 "Test server" 那一段，这里沿用同一套。
+        #
+        # GITHUB_TOKEN 专给 agent/update 里那条真的打 api.github.com 的探针用例
+        # （TestProbeRealTargetedUpdateSelection）：没有它 GitHub 只给 60 次/小时/IP，
+        # 共享出口 IP 的 runner 上一律 403 —— 一个只改文档的 PR 就这样变红过一次。
+        # 有它则是 5000 次/小时，那条用例才是可靠的。
+        # 用内置的 secrets.GITHUB_TOKEN（本 job 的 permissions 已是 contents: read），
+        # 不需要额外 secret；拿不到 secret 的场景（例如 Dependabot）它渲染成空串，
+        # 那条用例会自己 skip 并说明原因，不会把一个只改文档的 PR 判红。
         working-directory: agent
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: go test ./... -count=1 -skip 'TestICMPPing|TestTCPPing|TestHTTPPing'
 
       - name: Vet server
