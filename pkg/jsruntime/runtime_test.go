@@ -1,7 +1,6 @@
 package jsruntime
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -50,7 +49,7 @@ func TestNewReturnsRuntimeWithInjectedGlobals(t *testing.T) {
 }
 
 func TestConsoleMethodsWriteMessagesAndStacks(t *testing.T) {
-	var output bytes.Buffer
+	var output syncBuffer
 	runtime, err := New(`
         function sendMessage() {
             console.debug("debug");
@@ -374,7 +373,7 @@ func TestEventLoopRunsMicrotasksBeforeTimers(t *testing.T) {
 }
 
 func TestTimerCallbackTimeoutDoesNotBlockEventLoop(t *testing.T) {
-	var output bytes.Buffer
+	var output syncBuffer
 	runtime, err := New(`
 		function startTimer() {
 			setTimeout(() => {
