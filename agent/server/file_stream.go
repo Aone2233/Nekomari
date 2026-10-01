@@ -54,6 +54,16 @@ type uploadStreamSpec struct {
 	First      bool
 }
 
+// buildFileTransferURL 返回文件传输数据面端点。
+//
+// agent 凭据（长期 token）**不进 URL**：查询串会被 nginx / Cloudflare 的访问日志完整
+// 记录，也会在请求出错时被原样打进各节点自己的 journal——与 v2RPCEndpoint /
+// terminalEndpoint 同一原则。凭据由调用方经 `Authorization: Bearer` 头发送（setV2Auth）；
+// 服务端该路由同样走 IdentityMiddleware，因此头部即可完成认证。
+//
+// `transfer_token` 是面板为一次传输签发的一次性令牌，不是 agent 凭据，语义保持不变：
+// 面板侧优先读 `X-Komari-Transfer-Token` 头（lookupStreamTransfer），查询参数只是旧 agent
+// 的兼容路径，所以这里保留。
 func buildFileTransferURL(args map[string]interface{}) (string, error) {
 	id := strings.TrimSpace(argString(args, "transfer_id"))
 	token := strings.TrimSpace(argString(args, "transfer_token"))
@@ -67,7 +77,6 @@ func buildFileTransferURL(args map[string]interface{}) (string, error) {
 	base.Path = strings.TrimRight(base.Path, "/") + "/api/clients/transfer/" + url.PathEscape(id)
 	base.RawPath = ""
 	query := base.Query()
-	query.Set("token", pkg_flags.GlobalConfig.Token)
 	query.Set("transfer_token", token)
 	base.RawQuery = query.Encode()
 	return base.String(), nil
@@ -122,6 +131,8 @@ func sendDownloadStream(args map[string]interface{}) (json.RawMessage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("download_stream: create HTTP request: %w", err)
 	}
+	// agent 凭据走请求头，不进 URL（见 buildFileTransferURL）。
+	setV2Auth(request)
 	request.ContentLength = length
 	request.Header.Set("Content-Type", "application/octet-stream")
 	request.Header.Set("Accept", "application/json")
@@ -176,6 +187,8 @@ func receiveUploadStream(args map[string]interface{}) (json.RawMessage, error) {
 	if err != nil {
 		return nil, fmt.Errorf("upload_stream: HTTP request: %w", err)
 	}
+	// agent 凭据走请求头，不进 URL（见 buildFileTransferURL）。
+	setV2Auth(request)
 	request.ContentLength = 0
 	request.Header.Set("Accept", "application/octet-stream")
 	request.Header.Set("Accept-Encoding", "identity")

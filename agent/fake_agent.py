@@ -32,7 +32,10 @@ class FakeAgent:
         self.pending_ack_ids: list[str] = []
 
     def endpoint(self, path: str) -> str:
-        return f"{self.server}{path}?token={quote(self.token, safe='')}"
+        # 凭据不进 URL：查询串会被面板前面的 nginx / Cloudflare 完整记进访问日志
+        # （现场实测 14 天日志里留下过 47 个不同的 agent token）。见 rpc() 的
+        # Authorization 头；面板的 extractClientToken 支持 "Bearer <token>"。
+        return f"{self.server}{path}"
 
     def rpc(self, method: str, params: dict[str, Any], request_id: str | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {"jsonrpc": JSONRPC_VERSION, "method": method, "params": params}
@@ -42,7 +45,7 @@ class FakeAgent:
         request = Request(
             self.endpoint("/api/clients/v2/rpc"),
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.token}"},
             method="POST",
         )
         try:
