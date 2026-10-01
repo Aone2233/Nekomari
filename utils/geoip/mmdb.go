@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath" // 新增导入，用于处理文件路径
 	"sync"
+	"time"
 
 	"github.com/Aone2233/nekomari/database/auditlog"
 	"github.com/oschwald/maxminddb-golang"
@@ -131,10 +132,30 @@ func (s *MaxMindGeoIPService) GetGeoInfo(ip net.IP) (*GeoInfo, error) {
 
 // UpdateDatabase 实现了 GeoIPService 接口的 UpdateDatabase 方法。
 // 它会下载最新的 GeoLite2-Country.mmdb 文件并重新加载数据库。
+//
+// 下载与替换在 downloadToTempFile 中完成，写锁的作用域就在那个函数里；initialize
+// 自己也会取写锁，所以必须等它返回（锁已释放）之后再调用 —— 两件事不能在同一层
+// defer 下，否则就是自死锁（原代码在成功路径上显式 Unlock 正是为了避开它）。
 func (s *MaxMindGeoIPService) UpdateDatabase() error {
-	s.mu.Lock() // 获取写锁，确保更新过程的互斥性
+	if err := s.downloadToTempFile(); err != nil {
+		return err
+	}
+	// 重新加载数据库以使用新下载的文件
+	return s.initialize()
+}
 
-	resp, err := http.Get(GeoIpUrl) // GeoIpUrl 是预定义的 MaxMind 数据库下载地址
+// downloadToTempFile 持写锁完成下载、校验与原子替换。
+//
+// 写锁的全部作用域就是这一个函数，所以五条早退路径都会经 defer 释放它。原来的写法把
+// Lock 放在 UpdateDatabase 顶部、Unlock 放在唯一的成功路径上，于是任何一次下载失败都会
+// 让写锁一直被握着，GetGeoInfo（RLock）随之永久阻塞 —— 而它在 agent 上报基本信息的
+// 同步路径上，表现为整个上报流程卡死。
+func (s *MaxMindGeoIPService) downloadToTempFile() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Get(GeoIpUrl)
 	if err != nil {
 		return fmt.Errorf("failed to initiate MaxMind database download: %w", err)
 	}
@@ -149,19 +170,52 @@ func (s *MaxMindGeoIPService) UpdateDatabase() error {
 		return fmt.Errorf("failed to create data directory for MaxMind database update: %w", err)
 	}
 
-	out, err := os.Create(s.dbFilePath) // 创建或覆盖本地数据库文件
+	// 先写临时文件、校验通过后再原子替换线上库。旧的 os.Create(s.dbFilePath) 会先把
+	// 线上库截断成 0 字节，随后的拷贝一旦失败（或下载到的其实是一段错误页），可用的库
+	// 就被换成了一个空文件或垃圾内容。
+	tmp := s.dbFilePath + ".new"
+	out, err := os.Create(tmp)
 	if err != nil {
-		return fmt.Errorf("failed to create MaxMind database file at %s: %w", s.dbFilePath, err)
+		return fmt.Errorf("failed to create temporary MaxMind database file at %s: %w", tmp, err)
 	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body) // 将下载内容写入文件
-	if err != nil {
+	if _, err := io.Copy(out, resp.Body); err != nil {
+		_ = out.Close()
+		_ = os.Remove(tmp)
 		return fmt.Errorf("failed to write MaxMind database file: %w", err)
 	}
-	s.mu.Unlock() // initialize 方法需要在解锁后调用，以避免死锁
-	// 重新加载数据库以使用新下载的文件
-	return s.initialize()
+	if err := out.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("failed to close temporary MaxMind database file at %s: %w", tmp, err)
+	}
+	if err := validateMmdb(tmp); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, s.dbFilePath); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("failed to replace MaxMind database at %s: %w", s.dbFilePath, err)
+	}
+	return nil
+}
+
+// validateMmdb 拒绝空文件，以及无法作为 MaxMind 数据库打开的文件。
+//
+// 下载失败最常见的样子并不是 HTTP 错误，而是一个 200 加一段 HTML 错误页或截断的响应；
+// 那种内容一旦写进线上路径，下次启动打开的就是一个坏库。
+func validateMmdb(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("downloaded MaxMind database is unreadable: %w", err)
+	}
+	if info.Size() == 0 {
+		return fmt.Errorf("downloaded MaxMind database is empty")
+	}
+	reader, err := maxminddb.Open(path)
+	if err != nil {
+		return fmt.Errorf("downloaded file is not a usable MaxMind database: %w", err)
+	}
+	_ = reader.Close()
+	return nil
 }
 
 // Close 实现了 GeoIPService 接口的 Close 方法。
