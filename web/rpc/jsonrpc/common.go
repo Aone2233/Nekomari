@@ -456,9 +456,11 @@ func getMe(ctx context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) 
 		resp.SSOId = "client"
 		resp.SSOType = "client"
 		resp.Username = "client"
-		resp.UUID = meta.ClientToken
+		// 只回显解析出的 uuid。ClientToken 是 agent 的裸凭据：把它当 uuid 返回，等于
+		// 让任何持有凭据的调用方从 /api/me 拿回凭据本身（也会被前端与日志留存）。查询
+		// 失败时保持为空，不回退到 token。
 		client, err := clients.GetClientUUIDByToken(meta.ClientToken)
-		if err != nil {
+		if err == nil {
 			resp.UUID = client
 		}
 		return resp, nil

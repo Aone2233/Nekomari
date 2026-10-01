@@ -172,6 +172,62 @@ func TestTheSweeperDropsAnAlertForAnOlderConnection(t *testing.T) {
 	}
 }
 
+// A second window that takes the node over must not cost the alert.
+//
+// The sweeper used to forget the entry immediately after the send call returned, and re-queueing
+// happened *inside* that call: "offline inside window A, still offline, B begins before the sweep
+// gets there" therefore deleted the entry that had just been written for B, and the outage was
+// never reported at all.
+func TestAnAlertRequeuedIntoASecondWindowIsNotForgotten(t *testing.T) {
+	clearDeferred(t)
+	now := time.Now().UTC()
+	// Window A ended a minute ago, so the alert is due...
+	deferOfflineAlert("node-a", now.Add(-time.Minute), 7)
+
+	// ...and the node is still offline, under the connection the alert is about.
+	state := getOrInitState("node-a")
+	state.mu.Lock()
+	state.connectionID = 7
+	state.isConnExist = false
+	state.pendingOfflineSince = now.Add(-5 * time.Minute)
+	state.mu.Unlock()
+
+	// ...but window B now covers it and ends in twenty minutes.
+	windowBEnd := now.Add(20 * time.Minute)
+	withSeams(t, func(time.Time, string) Decision {
+		return Decision{Suppress: true, Reason: "maintenance window B", DeliverAt: windowBEnd}
+	})
+	maintenanceShouldSendLater = func(now, deliverAt time.Time) bool { return true }
+
+	sweepDeferredAlerts(now)
+
+	if queueLen() != 1 {
+		t.Fatalf("the alert was dropped when a second window took the node over (queue length %d)",
+			queueLen())
+	}
+	deferredMu.Lock()
+	queued := deferredAlerts["node-a"]
+	deferredMu.Unlock()
+	if !queued.deliverAt.Equal(windowBEnd.UTC()) {
+		t.Fatalf("deliverAt = %s, want window B's end %s: the alert must wait for the window that "+
+			"now covers the node", queued.deliverAt, windowBEnd.UTC())
+	}
+	if queued.connectionID != 7 {
+		t.Fatalf("connectionID = %d, want 7: re-queueing must keep the outage the alert is about, "+
+			"not borrow the node's current connection", queued.connectionID)
+	}
+
+	// Nothing has been sent, so the outage is still pending: that marker is what makes a
+	// reconnect resolve as "still down" rather than as the recovery of an alert nobody received.
+	state.mu.Lock()
+	stillPending := !state.pendingOfflineSince.IsZero()
+	state.mu.Unlock()
+	if !stillPending {
+		t.Fatal("re-queueing cleared pendingOfflineSince: an alert that was never sent must not " +
+			"look reported")
+	}
+}
+
 // A node that is no longer offline needs no alert, even though the deferral is due and fresh.
 func TestTheSweeperDropsAnAlertForANodeThatCameBack(t *testing.T) {
 	clearDeferred(t)
@@ -190,5 +246,47 @@ func TestTheSweeperDropsAnAlertForANodeThatCameBack(t *testing.T) {
 	sweepDeferredAlerts(now)
 	if queueLen() != 0 {
 		t.Fatalf("an alert survived for a node that is connected (length %d)", queueLen())
+	}
+}
+
+// Re-queueing acts on the outage the sweeper is handling and nothing else.
+//
+// Deleting by client id alone is what the sweeper's bug did; overwriting by client id alone would
+// be the same mistake moved one call earlier. A newer outage under the same client id has to keep
+// its own connection and its own later deadline, and an entry the online path already forgot must
+// not be resurrected.
+func TestRequeueingMovesOnlyTheOutageBeingSwept(t *testing.T) {
+	clearDeferred(t)
+	now := time.Now().UTC()
+	newWindowEnd := now.Add(20 * time.Minute)
+
+	// The entry being swept is moved to the end of the window that took the node over.
+	deferOfflineAlert("node-swept", now.Add(-time.Minute), 7)
+	requeueDeferredAlert("node-swept", 7, newWindowEnd)
+
+	deferredMu.Lock()
+	moved := deferredAlerts["node-swept"]
+	deferredMu.Unlock()
+	if moved.connectionID != 7 || !moved.deliverAt.Equal(newWindowEnd.UTC()) {
+		t.Fatalf("the swept entry = %+v, want connection 7 due at %s", moved, newWindowEnd.UTC())
+	}
+
+	// A newer outage queued its own entry: the older one's re-queue must leave it alone.
+	newerEnd := now.Add(30 * time.Minute)
+	deferOfflineAlert("node-newer", newerEnd, 99)
+	requeueDeferredAlert("node-newer", 7, newWindowEnd)
+
+	deferredMu.Lock()
+	newer := deferredAlerts["node-newer"]
+	deferredMu.Unlock()
+	if newer.connectionID != 99 || !newer.deliverAt.Equal(newerEnd.UTC()) {
+		t.Fatalf("the newer outage's entry = %+v, want connection 99 due at %s: the older alert's "+
+			"re-queue must not overwrite it", newer, newerEnd.UTC())
+	}
+
+	// An entry the online path has forgotten (the node came back) is not brought back to life.
+	requeueDeferredAlert("node-gone", 7, newWindowEnd)
+	if queueLen() != 2 {
+		t.Fatalf("re-queueing resurrected a forgotten entry (queue length %d, want 2)", queueLen())
 	}
 }

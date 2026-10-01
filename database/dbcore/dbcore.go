@@ -22,8 +22,20 @@ import (
 	"gorm.io/gorm"
 )
 
-// zipDirectoryExcluding 将 srcDir 打包为 dstZip，exclude 是绝对路径集合需要排除
-func zipDirectoryExcluding(srcDir, dstZip string, exclude map[string]struct{}) error {
+// partialArchiveSuffix 是打包期间的临时文件名后缀。
+//
+// 归档只有在写完、关闭并 rename 之后才会以正式名字出现，所以进程崩溃或任何
+// 一步失败都不会在正式路径上留下一个「同名同形、只在需要回滚时才暴露」的
+// 截断 zip。
+const partialArchiveSuffix = ".partial"
+
+// zipDirectoryExcluding 将 srcDir 打包为 dstZip，exclude 是绝对路径集合需要排除。
+//
+// 写入顺序是「临时名 → 写完 → 校验 → rename」，顺序不能改：
+// zip 的中央目录在 zw.Close() 时才写出，因此必须显式调完 zw.Close() 与
+// out.Close()（并检查它们的错误）之后才能 os.Rename —— 否则 rename 出去的
+// 是个没有中央目录的坏档。任何失败都删掉临时文件，并把错误返回给调用方。
+func zipDirectoryExcluding(srcDir, dstZip string, exclude map[string]struct{}) (err error) {
 	// 规范化排除路径为绝对路径
 	normExclude := make(map[string]struct{}, len(exclude))
 	for p := range exclude {
@@ -31,14 +43,22 @@ func zipDirectoryExcluding(srcDir, dstZip string, exclude map[string]struct{}) e
 		normExclude[abs] = struct{}{}
 	}
 
-	out, err := os.Create(dstZip)
+	tmp := dstZip + partialArchiveSuffix
+	out, err := os.Create(tmp)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	// 只负责清理临时文件：正式文件在 rename 成功之后才可能出现，所以失败时
+	// 不需要（也不应该）动 dstZip —— 它可能是上一次成功留下的归档。
+	defer func() {
+		if err != nil {
+			_ = out.Close()
+			_ = os.Remove(tmp)
+		}
+	}()
 
 	zw := zip.NewWriter(out)
-	defer zw.Close()
+	// zw.Close 刻意不用 defer：中央目录必须显式写完，否则 rename 出坏档。
 
 	absSrc, _ := filepath.Abs(srcDir)
 	walkErr := filepath.Walk(absSrc, func(path string, info os.FileInfo, err error) error {
@@ -86,9 +106,53 @@ func zipDirectoryExcluding(srcDir, dstZip string, exclude map[string]struct{}) e
 		return nil
 	})
 	if walkErr != nil {
-		return walkErr
+		err = walkErr
+		return err
 	}
-	return zw.Close()
+	if closeErr := zw.Close(); closeErr != nil {
+		err = closeErr
+		return err
+	}
+	if closeErr := out.Close(); closeErr != nil {
+		err = closeErr
+		return err
+	}
+	if verifyErr := verifyZipArchive(tmp); verifyErr != nil {
+		err = verifyErr
+		return err
+	}
+	if renameErr := os.Rename(tmp, dstZip); renameErr != nil {
+		err = renameErr
+		return err
+	}
+	return nil
+}
+
+// verifyZipArchive 在 rename 之前确认归档可读：中央目录存在且每个条目可解压。
+// 这是「校验」这一步 —— 只检查 zw.Close() 的返回值可能漏掉被截断的文件，
+// 而这里会真正把条目解压一遍（代价是启动时多一次解压，换的是「rename 出去的
+// 归档一定能用」；恢复/升级路径每次启动最多各走一次）。
+func verifyZipArchive(path string) error {
+	zr, err := zip.OpenReader(path)
+	if err != nil {
+		return fmt.Errorf("archive is not a readable zip: %w", err)
+	}
+	defer zr.Close()
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return fmt.Errorf("archive entry %q is not readable: %w", f.Name, err)
+		}
+		if _, err := io.Copy(io.Discard, rc); err != nil {
+			rc.Close()
+			return fmt.Errorf("archive entry %q is corrupt: %w", f.Name, err)
+		}
+		rc.Close()
+	}
+	return nil
 }
 
 // removeAllInDirExcept 删除 dir 下除 exclude 指定绝对路径外的所有文件和文件夹
@@ -292,6 +356,9 @@ func backupOnVersionUpgrade() bool {
 	tsName := time.Now().UTC().Format("20060102-150405")
 	bakPath := filepath.Join(backupDir, fmt.Sprintf("upgrade-%s.zip", tsName))
 	if zipErr := zipDirectoryExcluding("./data", bakPath, upgradeArchiveExclusions(backupDir)); zipErr != nil {
+		// zipDirectoryExcluding 只在成功后才把临时文件 rename 成 bakPath；
+		// 这里再删一次临时文件，确保失败不留下半成品。
+		_ = os.Remove(bakPath + partialArchiveSuffix)
 		logger.Errorf("dbcore", "[upgrade-backup] failed to backup ./data before upgrade (from %q to %q): %v", prevVersion, versionID, zipErr)
 		return false
 	}
@@ -535,48 +602,67 @@ func Close() error {
 func doInitialize() error {
 	var err error
 
-	// 在数据库初始化前执行：如果存在 ./data/backup.zip，则进行恢复逻辑
+	// 在数据库初始化前执行：如果存在 ./data/backup.zip，则进行恢复逻辑。
+	//
+	// 这是全流程里唯一「一步就能丢光全部数据」的地方，所以有两道护栏：
+	// 快照取不到就【中止恢复】（绝不带着零副本去删数据）；解压失败就保留
+	// backup.zip 与标记，让下次启动重试。
 	func() {
 		backupZipPath := filepath.Join(".", "data", "backup.zip")
-		if _, statErr := os.Stat(backupZipPath); statErr == nil {
-			// 4. 将当前数据快照保存到 ./data/backup/，并保留已有归档。
-			backupDir := filepath.Join(".", "data", "backup")
-			if err := os.MkdirAll(backupDir, 0755); err != nil {
-				logger.Errorf("dbcore", "[restore] failed to create backup dir: %v", err)
-			} else {
-				tsName := time.Now().UTC().Format("20060102-150405")
-				bakPath := filepath.Join(backupDir, fmt.Sprintf("pre-restore-%s.zip", tsName))
-				if zipErr := zipDirectoryExcluding("./data", bakPath, map[string]struct{}{backupZipPath: {}, backupDir: {}}); zipErr != nil {
-					logger.Errorf("dbcore", "[restore] failed to zip current data: %v", zipErr)
-				} else {
-					logger.Infof("dbcore", "[restore] current data zipped to %s", bakPath)
-				}
-			}
+		if _, statErr := os.Stat(backupZipPath); statErr != nil {
+			return
+		}
 
-			// 5. 删除数据文件，但保留归档目录和待恢复的 backup.zip。
-			if delErr := removeAllInDirExcept("./data", map[string]struct{}{backupZipPath: {}, backupDir: {}}); delErr != nil {
-				logger.Errorf("dbcore", "[restore] failed to cleanup data dir: %v", delErr)
-			}
+		backupDir := filepath.Join(".", "data", "backup")
+		markupPath := filepath.Join(".", "data", "komari-backup-markup")
+		// 破坏性删除只保留这三样：待恢复的归档、归档目录（含 pre-restore 快照），
+		// 以及标记。标记必须一起留下 —— 它在第 7/8 步才被删掉，如果在这里先被
+		// 清掉，解压失败时就没有「这次恢复未完成」的证据，第 8 步也只会刷一条
+		// 无意义的错误日志。
+		keepDuringRestore := map[string]struct{}{
+			backupZipPath: {},
+			backupDir:     {},
+			markupPath:    {},
+		}
 
-			// 6. 解压 ./data/backup.zip 到 ./data
-			if unzipErr := unzipToDir(backupZipPath, "./data"); unzipErr != nil {
-				logger.Errorf("dbcore", "[restore] failed to unzip backup into data: %v", unzipErr)
-			} else {
-				logger.Infof("dbcore", "[restore] backup.zip extracted to ./data")
-			}
+		// 4. 将当前数据快照保存到 ./data/backup/，并保留已有归档。
+		// 快照失败就中止：没有副本时后面那步删除不可逆。
+		if err := os.MkdirAll(backupDir, 0755); err != nil {
+			logger.Errorf("dbcore", "[restore] refusing to restore: failed to create backup dir (backup.zip kept for a retry): %v", err)
+			return
+		}
+		tsName := time.Now().UTC().Format("20060102-150405")
+		bakPath := filepath.Join(backupDir, fmt.Sprintf("pre-restore-%s.zip", tsName))
+		if zipErr := zipDirectoryExcluding("./data", bakPath, map[string]struct{}{backupZipPath: {}, backupDir: {}}); zipErr != nil {
+			logger.Errorf("dbcore", "[restore] refusing to restore: could not snapshot current data (backup.zip kept for a retry): %v", zipErr)
+			return
+		}
+		logger.Infof("dbcore", "[restore] current data zipped to %s", bakPath)
 
-			// 7. 删除 ./data/backup.zip
-			if rmErr := os.Remove(backupZipPath); rmErr != nil {
-				logger.Errorf("dbcore", "[restore] failed to remove backup.zip: %v", rmErr)
-			} else {
-				logger.Infof("dbcore", "[restore] backup.zip removed")
-			}
-			// 8. 删除标记
-			if rmErr := os.Remove("./data/komari-backup-markup"); rmErr != nil {
-				logger.Errorf("dbcore", "[restore] failed to remove komari-backup-markup: %v", rmErr)
-			} else {
-				logger.Infof("dbcore", "[restore] komari-backup-markup removed")
-			}
+		// 5. 删除数据文件，但保留归档目录、待恢复的 backup.zip 与标记。
+		if delErr := removeAllInDirExcept("./data", keepDuringRestore); delErr != nil {
+			logger.Errorf("dbcore", "[restore] failed to cleanup data dir: %v", delErr)
+		}
+
+		// 6. 解压 ./data/backup.zip 到 ./data。解压失败就保留归档与标记，
+		// 下次启动重试 —— 此刻数据目录已空，归档是唯一副本。
+		if unzipErr := unzipToDir(backupZipPath, "./data"); unzipErr != nil {
+			logger.Errorf("dbcore", "[restore] extraction failed, keeping backup.zip and markup for a retry on the next start: %v", unzipErr)
+			return
+		}
+		logger.Infof("dbcore", "[restore] backup.zip extracted to ./data")
+
+		// 7. 只有解压成功才删除 ./data/backup.zip 与标记。
+		if rmErr := os.Remove(backupZipPath); rmErr != nil {
+			logger.Errorf("dbcore", "[restore] failed to remove backup.zip: %v", rmErr)
+		} else {
+			logger.Infof("dbcore", "[restore] backup.zip removed")
+		}
+		// 8. 删除标记
+		if rmErr := os.Remove(markupPath); rmErr != nil {
+			logger.Errorf("dbcore", "[restore] failed to remove komari-backup-markup: %v", rmErr)
+		} else {
+			logger.Infof("dbcore", "[restore] komari-backup-markup removed")
 		}
 	}()
 

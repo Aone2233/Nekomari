@@ -95,6 +95,17 @@ func OfflineNotification(clientID string, endedConnectionID int64) {
 	if decision := For(now, clientID); decision.Suppress {
 		logger.Infof("notifier", "%s is inside a %s; the offline alert is deferred to %s",
 			clientID, decision.Reason, decision.DeliverAt.Format(time.RFC3339))
+		// Suppressing the alert defers it; it does not undo the outage. The fact that the node is
+		// offline has to be recorded here, because the sweeper that delivers the deferred alert
+		// answers "is the node still offline?" with exactly this flag (maintenance_defer.go:115).
+		// Setting it only in the grace-period goroutine below left it true on this path, so a node
+		// that went down inside a window and stayed down produced no alert at all — the deferred
+		// entry was read as "already recovered" and dropped.
+		state.mu.Lock()
+		state.isConnExist = false
+		state.mu.Unlock()
+		// pendingOfflineSince is deliberately left set: it is what makes a reconnect resolve as
+		// "came back" instead of as a fresh outage that fires a spurious recovery notification.
 		deferOfflineAlert(clientID, decision.DeliverAt, endedConnectionID)
 		return
 	}

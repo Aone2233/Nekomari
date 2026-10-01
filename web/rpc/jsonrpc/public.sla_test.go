@@ -5,6 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/internal/dbcache"
+	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/pkg/metric"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
@@ -152,4 +157,100 @@ func TestRetentionWindowWithoutAStoreIsZero(t *testing.T) {
 	if reason != "" {
 		t.Fatalf("reason = %q, want empty when nothing was clamped", reason)
 	}
+}
+
+// F2/P3-1：请求里没有任何一个可见实体时，报告必须是空的。
+//
+// 修复前的行为就是线上实测到的那个：实体列表解析为空之后直接交给 store，而 store 把空列表
+// 当作「没有过滤条件」，于是 getSlaReport 报出全队 —— 包括唯一那台 hidden=1 的节点
+// （实测 count=10）。同族的 getPingMetricStats 一直返回空结果，这里钉住同一个约定。
+//
+// 同时钉住反向的一半：判空不能把「存在且可见」的节点也吞掉。
+func TestPublicSlaReportReturnsNothingWhenNoEntityIsVisible(t *testing.T) {
+	const visible = "sla-visible-node"
+	const hidden = "sla-hidden-node"
+
+	db := dbcore.GetDBInstance()
+	for _, client := range []models.Client{
+		{UUID: visible, Name: "visible", Token: "test-only-token-sla-visible"},
+		{UUID: hidden, Name: "hidden", Token: "test-only-token-sla-hidden", Hidden: true},
+	} {
+		if err := db.Create(&client).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	dbcache.InvalidateAll()
+
+	ctx := context.Background()
+	store, err := metric.Open(ctx, metric.SQLite(":memory:", metric.WithMaxOpenConns(1)))
+	if err != nil {
+		t.Fatalf("open metric store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	// The report reads these two series, so define them: an empty window must answer as
+	// empty rather than as "unknown metric".
+	for _, name := range []string{metricstore.MetricPingLoss, metricstore.MetricPingLatency} {
+		if err := store.CreateMetric(ctx, metric.Definition{Name: name, Type: metric.TypeGauge, RetentionDays: 30}); err != nil {
+			t.Fatalf("create metric %s: %v", name, err)
+		}
+	}
+	// The hidden node does have data. This is what makes the test able to fail before the
+	// fix: an empty entity list reaches the reader, the reader applies no filter, and the
+	// hidden node is reported. Without a second node's samples there would be nothing to
+	// leak and the assertion would pass vacuously.
+	if err := store.Write(ctx, metric.Point{
+		MetricName: metricstore.MetricPingLoss,
+		EntityID:   hidden,
+		Timestamp:  time.Now().UTC().Add(-time.Minute),
+		Value:      1,
+	}); err != nil {
+		t.Fatalf("write hidden node sample: %v", err)
+	}
+
+	guest := rpc.NewContextWithMeta(context.Background(), &rpc.ContextMeta{Principal: rpc.NewAnonymousPrincipal()})
+
+	for _, tc := range []struct {
+		name   string
+		params publicSlaReportParams
+	}{
+		{"unknown uuid", publicSlaReportParams{UUID: "sla-never-existed", Window: "24h"}},
+		{"hidden uuid as guest", publicSlaReportParams{UUID: hidden, Window: "24h"}},
+		{"only unknown entity ids", publicSlaReportParams{
+			EntityIDs: []string{"sla-never-existed-a", "sla-never-existed-b"}, Window: "24h",
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result, rpcErr := publicGetSlaReportWithStore(guest, tc.params, store)
+			if rpcErr != nil {
+				t.Fatalf("unexpected error: %+v", rpcErr)
+			}
+			report, ok := result.(publicSlaReportResponse)
+			if !ok {
+				t.Fatalf("result type = %T, want publicSlaReportResponse", result)
+			}
+			if report.Count != 0 || len(report.Nodes) != 0 {
+				t.Fatalf("an empty entity list leaked the fleet: count=%d nodes=%d", report.Count, len(report.Nodes))
+			}
+			// An empty report is still a report: the window it describes must survive,
+			// or a caller cannot tell "nothing to report" from a malformed answer.
+			if report.Window != "24h" || report.IntervalSeconds <= 0 || len(report.Presets) == 0 {
+				t.Fatalf("the empty answer lost its window metadata: %+v", report)
+			}
+		})
+	}
+
+	t.Run("visible uuid still reports the node", func(t *testing.T) {
+		result, rpcErr := publicGetSlaReportWithStore(guest,
+			publicSlaReportParams{UUID: visible, Window: "24h"}, store)
+		if rpcErr != nil {
+			t.Fatalf("unexpected error: %+v", rpcErr)
+		}
+		report, ok := result.(publicSlaReportResponse)
+		if !ok {
+			t.Fatalf("result type = %T, want publicSlaReportResponse", result)
+		}
+		if report.Count != 1 || len(report.Nodes) != 1 || report.Nodes[0].EntityID != visible {
+			t.Fatalf("a visible node was dropped by the empty-list guard: %+v", report)
+		}
+	})
 }

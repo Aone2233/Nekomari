@@ -10,6 +10,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -134,7 +135,7 @@ func EstablishWebSocketConnection() {
 }
 
 func buildWebSocketEndpoint() string {
-	websocketEndpoint := strings.TrimSuffix(flags.Endpoint, "/") + "/api/clients/v2/rpc?token=" + flags.Token
+	websocketEndpoint := v2RPCEndpoint()
 	websocketEndpoint = "ws" + strings.TrimPrefix(websocketEndpoint, "http")
 	if convertedEndpoint, err := utils.ConvertIDNToASCII(websocketEndpoint); err == nil {
 		return convertedEndpoint
@@ -237,7 +238,7 @@ func postV2Request(payload []byte) (*v2.Response, error) {
 }
 
 func postV2RequestContext(ctx context.Context, payload []byte) (*v2.Response, error) {
-	endpoint := strings.TrimSuffix(flags.Endpoint, "/") + "/api/clients/v2/rpc?token=" + flags.Token
+	endpoint := v2RPCEndpoint()
 	body := payload
 	compressed := false
 	if !flags.DisableCompression {
@@ -251,6 +252,7 @@ func postV2RequestContext(ctx context.Context, payload []byte) (*v2.Response, er
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	setV2Auth(req)
 	if compressed {
 		req.Header.Set("Content-Encoding", "gzip")
 	}
@@ -358,7 +360,7 @@ func markV2EventSeen(id string) bool {
 func connectWebSocket(websocketEndpoint string) (*ws.SafeConn, error) {
 	dialer := newWSDialer()
 
-	conn, resp, err := dialer.Dial(websocketEndpoint, nil)
+	conn, resp, err := dialer.Dial(websocketEndpoint, v2RPCAuthHeaders())
 	if err != nil {
 		if resp != nil && resp.StatusCode != 101 {
 			return nil, &httpStatusError{StatusCode: resp.StatusCode, Status: resp.Status}
@@ -425,7 +427,7 @@ func processV2Event(conn *ws.SafeConn, method string, params interface{}, eventI
 			RequestID string `json:"request_id"`
 		}
 		if err := v2.BindParams(params, &p); err == nil {
-			go establishTerminalConnection(flags.Token, p.RequestID, flags.Endpoint)
+			go establishTerminalConnection(p.RequestID, flags.Endpoint)
 			return true
 		} else {
 			log.Printf("bad v2 terminal params: %v", err)
@@ -476,22 +478,35 @@ func processV2Event(conn *ws.SafeConn, method string, params interface{}, eventI
 
 // connectWebSocket attempts to establish a WebSocket connection and upload basic info
 
-// establishTerminalConnection 建立终端连接并使用terminal包处理终端操作
-func establishTerminalConnection(token, id, endpoint string) {
-	endpoint = strings.TrimSuffix(endpoint, "/") + "/api/clients/terminal?token=" + token + "&id=" + id
-	endpoint = "ws" + strings.TrimPrefix(endpoint, "http")
+// terminalEndpoint 返回终端握手端点，**不带任何凭据**。
+//
+// 与 v2RPCEndpoint 同一原则：URL 的查询串会被 nginx / Cloudflare 的访问日志完整
+// 记录，也会在请求出错时被原样打进各节点自己的 journal。终端握手此前是
+// `/api/clients/terminal?token=<token>&id=<id>`，也就是 T5 把 RPC 链路改走请求头
+// 之后，agent 侧残留的最后一个"把凭据放进 URL"的调用点。服务端该路由在
+// RequireRole 组里、由 IdentityMiddleware 识别身份，所以凭据完全可以走请求头
+// （见 v2RPCAuthHeaders）。`id` 是会话标识而不是凭据，保留在查询串里；对它做转义，
+// 避免请求 ID 中的字符拼出额外的查询参数。
+func terminalEndpoint(id, endpoint string) string {
+	uri := strings.TrimSuffix(endpoint, "/") + "/api/clients/terminal?id=" + url.QueryEscape(id)
+	uri = "ws" + strings.TrimPrefix(uri, "http")
 
 	// 转换中文域名为 ASCII 兼容编码
-	if convertedEndpoint, err := utils.ConvertIDNToASCII(endpoint); err == nil {
-		endpoint = convertedEndpoint
+	if convertedEndpoint, err := utils.ConvertIDNToASCII(uri); err == nil {
+		uri = convertedEndpoint
 	} else {
 		log.Printf("Warning: Failed to convert Terminal WebSocket IDN to ASCII: %v", err)
 	}
 
-	// 使用与主 WS 相同的拨号策略
+	return uri
+}
+
+// establishTerminalConnection 建立终端连接并使用terminal包处理终端操作
+func establishTerminalConnection(id, endpoint string) {
+	// 使用与主 WS 相同的拨号策略；凭据在握手请求头里，不在 URL 里。
 	dialer := newWSDialer()
 
-	conn, _, err := dialer.Dial(endpoint, nil)
+	conn, _, err := dialer.Dial(terminalEndpoint(id, endpoint), v2RPCAuthHeaders())
 	if err != nil {
 		log.Println("Failed to establish terminal connection:", err)
 		return

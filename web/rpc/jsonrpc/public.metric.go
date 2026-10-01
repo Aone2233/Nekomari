@@ -15,6 +15,7 @@ import (
 	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/pkg/metric"
 	"github.com/Aone2233/nekomari/pkg/rpc"
+	logger "github.com/Aone2233/nekomari/utils/log"
 )
 
 const defaultMetricQueryPoints = 500
@@ -172,12 +173,29 @@ func publicListMetricDefinitions(ctx context.Context, _ *rpc.JsonRpcRequest) (an
 	return out, nil
 }
 
+// metricLoadSpec is one resolved metric read: the key the caller named, the series the
+// store actually holds it under, the aggregation, and the output sizing.
+type metricLoadSpec struct {
+	metricKey  string
+	storageKey string
+	algorithm  metric.Aggregation
+	maxPoints  int
+	interval   time.Duration
+}
+
 func publicQueryMetrics(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params publicMetricQueryParams
 	if err := req.BindParams(&params); err != nil {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request body: "+err.Error(), nil)
 	}
+	return publicQueryMetricsWithStore(ctx, params, metricstore.GetStore())
+}
 
+// publicQueryMetricsWithStore answers a metric query against an explicit store, or nil
+// when the process has none. The handler above passes the process-wide store; taking it
+// as a parameter is what lets the traffic fallback below be exercised end to end without
+// a configured deployment.
+func publicQueryMetricsWithStore(ctx context.Context, params publicMetricQueryParams, store *metric.Store) (any, *rpc.JsonRpcError) {
 	metricKeys := normalizeStringList(params.MetricKeys, params.Metrics, []string{params.MetricKey})
 	if len(metricKeys) > maxMetricKeys {
 		return nil, rpc.MakeError(rpc.InvalidParams, "too many metric keys", nil)
@@ -203,18 +221,10 @@ func publicQueryMetrics(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 		return nil, rpcErr
 	}
 
-	store := metricstore.GetStore()
 	if store == nil {
 		return nil, rpc.MakeError(rpc.InternalError, "metric store not initialized", nil)
 	}
 
-	type metricLoadSpec struct {
-		metricKey  string
-		storageKey string
-		algorithm  metric.Aggregation
-		maxPoints  int
-		interval   time.Duration
-	}
 	loadSpecs := make([]metricLoadSpec, 0, len(metricKeys))
 	storageKeys := make([]string, 0, len(metricKeys))
 	pointBudget := 0
@@ -341,6 +351,24 @@ func publicQueryMetrics(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 		}
 	}
 
+	// F6: `sum` on a billing-cycle counter reads the validated traffic.interval.* series.
+	// Agents below v1.6.4 never wrote those, and an absent series is not a zero: on the
+	// production fleet 9 of 10 nodes answered buckets=0 for
+	// `metric_keys=["traffic.up"], aggregation="sum", hours=24` while `last` on the same
+	// node read 57.65 GB. Fall back to the original counter with `last`, for exactly the
+	// entities that have no interval series, and label the series so a caller can tell
+	// "unknown" from "nothing moved".
+	//
+	// Best effort on purpose: a failing fallback read must not turn a previously
+	// answerable query into an error, so the interval-only answer is kept and the
+	// failure is logged.
+	trafficFallbacks, fallbackErr := loadPublicLegacyTrafficFallbacks(
+		ctx, store, loadSpecs, entityIDs, start, end, params.Tags, queryNow, rawValues, rollupValues)
+	if fallbackErr != nil {
+		logger.Errorf("jsonrpc", "traffic interval fallback failed, keeping validated-interval answer: %v", fallbackErr)
+		trafficFallbacks = nil
+	}
+
 	series := make([]publicMetricSeries, 0, len(metricKeys)*maxInt(1, len(entityIDs)))
 	responsePoints := 0
 	for _, spec := range loadSpecs {
@@ -406,16 +434,59 @@ func publicQueryMetrics(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc
 			}
 		}
 		for _, entityID := range entityIDs {
+			// Look the fallback up by the key the caller named, not by the series the read
+			// was redirected to. Both `traffic.up` and an explicitly requested
+			// `traffic.interval.up` resolve to the storage key `traffic.interval.up`, so a
+			// storage-key lookup handed the explicitly requested interval series the cycle
+			// counter's answer and its quality label.
+			fallback := trafficFallbacks[spec.metricKey]
+			fallbackPoints := []publicMetricPoint(nil)
+			if fallback != nil {
+				fallbackPoints = fallback.points[entityID]
+			}
 			entitySeries := byEntity[entityID]
 			if len(entitySeries) == 0 {
 				empty := item
 				empty.EntityID = entityID
 				empty.Count = 0
 				empty.Points = nil
+				if len(fallbackPoints) > 0 {
+					empty.Points = append([]publicMetricPoint(nil), fallbackPoints...)
+					empty.Count = len(empty.Points)
+				}
 				entitySeries = []publicMetricSeries{empty}
 			}
 			for _, split := range entitySeries {
-				if isIntervalTrafficMetric(spec.storageKey) && len(split.Points) > spec.maxPoints {
+				if len(fallbackPoints) > 0 {
+					if len(split.Points) == 0 {
+						split.Points = append([]publicMetricPoint(nil), fallbackPoints...)
+					}
+					// The fallback read is a minute-resolution series, so a 24-hour window
+					// can hand back up to 1440 points per entity while the response still
+					// advertises `max_points`. Bound the answer exactly like the normal
+					// branch below, but keep one reading per bin: these are cycle
+					// cumulative values, and adding them up is the 3.87 PB/day bug this
+					// redirection exists to fix.
+					if len(split.Points) > spec.maxPoints {
+						split.Points = lastPublicTrafficBins(split.Points, start, end, spec.maxPoints)
+						split.IntervalSeconds = float64(end.Sub(start)) / float64(time.Second) / float64(spec.maxPoints)
+					} else {
+						split.IntervalSeconds = fallback.interval.Seconds()
+					}
+					split.Count = len(split.Points)
+					// These values are the billing-cycle cumulative counter read with
+					// `last`, not a sum over validated interval amounts. Saying so is the
+					// whole point: "unknown" must not look like "zero".
+					split.Semantics = "billing_cycle_cumulative"
+					split.Quality = publicTrafficFallbackQuality
+					split.Downsampled = true
+					split.DownsampleAlgorithm = string(metric.AggLast)
+					split.WindowSemantics = "bucket_coverage"
+					split.BackingIntervalSeconds = fallback.interval.Seconds()
+					if split.CoverageStart == nil {
+						split.CoverageStart, split.CoverageEndExclusive = metricBucketCoverage(start, end, fallback.interval)
+					}
+				} else if isIntervalTrafficMetric(spec.storageKey) && len(split.Points) > spec.maxPoints {
 					split.Points = sumPublicTrafficBins(split.Points, start, end, spec.maxPoints)
 					split.Count = len(split.Points)
 					split.Downsampled = true
@@ -559,6 +630,122 @@ func isIntervalTrafficMetric(name string) bool {
 	return name == metricstore.MetricTrafficIntervalUp || name == metricstore.MetricTrafficIntervalDown
 }
 
+// publicTrafficFallbackQuality marks a traffic series whose values come from the original
+// billing-cycle counter with `last`, because the validated interval series was absent
+// (an agent older than v1.6.4). A caller that only reads values must be able to tell this
+// apart from a genuine zero, which is exactly what the empty-series answer used to look
+// like.
+const publicTrafficFallbackQuality = "traffic_intervals_unavailable_legacy"
+
+// publicLegacyTrafficFallback is the `last` reading of the original counter, per entity.
+type publicLegacyTrafficFallback struct {
+	interval time.Duration
+	points   map[string][]publicMetricPoint
+}
+
+// loadPublicLegacyTrafficFallbacks reads the billing-cycle counter with `last` for the
+// entities that have no validated interval series at all.
+//
+// Only the entities without interval data are queried, and only their series are touched.
+// A node that does report intervals — the v1.6.4+ agents, of which MAC-WAN is the one in
+// production — is not part of `missing`, so its answer comes from the same values, through
+// the same code, as before this fallback existed.
+//
+// The original counter is loaded but never differenced: it is a cycle cumulative amount,
+// so its own `last` is the only honest reading. Interval sums over it would reproduce the
+// 3.87 PB/day bug this redirection was introduced to fix.
+func loadPublicLegacyTrafficFallbacks(
+	ctx context.Context,
+	store *metric.Store,
+	specs []metricLoadSpec,
+	entityIDs []string,
+	start, end time.Time,
+	tags map[string]string,
+	now time.Time,
+	rawValues map[string][]metric.Point,
+	rollupValues map[string]map[metric.Aggregation][]metric.AggregatePoint,
+) (map[string]*publicLegacyTrafficFallback, error) {
+	if len(entityIDs) == 0 {
+		return nil, nil
+	}
+	var fallbacks map[string]*publicLegacyTrafficFallback
+	for _, spec := range specs {
+		// Only the `sum` redirection needs a fallback, and only when it moved the read to
+		// a different series. A caller that asked for `traffic.interval.up` itself gets
+		// that series' own answer, empty or not.
+		if !isIntervalTrafficMetric(spec.storageKey) || spec.storageKey == spec.metricKey {
+			continue
+		}
+		present := make(map[string]struct{}, len(entityIDs))
+		for _, point := range rawValues[spec.storageKey] {
+			present[point.EntityID] = struct{}{}
+		}
+		for _, point := range rollupValues[spec.storageKey][spec.algorithm] {
+			present[point.EntityID] = struct{}{}
+		}
+		missing := make([]string, 0, len(entityIDs))
+		for _, entityID := range entityIDs {
+			if _, ok := present[entityID]; !ok {
+				missing = append(missing, entityID)
+			}
+		}
+		if len(missing) == 0 {
+			continue
+		}
+
+		// Read the counter at the same backing resolution the interval series was read
+		// at. That resolution came from the store itself (`CompatibleSeriesInterval`), so
+		// it is the one the store can actually serve; asking for an independently
+		// downsample-sized bucket would be answered from a rollup tier that only exists
+		// once compaction has run.
+		interval := spec.interval
+		if interval <= 0 {
+			interval = store.CompatibleSeriesInterval(start, now, time.Minute)
+		}
+		loaded, err := store.SeriesBatch(ctx, metric.BatchSeriesQuery{
+			Specs: []metric.BatchSeriesSpec{{
+				MetricName:     spec.metricKey,
+				Aggregations:   []metric.Aggregation{metric.AggLast},
+				Interval:       interval,
+				PreserveSeries: true,
+			}},
+			EntityIDs: missing,
+			Start:     start,
+			End:       end,
+			Tags:      tags,
+			Order:     metric.OrderAsc,
+		}, now)
+		if err != nil {
+			return nil, err
+		}
+
+		points := make(map[string][]publicMetricPoint)
+		for _, point := range loaded.Values[spec.metricKey][metric.AggLast] {
+			points[point.EntityID] = append(points[point.EntityID], publicMetricPoint{
+				entityID: point.EntityID,
+				Time:     point.Bucket.UTC(),
+				Value:    publicRawMetricValue(point.MetricName, point.Value, false),
+				Count:    point.Count,
+				Tags:     point.Tags,
+			})
+		}
+		if len(points) == 0 {
+			// The original counter is empty too: there is nothing to fall back to and the
+			// series stays empty rather than inventing a value.
+			continue
+		}
+		if fallbacks == nil {
+			fallbacks = make(map[string]*publicLegacyTrafficFallback)
+		}
+		// Keyed by the requested metric key, matching the lookup in the response loop:
+		// `traffic.up` and `traffic.interval.up` share the storage key
+		// `traffic.interval.up`, and keying by storage would attach this counter reading
+		// to an explicit `traffic.interval.up` request too.
+		fallbacks[spec.metricKey] = &publicLegacyTrafficFallback{interval: interval, points: points}
+	}
+	return fallbacks, nil
+}
+
 // Completeness compares identical bucket coverage, not a narrow sample window
 // with its wider durable buckets. Returned samples still use the requested window.
 func queryRawTrafficBucketCoverage(ctx context.Context, store *metric.Store, query metric.BatchQuery, resolutions map[string]time.Duration) (map[string][]metric.Point, error) {
@@ -672,6 +859,57 @@ func sumPublicTrafficBins(points []publicMetricPoint, start, end time.Time, maxP
 	result := make([]publicMetricPoint, 0, len(keys))
 	for _, key := range keys {
 		result = append(result, bins[key])
+	}
+	return result
+}
+
+// Binning a cycle cumulative counter must keep a reading, never add readings up: the
+// stored values are "bytes since the billing cycle started", so a bin holding k of them
+// sums to roughly k times the real amount — the same 3.87 PB/day error class the interval
+// redirection exists to prevent. Each bin therefore keeps its latest observation (the
+// `last` reading, matching the DownsampleAlgorithm the fallback already reports) and is
+// timestamped at the bin start, exactly like sumPublicTrafficBins, so the result holds at
+// most maxPoints points per series.
+func lastPublicTrafficBins(points []publicMetricPoint, start, end time.Time, maxPoints int) []publicMetricPoint {
+	if maxPoints <= 0 || len(points) <= maxPoints || !end.After(start) {
+		return points
+	}
+	type binKey struct {
+		series string
+		index  int
+	}
+	// The retained point keeps its own observation time until the output pass, so the
+	// comparison below stays a real chronological one.
+	bins := make(map[binKey]publicMetricPoint, maxPoints)
+	span := float64(end.Sub(start))
+	for _, p := range points {
+		index := int(float64(p.Time.Sub(start)) / span * float64(maxPoints))
+		if index < 0 {
+			index = 0
+		}
+		if index >= maxPoints {
+			index = maxPoints - 1
+		}
+		key := binKey{p.entityID + "\x00" + publicMetricTagsKey(p.Tags), index}
+		if bin, ok := bins[key]; !ok || p.Time.After(bin.Time) {
+			bins[key] = p
+		}
+	}
+	keys := make([]binKey, 0, len(bins))
+	for key := range bins {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].series != keys[j].series {
+			return keys[i].series < keys[j].series
+		}
+		return keys[i].index < keys[j].index
+	})
+	result := make([]publicMetricPoint, 0, len(keys))
+	for _, key := range keys {
+		point := bins[key]
+		point.Time = start.Add(time.Duration(float64(key.index) * span / float64(maxPoints)))
+		result = append(result, point)
 	}
 	return result
 }

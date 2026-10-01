@@ -28,7 +28,25 @@ const module = await import(
   `data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`
 );
 
-const { buildUpdate, emptyForm, enabledFieldCount } = module;
+const { buildUpdate, emptyForm, enabledFieldCount, BILLING_CYCLES } = module;
+
+test('billing cycles are day counts, not months', () => {
+  // The unit is not cosmetic: the server (utils/renewal/renewal.go) reads `billing_cycle` as
+  // days, so a "monthly" of 1 renews the node by one day. Pinned here so the unit cannot
+  // quietly drift back to months the way it already did once.
+  const byLabel = Object.fromEntries(
+    BILLING_CYCLES.map((cycle) => [cycle.label, cycle.value]),
+  );
+  assert.deepEqual(byLabel, {
+    'one-off': -1,
+    monthly: 30,
+    quarterly: 92,
+    'half-yearly': 184,
+    yearly: 365,
+    biennial: 730,
+    triennial: 1095,
+  });
+});
 
 test('an untouched form sends nothing', () => {
   const form = emptyForm();
@@ -70,7 +88,7 @@ test('a switched-off field keeps its default out of the request', () => {
 test('every field writes its own wire name', () => {
   const form = emptyForm();
   for (const field of Object.values(form)) field.enabled = true;
-  form.billingCycle.value = 12;
+  form.billingCycle.value = 365;
   form.trafficLimit.value = 1024;
   form.trafficLimitType.value = 'sum';
 
@@ -79,7 +97,7 @@ test('every field writes its own wire name', () => {
   assert.ok('billing_cycle' in update, 'billingCycle must write billing_cycle');
   assert.ok('traffic_limit' in update, 'trafficLimit must write traffic_limit');
   assert.ok('traffic_limit_type' in update, 'trafficLimitType must write traffic_limit_type');
-  assert.equal(update.billing_cycle, 12);
+  assert.equal(update.billing_cycle, 365);
   assert.equal(update.traffic_limit, 1024);
   assert.equal(update.traffic_limit_type, 'sum');
   // And never the selector: the envelope carries `uuids` separately.

@@ -174,6 +174,13 @@ func extractClientToken(c *gin.Context) string {
 	if token := c.Query("Authorization"); token != "" {
 		return token
 	}
+	// agent 也可以经 Authorization: Bearer <token> 头传入，这是推荐路径：
+	// 查询串会被 nginx / Cloudflare 的访问日志完整记录（现场实测：14 天日志里
+	// 留下过 47 个不同的 agent token，其中 9 个仍是当天有效的凭据），头部不会。
+	// 上面两个查询参数分支保留，新旧 agent 因此可以混跑。
+	if auth := c.GetHeader("Authorization"); strings.HasPrefix(auth, "Bearer ") && len(auth) > len("Bearer ") {
+		return auth[len("Bearer "):]
+	}
 
 	// Only legacy agent JSON reports carry body tokens. Never buffer uploads
 	// or anonymous requests to unrelated routes during identity detection.

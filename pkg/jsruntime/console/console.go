@@ -9,9 +9,10 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
-	"github.com/dop251/goja"
 	logger "github.com/Aone2233/nekomari/utils/log"
+	"github.com/dop251/goja"
 )
 
 type level uint8
@@ -25,6 +26,17 @@ const (
 
 type Module struct {
 	output io.Writer
+
+	// writeMu 串行化对调用方 writer 的写入。
+	//
+	// 本模块会从两个方向写 output：调用 Call 的那个协程，以及 JS 事件循环的后台
+	// 协程（定时器回调失败时走 Report）。而调用方传进来的只是一个 io.Writer，没有
+	// 任何地方说过它必须并发安全——"传一个 bytes.Buffer 进来"是最自然的用法，那样
+	// 就会与随后读取它的协程构成数据竞争：现场实测 pkg/jsruntime 的用例在 -race 下
+	// 报 console.go 的 Fprintln 与测试读 buffer 竞争，并直接失败。
+	//
+	// 所以并发安全由本模块负责，而不是默认为调用方的义务。
+	writeMu sync.Mutex
 }
 
 func New(output io.Writer) *Module {
@@ -94,7 +106,11 @@ func (m *Module) write(vm *goja.Runtime, messageLevel level, values []goja.Value
 		}
 	}
 	if m.output != nil {
+		// 加锁的原因见 Module.writeMu 的说明：写入会来自事件循环的后台协程，
+		// 而调用方给的 writer 不保证并发安全。
+		m.writeMu.Lock()
 		_, _ = fmt.Fprintln(m.output, message)
+		m.writeMu.Unlock()
 		return
 	}
 	switch messageLevel {

@@ -393,6 +393,7 @@
     "dbUsage": "Database usage",
     "highestLoss": "Highest packet loss",
     "mainDb": "Main database",
+    "memoryCaliberTip": "Used = total − free − reclaimable cache (buffers/cache). This differs from htop and modern free's used (= total − available), so the readings here are usually lower.",
     "monitoringDb": "Monitoring database",
     "expiringSoon": "Expiring soon",
     "daysLeft": "{{days}} days left",

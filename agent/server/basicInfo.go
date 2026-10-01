@@ -5,7 +5,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/Aone2233/nekomari/agent/dnsresolver"
@@ -74,7 +73,7 @@ func tryUploadData(data map[string]interface{}) error {
 }
 
 func tryUploadDataWithProtocol(data map[string]interface{}) error {
-	endpoint := strings.TrimSuffix(flags.Endpoint, "/") + "/api/clients/v2/rpc?token=" + flags.Token
+	endpoint := v2RPCEndpoint()
 	payload := v2.BuildBasicInfoPayload(data)
 	body := payload
 	compressed := false
@@ -90,6 +89,7 @@ func tryUploadDataWithProtocol(data map[string]interface{}) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	setV2Auth(req)
 	if compressed {
 		req.Header.Set("Content-Encoding", "gzip")
 	}

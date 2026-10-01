@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -56,11 +57,22 @@ func TestSendDownloadStreamUsesRawHTTPBody(t *testing.T) {
 		if request.URL.Path != "/api/clients/transfer/transfer-id" {
 			t.Errorf("path = %s", request.URL.Path)
 		}
-		if request.URL.Query().Get("token") != "agent-token" {
-			t.Errorf("token query = %q", request.URL.Query().Get("token"))
+		// 凭据必须走请求头：URL 查询串会被 nginx / Cloudflare 与 journal 完整记录。
+		if token := request.URL.Query().Get("token"); token != "" {
+			t.Errorf("URL 查询串里出现了 agent 凭据: token=%q (raw query %q)", token, request.URL.RawQuery)
 		}
+		if strings.Contains(request.URL.RawQuery, "agent-token") {
+			t.Errorf("URL 查询串里出现了 agent token: %q", request.URL.RawQuery)
+		}
+		if got := request.Header.Get("Authorization"); got != "Bearer agent-token" {
+			t.Errorf("Authorization = %q, want %q", got, "Bearer agent-token")
+		}
+		// transfer_token 是面板签发的一次性传输令牌，不是 agent 凭据，语义保持不变。
 		if request.URL.Query().Get("transfer_token") != "relay-token" {
 			t.Errorf("transfer token query = %q", request.URL.Query().Get("transfer_token"))
+		}
+		if got := request.Header.Get("X-Komari-Transfer-Token"); got != "relay-token" {
+			t.Errorf("transfer token header = %q, want %q", got, "relay-token")
 		}
 		if request.ContentLength != int64(len(data)) {
 			t.Errorf("content length = %d, want %d", request.ContentLength, len(data))
@@ -99,6 +111,61 @@ func TestSendDownloadStreamUsesRawHTTPBody(t *testing.T) {
 	}
 	if result["sent"] != float64(len(data)) {
 		t.Fatalf("result = %#v", result)
+	}
+}
+
+// upload_stream 是另一条独立构造请求的路径：它同样必须把 agent 凭据放进请求头。
+// 只改 URL 构造而漏掉这条路径的头，真实面板会以 401 拒绝，而凭据同时仍在日志里。
+func TestReceiveUploadStreamSendsCredentialInHeaderNotURL(t *testing.T) {
+	type observation struct {
+		rawQuery      string
+		token         string
+		transferToken string
+		authorization string
+	}
+	observed := make(chan observation, 1)
+	data := []byte("raw upload stream")
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		observed <- observation{
+			rawQuery:      request.URL.RawQuery,
+			token:         request.URL.Query().Get("token"),
+			transferToken: request.URL.Query().Get("transfer_token"),
+			authorization: request.Header.Get("Authorization"),
+		}
+		writer.Header().Set("Content-Length", "17")
+		_, _ = writer.Write(data)
+	}))
+	defer server.Close()
+	preserveAgentConfig(t, server.URL)
+	resetUploadStreamState(t)
+
+	if _, err := receiveUploadStream(map[string]interface{}{
+		"transfer_id":    "transfer-id",
+		"transfer_token": "relay-token",
+		"path":           filepath.Join(t.TempDir(), "target.bin"),
+		"upload_id":      "credential-upload",
+		"offset":         int64(0),
+		"chunk_index":    int64(0),
+		"chunk_count":    int64(1),
+		"total_size":     int64(len(data)),
+		"chunk_size":     int64(len(data)),
+		"first":          true,
+	}); err != nil {
+		t.Fatalf("receiveUploadStream: %v", err)
+	}
+
+	got := <-observed
+	if got.token != "" {
+		t.Fatalf("upload_stream 把 agent 凭据放进了 URL: %q", got.rawQuery)
+	}
+	if strings.Contains(got.rawQuery, "agent-token") {
+		t.Fatalf("upload_stream URL 里出现了 agent token: %q", got.rawQuery)
+	}
+	if got.authorization != "Bearer agent-token" {
+		t.Fatalf("upload_stream Authorization = %q, want %q", got.authorization, "Bearer agent-token")
+	}
+	if got.transferToken != "relay-token" {
+		t.Fatalf("transfer_token 语义被改动: %q", got.rawQuery)
 	}
 }
 

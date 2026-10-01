@@ -11,12 +11,22 @@ real API, which is the only check that catches a page that loops, crashes on
 mount, or is wired to a route that does not exist. `/admin/settings/sign-on`
 looped on every visit for exactly that reason while every fixture stayed green.
 
+Two kinds of route are walked:
+
+* the navigation routes the *served document* links to, visited as found; and
+* the routes named below, which a theme never links to and the href harvest therefore cannot
+  discover. `/install` is a route of the panel's **front-end app** (`frontend/src/routes.ts`)
+  that the installed theme used to answer with its own 404 — see `PANEL_OWNED_ROUTES` for what
+  is asserted about it and why. `/database-recovery` is a *registered* route of the normal
+  server and gets a different assertion again — see `REDIRECTED_ROUTES`.
+
 Usage:
     python script/panel-smoke.spec.py [base_url]
 
 Environment:
     PANEL_USER, PANEL_PASSWORD   credentials for the instance (default admin/E2e-verify1)
-    PANEL_EXTRA_ROUTES           comma-separated extra routes to visit
+    PANEL_EXTRA_ROUTES           comma-separated extra routes to visit (visited only;
+                                 the routes below carry the ownership/redirect assertions)
 
 External origins (the panel's update check calls api.github.com) are reported as
 warnings and never fail the run: a blocked or rate-limited third party is not a
@@ -33,6 +43,42 @@ USER = os.environ.get("PANEL_USER", "admin")
 PASSWORD = os.environ.get("PANEL_PASSWORD", "E2e-verify1")
 EXTRA = [r for r in os.environ.get("PANEL_EXTRA_ROUTES", "").split(",") if r]
 
+# Routes the panel's own front end serves and that no theme links to, so the href harvest above
+# can never discover them. `/install` is a route of the **front-end app**
+# (`frontend/src/routes.ts`), not of the admin interface: the server answers it from the
+# **built-in default front end** (`panelOwnedPrefixes` -> `serveIndex` pins a panel-owned path to
+# `currentTheme = DefaultTheme`), whose document is the front-end build -- `<title>Nekomari
+# Monitor</title>`, bundle under `/assets/`. The admin package is a different build
+# (`/admin/assets/`, `<title>Nekomari</title>`) and serves `/admin` and `/terminal` only.
+# Asserting the admin markers here was wrong (and is what this list must not regress to).
+#
+# Both spellings: the prefix rule covers the trailing slash as well.
+PANEL_OWNED_ROUTES = ("/install", "/install/")
+
+# What a panel-owned route is checked against -- an exclusion, not a build stamp. The document
+# for such a path can only come from the panel's own build or from the installed theme, and a
+# pinned marker would have to guess which build this instance runs (the built-in front end is a
+# build artifact; CI repacks it). So:
+#
+#   * it must not be the admin package (`/admin/assets/`) -- the wrong target an earlier revision
+#     of this check asserted, and a real failure mode of its own; and
+#   * when the panel itself says a theme is installed, it must not be that theme's document.
+#
+# Which theme is installed comes from the panel's own public settings (`GET /api/public` ->
+# `data.theme`, the same field the front end reads). When that answers `default`, nothing is
+# installed that could answer for `/install`, so the second check has nothing to judge and says
+# so rather than guessing -- guessing is how a check starts failing on a correct instance.
+PUBLIC_SETTINGS_ENDPOINT = "/api/public"
+DEFAULT_THEME = "default"
+ADMIN_BUNDLE_MARKER = "/admin/assets/"
+
+# `/database-recovery` is a *registered* route of the normal application: the recovery UI belongs
+# to the temporary restricted listener, so the normal server answers it with a 307 to the landing
+# page (`internal/server/runtime.go`). It is visited, and what is asserted is that redirect --
+# never that it serves a panel document, which cannot be true here. (The recovery page itself, on
+# the restricted listener, is a different deployment and not what this smoke points at.)
+REDIRECTED_ROUTES = {"/database-recovery": "/"}
+
 HOST = urlparse(BASE).netloc
 # A page that renders nothing is a failure; a page whose *content* is short is not, and the difference
 # matters for a themed installation. The panel's own theme renders a dashboard at `/`, but a theme may
@@ -48,6 +94,40 @@ MIN_BODY = 10
 
 def same_origin(url: str) -> bool:
     return urlparse(url).netloc == HOST
+
+
+def admin_bundle_problem(document: str) -> str:
+    """Return "" unless the document is (wrongly) the panel's admin package.
+
+    `/install` belongs to the front-end app, so a document loading `/admin/assets/` is the wrong
+    build even though it is the panel's own. Read from the server's response, not the hydrated
+    DOM: which document was served is a property of the response.
+    """
+    if ADMIN_BUNDLE_MARKER in document:
+        return (f"served the admin package (loads {ADMIN_BUNDLE_MARKER}); /install is a front-end "
+                f"app route (frontend/src/routes.ts), not the /admin interface")
+    return ""
+
+
+def theme_takeover_problem(document: str, installed_theme, landing_document) -> str:
+    """Return "" unless a panel-owned route is being answered by the installed theme.
+
+    The installed theme's document is the one `/` serves (a theme replaces the public front end),
+    so an exact match means the theme answered for this path too -- the defect `/install` is here
+    to catch. Byte equality, not a marker: a theme can be anything, and both documents go through
+    the same substitution when the theme answers them.
+
+    `installed_theme` is the panel's own answer (`/api/public` -> `data.theme`). With no theme
+    installed there is nothing that could take the path over, and the check deliberately says
+    nothing instead of comparing `/install` with a `/` that is also the built-in front end.
+    """
+    if not installed_theme or installed_theme == DEFAULT_THEME:
+        return ""
+    if landing_document is None:
+        return ""
+    if document == landing_document:
+        return f"served the installed theme's document ({installed_theme}): the same bytes as /"
+    return ""
 
 
 def main() -> int:
@@ -145,14 +225,52 @@ def main() -> int:
         # not depend on which path a theme chooses to put a signed-in visitor on.
         print(f"landing page after signing in -> {page.url}")
 
+        # `page.request` is the browser context's request client: the same authenticated fetch a
+        # person's reload would make, minus the JavaScript. Which document the *server* sent is
+        # what the panel-owned checks are about, so they read it here rather than from the DOM.
+        def read_document(path: str):
+            """Return (html, "") for a document, or (None, why not)."""
+            try:
+                response = page.request.get(BASE + path, timeout=25000)
+                if not response.ok:
+                    return None, f"{path} answered {response.status}"
+                return response.text(), ""
+            except Exception as exc:  # noqa: BLE001
+                return None, f"{path} could not be read: {exc}"[:90]
+
+        # Which theme the panel says is installed -- the panel's own answer, not a guess from the
+        # markup. `data.theme` is the field the front end itself reads (PublicInfoProvider).
+        installed_theme = None
+        try:
+            settings = page.request.get(BASE + PUBLIC_SETTINGS_ENDPOINT, timeout=25000)
+            if settings.ok:
+                installed_theme = ((settings.json() or {}).get("data") or {}).get("theme")
+        except Exception:  # noqa: BLE001
+            installed_theme = None
+        if installed_theme is None:
+            print(f"note: {PUBLIC_SETTINGS_ENDPOINT} did not report a theme; "
+                  f"{', '.join(PANEL_OWNED_ROUTES)} are still checked against the admin package, "
+                  f"but a theme takeover there cannot be judged")
+        else:
+            print(f"installed theme: {installed_theme}")
+
+        # The theme's document is whatever `/` serves, so it is read once here for the comparison.
+        landing_document, landing_problem = read_document("/")
+        if landing_problem:
+            landing_document = None
+            print(f"note: could not read the landing document ({landing_problem}); "
+                  f"a theme takeover of {', '.join(PANEL_OWNED_ROUTES)} cannot be judged")
+
         # --- harvest the routes the panel actually exposes ---
         hrefs = set()
         for anchor in page.locator("a[href]").all():
             href = anchor.get_attribute("href") or ""
             if href.startswith("/") and not href.startswith("//") and "." not in href.rsplit("/", 1)[-1]:
                 hrefs.add(href)
-        routes = sorted(hrefs | {"", "/admin"} | set(EXTRA))
-        print(f"discovered {len(hrefs)} navigation routes; visiting {len(routes)}\n")
+        routes = sorted(hrefs | {"", "/admin"} | set(PANEL_OWNED_ROUTES) | set(REDIRECTED_ROUTES) | set(EXTRA))
+        print(f"discovered {len(hrefs)} navigation routes; visiting {len(routes)}"
+              f" (including the panel's own {', '.join(PANEL_OWNED_ROUTES)}"
+              f" and the redirecting {', '.join(REDIRECTED_ROUTES)})\n")
 
         print(f"{'route':<40}{'body':>7}{'errs':>6}{'reqfail':>8}  first problem")
         for route in routes:
@@ -178,7 +296,37 @@ def main() -> int:
                 c for c in console
                 if c[0] in ("error", "pageerror") and "Failed to load resource" not in c[1]
             ]
-            sample = (errors[0][1] if errors else (bad_responses[0] if bad_responses else (failed[0] if failed else nav_error)))[:90]
+
+            # Two routes carry a contract the harvested ones cannot have, and it is a *different*
+            # contract for each -- the server treats them differently (see the constants above).
+            # Read after the navigation so the browser's console/request recording above still
+            # describes the same visit.
+            contract_problem = ""
+            if route in PANEL_OWNED_ROUTES:
+                document, problem = read_document(route)
+                if problem:
+                    contract_problem = problem
+                else:
+                    contract_problem = admin_bundle_problem(document) or theme_takeover_problem(
+                        document, installed_theme, landing_document
+                    )
+            elif route in REDIRECTED_ROUTES:
+                expected = REDIRECTED_ROUTES[route]
+                try:
+                    # Not following it here (unlike the visit above, which follows it to the
+                    # landing page): the status and the Location are the contract, and a plain 200
+                    # would mean the route is no longer registered.
+                    hop = page.request.get(BASE + route, max_redirects=0, timeout=25000)
+                    if hop.status != 307:
+                        contract_problem = f"expected a 307 to {expected}, got {hop.status}"
+                    else:
+                        location = urlparse(hop.headers.get("location", "")).path
+                        if location != expected:
+                            contract_problem = f"307 to {location or '(no Location)'}, expected {expected}"
+                except Exception as exc:  # noqa: BLE001
+                    contract_problem = f"could not read the redirect: {exc}"[:90]
+
+            sample = (contract_problem or (errors[0][1] if errors else (bad_responses[0] if bad_responses else (failed[0] if failed else nav_error))))[:90]
             print(f"{route or '/':<40}{len(body):>7}{len(errors):>6}{len(bad_responses) + len(failed):>8}  {sample}")
 
             # A route the *theme* serves with a deliberately minimal page is not a panel regression.
@@ -198,14 +346,21 @@ def main() -> int:
             # that moves its admin route needs no change here. Console errors and failed requests on such a
             # route still fail the run: only the absence of content is excused, because that is the screen's
             # whole design.
-            theme_owned_minimal = len(body) < MIN_BODY and any(
-                marker in body for marker in ("正在恢复后台入口", "restoring the admin")
+            #
+            # Never excused on a panel-owned route: there the theme's screen *is* the defect
+            # (F5/P2-1), and `/install` rendering a theme's short 404 is exactly what this test is
+            # for. `/database-recovery` is not in that list: it redirects to `/`, so what is
+            # excused here is the landing page the theme put there, not this route's own document.
+            theme_owned_minimal = (
+                route not in PANEL_OWNED_ROUTES
+                and len(body) < MIN_BODY
+                and any(marker in body for marker in ("正在恢复后台入口", "restoring the admin"))
             )
             if theme_owned_minimal:
                 print(f"{'':<40}{'':>7}{'':>6}{'':>8}  theme's own minimal route, excused")
                 continue
 
-            if errors or bad_responses or failed or nav_error or len(body.strip()) < MIN_BODY:
+            if errors or bad_responses or failed or nav_error or contract_problem or len(body.strip()) < MIN_BODY:
                 problems.append((route or "/", len(body), len(errors), len(bad_responses) + len(failed), nav_error, sample))
 
         browser.close()

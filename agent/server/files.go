@@ -826,8 +826,7 @@ func matchFileContent(path, query, lowerQuery string) (searchMatch, bool) {
 }
 
 func postFileResult(result v2.FileResult) {
-	endpoint := strings.TrimSuffix(flags.Endpoint, "/") +
-		"/api/clients/v2/rpc?token=" + flags.Token
+	endpoint := v2RPCEndpoint()
 	body := v2.NewRequest(nil, v2.MethodAgentFileResult, result)
 	client := dnsresolver.GetHTTPClientWithPreference(60*time.Second, flags.PreferIPVersion)
 	const maxAttempts = 4
@@ -838,6 +837,7 @@ func postFileResult(result v2.FileResult) {
 			return
 		}
 		req.Header.Set("Content-Type", "application/json")
+		setV2Auth(req)
 		response, err := client.Do(req)
 		if response != nil {
 			_, _ = io.Copy(io.Discard, response.Body)
