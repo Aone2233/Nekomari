@@ -146,6 +146,60 @@ host and the first that needed an IPv4 preference, so both are recorded here.
   deployment was rotated twice rather than once. Moving the token to a config file or an
   environment file is worth doing on its own.
 
+## v1.6.7 rollout (2026-10-01): panel then fleet
+
+Panel first, then the agents — the ordering this document argues for at "Order matters" above,
+and this release needs it: the agent moved its credential from the query string to the
+`Authorization` header, and an old panel only reads the query parameter.
+
+| Step | Result |
+|---|---|
+| panel | `ghcr.io/aone2233/nekomari:v1.6.7@sha256:4402b0bd…`, healthy, `restarts=0`, `/api/version` = v1.6.7 |
+| fleet | 10/10 on v1.6.7, all reporting; `traffic.interval.*` series went from 1/10 nodes to 9/10 |
+| backup | WAL-safe online copy of both databases to `backups/pre-v1.6.7-<ts>` (`quick_check=ok`) before the swap |
+
+**v1.6.6 was published and then failed its own deploy verification** (`13 passed, 2 failed`; the
+agent logged `Failed to connect to WebSocket: 403 Forbidden` while its POST uploads succeeded).
+The fix is v1.6.7. Note what the failure exposed about the release pipeline: `docker.yml` only
+skips when the release run was *cancelled*, so `latest` was moved to a build that cannot connect.
+That guard is deliberate — the comment there explains that a flaky verify should not leave a
+release without an image — so it is worth revisiting rather than silently changing: pushing the
+version tag but holding `latest` back would satisfy both.
+
+### What the fleet actually looks like (this is not what a first reading suggests)
+
+The rollout went wrong twice before it went right, both times because the host layout is more
+varied than the docs imply. Check these before the next fleet move:
+
+- **A node can have two agent units.** HK04 runs `nekomari-agent.service`
+  (`/opt/nekomari-agent/komari-agent-linux-amd64 --token-file …`) *and* a disabled
+  `komari-agent.service` pointing at a legacy `/opt/komari/agent … --auto-discovery <key>`.
+  The reporting one is `nekomari-agent`. `systemctl show komari-agent || systemctl show
+  nekomari-agent` picks the wrong one, which is how a canary restart ended up starting a
+  disabled legacy agent instead of loading the new binary. Always ask for the unit by name.
+- **The binary name is not uniform.** JPKD2 (Alpine/OpenRC) runs `/opt/nekomari-agent/komari-agent`
+  — no `-linux-amd64` suffix — and its pidfile belongs to the `supervise-daemon` wrapper, not the
+  agent, so hashing whatever that pidfile points at measures the wrong process. Look up the
+  process whose `/proc/<pid>/exe` is the agent path.
+- **OC424's own agent is not managed by a unit.** Both `komari-agent` and `nekomari-agent` are
+  inactive there; the reporting agent is a bare root process at
+  `/home/ubuntu/nekomari-agent/komari-agent-linux-arm64`. Replacing the binary therefore means
+  killing that process and re-running it with its own argv (captured from `/proc/<pid>/cmdline`)
+  — as root, since `ubuntu` cannot signal it.
+- `pgrep -f <binary path>` also matches the shell running the rollout, so a "running binary hash"
+  measured that way is meaningless. Read the hash through the unit's `MainPID`, or through
+  `/proc/<pid>/exe` for a pid you captured yourself.
+
+### How to verify a fleet move
+
+The panel's version column is refreshed by the basic-info upload on
+`--info-report-interval`, so it lags by up to ten minutes. The running binary's hash is
+immediate, and it is the thing that decides whether the upgrade landed:
+
+```bash
+sha256sum /proc/$(systemctl show nekomari-agent -p MainPID --value)/exe   # vs the release's amd64/arm64 asset
+```
+
 ## v0.1.27 — released 2026-09-25, **partly verified 2026-09-26**
 
 `v0.1.27` is tagged (`6a1e875`, 2026-09-25 18:11 +08:00) and, unlike v0.1.26, it
