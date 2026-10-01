@@ -233,12 +233,22 @@ func stripServiceWorkerRegistration(html string) string {
 // to whichever theme is installed.
 //
 // A theme replaces the public front end, and with it the router: everything a route in
-// `frontend/src/routes.ts` under a themed prefix needs is gone. `/install` and
-// `/database-recovery` are exactly that — routes of the panel's own app — and they used to
-// fall through to `noRoute`/`serveIndex`, which answered them with the *installed theme's*
-// document. Production returned the SAO theme page for `curl /install` while `/admin`
-// correctly returned the panel. Anything added here must also have a route registered
-// below, or the theme takes it back.
+// `frontend/src/routes.ts` under a themed prefix needs is gone. `/install` is exactly that — a route
+// of the panel's own front end — and it used to fall through to `noRoute`/`serveIndex`, which answered
+// it with the *installed theme's* document. Production returned the SAO theme page for `curl /install`
+// while `/admin` correctly returned the panel.
+//
+// Being listed here IS the fix, and it is the whole fix: `serveIndex` pins a panel-owned path to the
+// *built-in* front end (`currentTheme = DefaultTheme`, no theme-variable substitution), so the
+// installed theme never gets to answer these paths.
+//
+// Registering them as explicit routes instead — which an earlier revision of this change did — is
+// wrong twice over. `/database-recovery` already has a route in `internal/server/runtime.go`
+// (the normal server redirects it to `/`, because the recovery UI belongs to its temporary restricted
+// listener), so a second registration panics with `handlers are already registered for path
+// '/database-recovery'`; and `serveAdminDocument` serves the *admin* bundle, whereas `/install` and
+// `/database-recovery` are routes of the front-end app. The corrected mechanism is exercised by
+// panel_routes_test.go.
 //
 // `/plugin/*` is deliberately absent: plugin pages and plugin assets share the prefix and
 // need their own decision, so it is left to a separate change rather than half-fixed here.
@@ -666,14 +676,6 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		c.Status(http.StatusNotFound)
 	}
 	r.GET("/admin/*path", servePanelPath)
-
-	// The install wizard and the metric-store recovery page are the panel's own screens, not part of any
-	// theme's front end. Registering them as real routes is what keeps the theme from answering them; the
-	// wildcard form covers the trailing slash and any client-side path under the same prefix.
-	r.GET("/install", serveAdminDocument)
-	r.GET("/install/*path", servePanelPath)
-	r.GET("/database-recovery", serveAdminDocument)
-	r.GET("/database-recovery/*path", servePanelPath)
 
 	// 3. SPA 路由 (noRoute)
 	noRoute(func(c *gin.Context) {

@@ -13,16 +13,24 @@ import (
 	"gorm.io/gorm"
 )
 
-// F5/P2-1：面板自有路由被已安装主题接管。
+// F5/P2-1：面板自有的前台路由被已安装主题接管。
 //
-// `/install` 与 `/database-recovery` 是面板自己 App 里的两条路由（frontend/src/routes.ts），
-// 但服务端没有为它们注册路由，于是落到 noRoute → serveIndex，返回的是**已安装主题**的
-// index.html —— 主题的路由表里没有这两条，页面渲染成它自己的 404。线上实测正是如此：
-// `curl /install` 返回 SAO 主题页，而 `/admin` 返回面板页。
+// `/install` 是面板自己前台 App 的一条路由（frontend/src/routes.ts:41），但服务端没有为它注册路由，
+// 于是落到 noRoute → serveIndex，返回的是**已安装主题**的 index.html —— 主题的路由表里没有这条，
+// 页面渲染成它自己的 404。线上实测正是如此：`curl /install` 返回 SAO 主题页，而 `/admin` 返回面板页。
+//
+// 修法是 `panelOwnedPrefixes` + `serveIndex` 里那条既有的 `currentTheme = DefaultTheme`：
+// panel-owned 路径固定用**内置**前端，不替换主题变量，已安装主题因此碰不到这些路径。
+//
+// 注意这条测试测的是 public 路由**自身**的行为，不覆盖 `internal/server/runtime.go` 那一层：
+// 在真实应用里 `/database-recovery` 是已注册路由（正常模式 307 跳回 `/`，因为恢复界面属于它的
+// 临时受限监听器），根本到不了 serveIndex。这里仍然带上它，是因为万一它落进来，也绝不能是主题的
+// 文档；而**不是**在断言它会给面板文档。
 //
 // 这条测试就是当年漏掉的那一步（同样的漏法在 v0.1.31 的 SLA 页上出现过）：装一个文档可以被
-// 识别的主题，再断言这两个 URL 返回的是面板自己的构建 —— `/admin/assets/` 前缀与面板标题 ——
-// 而不是主题的标题。
+// 识别的主题，再断言这两个 URL 返回的是**内置默认前端**——而不是主题的标题、也不是 admin 包。
+// 早期版本的修复曾把它们注册成显式路由并返回 admin 文档，那是错的：`/install` 属于前台 App，
+// 不是 admin 包；而且 `/database-recovery` 的重复注册会让服务器直接 panic。
 func TestPanelOwnedRoutesAreNotTakenOverByAnInstalledTheme(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	t.Chdir(t.TempDir())
@@ -40,6 +48,15 @@ func TestPanelOwnedRoutesAreNotTakenOverByAnInstalledTheme(t *testing.T) {
 		t.Fatalf("write theme document: %v", err)
 	}
 
+	// 再装一份**名为 `default` 的磁盘主题**没有意义：`DefaultTheme` 只从内嵌归档
+	// `defaultTheme/dist.tar.zst` 取，磁盘上的同名目录不会被采用（实测确认）。而内嵌归档是个
+	// 构建产物 —— 仓库里提交的那份与 `frontend/dist` 并不一致（CI 在 `go build` 前会用
+	// build.sh 重新打包，本地直接 `go test` 用的却是提交的那份），所以**不能**钉它的标题或内容：
+	// 那会让这条测试取决于"提交的是哪次构建"，而这类耦合正是这个缺陷当年能活下来的原因之一。
+	//
+	// 因此断言用排除法：面板自有路径的文档只可能来自三处 —— 已安装主题、内置默认主题、admin 包。
+	// 排除前两者中的"已安装主题"与"admin 包"，剩下的只能是内置默认主题。这两个排除项各自都有牙：
+	// 前者是原始缺陷（主题接管），后者是早期那版修复的错误目标（接到 admin 文档）。
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open config db: %v", err)
@@ -74,13 +91,14 @@ func TestPanelOwnedRoutesAreNotTakenOverByAnInstalledTheme(t *testing.T) {
 				requestPath, body[:min(300, len(body))])
 			continue
 		}
-		if !strings.Contains(body, `src="/admin/assets/`) {
-			t.Errorf("GET %s does not load the panel's own bundle from /admin/assets/:\n%s",
+		// 排除法（理由见上方注释）：不是已安装主题，也不是 admin 包。
+		if strings.Contains(body, `"/admin/assets/`) {
+			t.Errorf("GET %s served the admin bundle; /install and /database-recovery are front-end routes:\n%s",
 				requestPath, body[:min(300, len(body))])
 		}
-		if !strings.Contains(body, "<title>Nekomari</title>") {
-			t.Errorf("GET %s is not the panel document (no Nekomari title):\n%s",
-				requestPath, body[:min(300, len(body))])
+		// 正面的最低要求：它得是个像样的 SPA 文档，而不是空白或错误页。
+		if !strings.Contains(body, "<html") || !strings.Contains(body, `id="root"`) {
+			t.Errorf("GET %s is not an SPA document:\n%s", requestPath, body[:min(300, len(body))])
 		}
 	}
 }
