@@ -434,7 +434,12 @@ func publicQueryMetricsWithStore(ctx context.Context, params publicMetricQueryPa
 			}
 		}
 		for _, entityID := range entityIDs {
-			fallback := trafficFallbacks[spec.storageKey]
+			// Look the fallback up by the key the caller named, not by the series the read
+			// was redirected to. Both `traffic.up` and an explicitly requested
+			// `traffic.interval.up` resolve to the storage key `traffic.interval.up`, so a
+			// storage-key lookup handed the explicitly requested interval series the cycle
+			// counter's answer and its quality label.
+			fallback := trafficFallbacks[spec.metricKey]
 			fallbackPoints := []publicMetricPoint(nil)
 			if fallback != nil {
 				fallbackPoints = fallback.points[entityID]
@@ -455,8 +460,20 @@ func publicQueryMetricsWithStore(ctx context.Context, params publicMetricQueryPa
 				if len(fallbackPoints) > 0 {
 					if len(split.Points) == 0 {
 						split.Points = append([]publicMetricPoint(nil), fallbackPoints...)
-						split.Count = len(split.Points)
 					}
+					// The fallback read is a minute-resolution series, so a 24-hour window
+					// can hand back up to 1440 points per entity while the response still
+					// advertises `max_points`. Bound the answer exactly like the normal
+					// branch below, but keep one reading per bin: these are cycle
+					// cumulative values, and adding them up is the 3.87 PB/day bug this
+					// redirection exists to fix.
+					if len(split.Points) > spec.maxPoints {
+						split.Points = lastPublicTrafficBins(split.Points, start, end, spec.maxPoints)
+						split.IntervalSeconds = float64(end.Sub(start)) / float64(time.Second) / float64(spec.maxPoints)
+					} else {
+						split.IntervalSeconds = fallback.interval.Seconds()
+					}
+					split.Count = len(split.Points)
 					// These values are the billing-cycle cumulative counter read with
 					// `last`, not a sum over validated interval amounts. Saying so is the
 					// whole point: "unknown" must not look like "zero".
@@ -465,7 +482,6 @@ func publicQueryMetricsWithStore(ctx context.Context, params publicMetricQueryPa
 					split.Downsampled = true
 					split.DownsampleAlgorithm = string(metric.AggLast)
 					split.WindowSemantics = "bucket_coverage"
-					split.IntervalSeconds = fallback.interval.Seconds()
 					split.BackingIntervalSeconds = fallback.interval.Seconds()
 					if split.CoverageStart == nil {
 						split.CoverageStart, split.CoverageEndExclusive = metricBucketCoverage(start, end, fallback.interval)
@@ -721,7 +737,11 @@ func loadPublicLegacyTrafficFallbacks(
 		if fallbacks == nil {
 			fallbacks = make(map[string]*publicLegacyTrafficFallback)
 		}
-		fallbacks[spec.storageKey] = &publicLegacyTrafficFallback{interval: interval, points: points}
+		// Keyed by the requested metric key, matching the lookup in the response loop:
+		// `traffic.up` and `traffic.interval.up` share the storage key
+		// `traffic.interval.up`, and keying by storage would attach this counter reading
+		// to an explicit `traffic.interval.up` request too.
+		fallbacks[spec.metricKey] = &publicLegacyTrafficFallback{interval: interval, points: points}
 	}
 	return fallbacks, nil
 }
@@ -839,6 +859,57 @@ func sumPublicTrafficBins(points []publicMetricPoint, start, end time.Time, maxP
 	result := make([]publicMetricPoint, 0, len(keys))
 	for _, key := range keys {
 		result = append(result, bins[key])
+	}
+	return result
+}
+
+// Binning a cycle cumulative counter must keep a reading, never add readings up: the
+// stored values are "bytes since the billing cycle started", so a bin holding k of them
+// sums to roughly k times the real amount — the same 3.87 PB/day error class the interval
+// redirection exists to prevent. Each bin therefore keeps its latest observation (the
+// `last` reading, matching the DownsampleAlgorithm the fallback already reports) and is
+// timestamped at the bin start, exactly like sumPublicTrafficBins, so the result holds at
+// most maxPoints points per series.
+func lastPublicTrafficBins(points []publicMetricPoint, start, end time.Time, maxPoints int) []publicMetricPoint {
+	if maxPoints <= 0 || len(points) <= maxPoints || !end.After(start) {
+		return points
+	}
+	type binKey struct {
+		series string
+		index  int
+	}
+	// The retained point keeps its own observation time until the output pass, so the
+	// comparison below stays a real chronological one.
+	bins := make(map[binKey]publicMetricPoint, maxPoints)
+	span := float64(end.Sub(start))
+	for _, p := range points {
+		index := int(float64(p.Time.Sub(start)) / span * float64(maxPoints))
+		if index < 0 {
+			index = 0
+		}
+		if index >= maxPoints {
+			index = maxPoints - 1
+		}
+		key := binKey{p.entityID + "\x00" + publicMetricTagsKey(p.Tags), index}
+		if bin, ok := bins[key]; !ok || p.Time.After(bin.Time) {
+			bins[key] = p
+		}
+	}
+	keys := make([]binKey, 0, len(bins))
+	for key := range bins {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].series != keys[j].series {
+			return keys[i].series < keys[j].series
+		}
+		return keys[i].index < keys[j].index
+	})
+	result := make([]publicMetricPoint, 0, len(keys))
+	for _, key := range keys {
+		point := bins[key]
+		point.Time = start.Add(time.Duration(float64(key.index) * span / float64(maxPoints)))
+		result = append(result, point)
 	}
 	return result
 }

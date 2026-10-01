@@ -768,3 +768,245 @@ func TestPublicQueryMetricsFallsBackToTheCycleCounterForLegacyAgents(t *testing.
 		t.Fatalf("the interval-reporting node's sum = %v, want 300", sum)
 	}
 }
+
+// A2：回退读的是 1 分钟 interval 序列，24h 窗口 1 分钟桶最多 1440 点/实体，而回退分支
+// 完全跳过了 max_points 下采样 —— 正常分支就在它下面一行。9 台遗留节点同一个请求就是
+// 约 13k 点，响应却仍然宣称 max_points=500 / server_downsample_default=true；节点再多
+// 就撞上 250000 点硬上限，把一次本来可回答的查询变成 InvalidParams 硬失败。
+//
+// 这条测试构造出远超 max_points 的回退点，钉住「回退同样遵守 max_points」。它同时钉住
+// 下采样的算法：周期累计值只能保留读数，不能把同一个 bin 里的读数相加 —— 相加的结果会
+// 超过最终累计值，正是这次 interval 改道要修的那类错误。
+func TestPublicQueryMetricsFallbackHonoursMaxPoints(t *testing.T) {
+	const legacy = "traffic-long-window-node"
+
+	db := dbcore.GetDBInstance()
+	if err := db.Create(&models.Client{
+		UUID:  legacy,
+		Name:  "long window legacy agent",
+		Token: "test-only-token-traffic-long-window",
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	dbcache.InvalidateAll()
+
+	ctx := context.Background()
+	// 与既有回退测试同样的分层：单层 1 分钟 rollup + 24h 保留，这样 24h 窗口真的按 1 分钟
+	// 出点，回退路径拿到的点数才会超过 max_points。默认策略会用 5 分钟层回答 24h 窗口，
+	// 在没跑过 compaction 的库里没有行。
+	store, err := metric.Open(ctx, metric.SQLite(":memory:",
+		metric.WithMaxOpenConns(1),
+		metric.WithRollupPolicy(metric.RollupPolicy{
+			RawRetention: 10 * time.Minute,
+			Tiers:        []metric.RollupTier{{Interval: time.Minute, Retention: 24 * time.Hour}},
+			Compression:  30,
+		}),
+	))
+	if err != nil {
+		t.Fatalf("open metric store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	for _, name := range []string{metricstore.MetricTrafficUp, metricstore.MetricTrafficIntervalUp} {
+		if err := store.CreateMetric(ctx, metric.Definition{Name: name, Type: metric.TypeGauge, RetentionDays: 30}); err != nil {
+			t.Fatalf("create metric %s: %v", name, err)
+		}
+	}
+
+	end := time.Now().UTC()
+	start := end.Add(-24 * time.Hour)
+	base := start.Truncate(time.Minute)
+
+	// 1380 个 1 分钟累计采样：单调增长的周期累计值，末点就是「本周期至今」的字节数。
+	const sampleCount = 1380
+	const bytesPerMinute = 70_000_000
+	written := make([]metric.Point, 0, sampleCount)
+	final := 0.0
+	for i := 0; i < sampleCount; i++ {
+		final = float64(i+1) * bytesPerMinute
+		written = append(written, metric.Point{
+			MetricName: metricstore.MetricTrafficUp,
+			EntityID:   legacy,
+			Timestamp:  base.Add(time.Duration(i) * time.Minute),
+			Value:      final,
+		})
+	}
+	if err := store.WriteBatch(ctx, written); err != nil {
+		t.Fatalf("write legacy cycle counter: %v", err)
+	}
+
+	// 先证明这个场景不是空转：存储层对同一窗口返回的回退点数必须真的超过 max_points，
+	// 否则「回退也要下采样」这条断言什么都不算。
+	direct, err := store.SeriesBatch(ctx, metric.BatchSeriesQuery{
+		Specs: []metric.BatchSeriesSpec{{
+			MetricName:     metricstore.MetricTrafficUp,
+			Aggregations:   []metric.Aggregation{metric.AggLast},
+			Interval:       time.Minute,
+			PreserveSeries: true,
+		}},
+		EntityIDs: []string{legacy},
+		Start:     start,
+		End:       end,
+		Order:     metric.OrderAsc,
+	}, end)
+	if err != nil {
+		t.Fatalf("direct fallback-series read: %v", err)
+	}
+	rawFallbackPoints := len(direct.Values[metricstore.MetricTrafficUp][metric.AggLast])
+	if rawFallbackPoints <= defaultMetricQueryPoints {
+		t.Fatalf("scenario is vacuous: the fallback series holds %d points, want more than max_points=%d",
+			rawFallbackPoints, defaultMetricQueryPoints)
+	}
+
+	result, rpcErr := publicQueryMetricsWithStore(ctx, publicMetricQueryParams{
+		MetricKeys:  []string{metricstore.MetricTrafficUp},
+		EntityIDs:   []string{legacy},
+		Start:       &start,
+		End:         &end,
+		Aggregation: "sum",
+	}, store)
+	if rpcErr != nil {
+		t.Fatalf("unexpected error: %+v", rpcErr)
+	}
+	payload, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("result type = %T, want the query response map", result)
+	}
+	if payload["server_downsample_default"] != true {
+		t.Fatalf("server_downsample_default = %v, want true", payload["server_downsample_default"])
+	}
+	series, ok := payload["series"].([]publicMetricSeries)
+	if !ok || len(series) != 1 {
+		t.Fatalf("series = %#v, want exactly the legacy node's one series", payload["series"])
+	}
+	got := series[0]
+	if got.Quality != publicTrafficFallbackQuality {
+		t.Fatalf("quality = %q, want the fallback path (%q)", got.Quality, publicTrafficFallbackQuality)
+	}
+	if got.MaxPoints != defaultMetricQueryPoints {
+		t.Fatalf("advertised max_points = %d, want %d", got.MaxPoints, defaultMetricQueryPoints)
+	}
+	if len(got.Points) == 0 {
+		t.Fatal("fallback returned no points at all")
+	}
+	if len(got.Points) > got.MaxPoints {
+		t.Fatalf("fallback returned %d points for an advertised max_points=%d (pre-fix it returned %d)",
+			len(got.Points), got.MaxPoints, rawFallbackPoints)
+	}
+	if got.Count != len(got.Points) {
+		t.Fatalf("count = %d, want %d", got.Count, len(got.Points))
+	}
+	if got.DownsampleAlgorithm != string(metric.AggLast) {
+		t.Fatalf("downsample algorithm = %q, want last", got.DownsampleAlgorithm)
+	}
+
+	lastValue := got.Points[len(got.Points)-1].Value
+	if lastValue == nil {
+		t.Fatal("last retained reading is nil")
+	}
+	if *lastValue != final {
+		t.Fatalf("last retained reading = %v, want the final cycle counter %v", *lastValue, final)
+	}
+	for i, point := range got.Points {
+		if point.Value == nil {
+			continue
+		}
+		if *point.Value > final+1e-9 {
+			t.Fatalf("point %d = %v exceeds the final cycle counter %v: cumulative readings were added up",
+				i, *point.Value, final)
+		}
+	}
+}
+
+// A5：回退表此前按 storageKey 存、也按 storageKey 查，而 `traffic.up`（sum 被改道）与显式
+// 请求的 `traffic.interval.up` 解析到同一个 storageKey `traffic.interval.up`。于是一旦同一个
+// 请求里两条都在，显式写的 interval 序列会命中另一条请求创建的回退条目，被打上
+// billing_cycle_cumulative 与周期累计读数 —— 与生成循环里那句注释声称的「显式请求得到它
+// 自己的答案」正好相反。
+//
+// 这里之所以是函数级测试而不是 RPC 级：`queryMetrics` 这个组合今天到不了回退代码。
+// pkg/metric 的 BatchSeriesQuery.Validate 按 MetricName 拒绝重复的 series spec，而两条请求
+// 解析出的 MetricName 都是 `traffic.interval.up`，所以
+// `metric_keys=["traffic.up","traffic.interval.up"]` 在 `public.metric.go` 组装 batchSpecs
+// 的地方就以 -32602 `duplicate series specification for metric "traffic.interval.up"` 失败，
+// 污染只在这道硬错误被去掉（或在别处放开重复 spec）之后才会显形。
+//
+// 因此这条测试直接钉住响应循环依赖的那份契约：回退表按【调用方点名的 metricKey】归位，
+// 显式请求 `traffic.interval.up` 的查表结果必须是 nil。另一半（响应循环确实按 metricKey
+// 查表、因而被改道的那条仍然拿得到回退）由
+// TestPublicQueryMetricsFallsBackToTheCycleCounterForLegacyAgents 端到端钉住。
+func TestPublicLegacyTrafficFallbacksAreKeyedByRequestedMetricKey(t *testing.T) {
+	const legacy = "traffic-explicit-interval-node"
+
+	ctx := context.Background()
+	store, err := metric.Open(ctx, metric.SQLite(":memory:",
+		metric.WithMaxOpenConns(1),
+		metric.WithRollupPolicy(metric.RollupPolicy{
+			RawRetention: 10 * time.Minute,
+			Tiers:        []metric.RollupTier{{Interval: time.Minute, Retention: 24 * time.Hour}},
+			Compression:  30,
+		}),
+	))
+	if err != nil {
+		t.Fatalf("open metric store: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	for _, name := range []string{metricstore.MetricTrafficUp, metricstore.MetricTrafficIntervalUp} {
+		if err := store.CreateMetric(ctx, metric.Definition{Name: name, Type: metric.TypeGauge, RetentionDays: 30}); err != nil {
+			t.Fatalf("create metric %s: %v", name, err)
+		}
+	}
+
+	end := time.Now().UTC()
+	start := end.Add(-24 * time.Hour)
+	base := start.Truncate(time.Minute)
+	const cycleCounter = 57_650_000_000
+	// 只有周期累计计数器有数据：interval 序列对这台遗留节点是空的，所以 `traffic.up` 的
+	// sum 需要回退。
+	for i, value := range []float64{5_000_000_000, 31_400_000_000, cycleCounter} {
+		if err := store.Write(ctx, metric.Point{
+			MetricName: metricstore.MetricTrafficUp,
+			EntityID:   legacy,
+			Timestamp:  base.Add(time.Duration(i) * time.Minute),
+			Value:      value,
+		}); err != nil {
+			t.Fatalf("write legacy cycle counter: %v", err)
+		}
+	}
+
+	// 与 `metric_keys=["traffic.up","traffic.interval.up"], aggregation="sum"` 组装出的
+	// loadSpecs 逐字一致。
+	specs := []metricLoadSpec{
+		{
+			metricKey:  metricstore.MetricTrafficUp,
+			storageKey: metricstore.MetricTrafficIntervalUp,
+			algorithm:  metric.AggSum,
+			maxPoints:  defaultMetricQueryPoints,
+			interval:   time.Minute,
+		},
+		{
+			metricKey:  metricstore.MetricTrafficIntervalUp,
+			storageKey: metricstore.MetricTrafficIntervalUp,
+			algorithm:  metric.AggSum,
+			maxPoints:  defaultMetricQueryPoints,
+			interval:   time.Minute,
+		},
+	}
+	fallbacks, err := loadPublicLegacyTrafficFallbacks(
+		ctx, store, specs, []string{legacy}, start, end, nil, end, nil, nil)
+	if err != nil {
+		t.Fatalf("load legacy traffic fallbacks: %v", err)
+	}
+	if len(fallbacks) != 1 {
+		t.Fatalf("fallback table has %d entries, want exactly the redirected traffic.up read: %#v", len(fallbacks), fallbacks)
+	}
+	// 响应循环的查表表达式，逐字：fallback := trafficFallbacks[spec.metricKey]。
+	if got := fallbacks[specs[1].metricKey]; got != nil {
+		t.Fatalf("an explicit traffic.interval.up lookup found %d cycle-counter points: the table is keyed by the storage key",
+			len(got.points))
+	}
+	if fallbacks[metricstore.MetricTrafficUp] == nil {
+		t.Fatalf("the redirected traffic.up read lost its fallback: %#v", fallbacks)
+	}
+}
