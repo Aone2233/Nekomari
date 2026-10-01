@@ -58,6 +58,21 @@ func IsAPIKeyRequest(r *http.Request) bool {
 	return r.Header.Get("Authorization") == "Bearer "+apiKeyConfig
 }
 
+// HasBearerCredential 判断请求是否带着 Bearer 形式的凭据。
+//
+// 它**不校验**凭据是否有效——那是 IdentityMiddleware 的事。这里只回答一个问题：
+// "这是不是一个自己设置请求头的非浏览器客户端"。WebSocket 的 Origin 校验需要这个答案。
+//
+// 为什么请求头与查询参数等价：浏览器**无法**在 WebSocket 握手上设置 Authorization 头
+// （WebSocket API 不允许自定义头），所以"无 Origin 且带 Bearer 头"与 agent 原先用的
+// "无 Origin 且带 ?token=" 一样，都是非浏览器客户端的可靠标志。少了这一条，
+// 把凭据从查询串挪到请求头之后，agent 的握手会被跨站 WebSocket 劫持防护拦成 403
+// （v1.6.6 的发布校验正是这样失败的：13 passed, 2 failed，agent 日志 `403 Forbidden`）。
+func HasBearerCredential(r *http.Request) bool {
+	auth := r.Header.Get("Authorization")
+	return strings.HasPrefix(auth, "Bearer ") && len(auth) > len("Bearer ")
+}
+
 func IsAuthorizationPreflight(r *http.Request) bool {
 	if r.Method != http.MethodOptions {
 		return false
