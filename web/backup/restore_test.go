@@ -34,10 +34,13 @@ func writeTestArchive(t *testing.T, entries map[string]string) string {
 }
 
 func TestValidateArchiveAcceptsLegacyRootLayout(t *testing.T) {
-	archive := writeTestArchive(t, map[string]string{
-		"komari.db":            "database",
-		"theme/config.json":    "{}",
-		"komari-backup-markup": "backup marker",
+	// The legacy layout keeps the database, the theme data and the markup at the
+	// archive root. komari.db has to be a real database now that ValidateArchive
+	// checks its content.
+	archive := writeTestArchiveBytes(t, map[string][]byte{
+		"komari.db":            writeTestDatabase(t, t.TempDir(), 200),
+		"theme/config.json":    []byte("{}"),
+		"komari-backup-markup": []byte("backup marker"),
 	})
 	if err := ValidateArchive(archive); err != nil {
 		t.Fatalf("ValidateArchive rejected legacy root layout: %v", err)
@@ -72,6 +75,10 @@ func TestCleanupStagedUploadsReclaimsOnlyItsOwnTemporaryFiles(t *testing.T) {
 		".backup-upload-abc.zip", // non-numeric suffix
 		".backup-upload-12.tar",  // wrong extension
 		"notes.txt",              // an operator's own file
+		// The content check stages its database copy with its own pattern, and
+		// the same strict shape applies to it.
+		".backup-check-12.zip", // wrong extension for the check pattern
+		".backup-check-.db",    // no random suffix
 	}
 	for _, name := range survivors {
 		if err := os.WriteFile(filepath.Join(".", "data", name), []byte("keep"), 0o600); err != nil {
