@@ -417,6 +417,7 @@
     "topMem": "平均内存占用百分比排行",
     "topTraffic": "流量消耗 Top 5",
     "traffic24h": "最近24小时流量",
+    "trafficUnknown": "{{nodes}} 台服务器在该时间窗内无可用流量数据",
     "trafficChartAria": "最近24小时流量图，显示上传/下载速率与累计流量",
     "unstableLatency": "延迟最不稳定",
     "uploadRate": "上传速率",

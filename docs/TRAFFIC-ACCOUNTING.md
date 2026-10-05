@@ -60,9 +60,43 @@ Two smaller defects compounded it, and one is why this survived so long:
 - `net.total.*` — raw kernel counter.
 - `traffic.*` — raw cycle cumulative, no delta. It is a running total, so readers take the **last** value.
 
-**The readers** — `traffic.*` aggregation changed from `sum` to `last` in the admin dashboard, the load chart
-and the theme. Summing a running total multiplies it by the sample count, which is where the ~80 GB figure came
-from.
+**The readers** — a reader has to say which question it is asking, because the two answers come from different
+series:
+
+- **"How much moved in this window"** reads the validated interval amounts. The client asks for `traffic.*` with
+  aggregation `sum`, which `publicMetricStorageKey` redirects to `traffic.interval.*` (the series
+  `reportIntervalPoints` derives on ingest, and refuses to bridge a restart, a gap, a reset or a changed counter
+  epoch). These points are additive, so summing buckets is the window's traffic. The admin dashboard, which asks
+  for exactly that, is the reader this applies to.
+- **"How much has this cycle used so far"** reads the running total itself, with `last`. That is a legitimate
+  question and unaffected. What is *not* legitimate is adding those readings up: one per bucket multiplies the
+  cycle total by the bucket count.
+
+`theme-luminaplus` answers the same question the other legitimate way: it asks for `last` and differences
+adjacent readings itself, treating a decrease as a cycle rollover (`src/utils/trafficStats.ts`), where the admin
+dashboard uses the panel's validated interval sums. The instance load chart plots the series under the
+aggregation the reader picks, and the backend rejects `delta`/`rate` on these keys with *"use sum for validated
+interval amounts"*.
+
+## The same mistake, a second time (2026-10-05)
+
+The 24 h dashboard card asked for `traffic.up` / `traffic.down` with `last` and then added the returned points
+together, so the cycle total was counted once per chart bucket. Reported from the live panel: one node showed
+**36.59 TB up / 51.16 TB down for 24 h** whose own peak rate was 5.71 MB/s — a full day at that peak is 493 GB,
+so the display was ~178× its own physical ceiling, and the fleet total read 86 TB up. The card had kept `last`
+from the change above, which predates the interval series; when `sum` was later redirected to those intervals,
+the dashboard needed to move back and did not.
+
+Two things came out of it, both in `frontend/src/utils/trafficSummary.ts`:
+
+- The aggregation is `sum` again, and the module is pure and unit-tested so the request and the arithmetic are
+  pinned together (`frontend/script/trafficSummary.test.mjs`).
+- **`sum` alone is not sufficient**, because the panel answers an entity it has no interval data for with the
+  cycle counter read with `last`, marked `semantics: "billing_cycle_cumulative"` and quality
+  `traffic_intervals_unavailable_legacy`. The card now checks the marker: only `interval_delta_v2` points are
+  summed, and a node whose answer is a cumulative is reported as **unknown** — excluded from the totals, listed
+  in the Top-5 as having no data, and counted in a note under the fleet total. Writing zero there would be the
+  other half of the same bug, because the node's cycle total is real; it is the window figure that is missing.
 
 ## Consequences to be aware of
 
@@ -73,6 +107,11 @@ from.
   prior cycle from a value that was never recorded correctly.
 - **The reset-day clamp is 28** for months without a 29th–31st. A reset configured for the 31st fires on the
   28th in February — consistent with `utils.GetLastResetDate`, and asserted in the tests.
+- **A reader that differences the counter cannot tell a jump in usage from a jump in meaning**, which is the
+  phantom 41 GB sample this document opens with. `theme-luminaplus` takes that route for today's traffic, so an
+  old agent still reporting the other quantity is counted as a spike there; the interval series is the only
+  reading that can separate the two, which is why the admin dashboard uses it and reports "unknown" where it is
+  absent.
 
 ## Tests
 
@@ -87,3 +126,9 @@ from.
 `internal/metricstore/report_test.go` keeps its previous intent — one point per minute, restarts, terabyte
 scale, counter wrap, tiny dips — but asserts the delta behaviour on `net.total.*`, which is the metric that is
 actually a counter, and asserts `traffic.*` is stored raw.
+
+`frontend/script/trafficSummary.test.mjs` pins the reader side: the aggregation asked for is `sum`, interval
+amounts add up to the window's traffic, a missing interval contributes nothing, and a series that is a cycle
+cumulative — or carries no interval marker at all — is reported as unknown instead of summed. One case computes
+what the snapshot reading would have shown (288 buckets × a 25 GiB cycle total ≈ 7 TiB against ~287 MiB of real
+growth) so the inflation is a number in a test rather than a surprise in production.

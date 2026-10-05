@@ -21,14 +21,17 @@ const nodeList = [
 ];
 let refreshCount = 0;
 let rpcCount = 0;
+const queryMetricsCalls: unknown[] = [];
 const rpc = {
   isConnected: false,
   client: {
-    call: async (method: string) => {
+    call: async (method: string, params?: unknown) => {
       rpcCount++;
       switch (method) {
         case "common:getNodesLatestStatus": return {};
-        case "public:queryMetrics": return { series: [] };
+        case "public:queryMetrics":
+          queryMetricsCalls.push(params);
+          return { series: [] };
         case "public:getPingMetricStats": return { stats: [] };
         case "public:getPublicPingTasks": return [];
         default: throw new Error(`Unexpected RPC: ${method}`);
@@ -65,4 +68,5 @@ root.render(
 Object.assign(window, {
   unmountDashboardClockFixture: () => root.unmount(),
   dashboardRequestCounts: () => ({ refreshCount, rpcCount }),
+  dashboardQueryMetricsCalls: () => queryMetricsCalls,
 });

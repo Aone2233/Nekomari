@@ -407,6 +407,7 @@
     "onlineRateAria": "{{percent}}% of servers online",
     "offlineListAria": "Offline servers",
     "traffic24h": "Last 24h traffic",
+    "trafficUnknown": "{{nodes}} server(s) have no measured traffic in this window",
     "uploadRate": "Upload rate",
     "downloadRate": "Download rate",
     "uploadTotal": "Upload cumulative",

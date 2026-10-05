@@ -409,6 +409,7 @@
     "topMem": "Peringkat penggunaan memori",
     "topTraffic": "Top 5 konsumsi lalu lintas",
     "traffic24h": "Lalu lintas 24 jam terakhir",
+    "trafficUnknown": "{{nodes}} server tidak memiliki lalu lintas terukur pada rentang ini",
     "trafficChartAria": "Grafik lalu lintas 24 jam terakhir, menampilkan kecepatan unggah/unduh dan lalu lintas kumulatif",
     "unstableLatency": "Latensi paling tidak stabil",
     "uploadRate": "Kecepatan unggah",

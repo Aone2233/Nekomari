@@ -58,6 +58,12 @@ import {
   pingMetricStatKey,
   pingTaskName,
 } from "@/utils/metricSeries";
+import {
+  NET_METRIC_KEYS,
+  TRAFFIC_AGGREGATION_BY_METRIC,
+  TRAFFIC_TOTAL_METRIC_KEYS,
+  computeTrafficSummary,
+} from "@/utils/trafficSummary";
 import { DAY_MS, daysUntilExpiry, getExpiringNodes } from "./expiry";
 
 const formatSpeed = (bytes: number): string => {
@@ -161,15 +167,6 @@ type TopRankItem = {
   peakTime: number;
 };
 
-type TrafficNodeTotals = {
-  uuid: string;
-  up: number;
-  down: number;
-  total: number;
-  peakRate: number;
-  peakTime: number;
-};
-
 type PingRankItem = {
   key: string;
   entityId: string;
@@ -183,155 +180,7 @@ type PingRankItem = {
 
 const CPU_METRIC_KEYS = ["cpu.usage"];
 const MEM_METRIC_KEYS = ["memory.used"];
-const NET_METRIC_KEYS = ["net.in.rate", "net.out.rate"];
-const NET_TOTAL_METRIC_KEYS = ["net.total.up", "net.total.down"];
 const PING_METRIC_KEYS = [PING_LATENCY_METRIC];
-
-// 首页所有指标卡共用一个 24h 查询（流量/CPU/内存/延迟），
-// 这里从响应中分别派生流量汇总与 TOP p95 排行。
-type TrafficSummary = {
-  points: {
-    time: number;
-    upRate: number;
-    downRate: number;
-    upCum: number;
-    downCum: number;
-  }[];
-  nodeTotals: TrafficNodeTotals[];
-  totalUp: number;
-  totalDown: number;
-};
-
-const computeTrafficSummary = (
-  res: QueryMetricsResponse | null,
-): TrafficSummary | null => {
-  if (!res) return null;
-
-  // The first cumulative counter after a collection gap/reset is a baseline,
-  // not traffic observed during that chart bucket.
-  const discontinuities = new Set<string>();
-  for (const series of res.series ?? []) {
-    if (!NET_TOTAL_METRIC_KEYS.includes(series.metric_key)) continue;
-    const direction = series.metric_key === "net.total.up" ? "up" : "down";
-    let previousValue: number | null = null;
-    let gapAfterValue = false;
-    let reboundBaseline: number | null = null;
-    for (const point of series.points ?? []) {
-      if (point.value == null) {
-        if (previousValue !== null) gapAfterValue = true;
-        continue;
-      }
-      const ts = new Date(point.time).getTime();
-      let discontinuity = gapAfterValue;
-      if (previousValue !== null && point.value < previousValue) {
-        discontinuity = true;
-        reboundBaseline = previousValue;
-      } else if (reboundBaseline !== null) {
-        if (point.value >= reboundBaseline) discontinuity = true;
-        reboundBaseline = null;
-      }
-      if (discontinuity) {
-        discontinuities.add(`${series.entity_id}\0${direction}\0${ts}`);
-      }
-      previousValue = point.value;
-      gapAfterValue = false;
-    }
-  }
-
-  const byTime = new Map<
-    number,
-    { upRate: number; downRate: number; upDelta: number; downDelta: number }
-  >();
-  const byEntity = new Map<string, { up: number; down: number }>();
-  const byEntityRate = new Map<
-    string,
-    Map<number, { up: number; down: number }>
-  >();
-  for (const series of res.series ?? []) {
-    const isRate =
-      series.metric_key === "net.in.rate" ||
-      series.metric_key === "net.out.rate";
-    const isUp =
-      series.metric_key === "net.out.rate" ||
-      series.metric_key === "traffic.up";
-    if (
-      !isRate &&
-      series.metric_key !== "traffic.up" &&
-      series.metric_key !== "traffic.down"
-    ) {
-      continue;
-    }
-    const entity = series.entity_id;
-    for (const point of series.points ?? []) {
-      if (point.value == null) continue;
-      const ts = new Date(point.time).getTime();
-      const entry =
-        byTime.get(ts) ?? { upRate: 0, downRate: 0, upDelta: 0, downDelta: 0 };
-      if (isRate) {
-        if (isUp) entry.upRate += point.value;
-        else entry.downRate += point.value;
-        const rateMap = byEntityRate.get(entity) ?? new Map();
-        const rateEntry = rateMap.get(ts) ?? { up: 0, down: 0 };
-        if (isUp) rateEntry.up += point.value;
-        else rateEntry.down += point.value;
-        rateMap.set(ts, rateEntry);
-        byEntityRate.set(entity, rateMap);
-      } else if (isUp) {
-        if (discontinuities.has(`${entity}\0up\0${ts}`)) continue;
-        entry.upDelta += point.value;
-      } else {
-        if (discontinuities.has(`${entity}\0down\0${ts}`)) continue;
-        entry.downDelta += point.value;
-      }
-      byTime.set(ts, entry);
-      if (!isRate) {
-        const entityEntry = byEntity.get(entity) ?? { up: 0, down: 0 };
-        if (isUp) entityEntry.up += point.value;
-        else entityEntry.down += point.value;
-        byEntity.set(entity, entityEntry);
-      }
-    }
-  }
-  const rate = Array.from(byTime.entries())
-    .map(([time, value]) => ({ time, ...value }))
-    .sort((a, b) => a.time - b.time);
-  const points: TrafficSummary["points"] = [];
-  let totalUp = 0;
-  let totalDown = 0;
-  for (const point of rate) {
-    totalUp += point.upDelta;
-    totalDown += point.downDelta;
-    points.push({
-      time: point.time,
-      upRate: point.upRate,
-      downRate: point.downRate,
-      upCum: totalUp,
-      downCum: totalDown,
-    });
-  }
-  const nodeTotals: TrafficNodeTotals[] = Array.from(byEntity.entries())
-    .map(([uuid, value]) => {
-      let peakRate = 0;
-      let peakTime = 0;
-      for (const [ts, rateEntry] of byEntityRate.get(uuid) ?? []) {
-        const combined = rateEntry.up + rateEntry.down;
-        if (combined > peakRate) {
-          peakRate = combined;
-          peakTime = ts;
-        }
-      }
-      return {
-        uuid,
-        up: value.up,
-        down: value.down,
-        total: value.up + value.down,
-        peakRate,
-        peakTime,
-      };
-    })
-    .sort((a, b) => b.total - a.total);
-  return { points, nodeTotals, totalUp, totalDown };
-};
 
 const computeTopAverageItems = (
   res: QueryMetricsResponse | null,
@@ -469,9 +318,7 @@ const DashboardContent = () => {
       const res = await call<any, QueryMetricsResponse>("public:queryMetrics", {
         metric_keys: [
           ...NET_METRIC_KEYS,
-          ...NET_TOTAL_METRIC_KEYS,
-          "traffic.up",
-          "traffic.down",
+          ...TRAFFIC_TOTAL_METRIC_KEYS,
           ...CPU_METRIC_KEYS,
           ...MEM_METRIC_KEYS,
           PING_LATENCY_METRIC,
@@ -480,14 +327,7 @@ const DashboardContent = () => {
         end: now.toISOString(),
         aggregation: "p95",
         aggregation_by_metric: {
-          // `traffic.*` is the agent's **cycle cumulative**, not a per-interval amount: it must be read with
-          // `last`. Summing it multiplies one running total by the number of samples — which is how a 41 GB
-          // cumulative became an ~80 GB "today" figure. `net.total.*` is a kernel counter and is also read
-          // with `last`; a difference is computed by the caller when one is wanted.
-          "traffic.up": "last",
-          "traffic.down": "last",
-          "net.total.up": "last",
-          "net.total.down": "last",
+          ...TRAFFIC_AGGREGATION_BY_METRIC,
           "cpu.usage": "avg",
           "memory.used": "avg",
         },
@@ -1060,6 +900,17 @@ const DashboardContent = () => {
                   ↑ {formatBytes(traffic?.totalUp ?? 0)} ↓{" "}
                   {formatBytes(traffic?.totalDown ?? 0)}
                 </Text>
+                {traffic !== null && traffic.unknownTrafficNodes.length > 0 && (
+                  // A node the panel cannot measure is left out of the totals above,
+                  // so the omission has to be visible rather than implied.
+                  <Text size="2" color="gray">
+                    {t(
+                      "dashboard.trafficUnknown",
+                      "{{nodes}} server(s) have no measured traffic in this window",
+                      { nodes: traffic.unknownTrafficNodes.length },
+                    )}
+                  </Text>
+                )}
               </Flex>
             </Flex>
             {traffic === null ? (
@@ -1241,14 +1092,24 @@ const DashboardContent = () => {
                                 node.uuid.slice(0, 8)}
                             </Text>
                             <Flex align="center" gap="2" className="shrink-0">
-                              <Text
-                                size="2"
-                                color="gray"
-                                className="whitespace-nowrap"
-                              >
-                                ↑ {formatBytes(node.up)} ↓{" "}
-                                {formatBytes(node.down)}
-                              </Text>
+                              {node.unknown ? (
+                                <Text
+                                  size="2"
+                                  color="gray"
+                                  className="whitespace-nowrap"
+                                >
+                                  {t("dashboard.noData", "No data")}
+                                </Text>
+                              ) : (
+                                <Text
+                                  size="2"
+                                  color="gray"
+                                  className="whitespace-nowrap"
+                                >
+                                  ↑ {formatBytes(node.up)} ↓{" "}
+                                  {formatBytes(node.down)}
+                                </Text>
+                              )}
                               <MiniChartButton
                                 uuid={node.uuid}
                                 metricKeys={NET_METRIC_KEYS}
@@ -1274,13 +1135,24 @@ const DashboardContent = () => {
                             {nodeNameMap.get(node.uuid) ?? node.uuid.slice(0, 8)}
                           </Text>
                           <Flex align="center" gap="2" className="shrink-0">
-                            <Text
-                              size="2"
-                              color="gray"
-                              className="whitespace-nowrap"
-                            >
-                              ↑ {formatBytes(node.up)} ↓ {formatBytes(node.down)}
-                            </Text>
+                            {node.unknown ? (
+                              <Text
+                                size="2"
+                                color="gray"
+                                className="whitespace-nowrap"
+                              >
+                                {t("dashboard.noData", "No data")}
+                              </Text>
+                            ) : (
+                              <Text
+                                size="2"
+                                color="gray"
+                                className="whitespace-nowrap"
+                              >
+                                ↑ {formatBytes(node.up)} ↓{" "}
+                                {formatBytes(node.down)}
+                              </Text>
+                            )}
                             <MiniChartButton
                               uuid={node.uuid}
                               metricKeys={NET_METRIC_KEYS}
@@ -1310,8 +1182,14 @@ const DashboardContent = () => {
                           <div
                             className="h-full rounded-full"
                             style={{
+                              // Every node can be unmeasurable (all totals zero),
+                              // which must not divide by zero.
                               width: `${
-                                (node.total / traffic.nodeTotals[0].total) *
+                                (node.total /
+                                  Math.max(
+                                    1,
+                                    traffic.nodeTotals[0]?.total ?? 0,
+                                  )) *
                                 100
                               }%`,
                               backgroundColor: "var(--accent-9)",

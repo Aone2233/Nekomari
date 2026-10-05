@@ -33,6 +33,19 @@ the measurement that found it.
 
 ## [Unreleased]
 
+- **Fixed the 24 h traffic card reading a billing-cycle cumulative as if it were the window's traffic.**
+  `traffic.up` / `traffic.down` are bytes since the cycle's reset day; the card asked for them with aggregation
+  `last` and then added the returned points together, which counts the cycle total once per chart bucket. The
+  live panel showed one node at **36.59 TB up / 51.16 TB down for 24 h** whose own recorded peak was 5.71 MB/s —
+  a day at that peak is 493 GB — and a fleet total of 86 TB up. The card now asks for `sum`, which the panel
+  redirects to the validated interval series (`traffic.interval.*`): additive per-interval amounts, where a gap
+  contributes nothing rather than an invented number. `sum` alone is not enough, because an entity with no
+  interval data is answered with the cycle counter again, marked `billing_cycle_cumulative`; those nodes are
+  reported as unknown — excluded from the totals, listed as having no data, and counted under the fleet total —
+  rather than summed or written as zero, since the cycle total is real and it is the window figure that is
+  missing. Panel-side only; agent source unchanged. Pinned by `frontend/script/trafficSummary.test.mjs` and
+  documented in `docs/TRAFFIC-ACCOUNTING.md`.
+
 - **Noted, not fixed: changing a node's timezone requires an agent restart.** Go reads
   `/etc/localtime` once at startup, so a process running from before a zone change
   keeps printing the old zone *and* keeps cutting the `--month-rotate` window at the

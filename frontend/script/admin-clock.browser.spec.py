@@ -216,6 +216,35 @@ class AdminClockBrowserTest(unittest.TestCase):
                 "admin-clock.browser.html", "admin-dashboard-clock.browser.html"
             )
             page.goto(dashboard_url)
+            # The traffic card must ask for the validated interval amounts. Asking for
+            # the billing-cycle cumulative with `last` and adding the points up counts
+            # the cycle total once per chart bucket: the live panel showed a node at
+            # 36.59 TB up for 24 h whose own peak rate caps a whole day at 493 GB.
+            metric_calls = page.evaluate("window.dashboardQueryMetricsCalls()")
+            self.assertTrue(metric_calls, "the dashboard never asked for metrics")
+            traffic_call = next(
+                (
+                    call for call in metric_calls
+                    if "traffic.up" in (call.get("metric_keys") or [])
+                ),
+                None,
+            )
+            self.assertIsNotNone(
+                traffic_call, "the dashboard stopped asking for traffic.up"
+            )
+            self.assertEqual(
+                traffic_call["aggregation_by_metric"]["traffic.up"], "sum",
+                "traffic.up must be summed as validated interval amounts; `last` "
+                "returns the running cycle total, which this card renders as a total",
+            )
+            self.assertEqual(
+                traffic_call["aggregation_by_metric"]["traffic.down"], "sum"
+            )
+            self.assertNotIn(
+                "net.total.up", traffic_call["metric_keys"],
+                "the kernel counter only fed the cumulative-discontinuity guess, which "
+                "the interval series made unnecessary",
+            )
             card = page.locator(".km-dashboard-card").filter(has_text="Expiring soon")
             card.get_by_text("three").wait_for()
             self.assertEqual(card.get_by_text("outside").count(), 0)
