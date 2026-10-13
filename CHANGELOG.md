@@ -6,32 +6,147 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
-## [v0.1.29] — 2026-09-26
-
-**This release moves the fleet**, because the agent changed. It fixes a bug that
-inflated a node's reported traffic by orders of magnitude; see the entry below for
-the measurement that found it.
-
-- **Fixed: a node could report an impossible traffic delta, inflating the panel's
-  daily and monthly traffic by orders of magnitude.** The counter baseline was kept
-  in memory only, so a restart lost it and the next sample compared a live
-  cumulative counter against nothing; on one node that produced a single **59.5 GB**
-  delta in the minute the agent started, against a real rate near 7 GB/day and an
-  interface whose lifetime counter read 187 MB. The panel's "today" for that node
-  read ~160 GB. The baseline is now persisted in `net_static.json`
-  (`last_counters`) and restored on start, and a delta is discarded — with one log
-  line — when it is not physically possible for the elapsed time, when the baseline
-  is older than the bucket it would be attributed to, or when there is no elapsed
-  time at all.
-
-  The same bug had been writing impossible samples since **2026-06-29**: cleaning the
-  store removed 4 minute samples (largest 60.9 GiB) and 63 coarser rows that contained
-  them or were of the same class (largest 321 GiB in a single hourly bucket). After
-  the cleanup NOSLA's recorded traffic was 3.8 GB and MAC Server's 0.5 GB, both in
-  line with their providers' own meters — which is the check that the numbers are now
-  real rather than merely smaller.
-
 ## [Unreleased]
+
+The rest of the 2026-10-13 audit batch
+([`docs/IMPROVEMENT-AUDIT-2026-10-13.md`](./docs/IMPROVEMENT-AUDIT-2026-10-13.md)) — its **section A is not
+here**: those six changes shipped as `v1.6.11` below, released on their own because two of them are
+anonymous-reachable. Everything below is panel-side only: `agent/` did not change, so the fleet does not move.
+
+- **Fixed: the quota warning and the traffic forecast read the kernel's since-boot counter** (`net.total.*`) as
+  if it were the billing cycle's usage, while the plan limit is a per-cycle quota. Both now read
+  `traffic.up` / `traffic.down`. A node that rebooted mid-cycle restarted its projection from a fraction of its
+  real usage. The series is pinned by a test that hands the reader both series at once.
+- **Fixed: the plugin version gate failed open on both ends.** An unparseable server version made the panel and
+  the server *both* allow every constrained plugin — silently disabling the gate — while `FORK.md` described the
+  opposite. Both now refuse and say why. `build.sh` no longer stamps `git describe --tags --always`
+  (`v1.6.10-3-g4e7d389`) into a local build, and the release workflow refuses a tag that is not plain `vX.Y.Z`.
+- **Fixed: `build.sh` built the agent without a version**, leaving `agent/update.CurrentVersion` at `0.0.1` —
+  the value the agent uses to decide whether a newer release exists, so a locally built agent would replace
+  itself with the official asset and `os.Exit(42)`. `agent/build_all.sh` / `.ps1` injected that version into the
+  **pre-fork module path**, where `-X` is a silent no-op; both are corrected (verified by building a binary and
+  grepping for the version).
+- **Fixed: the release workflow had no CI gate.** It triggered on any `v*` tag and ran no tests, so a tag on a
+  commit whose `ci` run was failing published a release — the incident `RELEASING.md` documents as having
+  happened once. A `gate` job now requires a green `ci` conclusion on the resolved commit before anything is
+  built. The checksum step no longer pipes through `tee` (which swallowed `sha256sum`'s failure and could
+  publish an incomplete `SHA256SUMS.txt`, stopping every agent's self-update), and a manually dispatched release
+  now gets its image: `workflow_run` carries the *branch* in `head_branch` for a dispatch, which the
+  tag-resolution step used to reject.
+- **Fixed: release verification only ever exercised linux/amd64** while the reference panel host is arm64, and
+  the arm64 cross-build path ran for the first time at release. `deploy-verify.sh` now takes the architecture
+  (defaulting to the host's) and the `verify` job runs on both `ubuntu-latest` and `ubuntu-24.04-arm`.
+- **Fixed: `audit:compiler` was failing and in no workflow.** `ROADMAP.md` said it "is in CI and currently
+  reports 0"; it reported 1 error and was in no workflow, and `npm run lint` cannot see it because `eslint`
+  enables only 8 react-hooks rules. The `setState`-in-effect in `pages/sla/index.tsx` is fixed (the request now
+  runs from the promise callbacks, which also cancels a stale response) and the audit is a CI step.
+- **Fixed: three of five UI languages were missing 134 keys each.** `bulk`, `status`, `maintenance`, `config`
+  and `forecast` — five whole feature areas — fell back to English silently. All five locales now carry all
+  1461 keys, a parity test runs in `npm test`, and `i18n:sync` merges as a union: it used to drop every
+  target-only key, so running it without `OPENAI_API_KEY` deleted data.
+- **Fixed: a corrupt archive blocked the backup prune.** The zip check ran bare under `set -euo pipefail` inside
+  the "keep" loop, so one unreadable file aborted the whole prune and the disk kept filling. It is now reported
+  and the expired backups are still removed.
+- **Fixed: the session cache held a process-wide lock across its database query**, and never cached a miss — so a
+  flood of forged `session_token` cookies forced a query per request *and* serialised every other session lookup
+  behind that lock. The query now runs outside the lock, and a miss is cached briefly (and still reports
+  `ErrRecordNotFound`, not an empty session).
+- **Fixed: the docs site had no CI.** `site/README.md` calls the navigation check "not optional" and the site is
+  published at a public URL, but nothing ran it on push. It runs in `workflow-contracts` now, alongside
+  `check-action-inputs.py` — which could not fail until this change (it always exited 0).
+- **Fixed: the terminal dialog's Enter key could confirm a deletion.** The key handler sits on the
+  full-screen backdrop and the **Cancel** button is its child, so Enter on the focused Cancel button was
+  intercepted by the backdrop — `preventDefault()` suppressed the button's own click — and the confirm action
+  ran instead. The dialog is used with `destructive` to delete files, so a keyboard user tabbing to Cancel to
+  abort deleted the file. The decision moved into `frontend/src/pages/terminal/dialogKeys.ts`, which is
+  unit-tested (`npm test`): Enter from a `<button>` is never a confirmation, Enter on the dialog still is.
+- **Fixed: the remote-exec page invented a completion time for tasks that had not finished.** After 60 s the
+  poller wrote `finished_at: now`, `exit_code: -1` and overwrote `result` with a timeout marker — so the page
+  showed a finish time the server never reported, next to a plausible-looking exit code, on the page used to
+  run commands across the fleet, and a task that finished at 70 s was never fetched. It now sets one flag
+  (`polling_stopped`), leaves the server's fields alone, and offers "Resume polling".
+- **Fixed: a 2 Hz request loop that could not be cancelled.** After a settings save the migration-guide poll
+  self-rearmed every 500 ms with no attempt cap, no backoff, no handle and no cancel path — so a panel that
+  never came back left the tab requesting twice a second indefinitely, including after the reader left. It now
+  backs off to 5 s, gives up after a three-minute budget, and stops on `pagehide`.
+- **Fixed: one failed poll replaced the public dashboard with a raw English error.** `NodeListProvider` cleared
+  the node list on any error, and the page then rendered `<div>Error: …</div>` — hardcoded, unannounced, with no
+  way back. The list is now kept (a transient failure shows a translated "showing the last known state" banner),
+  and a first-load failure shows a translated `role="alert"` panel with a Retry button.
+- **Fixed: the admin node table re-allocated and re-sorted on every render.** `filteredNodes` was built inline,
+  so a new array identity every render defeated `NodeListProvider`'s reference-stability work and made
+  `NodeTable`'s reference comparison fire an extra render pass on every 5 s poll. It is memoized.
+- **Fixed: the service worker precached every country flag and OS logo.** Measured on a clean build:
+  **451 precache entries / 5257 KiB → 164 / 4449 KiB**, i.e. ~287 files (258 flags, 33 logos) and ~800 KiB
+  removed from every install and every update. The B1 measurement priced the first visit (480 KiB) but never
+  this. They are still available offline once used: a `CacheFirst` rule covers `/assets/flags/` and
+  `/assets/logo/`.
+- **Changed: SLA incident times carry their timezone.** `formatTime` now takes the UI language and appends the
+  zone, because the SLA report's whole point is a URL you send to someone — without a zone, the same report
+  reads as two different moments on two machines. The remaining `toLocaleString*` sites are listed as open
+  work; the helper is there for them.
+- **Changed: `tools/zstdpack` no longer writes file mtimes into the tar header.** Packing the same
+  `frontend/dist` twice is now byte-identical. It does **not** make the committed theme archive equal to a
+  rebuild: measured while trying to assert exactly that, rollup's chunk *assignment* differs between builds —
+  the same source produced a `chunk-_layout.js` with 1 import and one with 20+, changing 143 chunk filenames.
+  Every per-entry difference between two archives is a referenced chunk name, so the split itself is the only
+  structural difference. The planned CI assertion was therefore **not** added (it would fail on every build);
+  the committed archive stays authoritative and its *contents* are asserted by the Go tests under
+  `web/public/`. Recorded as open work in `docs/OPEN-WORK.md`.
+- **Changed: the repository no longer ships `install-komari.sh` or `agent/.github/workflows/`.** The first
+  installs **upstream's** binaries under upstream's asset names (it would have installed a different product),
+  its error branch was unreachable, and nothing referenced it; the second is inert (GitHub reads only the root
+  `.github/workflows`) and still named the pre-fork module path.
+- **Changed: `deploy/docker-compose.yml` requires `NEKOMARI_VERSION`** instead of pinning `v0.1.14`, about
+  thirty releases behind a file `deploy/README.md` calls the reference setup.
+- **Withdrawn after checking: two audit findings were wrong.** The rollup-retention "whole tier deleted"
+  behaviour and the `metric_migration_target` write on store recovery are both deliberate — the first is a
+  designed "disabled metric" plus derived-tier cleanup (both pinned by existing tests), and the second only
+  means the key's *documentation* was narrower than its behaviour. The code was left alone; the doc comment and
+  the refusal message were corrected.
+
+## [v1.6.11] — 2026-10-13
+
+**Security batch** — section A of the 2026-10-13 audit
+([`docs/IMPROVEMENT-AUDIT-2026-10-13.md`](./docs/IMPROVEMENT-AUDIT-2026-10-13.md)), released on its own because
+two of its six changes are reachable without a session. Panel-side only: `agent/` did not change, so **the fleet
+does not move** (`git diff --stat v1.6.10..v1.6.11 -- 'agent/**/*.go' protocol/` is empty).
+
+- **Fixed: an anonymous caller could enumerate hidden nodes.** `public:getPublicPingTasks` echoed every task's
+  `clients` array verbatim, and `common:getNodeRecentStatus` / `common:getRecords` answered *differently* for a
+  hidden uuid than for one that does not exist — so the uuid could be read in one place and confirmed in the
+  other, without a session, on any panel with the default `private_site=false`. All three now share the
+  visibility rule the history endpoints already use, and hidden answers exactly as unknown does.
+  `common:getRecords` had a **second** copy of the same leak in its per-task `clients` echo, found while fixing
+  the first. A new test enumerates every registered method and fails when one becomes reachable by guests
+  without being reviewed — `Allow("common:*", RoleGuest)` makes that automatic, which is how this survived: the
+  test found three more guest-reachable methods on its first run, and one of them
+  (`common:getNodesLatestStatus`) was itself a hidden-node oracle by the same "different answer" rule.
+- **Fixed: arbitrary SQL over RPC skipped the sensitive-operation step-up.** `admin:dbQuery` and `admin:dbExec`
+  only required the admin role, so a stolen session could read `configs.api_key` or rewrite `users.passwd`
+  without a TOTP code — while `admin:exec` already required one. Both are now marked sensitive, the read path
+  writes an audit record too, and the sensitive list is asserted against an explicit allowlist so that adding
+  one is a decision rather than an omission.
+- **Fixed: plugin storage was silently excluded from backups.** The whitelist entry was spelled
+  `plguin-data/`; the runtime directory is `./data/plugin-data` (`internal/plugin.StorageDir`). A missing entry
+  is skipped silently, so backups reported success while dropping every plugin's persistent state — and the
+  whitelist was never cross-checked against the runtime's own directory name, which is why a typo could sit
+  there. It now is, and against a table of every path the runtime writes under `./data`.
+- **Fixed: the traffic-limit form field evaluated its input as JavaScript.** `stringToBytes` used
+  `new Function("return " + numericPart)`, so text pasted into the node editor ran in the panel's origin — on
+  the page that edits the fleet. It is now a regex-validated product of numeric factors, and a test asserts that
+  a payload like `1;(globalThis.__pwned = 1)` neither parses nor executes. The documented example for
+  `6,222,765 MB` was also simply wrong (it had never been tested) and is corrected.
+- **Fixed: SSRF protection for market downloads shipped disabled**, and the fallback wrote `false` into the
+  config when the setting was absent — so "not configured" meant "no protection" for a fetch whose target is
+  chosen by the remote catalog rather than by the operator. Both ends are now fail-closed.
+  **Note for an existing installation:** the setting may already be stored as `false`; changing a default does
+  not rewrite a stored value, so this must be switched on in the panel (see `docs/OPEN-WORK.md`).
+- **Fixed: credential comparisons were not constant time** (the temporary share token, the API key, and the
+  auto-discovery key, which is unauthenticated and creates a client row on success). They share one
+  `pkg/secretcmp` helper.
+
+## [v1.6.10] — 2026-10-05
 
 - **Fixed the 24 h traffic card reading a billing-cycle cumulative as if it were the window's traffic.**
   `traffic.up` / `traffic.down` are bytes since the cycle's reset day; the card asked for them with aggregation
@@ -46,16 +161,89 @@ the measurement that found it.
   missing. Panel-side only; agent source unchanged. Pinned by `frontend/script/trafficSummary.test.mjs` and
   documented in `docs/TRAFFIC-ACCOUNTING.md`.
 
-- **Noted, not fixed: changing a node's timezone requires an agent restart.** Go reads
-  `/etc/localtime` once at startup, so a process running from before a zone change
-  keeps printing the old zone *and* keeps cutting the `--month-rotate` window at the
-  old zone's day boundary — a quota figure wrong by up to a day, not only a log line.
-  Found on CLISP, where the zone changed from UTC+8 to `America/Los_Angeles` at 15:03
-  and the process running since before it printed UTC+8 stamps until the v0.1.30
-  rollout restarted it. No code change: the behaviour is Go's, and the fleet was
-  checked — every agent was already younger than its timezone file. Documented in
-  `docs/DEPLOY-OC424.md` with the journal-vs-message time distinction that made it
-  look like a bug.
+- **Fixed: a working node was reported as ICMP-broken.** The fleet ICMP check treated "no reply from this
+  address family" as a fault even when the node answers on the other family, so a healthy single-stack node
+  appeared in the broken list. The check now asks whether *any* family answers.
+
+- **Noted, not fixed: changing a node's timezone requires an agent restart.** Go reads `/etc/localtime` once at
+  startup, so a process running from before a zone change keeps printing the old zone *and* keeps cutting the
+  `--month-rotate` window at the old zone's day boundary — a quota figure wrong by up to a day, not only a log
+  line. No code change: the behaviour is Go's. Documented in `docs/DEPLOY-OC424.md`.
+
+## [v1.6.9] — 2026-10-02
+
+**The security batch**, picked in the order the 2026-10-01 audit set: security first, then data safety, then
+wrong numbers. It **moves the fleet**, because `agent/` changed.
+
+- **Fixed: `/api/public/ip-info/v1/lookup` let an anonymous caller read any node's egress IP by uuid.** A
+  non-empty `uuid` is now resolved and checked against the same visibility rule the history endpoints use — the
+  node must exist and not be hidden, or the caller must be an administrator — and a hidden node answers
+  *identically* to one that does not exist (404, echoing the uuid). `unlock.Load` is unexported, so the public
+  path has no second unguarded reader.
+- **Fixed: an SSO login bypassed the second factor.** The OAuth callback now requires the same second factor
+  `login.go` requires — same rules, same wording, same rate limiter — *before* `CreateSession`, and
+  `/oauth2/bind` and `/unbind` carry `RequireSensitive2FA`. Fail-closed: on a panel with OIDC enabled **and**
+  2FA on, SSO login is refused rather than silently skipping the factor. OIDC is disabled in this deployment,
+  so production impact was zero; making it usable needs the follow-up in `docs/ROADMAP.md` §F12.
+- **Fixed: a reachable but slow target was reported as 100 % packet loss.** `measureWithRetries` returned
+  `(-1, false)` whenever no attempt answered within the timeout, so a target whose RTT is consistently above
+  1 s read as a dead link. Four successful probes now report the last measured latency; real loss is still loss.
+- **Fixed: the released agent image could update itself.** `Dockerfile.agent` — the file `docker.yml` actually
+  builds — was missing the `/.komari-agent-container` marker, which only the unused `agent/Dockerfile` carried.
+  A manually run container would have replaced its own binary and `exit(42)`, leaving the node offline for good
+  under `restart: no`.
+- **Fixed: the agent's `-t` warning missed spellings pflag accepts.** `-tv` is `-t v`, and `-token-file x` is
+  `-t oken-file`; both slipped past the deprecation warning.
+- **Fixed: binding or unbinding SSO from the panel did not send the sensitive 2FA code**, so the new
+  `RequireSensitive2FA` on those routes would have refused the panel's own request.
+- **Changed: `latest` follows only a release that verified.** A release whose own verification fails gets its
+  images under the version tag but does not move `latest`. v1.6.6 is why: its verification failed (13 passed,
+  2 failed — the agent's WebSocket handshake refused with `403 Forbidden`) and the image had moved `latest`
+  anyway. The truth table is in `.github/workflows/docker.yml`; the policy in `docs/RELEASING.md`.
+
+## [v1.6.8] — 2026-10-01
+
+- **Changed: the embedded default theme is the panel's own front end, not a third-party theme.** The archive the
+  binary carries is now assembled from `frontend/dist` (panel shell, `admin/`, `standalone/`, service worker and
+  manifest) rather than a rebuilt copy of an installed theme, so a fresh installation gets the interface this
+  repository builds. `web/public/.gitignore` had been ignoring the archive and the manifest, so CI created both
+  on the spot and the embedded theme was quietly *not* what the repository held.
+- **Fixed: a request for a missing asset was answered with the SPA shell.** A 404 now stays a 404 instead of a
+  200 HTML document, which is what made a missing chunk look like a working page.
+- **Added: a test that asserts the embedded document is the panel's own**, positively, rather than by absence.
+
+## [v1.6.7] — 2026-10-01
+
+- **Fixed: the WebSocket origin check refused a legitimate non-browser client.** `ws_origin_check_enabled` treats
+  a request that sets its own `Origin` as browser-driven, but a client presenting `Authorization: Bearer <api
+  key>` is not a browser and sets no `Origin` at all — the check now accepts a Bearer credential as the
+  non-browser signal. This is what failed v1.6.6's own release verification (the agent's handshake got `403`).
+
+## [v1.6.6] — 2026-10-01
+
+The first batch from the 2026-10-01 audit. Panel-side and agent-side both, so the fleet moves.
+
+- **Fixed: `common:getMe` answered an agent with its token where a uuid was expected.** The agent branch now
+  returns the resolved client uuid and leaves the field empty when the lookup fails.
+- **Fixed: `public:getSlaReport` returned the whole fleet when asked for an empty entity list.** An empty list
+  is now an empty report, not "everything".
+- **Fixed: legacy agents lost their cycle traffic.** The panel's traffic read fell back to the cycle counter, and
+  the fallback now honours its own contract — it looks the metric up by `spec.metricKey` and downsamples the
+  same way the primary path does.
+- **Fixed: the pre-upgrade archive could be left truncated, and a bad archive stopped the restore path.** The
+  archive is written to a temporary name, verified, then renamed; the restore path refuses to delete the
+  `backup.zip` it could not read, and `ValidateArchive` checks the SQLite magic, page count and `quick_check`
+  before a restore.
+- **Fixed: the mmdb update leaked its write lock on every error path.** The download now goes to a temporary
+  file with a 60 s timeout, is validated, and is renamed into place under a `defer`red unlock.
+- **Fixed: a deferred offline alert was forgotten before it was delivered**, and its recovery notification was
+  swallowed. Both are pinned by positive tests.
+- **Fixed: an installed theme took over the panel's own routes.** `/install` and `/database-recovery` come from
+  the panel again (`/plugin/*` is still the theme's, deliberately).
+- **Fixed: billing cycles in the bulk editor were counted in months** rather than days, and the `htoplike`
+  memory figure now says what it actually measures.
+- **Fixed: `pkg/jsruntime`'s console writes raced** under `-race`.
+- **Fixed: the agent put its credential in a URL in two more places**, and wrote its identity file world-readable.
 
 ## [v1.6.5] — 2026-09-30
 
@@ -169,6 +357,25 @@ captured market index.
   content hash, and the 404 from the moment they were briefly missing got cached at the edge: after the files
   were restored the page still had no background until a hard refresh. Assets without a content hash now state
   `no-cache` (revalidated with the ETag already sent), and `index.html`/`sw.js` state `no-store`.
+
+## [v0.1.46] — 2026-09-28
+
+- **Fixed: a targeted agent update refused a release with no checksum by name, and said what it chose.** The
+  refusal used to be silent, so a node that declined to update looked like a node that had nothing to do.
+
+## [v0.1.45] — 2026-09-28
+
+- **Fixed: targeted agent updates never worked.** The checksum asset was looked up under the wrong name, so the
+  verification step failed for every targeted update — the feature was inert from the day it shipped.
+
+## [v0.1.44] — 2026-09-28
+
+- **Added: `deploy/fleet/upgrade-agent.sh` finds the running agent instead of assuming its layout.** The older
+  one-shot script assumed a path and a unit shape; the fleet script asks the host where the agent actually is,
+  which is what made per-node upgrades repeatable across the five different layouts the fleet turned out to have.
+- **Fixed: an agent refused a release download without saying which asset or which URL.** The message now names
+  both, which is the difference between "the update failed" and "the update looked for
+  `komari-agent-linux-arm64` at this URL".
 
 ## [v0.1.43] — 2026-09-27
 
@@ -472,7 +679,30 @@ explains why it is worth a release of its own.
   pins the *sequence* instead — save, confirm nothing is due, load, record a baseline,
   then require that a rewrite is due and that the field reaches disk.
 
-## [Unreleased]
+## [v0.1.29] — 2026-09-26
+
+**This release moves the fleet**, because the agent changed. It fixes a bug that
+inflated a node's reported traffic by orders of magnitude; see the entry below for
+the measurement that found it.
+
+- **Fixed: a node could report an impossible traffic delta, inflating the panel's
+  daily and monthly traffic by orders of magnitude.** The counter baseline was kept
+  in memory only, so a restart lost it and the next sample compared a live
+  cumulative counter against nothing; on one node that produced a single **59.5 GB**
+  delta in the minute the agent started, against a real rate near 7 GB/day and an
+  interface whose lifetime counter read 187 MB. The panel's "today" for that node
+  read ~160 GB. The baseline is now persisted in `net_static.json`
+  (`last_counters`) and restored on start, and a delta is discarded — with one log
+  line — when it is not physically possible for the elapsed time, when the baseline
+  is older than the bucket it would be attributed to, or when there is no elapsed
+  time at all.
+
+  The same bug had been writing impossible samples since **2026-06-29**: cleaning the
+  store removed 4 minute samples (largest 60.9 GiB) and 63 coarser rows that contained
+  them or were of the same class (largest 321 GiB in a single hourly bucket). After
+  the cleanup NOSLA's recorded traffic was 3.8 GB and MAC Server's 0.5 GB, both in
+  line with their providers' own meters — which is the check that the numbers are now
+  real rather than merely smaller.
 
 ## [v0.1.28] — 2026-09-26
 
