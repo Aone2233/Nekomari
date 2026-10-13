@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/pkg/secretcmp"
 )
 
 func SplitAllowlist(raw string) []string {
@@ -55,7 +56,7 @@ func IsAPIKeyRequest(r *http.Request) bool {
 	if err != nil || apiKeyConfig == "" || len(apiKeyConfig) < 12 {
 		return false
 	}
-	return r.Header.Get("Authorization") == "Bearer "+apiKeyConfig
+	return secretcmp.Equal(r.Header.Get("Authorization"), "Bearer "+apiKeyConfig)
 }
 
 // HasBearerCredential 判断请求是否带着 Bearer 形式的凭据。

@@ -13,6 +13,7 @@ import (
 	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/pkg/rpc"
+	"github.com/Aone2233/nekomari/pkg/secretcmp"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -159,7 +160,7 @@ func hasTempAccess(c *gin.Context) bool {
 	if err != nil {
 		return false
 	}
-	if allowKey == "" || tempKey != allowKey {
+	if allowKey == "" || !secretcmp.Equal(tempKey, allowKey) {
 		return false
 	}
 	return expireAt >= time.Now().Unix()
@@ -240,5 +241,5 @@ func isApiKeyValid(apiKey string) bool {
 	if apiKeyConfig == "" || len(apiKeyConfig) < 12 {
 		return false
 	}
-	return apiKey == "Bearer "+apiKeyConfig
+	return secretcmp.Equal(apiKey, "Bearer "+apiKeyConfig)
 }

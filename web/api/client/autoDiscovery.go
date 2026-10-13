@@ -3,6 +3,7 @@ package client
 import (
 	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/pkg/secretcmp"
 	"github.com/Aone2233/nekomari/utils"
 	"github.com/Aone2233/nekomari/web/api"
 	"github.com/gin-gonic/gin"
@@ -21,7 +22,7 @@ func RegisterClient(c *gin.Context) {
 	}
 	if AutoDiscoveryKey == "" ||
 		len(AutoDiscoveryKey) < 12 ||
-		"Bearer "+AutoDiscoveryKey != auth {
+		!secretcmp.Equal("Bearer "+AutoDiscoveryKey, auth) {
 
 		api.RespondError(c, 403, "Invalid AutoDiscovery Key")
 		return
