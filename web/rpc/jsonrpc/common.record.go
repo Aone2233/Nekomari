@@ -6,7 +6,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/database/models"
 	recordsdb "github.com/Aone2233/nekomari/database/records"
 	"github.com/Aone2233/nekomari/database/tasks"
@@ -62,21 +61,22 @@ func getRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpc
 	}
 
 	// Hidden filtering for non-admin
+	//
+	// 这里刻意【不】对 hidden 的 uuid 提前报错。以前它返回 InvalidParams
+	// "UUID not found"，而不存在的 uuid 会走到下面正常返回空结果 —— 两个回答可区分，
+	// 于是这个接口成了「这个 uuid 是不是隐藏节点」的判定器。现在 hidden 与不存在
+	// 走同一条路：记录照常取出，再被下面的 hidden 过滤掉，结果与不存在的 uuid 逐字相同。
+	//
+	// 用 clientVisibility()（uuid -> hidden 的完整映射）而不是自己拼一份「只有 hidden」
+	// 的表：完整映射同时带着存在性，下面过滤任务回显的 clients 列表时要用到它。
 	isAdmin := meta.Principal != nil && meta.Principal.HasRole(rpc.RoleAdmin)
 	hidden := map[string]bool{}
 	if !isAdmin {
-		cinfo, err := clients.GetAllClientBasicInfo()
+		visibleMap, err := clientVisibility()
 		if err != nil {
 			return nil, rpc.MakeError(rpc.InternalError, "Failed to get client info", err.Error())
 		}
-		for _, c := range cinfo {
-			if c.Hidden {
-				hidden[c.UUID] = true
-			}
-		}
-		if params.UUID != "" && hidden[params.UUID] {
-			return nil, rpc.MakeError(rpc.InvalidParams, "UUID not found", params.UUID)
-		}
+		hidden = visibleMap
 	}
 
 	switch params.Type {
@@ -376,7 +376,10 @@ func getRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpc
 				"p99_p50_ratio": ratio,
 			}
 			if params.UUID == "" && taskId != -1 { // retain existing behavior of exposing clients only when filtering by task
-				info["clients"] = t.Clients
+				// 这个列表是匿名可调的 common:getRecords 也会返回的，所以非管理员
+				// 只能看到可读的节点：否则隐藏节点的 uuid 会从这里整份漏出去，
+				// 与 public:getPublicPingTasks 是同一类缺陷（P1-9）。
+				info["clients"] = visibleClientUUIDs(t.Clients, hidden, isAdmin)
 			}
 			toList = append(toList, info)
 		}

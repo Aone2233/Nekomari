@@ -10,7 +10,6 @@ import (
 
 	"github.com/Aone2233/nekomari/database"
 	"github.com/Aone2233/nekomari/database/clients"
-	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/database/tasks"
 	"github.com/Aone2233/nekomari/internal/config"
@@ -495,23 +494,6 @@ func getNodeRecentStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rp
 		isLogin = true
 	}
 
-	// 仅在未登录时需要 Hidden 信息做过滤
-	hiddenMap := map[string]bool{}
-	if !isLogin {
-		var hiddenClients []models.Client
-		db := dbcore.GetDBInstance()
-		_ = db.Select("uuid").Where("hidden = ?", true).Find(&hiddenClients).Error
-		for _, cli := range hiddenClients {
-			hiddenMap[cli.UUID] = true
-		}
-
-		if hiddenMap[params.UUID] {
-			return nil, rpc.MakeError(rpc.InvalidParams, "UUID is required", params) //防止未登录用户获取隐藏客户端数据
-		}
-	}
-
-	reports := agent_runtime.GetRecentReports(params.UUID)
-
 	// 扁平化为 { count, records: [] }
 	type flatRecord struct {
 		Client         string    `json:"client"`
@@ -542,6 +524,25 @@ func getNodeRecentStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rp
 		Count:   0,
 		Records: []flatRecord{},
 	}
+
+	// 可见性先于读取，而且 hidden 与「不存在」的回答必须逐字相同。
+	//
+	// 这里以前对 hidden 返回 InvalidParams、对不存在的 uuid 返回空结果 —— 两个回答
+	// 可区分，于是这个接口本身就成了「这个 uuid 是不是隐藏节点」的判定器，而
+	// public:getPublicPingTasks 会先把隐藏节点的 uuid 交给匿名调用者。规则与
+	// public:* 的历史接口、database/unlock.LoadVisible 完全一致，实现在
+	// clientHistoryReadable 里。
+	if !isLogin {
+		hiddenMap, err := clientVisibility()
+		if err != nil {
+			return nil, rpc.MakeError(rpc.InternalError, "Failed to retrieve client visibility", err.Error())
+		}
+		if !clientHistoryReadable(hiddenMap, false, params.UUID) {
+			return resp, nil
+		}
+	}
+
+	reports := agent_runtime.GetRecentReports(params.UUID)
 
 	if len(reports) == 0 {
 		return resp, nil

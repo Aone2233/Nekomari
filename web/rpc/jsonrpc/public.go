@@ -65,6 +65,32 @@ func clientVisibility() (map[string]bool, error) {
 	return clients.HiddenClients()
 }
 
+// visibleClientUUIDs filters a stored client list down to the uuids this caller may see.
+//
+// It exists because a client list is a second place a hidden node's uuid can leak:
+// `PingTask.Clients` is echoed by the guest-readable public:getPublicPingTasks and by
+// common:getRecords when filtering by task, and an anonymous caller could read a hidden
+// uuid there and then confirm it through the history endpoints (P1-9).
+//
+// An empty result is not "every node": PingTask.AppliesToClient compares uuids one by
+// one, so filtering can only narrow a task's scope, never widen it.
+//
+// A logged-in administrator gets the stored list verbatim. Filtering it by existence
+// would also drop stale references to deleted nodes from a task the administrator is
+// editing, which is a different decision than "do not publish hidden nodes".
+func visibleClientUUIDs(uuids []string, hidden map[string]bool, loggedIn bool) []string {
+	if loggedIn {
+		return uuids
+	}
+	out := make([]string, 0, len(uuids))
+	for _, uuid := range uuids {
+		if clientHistoryReadable(hidden, false, uuid) {
+			out = append(out, uuid)
+		}
+	}
+	return out
+}
+
 func publicGetNodesInformation(ctx context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	clientList, err := clients.GetAllClientBasicInfo()
 	if err != nil {
@@ -240,10 +266,19 @@ func publicGetRecordsByUUID(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 	return response, nil
 }
 
-func publicGetPublicPingTasks(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+func publicGetPublicPingTasks(ctx context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	pingTasks, err := tasks.GetAllPingTasks()
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
+	}
+	// 这个接口是 guest 可读的，所以它回显的 clients 列表必须过与历史接口同一道可见性门：
+	// 隐藏节点的 uuid 不是公开信息。以前这里原样返回 task.Clients，匿名调用者因此能
+	// 直接枚举出隐藏节点，再用 common:getNodeRecentStatus / common:getRecords 逐个确认 ——
+	// 三处叠成一条完整的「找出隐藏节点」链路（P1-9）。
+	isLogin := isLoginFromCtx(ctx)
+	hidden, err := clientVisibility()
+	if err != nil {
+		return nil, rpc.MakeError(rpc.InternalError, "Failed to retrieve client visibility: "+err.Error(), nil)
 	}
 	type publicPingTask struct {
 		Id        uint     `json:"id"`
@@ -260,7 +295,7 @@ func publicGetPublicPingTasks(_ context.Context, _ *rpc.JsonRpcRequest) (any, *r
 			Id:        task.Id,
 			Weight:    task.Weight,
 			Name:      task.Name,
-			Clients:   task.Clients,
+			Clients:   visibleClientUUIDs(task.Clients, hidden, isLogin),
 			DefaultOn: task.DefaultOn,
 			Type:      task.Type,
 			Interval:  task.Interval,
