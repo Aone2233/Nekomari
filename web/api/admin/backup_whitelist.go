@@ -20,7 +20,12 @@ var backupWhitelist = []string{
 	"font.ttf",
 	"theme/",
 	"plugin/",
-	"plguin-data/",
+	// 插件的长期数据。这个字面量曾经是 "plguin-data/"，而运行时写的是
+	// plugin.StorageDir = "./data/plugin-data"（见 internal/plugin/plugin.go）——
+	// 于是备份报告成功，却静默丢掉了每个插件的持久状态。拼写错误能溜过去，是因为
+	// 不存在的白名单项被设计成静默跳过，而且没有任何测试把这份名单和运行时自己的
+	// 目录常量对起来。backup_whitelist_test.go 现在会做这个对照。
+	"plugin-data/",
 }
 
 // copyWhitelistedFiles 将白名单中存在的文件/目录复制到临时目录。
