@@ -4,7 +4,7 @@ import "time"
 
 type Settings struct {
 	ID                     uint   `json:"id,omitempty"`                                        // 1
-	Sitename               string `json:"sitename" default:"Nekomari"`                           // 站点名称，默认 "Nekomari"
+	Sitename               string `json:"sitename" default:"Nekomari"`                         // 站点名称，默认 "Nekomari"
 	Description            string `json:"description" default:"A simple server monitor tool."` // 站点描述
 	CorsOriginCheckEnabled bool   `json:"cors_origin_check_enabled" default:"true"`            // 是否启用 API CORS 跨域请求校验，默认 true
 	CorsAllowedOrigins     string `json:"cors_allowed_origins" default:""`                     // API 跨域允许列表
@@ -17,9 +17,12 @@ type Settings struct {
 	ScriptDomain           string `json:"script_domain" default:""`                            // 自定义脚本域名
 	SendIpAddrToGuest      bool   `json:"send_ip_addr_to_guest" default:"false"`               // 是否向访客页面发送 IP 地址，默认 false
 	VisitorAuditEnabled    bool   `json:"visitor_audit_enabled" default:"false"`               // 是否允许公开访客事件写入审计日志，默认 false
-	SSRFProtectionEnabled  bool   `json:"ssrf_protection_enabled" default:"false"`             // 是否启用 SSRF 防护，默认关闭
-	EulaAccepted           bool   `json:"eula_accepted" default:"false"`
-	BaseScriptsURLKey      string `json:"base_scripts_url" default:""`
+	// 默认开启。市场下载的抓取目标由远端目录内容决定，不由运维决定：默认市场源是
+	// 第三方目录，而下载地址就写在目录里。这条防护本来就是为这种场景建的，默认关闭
+	// 等于让它只在有人手动打开时才存在。
+	SSRFProtectionEnabled bool   `json:"ssrf_protection_enabled" default:"true"` // 是否启用 SSRF 防护，默认开启
+	EulaAccepted          bool   `json:"eula_accepted" default:"false"`
+	BaseScriptsURLKey     string `json:"base_scripts_url" default:""`
 	// GeoIP 配置
 	GeoIpEnabled  bool   `json:"geo_ip_enabled" default:"true"`
 	GeoIpProvider string `json:"geo_ip_provider" default:"ipinfo"` // empty, mmdb, ip-api, geojs
@@ -45,7 +48,7 @@ type Settings struct {
 	// 而 agent 上报的是累计总量、不说明覆盖哪个窗口。要做"本周期将用多少"的预测就必须知道窗口，
 	// 所以面板侧复制一份配置，而不是靠猜。
 	TrafficMonthRotate int `json:"traffic_month_rotate" default:"1"` // 账期日，默认每月 1 日
-	UpdatedAt                  time.Time
+	UpdatedAt          time.Time
 }
 
 const (

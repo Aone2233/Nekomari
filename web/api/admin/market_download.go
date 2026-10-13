@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Aone2233/nekomari/internal/config"
-	"gorm.io/gorm"
 )
 
 // marketDownloadMaxBytes limits the response size of a market download.
@@ -193,16 +192,16 @@ func isBlockedMarketIP(ip net.IP) bool {
 	return false
 }
 
+// marketDownloadSSRFDefault 是「这条设置还没有值」时的取值。
+//
+// 以前这里在记录不存在时【写入 false】并返回 false —— 把「没配置」解释成
+// 「不防护」。同一文件里的 IsSSRFProtectionEnabled 却把读不到当成已启用，
+// 于是状态显示说开着、下载路径其实是关的。现在两边都是 fail-closed，
+// 与 internal/config/settings.go 里该字段的 default:"true" 一致。
+const marketDownloadSSRFDefault = true
+
 func ssrfProtectionEnabled() (bool, error) {
-	enabled, err := config.GetAs[bool](config.SSRFProtectionEnabledKey)
-	if err == nil {
-		return enabled, nil
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, err
-	}
-	if err := config.Set(config.SSRFProtectionEnabledKey, false); err != nil {
-		return false, err
-	}
-	return false, nil
+	// GetAs 的默认值参数会把默认值落库并返回它，所以「没有这条设置」得到的是
+	// marketDownloadSSRFDefault，而不是一个错误，也不会被解释成关闭。
+	return config.GetAs[bool](config.SSRFProtectionEnabledKey, marketDownloadSSRFDefault)
 }
