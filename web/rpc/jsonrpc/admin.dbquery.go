@@ -92,6 +92,13 @@ func init() {
 		},
 		Returns: "{ database: string, driver: string, tables: string[] }",
 	})
+
+	// 任意 SQL 与远程命令执行同等敏感：dbExec 能改写 users.passwd 或删表，dbQuery
+	// 能读到 configs 里的 api_key 与全部节点数据。两者此前只要求 admin 角色，
+	// 于是一个被盗的普通管理会话就够用了 —— 而本仓库给改凭据、远程执行都挂了
+	// 敏感操作二次验证（RequireSensitive2FA / MarkSensitive）。这里补齐。
+	rpc.MarkSensitive("admin:dbQuery")
+	rpc.MarkSensitive("admin:dbExec")
 }
 
 func adminDBQuery(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
@@ -99,6 +106,11 @@ func adminDBQuery(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonR
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
+
+	// 读也要留痕。以前只有 dbExec 写审计，而 dbQuery 能读走 configs.api_key 与
+	// 全部节点数据 —— 「读操作没有副作用」不等于「读操作不需要记录」。
+	actor, ip := auditActor(ctx)
+	auditlog.Log(ip, actor, "query database SQL on "+target, "warn")
 
 	response, err := queryDatabase(ctx, target, statement, params.Args, limit)
 	if err != nil {
