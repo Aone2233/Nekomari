@@ -145,6 +145,16 @@ does not move** (`git diff --stat v1.6.10..v1.6.11 -- 'agent/**/*.go' protocol/`
 - **Fixed: credential comparisons were not constant time** (the temporary share token, the API key, and the
   auto-discovery key, which is unauthenticated and creates a client row on success). They share one
   `pkg/secretcmp` helper.
+- **Changed: the pinned Go toolchain moved to 1.27.2, and `golang.org/x/{net,crypto,sync,sys,text}` moved up
+  with it.** This release is why. Its first attempt **failed before producing anything**: every build job runs
+  `govulncheck -mode=binary` over the binary it just built, and Go 1.27.1's standard library now carries ten
+  vulnerabilities (net/http, net/http/internal/http2, mime/multipart, crypto/tls) — all fixed in `go1.27.2`,
+  and the http2 ones also by `golang.org/x/net@v0.60.0`. The tag existed and no Release did, so the tag was
+  recreated on the commit that fixes it rather than left as a marker for nothing.
+  **The gate itself was the other half of the problem:** it runs only in `release.yml`, so the first place a
+  vulnerability that affects every release can be discovered was a release. `ci.yml` now has a
+  `vulnerability-scan` job (source mode, both modules, the same `govulncheck` version), so the next one is
+  found on `main` instead.
 
 ## [v1.6.10] — 2026-10-05
 
