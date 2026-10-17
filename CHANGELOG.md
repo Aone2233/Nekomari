@@ -8,10 +8,19 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.6.12] — 2026-10-17
+
 The rest of the 2026-10-13 audit batch
 ([`docs/IMPROVEMENT-AUDIT-2026-10-13.md`](./docs/IMPROVEMENT-AUDIT-2026-10-13.md)) — its **section A is not
 here**: those six changes shipped as `v1.6.11` below, released on their own because two of them are
-anonymous-reachable. Everything below is panel-side only: `agent/` did not change, so the fleet does not move.
+anonymous-reachable. Everything below is panel-side only: `agent/**/*.go` and `protocol/` are untouched, so
+the fleet does not move.
+
+The work is 25 themed commits rather than one lump, so a later bisect lands on a subject. It was planned as
+several releases, and it is one because of the gate `v1.6.11` introduced: a tag is refused unless the commit it
+points at has a green `ci` run, and CI runs once per push at the branch tip — the intermediate commits were
+never tips of `main`, so tagging one of them is a refusal, not a split. The split applies from here on: each
+batch gets its own push and therefore its own tag.
 
 - **Fixed: the quota warning and the traffic forecast read the kernel's since-boot counter** (`net.total.*`) as
   if it were the billing cycle's usage, while the plan limit is a per-cycle quota. Both now read
