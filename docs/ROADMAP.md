@@ -1,5 +1,20 @@
 # Roadmap
 
+> **Frozen 2026-09-27. This is history, not status.** Every state table below was true
+> when it was written and several are not true now: the "state as of 2026-09-26" table
+> names `v0.1.30` as the latest tag and production version, and by 2026-10-13 those were
+> `v1.6.10` and `v1.6.9`; sections D1 and D2 describe a fleet that has since changed.
+>
+> **The live list of what is still open is [`OPEN-WORK.md`](./OPEN-WORK.md)** — since
+> 2026-10-13 it is the only document that claims to be current. Read this file for the
+> reasoning behind a decision (the audit of what was wrong, the six-feature plan and why
+> each acceptance criterion reads the way it does), and read that one to find out what is
+> left.
+>
+> The sections kept their original text deliberately. Rewriting them would destroy the
+> record of what was believed at the time — which is the thing that makes the four
+> corrections in them (A4, D1, D2, H1a) worth reading.
+
 Consolidated 2026-09-24, after the v0.1.26 rollout; revised 2026-09-26 to
 distinguish what is *implemented*, what is *released*, and what is *deployed*, and
 again on the same day to add section H, which is where the work now is.
@@ -10,11 +25,7 @@ measured, and what remains in them is a handful of migrations and one visualizat
 pass. Section H is the forward plan — the six features being built next, in order,
 each with its acceptance criteria and, for each, what would make it wrong.
 
-`docs/OPEN-WORK.md` tracks the older 2026-09-18 batch and its remaining
-decisions; `docs/DEPLOY-OC424.md` is the current-state runbook, including the
-rollout traps that section H6 exists to make impossible.
-
-## State as of 2026-09-26 (after the v0.1.30 rollout)
+## State as of 2026-09-26 (after the v0.1.30 rollout) — superseded, see the header
 
 Each row is a separate claim, and each has its own evidence. "Released" means a
 tag exists; "deployed" means a host is running it, and the two are never the same
@@ -590,16 +601,28 @@ ok  github.com/Aone2233/nekomari/web/api/public    1.386s
 `-shuffle=on` makes the run order vary, so a pass is no longer evidence about
 one lucky ordering.
 
-### A4. React Compiler rules: keep advisory, do not adopt yet
+### A4. React Compiler rules: keep advisory, do not adopt yet — **corrected 2026-10-13**
 
-`react-hooks` v7 folds 14 compiler rules into `recommended`; on this codebase they
-raise 133 findings (ref writes during render, setState inside effects, manual
-memoization). `eslint.config.js` names the two classic rules explicitly so the
-upgrade did not silently adopt them. The compiler audit
-(`npm run audit:compiler`) is in CI and currently reports 0.
+`react-hooks` v7 folds 14 compiler rules into `recommended`; `eslint.config.js` names
+the two classic rules explicitly so the upgrade did not silently adopt them.
 
-Acceptance for adoption: the 133 findings triaged into real / cosmetic, with the
-real ones fixed and the rest suppressed per-rule with a reason. Not before.
+Two claims in the paragraph that used to stand here were wrong, and both in the
+direction that hid a failing gate:
+
+- it said the audit "raises 133 findings". Measured on 2026-10-13 it raised **1**
+  (`react-hooks/set-state-in-effect` in `frontend/src/pages/sla/index.tsx`); the other
+  132 had been cleared by the compiler migration in the meantime.
+- it said the audit "is in CI and currently reports 0". It was in **no** workflow, and
+  it was **failing** (`exit 1`). `npm run lint` cannot see this: `eslint.config.js`
+  enables only 8 react-hooks rules, so the two checks disagree by construction.
+
+Fixed 2026-10-13: the `setState`-in-effect shape in `pages/sla/index.tsx` was replaced
+with the promise-callback form (which also cancels a stale response), and
+`npm run audit:compiler` is now a step in `ci.yml`'s `build & test` job — removing it
+turns CI red. `docs/TESTING.md` had this right all along; this section was the wrong one.
+
+Acceptance for adoption stays: triage the remaining findings into real / cosmetic, fix
+the real ones, suppress the rest per-rule with a reason. Not before.
 
 ## B. Performance — measure, then change
 
@@ -826,7 +849,21 @@ Acceptance: `ps aux | grep komari-agent` on a node shows no token, and the
 installer's generated one-liner is updated to match — **met on nine of ten nodes**,
 open for NOSLA.
 
+> **Corrected 2026-10-01, and the paragraph above was wrong on both counts.**
+> `DEPLOY-OC424.md` (the "What the fleet looks like now" table) records that **NOSLA
+> was never on `-t`** — its reporting unit already passed `--token-file`, and its
+> legacy sibling did too, so the `-t` reading matched neither unit; the SSH route had
+> also been fixed the day before. **No node is left on a command-line credential.**
+> D1 is closed, not "nine of ten".
+
 ### D2. Prefer `AmbientCapabilities` over running as root
+
+> **Corrected 2026-10-13.** The two paragraphs below name NOSLA as the non-root
+> example and the state table says "two of ten". `DEPLOY-OC424.md`'s fleet table
+> records NOSLA's identity as **root**; the only non-root node is MAC-WAN, so the
+> count is **one of ten** and the pattern to copy is MAC-WAN's file capability (or
+> NOSLA's `AmbientCapabilities` shape, which is the recommendation — just not the
+> example it was described as).
 
 Eight of ten nodes run the agent as root. NOSLA shows the better pattern — a
 dedicated unprivileged user with `AmbientCapabilities=CAP_NET_RAW` — and
