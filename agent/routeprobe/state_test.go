@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -30,7 +31,7 @@ func TestDailyScheduleSurvivesRestarts(t *testing.T) {
 		t.Fatalf("probed %d times, want twice over 25h", calls)
 	}
 	info, _ := os.Stat(file)
-	if info.Mode().Perm() != 0600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatal("state must be private")
 	}
 }
