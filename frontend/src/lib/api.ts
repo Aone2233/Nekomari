@@ -29,6 +29,16 @@ type SettingsRestart = {
 
 const migrationGuideStatusPath = "/api/admin/database-migration/auth";
 const migrationGuidePollInterval = 500;
+const migrationGuidePollMaxInterval = 5000;
+/**
+ * 等待面板重启的总预算。超过它就放弃。
+ *
+ * 以前这里是一个 500 ms、自续期、无次数上限、无退避、无句柄、无取消路径的循环：
+ * 只要面板没有回来（重启失败、或者请求被代理挡住），标签页就会以 2 Hz 一直请求下去，
+ * 包括用户已经离开这个页面之后。一次重启不该留下一个永久的后台请求，而它既不会让
+ * 面板更快回来，也不会告诉任何人它失败了。
+ */
+const migrationGuidePollBudgetMs = 3 * 60 * 1000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -52,24 +62,60 @@ function settingsRestartFrom(responseData: unknown): SettingsRestart | undefined
   return { guidePath };
 }
 
-function waitForMigrationGuide(guidePath: string) {
+/**
+ * 等面板重启完成后跳到迁移向导页。返回一个 stop()，调用方（或 pagehide）可以取消。
+ *
+ * 500 ms 起步、每次翻倍到 5 s 封顶，总预算见 migrationGuidePollBudgetMs：重启通常
+ * 几秒内完成，所以前几次要快；而一个已经重启了半分钟的面板，再以 2 Hz 追问也没有意义。
+ */
+function waitForMigrationGuide(guidePath: string): () => void {
+  let timer: number | null = null;
+  let stopped = false;
+  let interval = migrationGuidePollInterval;
+  const deadline = Date.now() + migrationGuidePollBudgetMs;
+
+  const stop = () => {
+    stopped = true;
+    if (timer !== null) {
+      window.clearTimeout(timer);
+      timer = null;
+    }
+  };
+
   const check = async () => {
+    if (stopped) {
+      return;
+    }
     try {
       const response = await fetch(migrationGuideStatusPath, {
         cache: "no-store",
       });
       const payload: unknown = await response.json();
       if (response.ok && isRecord(payload) && payload.status === "success") {
+        stop();
         window.location.replace(guidePath);
         return;
       }
     } catch {
       // The previous process may still be stopping or the replacement may not be ready.
     }
-    window.setTimeout(check, migrationGuidePollInterval);
+    if (stopped) {
+      return;
+    }
+    if (Date.now() >= deadline) {
+      stop();
+      return;
+    }
+    interval = Math.min(interval * 2, migrationGuidePollMaxInterval);
+    timer = window.setTimeout(check, interval);
   };
 
-  window.setTimeout(check, migrationGuidePollInterval);
+  // 真正离开页面（跳转、关闭标签页）时停掉。这里刻意【不】监听 visibilitychange：
+  // 切到别的标签页再回来是很正常的动作，不该让等待就此结束。
+  window.addEventListener("pagehide", stop);
+
+  timer = window.setTimeout(check, interval);
+  return stop;
 }
 
 /**
