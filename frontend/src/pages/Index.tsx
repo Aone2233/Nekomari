@@ -167,12 +167,48 @@ const Index = () => {
   if (isLoading) {
     return <Loading />;
   }
-  if (error) {
-    return <div>Error: {error}</div>;
+  // 从未成功拿到过节点列表：这是一次「什么都没有」，所以整页显示错误并给一个重试入口。
+  // 以前这里是无条件的一行 `<div>Error: {error}</div>` —— 硬编码英文、没有 role、没有
+  // 重试，而它出现在访问量最大的页面上。
+  if (error && !nodeList) {
+    return (
+      <div
+        role="alert"
+        className="mx-4 mt-6 rounded-md border border-[var(--red-6)] bg-[var(--red-2)] p-4"
+      >
+        <Text size="2" weight="medium">
+          {t("status_load_failed", "Could not load the node list")}
+        </Text>
+        <Text size="1" color="gray" className="mt-1 block break-all">
+          {error}
+        </Text>
+        <button
+          type="button"
+          onClick={refresh}
+          className="mt-3 inline-flex h-7 items-center rounded-[4px] border border-[var(--gray-7)] px-3 text-xs hover:bg-[var(--gray-3)]"
+        >
+          {t("common.retry", "Retry")}
+        </button>
+      </div>
+    );
   }
 
   return (
     <>
+      {/* 有数据但最近一次刷新失败：保留内容，只说明它是旧的（不是把内容换成错误）。 */}
+      {error && nodeList && (
+        <div
+          role="status"
+          className="mx-4 mt-3 rounded-md border border-[var(--orange-6)] bg-[var(--orange-2)] px-3 py-2"
+        >
+          <Text size="1">
+            {t(
+              "status_stale_warning",
+              "Could not refresh; showing the last known state",
+            )}
+          </Text>
+        </div>
+      )}
       <Callouts />
       <Card className="km-page-index km-summary-card summary-card mx-4 md:text-base text-sm relative">
         <div className="km-summary-card-settings absolute top-2 right-2">
