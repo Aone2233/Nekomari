@@ -8,6 +8,15 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.6.13] — 2026-10-17
+
+- Keep ChatGPT/Claude region-only results `unknown`: observing an exit country does
+  not establish the service's country policy or actual IP availability. YouTube
+  consent/login pages without expected markers also stay unknown instead of green.
+- This release includes agent changes. Upgrade the panel first, then canary the
+  matching agent before planning a fleet rollout; optional route targets remain off
+  unless explicitly configured by the operator.
+
 - Add optional [Nekomari Mint](https://github.com/Aone2233/komari-theme-nekomari-mint)
   theme support without replacing the default theme or admin panel: a visibility-gated
   `public:getNodeInsights` read endpoint provides stale-aware probe evidence and

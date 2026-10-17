@@ -195,10 +195,10 @@ func TestProbeRegionOnlyMarksBasisRegion(t *testing.T) {
 		"chatgpt.com/cdn-cgi/trace": bodyResponse(200, traceBody("203.0.113.9", "SG")),
 	})
 	got := probeChatGPT(context.Background(), client, "")
-	if got.Status != Unlocked || got.Basis != BasisRegion || got.Region != "SG" {
-		t.Errorf("got status=%q basis=%q region=%q, want unlocked/region/SG", got.Status, got.Basis, got.Region)
+	if got.Status != Unknown || got.Basis != BasisRegion || got.Region != "SG" {
+		t.Errorf("got status=%q basis=%q region=%q, want unknown/region/SG", got.Status, got.Basis, got.Region)
 	}
-	if !strings.Contains(got.Detail, "未验证") {
+	if !strings.Contains(got.Detail, "未核实") {
 		t.Errorf("detail should say the reachability was not verified, got %q", got.Detail)
 	}
 }
@@ -209,8 +209,28 @@ func TestProbeRegionOnlyFallsBackToEgressRegion(t *testing.T) {
 		"claude.ai/cdn-cgi/trace": errResponse("dial tcp: i/o timeout"),
 	})
 	got := probeClaude(context.Background(), client, "JP")
-	if got.Status != Unlocked || got.Region != "JP" {
-		t.Errorf("got status=%q region=%q, want unlocked/JP", got.Status, got.Region)
+	if got.Status != Unknown || got.Region != "JP" {
+		t.Errorf("got status=%q region=%q, want unknown/JP", got.Status, got.Region)
+	}
+}
+
+func TestYouTubeConsentPageIsNotAvailabilityEvidence(t *testing.T) {
+	client, _ := newFixture(map[string]func() (*http.Response, error){
+		"www.youtube.com/premium": bodyResponse(200, "<html>Before you continue: sign in</html>"),
+	})
+	if got := probeYouTubePremium(context.Background(), client); got.Status != Unknown {
+		t.Fatalf("unrecognized page was advertised as unlocked: %+v", got)
+	}
+}
+
+func TestRegionOnlyNeverClaimsSupportedPolicy(t *testing.T) {
+	for _, country := range []string{"CN", "HK", "US", "XX"} {
+		client, _ := newFixture(map[string]func() (*http.Response, error){
+			"chatgpt.com/cdn-cgi/trace": bodyResponse(200, traceBody("192.0.2.1", country)),
+		})
+		if got := probeChatGPT(context.Background(), client, ""); got.Status != Unknown || got.Basis != BasisRegion {
+			t.Fatalf("country observation became availability claim: %+v", got)
+		}
 	}
 }
 

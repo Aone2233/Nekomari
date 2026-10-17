@@ -256,9 +256,12 @@ func probeYouTubePremium(ctx context.Context, client *http.Client) Result {
 	case strings.Contains(body, "Premium is not available"):
 		result.Status = Blocked
 		result.Detail = "该地区不提供 Premium"
-	default:
+	case result.Region != "" || strings.Contains(body, "ad-free"):
 		result.Status = Unlocked
-		result.Detail = "可访问 Premium 页面"
+		result.Detail = "Premium 页面包含地区或服务标记；未验证账号播放"
+	default:
+		result.Status = Unknown
+		result.Detail = "页面缺少 Premium 检测标记，可能是登录、同意或风控页面"
 	}
 	return result
 }
@@ -287,7 +290,8 @@ func probeRegionOnly(ctx context.Context, client *http.Client, host, id, name st
 		loc = fallback
 	}
 	result.Region = loc
-	result.Status = Unlocked
-	result.Detail = fmt.Sprintf("出口地区 %s（按地区判断，未验证该 IP 是否真的可用）", loc)
+	// An observed country is not evidence that either the country or IP is supported.
+	result.Status = Unknown
+	result.Detail = fmt.Sprintf("出口地区 %s（仅地区观测，未核实服务支持政策或该 IP 实际可用性）", loc)
 	return result
 }
