@@ -7,7 +7,9 @@
 # is dead weight on the same disk as the databases.
 #
 # Survivors are verified as readable zips before anything is deleted, so a listing
-# alone can never cost the last good copy.
+# alone can never cost the last good copy. A corrupt survivor is reported and kept:
+# it must not abort the prune, or one bad archive left in the directory would block
+# disk cleanup forever (and the file it protects is kept either way).
 #
 # Usage: prune-upgrade-backups.sh [--keep N] [--dir DIR] [--dry-run]
 set -euo pipefail
@@ -39,17 +41,28 @@ if [ "${#files[@]}" -le "$KEEP" ]; then
   exit 0
 fi
 
+unreadable=0
 for f in "${files[@]:0:$KEEP}"; do
   if command -v python3 >/dev/null 2>&1; then
-    python3 - "$f" <<'PY'
+    # `if !` 而不是裸跑：在 set -e 下，一个坏档（或 zipfile 抛出的任何异常）会
+    # 中止整个脚本 —— 而这一段在「保留」循环里，于是连过期备份都不会被删，
+    # 磁盘会一直涨，运维看到的只是一段 Python traceback。
+    if ! python3 - "$f" <<'PY'
 import sys, zipfile
 bad = zipfile.ZipFile(sys.argv[1]).testzip()
 if bad:
     raise SystemExit("corrupt entry: %s" % bad)
 PY
+    then
+      echo "  WARN    $(basename "$f") is not a readable zip; keeping it anyway" >&2
+      unreadable=$((unreadable + 1))
+    fi
   fi
   echo "  keep    $(basename "$f") ($(du -h "$f" | cut -f1))"
 done
+if [ "$unreadable" -gt 0 ]; then
+  echo "warning: $unreadable of the kept archives could not be read; they were kept, not deleted" >&2
+fi
 
 for f in "${files[@]:$KEEP}"; do
   if [ "$DRY" = 1 ]; then
