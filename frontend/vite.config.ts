@@ -119,6 +119,17 @@ export default defineConfig(({ mode }) => {
             "**/FileEditorDialog-*.css",
             "**/editor.worker-*.js",
             ...monacoLanguageChunkGlobs,
+            // 国旗（258 个 svg）与 OS 图标（33 个：26 svg + 4 webp + 3 ico）按需加载。
+            //
+            // 实测（2026-10-13，对构建产物取 gzip）：国旗 653 KB 原始 / 约 273 KB gzip，
+            // 图标 169 KB / 约 57 KB —— 合计约 330 KB gzip，而 service worker 每次安装
+            // 与每次更新都会在后台把整个预缓存重新下载一遍。B1 那次测量量的是「首访传输
+            // 480 KiB」，预缓存的内容是另一回事，所以这 330 KB 从未被定价。
+            //
+            // 它们仍然离线可用：下面的 runtimeCaching 用 CacheFirst 缓存真正请求过的那些，
+            // 也就是用户实际看过的地区与系统。
+            "**/assets/flags/*.svg",
+            "**/assets/logo/*",
           ],
           maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
           navigateFallback: null,
@@ -143,6 +154,25 @@ export default defineConfig(({ mode }) => {
                 expiration: {
                   maxEntries: 10,
                   maxAgeSeconds: 60 * 60 * 24 * 365, // <== 365 days
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
+              // 国旗与 OS 图标：不进预缓存（见上面的 globIgnores），但真正用到之后
+              // 走缓存，所以离线时看过的节点仍然有图标。
+              //
+              // 排在 api.* 之后：workbox 取第一个匹配的规则，而这条只匹配同源资源，
+              // 两条不会互相遮挡。
+              urlPattern: /\/assets\/(flags|logo)\//i,
+              handler: "CacheFirst",
+              options: {
+                cacheName: "asset-icons",
+                expiration: {
+                  maxEntries: 320,
+                  maxAgeSeconds: 60 * 60 * 24 * 365,
                 },
                 cacheableResponse: {
                   statuses: [0, 200],
