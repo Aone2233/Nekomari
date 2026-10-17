@@ -30,11 +30,30 @@ export const duration = (nanoseconds: number): string => {
   return `${(hours / 24).toFixed(1)}d`;
 };
 
-export const formatTime = (value: string): string => {
+/**
+ * formatTime renders an instant in the reader's language **and names the zone**.
+ *
+ * 时区必须出现在屏幕上。SLA 报告的存在意义就是「把 URL 发给别人」，而故障起止时刻
+ * 在每个查看者的浏览器里都是本地时间 —— 不标时区，同一份报告在两台机器上读起来就是
+ * 两个不同的时刻，而屏幕上没有任何东西说明这件事。
+ *
+ * 每个时间戳自带时区缩写，而不是在页面顶部说一次：表格会分页、卡片会被单独截图、
+ * 有人只复制一行，说一次的那种标注离开页面就丢了。
+ *
+ * `language` 传 i18next 的当前语言；不传则用浏览器默认，至少数字格式是对的。
+ */
+export const formatTime = (value: string, language?: string): string => {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString();
+  return date.toLocaleString(language, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
 };
 
 /**

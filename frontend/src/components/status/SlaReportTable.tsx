@@ -46,6 +46,8 @@ const IncidentList: React.FC<{ incidents: SlaIncident[] | null; emptyLabel: stri
   incidents,
   emptyLabel,
 }) => {
+  // 语言来自 i18next：时间戳要按读者看到的语言格式化，并且带上时区（见 slaFormat.formatTime）。
+  const { i18n } = useTranslation();
   if (!incidents || incidents.length === 0) {
     return (
       <Text size="1" color="gray">
@@ -57,7 +59,8 @@ const IncidentList: React.FC<{ incidents: SlaIncident[] | null; emptyLabel: stri
     <Flex direction="column" gap="1">
       {incidents.map((incident, index) => (
         <Text size="1" key={`${incident.Start}-${index}`}>
-          {formatTime(incident.Start)} → {formatTime(incident.End)} · {duration(incident.duration)}
+          {formatTime(incident.Start, i18n.language)} → {formatTime(incident.End, i18n.language)} ·{" "}
+          {duration(incident.duration)}
         </Text>
       ))}
     </Flex>
