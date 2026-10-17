@@ -1730,3 +1730,64 @@ Two leftovers were removed while doing this: `happy_heisenberg` on OC424 and
 v0.1.15 work, still running with a `bogus` token. They looked like host agents in the
 process table (their parent is containerd), which is exactly why
 `install-staged-agent.sh` discovers the systemd unit instead of matching the process name.
+
+## 2026-10-17: v1.6.14 daily observations and Passkey compatibility
+
+Release commit `3106eeb91612e54cdea2d601222e69d9033a7ad8`; CI
+`39005854862`, release `39006259801`, Docker `39006682141` all succeeded.
+The first CI exposed a Windows-only POSIX-mode assertion; the follow-up commit
+corrected that test before tagging. No failed-commit release was deployed.
+
+OC424 is pinned to
+`ghcr.io/aone2233/nekomari:v1.6.14@sha256:f66c4992a59890be199907b95a585b52f615c68b7cd4b0a04e7daeb53851a342`.
+It is healthy with zero container restarts. WAL-safe pre-upgrade database/file
+backup: `/opt/nekomari/backups/pre-v1.6.14-20261017T051946Z` (root-only).
+The additive `routes_probed_at` migration preserves existing snapshots.
+Mint v0.3.0 is installed; SHA256 of the released ZIP is
+`dc90d14feae48fa82d89fbf8c89e3863c106059da03c4843dbb12271b7395d0b`.
+Old hashed assets remain for open tabs. Theme settings, private-site flag, all
+14 UUIDs/tokens/hidden flags and unrelated services were retained.
+
+### Canary and staged agents
+
+After the OC424 canary produced actual service and route results, upgrade order
+was MegaBox, HK04/NOSLA, then SDE9929/KSLE/BERO and LCKD (OpenRC). All eight
+including OC424 report v1.6.14, five service items and three route results.
+Exact executable/cwd/service ownership and old/new checksums were checked before
+replacement; backups under `/var/backups/nekomari-agent/pre-v1.6.14-*` preserve
+binary, configuration, capabilities and stopped traffic-ledger snapshots.
+Credentials and live ledgers were not replaced. Existing auto-update policy stays
+disabled. NOSLA/KSLE received full traceroute; LCKD received full traceroute,
+Python and capability utilities instead of relying on BusyBox ASN support.
+
+Daily routes use the three existing operator-selected carrier destinations.
+On OC424, the observation reached all three: telecom 163/19 hops, unicom
+169/15 hops, mobile 13 hops with no identified carrier ASN. These are observations,
+not CN2 GIA certification. Its Netflix/YouTube page evidence was positive,
+OpenAI compliance and Gemini pages were reachable (`partial`), Claude remained
+unknown with region-only fallback. No account playback/conversation was tested.
+Restarting the OC424 agent retained the exact daily state bytes, modification
+time and original route timestamp (file mode 0600); unit tests exercise the
+24-hour boundary. A full live 24-hour cycle has not yet elapsed.
+
+### Passkey and outstanding access
+
+The production plugin remains komari-passkey 0.1.13 with its existing settings
+and credentials. Anonymous status with the proper origin query returns enabled
+and verifier available; credential management still returns 401. A fresh browser
+on the public HTTPS site shows the private login and injected Passkey button,
+with no page errors. Actual user hardware authentication remains user acceptance
+work; real virtual-authenticator registration/login passed only in isolation.
+Do not loosen CORS or Cloudflare rules for loopback diagnostic requests.
+
+MACServer, parallel-compute cloud, ATT, VT01, SB01 and SB02 were NOT upgraded:
+no usable SSH alias/jump connection is available in this executor. Do not infer
+management credentials from their public monitoring addresses. Final read-only
+verification at 05:43:51 UTC found 13/14 fresh CPU streams; untouched SB02 v1.6.11
+had 232-second-old samples (all metric streams delayed). It requires connectivity
+inspection once access is provided; this is not an all-nodes-healthy result.
+The five-minute panel log sample had no panic or agent RPC 401 lines.
+
+Theme store: official submission script accepted the published v0.3.0 ZIP and
+preview in read-only preflight. No official Issue or PR has been submitted;
+the full application in the theme repository remains pending author review.
