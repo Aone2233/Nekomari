@@ -42,8 +42,13 @@ docker run --rm -v "$PWD/site:/docs" -w /docs \
 
 `--strict` is used so a broken internal link fails the build instead of shipping.
 
-The same three steps run in `deploy/docs/build.sh` on the server, which is what the container image is built
-from — see `deploy/docs/README.md`.
+The same three steps run in `deploy/docs/Dockerfile` (its `stage` builder), which is what
+the container image is built from; `deploy/docs/deploy.sh` builds that image on the panel
+host and replaces the running container — see `deploy/docs/README.md`.
+
+`stage` and `check` also run in CI, as a step of `ci.yml`'s `workflow-contracts` job. The
+site is published at a public URL, and before 2026-10-13 nothing ran the check on push, so
+a navigation entry naming a page that does not exist would have shipped.
 
 ## Adding a page
 

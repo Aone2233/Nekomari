@@ -72,3 +72,7 @@ for f in sorted(WF.glob("*.yml")):
 
 print()
 print(f"  problems: {problems}")
+
+# 这个脚本此前无论发现什么都 exit 0，所以把它接进 CI 之前必须先让它能失败 ——
+# 否则它只是一段会打印东西的装饰。
+raise SystemExit(1 if problems else 0)

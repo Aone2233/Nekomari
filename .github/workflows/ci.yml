@@ -161,6 +161,22 @@ jobs:
           python -m pip install --quiet pyyaml
           python deploy/docker-workflow-check.py
 
+      - name: Check that every `with:` input still exists on the pinned action
+        # 这条检查的是「major 升级把某个 with: 输入删掉/改名」——那种失败只在
+        # workflow 真正跑起来时才出现，对 release.yml 就是在发布时。脚本按
+        # action.yml 逐个核对；读不到（composite/local）只打印，不算问题，
+        # 所以网络抖动不会让它变红。
+        run: python deploy/check-action-inputs.py
+
+      - name: Check the published documentation site
+        # site/README.md 说这一步 "not optional"：mkdocs --strict 能发现坏链，但
+        # 发现不了「导航里点名了一个不存在的页面」，而那正是这个 check 的作用。
+        # 站点发布在 nekomari-docs.66040321.xyz，构建发生在面板主机上 ——
+        # 在此之前，文档站没有任何 CI。
+        run: |
+          node site/script/build.mjs stage
+          node site/script/build.mjs check
+
   vulnerability-scan:
     name: vulnerability scan (ubuntu)
     runs-on: ubuntu-latest
@@ -223,6 +239,11 @@ jobs:
           npm ci --no-audit --no-fund
           npm test
           npm run lint
+          # React Compiler 建议。eslint 只启用了 8 条 react-hooks 规则，所以
+          # `npm run lint` 对编译器会拦的形状是绿的 —— 这道门必须单独跑，否则
+          # 「审计在 CI 里且报 0」只是文档里的说法。它此前确实不在任何 workflow 里，
+          # 而那时它正带着 1 个 error 失败（frontend/src/pages/sla/index.tsx）。
+          npm run audit:compiler
           npm run build
 
       - name: Build theme packer
@@ -241,6 +262,19 @@ jobs:
           # 而这里重建一次，保证**发出去的二进制**用的是当前源码。两者能同时成立的前提是输入
           # 都在本仓库 —— 2026-10-01 之前它来自另一个主题仓库，那时重建不可复现，所以只能提交。
           node script/embed-theme.mjs
+
+      # 这里曾经想断言「提交的归档等于重建结果」（git diff --exit-code -- web/public/defaultTheme）。
+      # 做不到，而且原因是可复现的：rollup 的 **chunk 切分**在两次构建之间会变。同一份源码，
+      # 2026-10-13 实测 chunk-_layout.js 一次是「1 个 import 的小块」，另一次是「20+ import
+      # 的大块」，143 个 chunk 的文件名哈希随之改变。逐个条目对比两个归档：所有差异都只出现在
+      # 被引用的 chunk 文件名上，唯一的**结构性**差异就是切分本身 —— 所以不是时间戳，也不是
+      # 内容，而是模块图遍历顺序（Windows 上 readdir 不排序）。
+      #
+      # 于是：归档里提交的那一份是权威的，发布工作流会重建它（保证二进制用的是当前源码），
+      # 而「归档的内容是不是面板自己的文档」由 web/public 下的 Go 测试断言（embedded_theme_test.go、
+      # standalone_pages_test.go、pwa_assets_test.go）—— 那些测试不依赖字节可复现。
+      # tools/zstdpack 的 ModTime 归零仍然保留：它让「同一份 dist 打两次」字节相同，
+      # 这是上面那条断言的前提之一，也是唯一被修掉的那一个来源。
 
       - name: Test server
         # 跑全部用例，只排除会真的访问第三方的那三个：上游 utils/geoip 的
