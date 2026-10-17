@@ -60,7 +60,12 @@ func publicGetNodeInsights(ctx context.Context, req *rpc.JsonRpcRequest) (any, *
 		}
 		response.Unlock = &insightUnlock{ProbedAt: report.ProbedAt, Stale: stale, Results: items}
 		if len(report.Routes) > 0 {
-			response.Routes = &insightRoutes{ProbedAt: report.ProbedAt, Stale: stale, Results: report.Routes}
+			routeTime := report.RoutesProbedAt
+			if routeTime.IsZero() {
+				routeTime = report.ProbedAt
+			}
+			routeStale := time.Since(routeTime) > 30*time.Hour || routeTime.After(time.Now().Add(5*time.Minute))
+			response.Routes = &insightRoutes{ProbedAt: routeTime, Stale: routeStale, Results: report.Routes}
 		}
 	}
 	if params.IncludeIP {

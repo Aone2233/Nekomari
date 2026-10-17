@@ -109,6 +109,12 @@ func PrivateSiteMiddleware() gin.HandlerFunc {
 		}
 
 		path := c.Request.URL.Path
+		// Authentication bootstrap only; credential management stays private.
+		if (c.Request.Method == http.MethodGet && path == "/api/komari-passkey/status") ||
+			(c.Request.Method == http.MethodPost && (path == "/api/komari-passkey/authentication/options" || path == "/api/komari-passkey/authentication/verify")) {
+			c.Next()
+			return
+		}
 
 		// 公开路径直接放行
 		for _, p := range publicPaths {

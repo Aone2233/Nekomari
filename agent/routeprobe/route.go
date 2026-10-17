@@ -124,12 +124,12 @@ func (b *boundedOutput) Write(p []byte) (int, error) {
 func Probe(ctx context.Context, targets []Target) []Result {
 	results := make([]Result, 0, len(targets))
 	for _, target := range targets {
-		budget, cancel := context.WithTimeout(ctx, 30*time.Second)
+		budget, cancel := context.WithTimeout(ctx, 45*time.Second)
 		family := "-4"
 		if net.ParseIP(target.IP).To4() == nil {
 			family = "-6"
 		}
-		cmd := exec.CommandContext(budget, "traceroute", family, "-n", "-A", "-m", "20", "-q", "1", "-w", "1", target.IP)
+		cmd := exec.CommandContext(budget, "traceroute", family, "-I", "-n", "-A", "-m", "30", "-q", "1", "-w", "1", target.IP)
 		cmd.WaitDelay = time.Second
 		var output boundedOutput
 		cmd.Stdout = &output

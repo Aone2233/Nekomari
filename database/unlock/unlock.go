@@ -48,6 +48,13 @@ func Save(uuid string, params v2.UnlockParams) error {
 		Routes:       string(routes),
 		UpdatedAt:    time.Now().UTC(),
 	}
+	if len(params.Routes) > 0 {
+		routeTime := params.RoutesProbedAt
+		if routeTime.IsZero() {
+			routeTime = probedAt
+		}
+		report.RoutesProbedAt = &routeTime
+	}
 	// 一次探测就是一份完整快照，直接整体替换，不需要合并。
 	return db.Save(&report).Error
 }
@@ -122,6 +129,9 @@ func load(uuid string) (*v2.UnlockParams, error) {
 		EgressIP:     report.EgressIP,
 		EgressRegion: report.EgressRegion,
 		ProbedAt:     report.ProbedAt,
+	}
+	if report.RoutesProbedAt != nil {
+		params.RoutesProbedAt = *report.RoutesProbedAt
 	}
 	if report.Results != "" {
 		if err := json.Unmarshal([]byte(report.Results), &params.Results); err != nil {

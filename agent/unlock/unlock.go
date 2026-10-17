@@ -23,8 +23,9 @@
 //	YouTube Premium   "countryCode":"XX" plus the explicit "Premium is not available"
 //	                  marker. The unblocked probe had ad-free x17 and no marker; the
 //	                  blocked one had ad-free x4 and the marker exactly once.
-//	ChatGPT / Claude  exit region from Cloudflare trace, which is a policy signal
-//	                  rather than a reachability test -- reported as such.
+//
+// AI probes distinguish recognized service responses from region-only fallbacks.
+// A reachable login/compliance page is partial evidence, never a working conversation.
 //
 // The exit IP travels with the results because it is not always the node's own
 // address: one host in this fleet reaches the internet through another node, and
@@ -33,12 +34,14 @@ package unlock
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Aone2233/nekomari/agent/routeprobe"
@@ -50,7 +53,7 @@ type Status string
 const (
 	// Unlocked 有证据表明该服务在此出口可用。
 	Unlocked Status = "unlocked"
-	// Partial 部分可用（目前只有 Netflix「仅自制剧」会得到这个结论）。
+	// Partial indicates limited catalog access or an accessible AI login/compliance page.
 	Partial Status = "partial"
 	// Blocked 有证据表明不可用。
 	Blocked Status = "blocked"
@@ -87,7 +90,8 @@ type Result struct {
 
 // Report 是一次完整探测的结果。
 type Report struct {
-	Routes []routeprobe.Result `json:"routes,omitempty"`
+	Routes         []routeprobe.Result `json:"routes,omitempty"`
+	RoutesProbedAt time.Time           `json:"routes_probed_at,omitempty"`
 	// EgressIP 是本次探测实际使用的出口地址，取自 Cloudflare trace 的 ip=。
 	// 它不一定等于节点自己的地址：本机群里有主机是经由另一台节点出网的。
 	EgressIP string `json:"egress_ip,omitempty"`
@@ -161,9 +165,9 @@ func trace(ctx context.Context, client *http.Client, host string) (ip, loc strin
 	return ip, loc, nil
 }
 
-// Probe 依次探测所有服务。ctx 控制整体预算；单个服务失败只影响它自己。
+// Probe bounds each service independently so Netflix retries cannot starve AI probes.
 func Probe(ctx context.Context, client *http.Client) Report {
-	report := Report{ProbedAt: time.Now().UTC(), Results: make([]Result, 0, 4)}
+	report := Report{ProbedAt: time.Now().UTC()}
 
 	// 出口信息用 ChatGPT 的 trace 读一次：它属于被风控的那批域名，但 trace 端点本身
 	// 不设防，所以既能拿到真实出口，又不会因为 403 而失败。
@@ -173,12 +177,25 @@ func Probe(ctx context.Context, client *http.Client) Report {
 		report.EgressIP, report.EgressRegion = ip, loc
 	}
 
-	report.Results = append(report.Results,
-		probeNetflix(ctx, client),
-		probeYouTubePremium(ctx, client),
-		probeChatGPT(ctx, client, report.EgressRegion),
-		probeClaude(ctx, client, report.EgressRegion),
-	)
+	probes := []func(context.Context) Result{
+		func(ctx context.Context) Result { return probeNetflix(ctx, client) },
+		func(ctx context.Context) Result { return probeYouTubePremium(ctx, client) },
+		func(ctx context.Context) Result { return probeChatGPT(ctx, client, report.EgressRegion) },
+		func(ctx context.Context) Result { return probeClaude(ctx, client, report.EgressRegion) },
+		func(ctx context.Context) Result { return probeGemini(ctx, client, report.EgressRegion) },
+	}
+	report.Results = make([]Result, len(probes))
+	var wg sync.WaitGroup
+	for i, probe := range probes {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			budget, cancel := context.WithTimeout(ctx, 75*time.Second)
+			defer cancel()
+			report.Results[i] = probe(budget)
+		}()
+	}
+	wg.Wait()
 	return report
 }
 
@@ -219,7 +236,15 @@ func netflixTitleVisible(ctx context.Context, client *http.Client, titleID strin
 			continue
 		}
 		if status == http.StatusOK {
-			return strings.Contains(body, titleID), nil
+			if challengePage(strings.ToLower(body)) {
+				return false, errors.New("challenge or consent page, not title evidence")
+			}
+			// A canonical URL can echo the requested ID even on an unavailable page.
+			pattern := regexp.MustCompile(`"(?:id|titleId|videoId)"\s*:\s*"?` + titleID + `(?:"|\s*[,}])`)
+			if pattern.MatchString(body) {
+				return true, nil
+			}
+			return false, errors.New("title response lacks recognized catalog evidence")
 		}
 		// 404 是明确答复：该标题在这个出口不可用，不是网络失败。把 404 当失败去重试，
 		// 会把「被封锁」误报成「无法判断」—— 这正是本函数此前的行为，也是这两个用例
@@ -253,10 +278,12 @@ func probeYouTubePremium(ctx context.Context, client *http.Client) Result {
 	case status != http.StatusOK:
 		result.Status = Unknown
 		result.Detail = fmt.Sprintf("返回 %d，无法判断", status)
+	case challengePage(strings.ToLower(body)):
+		result.Status, result.Detail = Unknown, "风控或同意页面，不能判断 Premium 可用性"
 	case strings.Contains(body, "Premium is not available"):
 		result.Status = Blocked
 		result.Detail = "该地区不提供 Premium"
-	case result.Region != "" || strings.Contains(body, "ad-free"):
+	case result.Region != "" && strings.Contains(body, "ad-free"):
 		result.Status = Unlocked
 		result.Detail = "Premium 页面包含地区或服务标记；未验证账号播放"
 	default:
@@ -266,15 +293,67 @@ func probeYouTubePremium(ctx context.Context, client *http.Client) Result {
 	return result
 }
 
-// probeChatGPT 与 probeClaude 只能判断出口地区，所以 Basis 标成 region 而不是
-// probe：面板要能区分「实测到了」和「只是地区符合」。风控 403 不当作封锁 —— 数据中心
-// 出口几乎必然拿到它，那说明的是 Cloudflare 而不是这个 IP 能不能用 ChatGPT。
+// Recognized service responses take precedence over region-only fallback evidence.
 func probeChatGPT(ctx context.Context, client *http.Client, fallbackRegion string) Result {
-	return probeRegionOnly(ctx, client, "chatgpt.com", "chatgpt", "ChatGPT", AI, fallbackRegion)
+	result := probeRegionOnly(ctx, client, "chatgpt.com", "chatgpt", "ChatGPT", AI, fallbackRegion)
+	status, body, err := get(ctx, client, "https://api.openai.com/compliance/cookie_requirements")
+	if err != nil {
+		return result
+	}
+	var data struct {
+		Error struct {
+			Code string `json:"code"`
+			Type string `json:"type"`
+		} `json:"error"`
+		Country               string `json:"country"`
+		IsEU                  *bool  `json:"is_eu"`
+		CookieConsent         *bool  `json:"cookie_consent"`
+		CookieConsentRequired *bool  `json:"cookie_consent_required"`
+	}
+	if json.Unmarshal([]byte(body), &data) != nil {
+		return result
+	}
+	if data.Error.Code == "unsupported_country_region_territory" || data.Error.Code == "unsupported_country" {
+		result.Status, result.Basis, result.Detail = Blocked, BasisProbe, "OpenAI 合规接口明确返回地区限制；不代表 ChatGPT 网页或账号的全部能力"
+	} else if status == http.StatusOK && (data.CookieConsentRequired != nil || ((data.IsEU != nil || data.CookieConsent != nil) && data.Country != "")) {
+		result.Status, result.Basis, result.Detail = Partial, BasisProbe, "OpenAI 合规接口可访问；未验证 ChatGPT 网页登录、对话或账号权限"
+	}
+	return result
 }
 
 func probeClaude(ctx context.Context, client *http.Client, fallbackRegion string) Result {
-	return probeRegionOnly(ctx, client, "claude.ai", "claude", "Claude", AI, fallbackRegion)
+	result := probeRegionOnly(ctx, client, "claude.ai", "claude", "Claude", AI, fallbackRegion)
+	status, body, err := get(ctx, client, "https://claude.ai/login")
+	if err != nil {
+		return result
+	}
+	lower := strings.ToLower(body)
+	if strings.Contains(lower, "claude is not available in your region") || strings.Contains(lower, "claude is not available in your country") {
+		result.Status, result.Basis, result.Detail = Blocked, BasisProbe, "Claude 页面明确返回地区不可用"
+	} else if status == http.StatusOK && !challengePage(lower) && strings.Contains(lower, "claude") && (strings.Contains(lower, "continue with email") || strings.Contains(lower, "continue with google")) {
+		result.Status, result.Basis, result.Detail = Partial, BasisProbe, "Claude 登录页面可访问；未验证账号登录或对话"
+	}
+	return result
+}
+
+func challengePage(body string) bool {
+	return strings.Contains(body, "cf-chl-") || strings.Contains(body, "just a moment") || strings.Contains(body, "verify you are human") || strings.Contains(body, "before you continue")
+}
+
+func probeGemini(ctx context.Context, client *http.Client, region string) Result {
+	result := Result{ID: "gemini", Name: "Gemini", Kind: AI, Status: Unknown, Basis: BasisProbe, Region: region, Detail: "页面缺少明确服务证据；未验证账号对话"}
+	status, body, err := get(ctx, client, "https://gemini.google.com/")
+	if err != nil {
+		result.Detail = "Gemini 页面请求失败，不能判断地区封锁"
+		return result
+	}
+	lower := strings.ToLower(body)
+	if strings.Contains(lower, "gemini isn’t currently supported in your country") || strings.Contains(lower, "gemini isn't currently supported in your country") || strings.Contains(lower, "gemini is not available in your country") {
+		result.Status, result.Detail = Blocked, "Gemini 页面明确返回地区不可用"
+	} else if status == http.StatusOK && !challengePage(lower) && strings.Contains(lower, "gemini") && (strings.Contains(lower, "bard-snackbar") || strings.Contains(lower, "boq_assistant-bard-web-server") || strings.Contains(lower, "chat with gemini") || (strings.Contains(lower, "bardchatui") && strings.Contains(lower, "wiz_global_data"))) {
+		result.Status, result.Detail = Partial, "Gemini 网页应用可访问；未验证账号登录、年龄要求或对话"
+	}
+	return result
 }
 
 func probeRegionOnly(ctx context.Context, client *http.Client, host, id, name string, kind Kind, fallback string) Result {

@@ -24,33 +24,65 @@ const unlockProbeBudget = 2 * time.Minute
 // 必须在节点上跑，不能在服务端跑：解锁取决于发起请求的那个 IP。服务端在别的机房，
 // 只能测到它自己的出口。
 func DoUploadUnlockWorks() {
-	// 先探一次，面板不必等满一个周期。
-	if err := uploadUnlock(); err != nil {
-		log.Println("Error uploading unlock report:", err)
+	targets, err := routeprobe.ParseTargets(flags.RouteTargets)
+	if err != nil {
+		log.Println("Route probe configuration invalid:", err)
 	}
-
-	ticker := time.NewTicker(unlockProbeInterval)
-	for range ticker.C {
-		if err := uploadUnlock(); err != nil {
-			log.Println("Error uploading unlock report:", err)
+	var report unlock.Report
+	var state routeprobe.State
+	var nextMedia, nextRoute time.Time
+	pending := false
+	for {
+		now := time.Now().UTC()
+		if !now.Before(nextMedia) {
+			ctx, cancel := context.WithTimeout(context.Background(), unlockProbeBudget)
+			report = unlock.Probe(ctx, unlock.NewClient())
+			cancel()
+			nextMedia = now.Add(unlockProbeInterval)
+			pending = true
 		}
+		// Independent clocks: a six-hour media refresh must neither delay a daily
+		// route probe nor make yesterday's route evidence appear newly measured.
+		if len(targets) > 0 && !time.Now().Before(nextRoute) {
+			ctx, cancel := context.WithTimeout(context.Background(), 140*time.Second)
+			cached, stateErr := routeprobe.CachedProbe(ctx, flags.RouteStateFile, targets, time.Now().UTC(), routeprobe.Probe)
+			cancel()
+			if stateErr != nil {
+				log.Println("Route probe state:", stateErr)
+				nextRoute = time.Now().Add(time.Minute)
+			} else {
+				nextRoute = cached.ProbedAt.Add(routeprobe.Interval)
+			}
+			if !cached.ProbedAt.IsZero() {
+				pending = pending || !state.ProbedAt.Equal(cached.ProbedAt)
+				state = cached
+			}
+		}
+		report.Routes, report.RoutesProbedAt = state.Results, state.ProbedAt
+		if pending {
+			if err := postV2RPC(v2.BuildUnlockPayload(report)); err != nil {
+				log.Println("Error uploading unlock report:", err)
+			} else {
+				log.Printf("Unlock probe: region=%s results=%d routes=%d", report.EgressRegion, len(report.Results), len(report.Routes))
+				pending = false
+			}
+		}
+		now = time.Now()
+		delay := nextProbeDelay(now, nextMedia, nextRoute, len(targets) > 0)
+		if pending && delay > time.Minute {
+			delay = time.Minute
+		}
+		time.Sleep(delay)
 	}
 }
 
-func uploadUnlock() error {
-	ctx, cancel := context.WithTimeout(context.Background(), unlockProbeBudget)
-	defer cancel()
-
-	report := unlock.Probe(ctx, unlock.NewClient())
-	// Targets are operator opt-in; never start an unsolicited three-carrier trace.
-	if targets, err := routeprobe.ParseTargets(flags.RouteTargets); err != nil {
-		log.Println("Route probe configuration invalid:", err)
-	} else if len(targets) > 0 {
-		routeCtx, routeCancel := context.WithTimeout(context.Background(), 90*time.Second)
-		report.Routes = routeprobe.Probe(routeCtx, targets)
-		routeCancel()
+func nextProbeDelay(now, media, route time.Time, hasRoutes bool) time.Duration {
+	due := media
+	if hasRoutes && route.Before(due) {
+		due = route
 	}
-	log.Printf("Unlock probe: egress=%s/%s results=%d",
-		report.EgressIP, report.EgressRegion, len(report.Results))
-	return postV2RPC(v2.BuildUnlockPayload(report))
+	if delay := due.Sub(now); delay > time.Second {
+		return delay
+	}
+	return time.Second
 }

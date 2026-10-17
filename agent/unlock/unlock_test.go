@@ -6,19 +6,23 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 )
 
 // fixtureTransport 按 host+path 返回预置响应，让探测逻辑可以脱离网络测试。
 type fixtureTransport struct {
+	mu     sync.Mutex
 	routes map[string]func() (*http.Response, error)
 	calls  map[string]int
 }
 
 func (f *fixtureTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	key := req.URL.Host + req.URL.Path
+	f.mu.Lock()
 	f.calls[key]++
 	handler, ok := f.routes[key]
+	f.mu.Unlock()
 	if !ok {
 		return nil, errors.New("no fixture for " + key)
 	}
@@ -175,14 +179,14 @@ func TestProbeYouTubePremiumBlocked(t *testing.T) {
 }
 
 // TestProbeYouTubePremiumMarkerIsNotAdFreeCount 守住那条踩过的坑：按 ad-free 出现
-// 次数判断会判错，因为被封锁的页面里它同样存在（只是少）。只有那句明确提示算数。
+// A country marker alone is not Premium availability evidence.
 func TestProbeYouTubePremiumMarkerIsNotAdFreeCount(t *testing.T) {
-	// 内容里完全没有 ad-free，也没有封锁提示 —— 仍是可用。
+	// A generic YouTube page may include countryCode without a Premium offer.
 	client, _ := newFixture(map[string]func() (*http.Response, error){
 		"www.youtube.com/premium": bodyResponse(200, `{"countryCode":"US"}`),
 	})
-	if got := probeYouTubePremium(context.Background(), client); got.Status != Unlocked {
-		t.Errorf("status = %q, want %q", got.Status, Unlocked)
+	if got := probeYouTubePremium(context.Background(), client); got.Status != Unknown {
+		t.Errorf("status = %q, want %q", got.Status, Unknown)
 	}
 }
 
@@ -253,8 +257,8 @@ func TestProbeReportsEgressAddress(t *testing.T) {
 	if report.EgressIP != "192.0.2.55" || report.EgressRegion != "US" {
 		t.Errorf("egress = %q/%q, want 192.0.2.55/US", report.EgressIP, report.EgressRegion)
 	}
-	if len(report.Results) != 4 {
-		t.Fatalf("got %d results, want 4", len(report.Results))
+	if len(report.Results) != 5 {
+		t.Fatalf("got %d results, want 5", len(report.Results))
 	}
 	for _, result := range report.Results {
 		if result.Status == "" {

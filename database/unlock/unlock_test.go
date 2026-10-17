@@ -71,6 +71,26 @@ func probeReport(egress string) v2.UnlockParams {
 	}
 }
 
+func TestCachedRouteTimestampSurvivesMediaRefresh(t *testing.T) {
+	report := probeReport(visibleEgress)
+	report.RoutesProbedAt = time.Now().UTC().Add(-20 * time.Hour).Truncate(time.Second)
+	report.Routes = []v2.RouteItem{{Carrier: "telecom", Target: "1.1.1.1", Label: "163"}}
+	for _, mediaTime := range []time.Time{time.Now().UTC().Add(-6 * time.Hour), time.Now().UTC()} {
+		report.ProbedAt = mediaTime
+		if err := Save(noReportUUID, report); err != nil {
+			t.Fatal(err)
+		}
+		got, err := load(noReportUUID)
+		if err != nil || !got.RoutesProbedAt.Equal(report.RoutesProbedAt) || !got.ProbedAt.Equal(mediaTime) {
+			t.Fatalf("route/media clocks were conflated: %+v, %v", got, err)
+		}
+	}
+	t.Cleanup(func() {
+		dbcore.GetDBInstance().Where("uuid = ?", noReportUUID).Delete(&models.UnlockReport{})
+		dbcache.InvalidateAll()
+	})
+}
+
 // TestClientHistoryReadableMatchesTheJsonrpcRule 把规则本身钉死，包括最容易写错的
 // 一条：**存在性是答案的一部分**。客户端表里没有的 uuid 一律不可读，否则已删除节点
 // 留存下来的解锁数据会被当成「存在且可见」返回。

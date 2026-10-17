@@ -58,3 +58,22 @@ func TestNodeInsightsPrivateSiteGate(t *testing.T) {
 		t.Fatalf("private node insights accessible: %+v", resp)
 	}
 }
+
+func TestRouteAndMediaTimestampsStayIndependent(t *testing.T) {
+	const uuid = "mint-route-clock"
+	seedVisibilityClients(t, uuid, "mint-route-clock-hidden")
+	for _, age := range []time.Duration{25 * time.Hour, 31 * time.Hour} {
+		routeTime := time.Now().Add(-age)
+		if err := unlock.Save(uuid, v2.UnlockParams{ProbedAt: time.Now(), RoutesProbedAt: routeTime, Results: []v2.UnlockItem{{ID: "netflix"}}, Routes: []v2.RouteItem{{Carrier: "telecom", Target: "1.1.1.1"}}}); err != nil {
+			t.Fatal(err)
+		}
+		value, jerr := publicGetNodeInsights(guestContext(), &rpc.JsonRpcRequest{Params: map[string]any{"uuid": uuid}})
+		if jerr != nil {
+			t.Fatal(jerr)
+		}
+		got := value.(nodeInsights)
+		if got.Unlock.Stale || !got.Routes.ProbedAt.Equal(routeTime) || got.Routes.Stale != (age > 30*time.Hour) {
+			t.Fatalf("route clock refreshed by media: %+v", got.Routes)
+		}
+	}
+}

@@ -11,11 +11,12 @@ import "time"
 // Results 是 JSON 数组，元素形状见 protocol/v2.UnlockItem。放 text 而不是拆表，
 // 是因为它是每次探测整体替换的一份快照，没有按行查询的需求。
 type UnlockReport struct {
-	UUID         string    `json:"uuid" gorm:"primaryKey;type:varchar(64)"`
-	EgressIP     string    `json:"egress_ip" gorm:"type:varchar(100)"`
-	EgressRegion string    `json:"egress_region" gorm:"type:varchar(8)"`
-	ProbedAt     time.Time `json:"probed_at"`
-	Results      string    `json:"results" gorm:"type:text"`
-	Routes       string    `json:"routes" gorm:"type:text"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	UUID           string     `json:"uuid" gorm:"primaryKey;type:varchar(64)"`
+	EgressIP       string     `json:"egress_ip" gorm:"type:varchar(100)"`
+	EgressRegion   string     `json:"egress_region" gorm:"type:varchar(8)"`
+	ProbedAt       time.Time  `json:"probed_at"`
+	Results        string     `json:"results" gorm:"type:text"`
+	Routes         string     `json:"routes" gorm:"type:text"`
+	RoutesProbedAt *time.Time `json:"routes_probed_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }

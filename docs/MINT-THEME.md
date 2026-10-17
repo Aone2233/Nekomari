@@ -15,7 +15,8 @@ The additive server/agent changes released in v1.6.13 provide the optional evide
 An old agent does not provide TCP retransmission or route results; an old server
 returns method-not-found and Mint shows the basic monitoring view. Update both
 server and agent for the complete extension. Back up the database before any
-server upgrade: migration adds a `routes` TEXT column to `unlock_reports`.
+server upgrade: v1.6.13 adds `routes`; v1.6.14 adds nullable `routes_probed_at`
+to `unlock_reports` without removing existing rows.
 
 No production deployment or stable backend release is part of the theme install.
 In particular, publishing a new backend release may trigger agent auto-updates;
@@ -31,8 +32,9 @@ schedule that rollout separately after CI passes on the exact commit.
 
 The result has `version: 1` and nullable `unlock`, `routes`, and `ip` objects.
 `unlock`/`routes` carry `probed_at`, `stale`, and `results`. Snapshots older than
-12 hours or more than five minutes in the future are stale. Existing six-hour
-agent probes populate them; HTTP requests from the theme do not trigger probes.
+12 hours (media/AI) or 30 hours (routes), or more than five minutes in the future,
+are stale. Media/AI probes run every six hours; routes have an independent
+24-hour clock. HTTP requests from the theme never trigger probes.
 
 Private-site login and hidden/deleted node visibility apply before lookup.
 Hidden and nonexistent UUIDs receive the same error. The new endpoint omits the
@@ -63,12 +65,21 @@ may appear at most once. Private, loopback, link-local, documentation, multicast
 and other recognized reserved addresses are rejected. DNS names are not accepted.
 The default empty value disables route probing.
 
-Install the full Linux `traceroute` utility with `-A` ASN support (Debian/Ubuntu:
+Install the full Linux `traceroute` utility with `-I -A` support (Debian/Ubuntu:
 `apt install traceroute`). The optional probe invokes it without a shell, limits
-each target to 20 hops/30 seconds and output to 32 KiB, and repeats with the
-existing six-hour unlock loop. The full traceroute binary is not bundled in the
+each target to 30 hops/45 seconds and output to 32 KiB, with a 140-second round
+budget. ICMP needs root or appropriate raw-socket permission on traceroute itself.
+The full traceroute binary is not bundled in the
 agent or guaranteed in its container image; BusyBox alone is insufficient.
 Unsupported platforms and failures remain unknown, not zero or healthy.
+
+The schedule and results persist in `--route-state-file` (environment
+`AGENT_ROUTE_STATE_FILE`, default `./route_probe_state.json` in the agent working
+directory). The file is mode 0600 and atomically replaced. A daily slot is saved
+before network work, so restarting, a timeout, or a crash does not repeatedly
+probe the same targets. Do not delete it as part of an upgrade. Corrupt/unwritable
+state prevents probing until repaired. Changing targets starts a new observation.
+Re-uploading a cached result preserves its original route timestamp.
 
 Labels are observed ASN evidence: AS4134=163, AS4809=CN2, AS4837=169,
 AS9929=9929, AS58807=CMIN2, AS58453=CMI, AS9808=CMNET. Seeing an ASN is not a
@@ -87,10 +98,33 @@ private infrastructure addresses or sensitive destinations.
   Kernel lifetime counters are never substituted for billing-cycle usage.
 - Public ping records retain `family`, `ping_type`, and `role` so IPv4/IPv6,
   protocols, and reference targets cannot silently become one synthetic line.
-- Netflix/YouTube results describe the probe's evidence, not a streaming-account
-  or playback guarantee. ChatGPT/Claude region observations do not establish
-  IP-level availability. Gemini is not currently probed. Mint displays these
-  limitations explicitly instead of inventing scores or green badges.
+- Netflix/YouTube results describe recognized catalog/Premium page evidence,
+  not a streaming-account or playback guarantee. Generic redirects, challenge
+  and consent pages stay unknown. AI probes cover ChatGPT (OpenAI compliance),
+  Claude login, and Gemini application pages; reachable pages are `partial`,
+  never proof of working conversations. Explicit service region denials are
+  `blocked`; country-only fallbacks remain `unknown`/`region`.
+
+## Reference implementations and Passkey compatibility
+
+NodeQuality's `part/trace.sh` delegates to oneclickvirt/nt3. Its ICMP/30-hop/ASN
+approach informed this implementation; no remote installer or GPL/AGPL shell
+code is executed or bundled. The native Go implementation uses the installed
+traceroute utility and operator-selected targets, not nt3's complete city matrix.
+
+Chen017/komari-plugin-ipqa-alert-report consumes IP-Quality-Archive reports; it is
+not itself a network probe. Its distinction between unavailable, partial, unknown
+and stale evidence informs result semantics here. This is not an IPQA archive
+importer, IPv4/IPv6 matrix, historical diff engine or integration with that plugin.
+References: <https://github.com/LloydAsp/NodeQuality>,
+<https://github.com/oneclickvirt/nt3>,
+<https://github.com/Chen017/komari-plugin-ipqa-alert-report>.
+
+Private sites allow only GET `/api/komari-passkey/status` and POST authentication
+options/verify before login. The installed Passkey plugin still validates origin,
+challenge, signature and session issuance. Registration, credential management
+and unrelated plugin APIs remain private. Mint supplies the plugin's login DOM
+mount points; it does not implement WebAuthn or alter existing credentials.
 
 ## Verification
 

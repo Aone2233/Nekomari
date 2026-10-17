@@ -35,11 +35,12 @@ const (
 // 只能测到它自己。出口地址随结果一起上来，因为它不总是节点自己的地址 —— 本机群里
 // 有主机是经由另一台节点出网的。
 type UnlockParams struct {
-	EgressIP     string       `json:"egress_ip,omitempty"`
-	EgressRegion string       `json:"egress_region,omitempty"`
-	ProbedAt     time.Time    `json:"probed_at"`
-	Results      []UnlockItem `json:"results"`
-	Routes       []RouteItem  `json:"routes,omitempty"`
+	EgressIP       string       `json:"egress_ip,omitempty"`
+	EgressRegion   string       `json:"egress_region,omitempty"`
+	ProbedAt       time.Time    `json:"probed_at"`
+	Results        []UnlockItem `json:"results"`
+	Routes         []RouteItem  `json:"routes,omitempty"`
+	RoutesProbedAt time.Time    `json:"routes_probed_at,omitempty"`
 }
 
 type RouteItem struct {
