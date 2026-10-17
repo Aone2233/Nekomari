@@ -3,6 +3,89 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.6.13 Mint canary (2026-10-17)
+
+The panel and **only this host's original agent** were upgraded. Other agents,
+their credentials, billing ledgers and visibility settings were not changed.
+The existing Mint theme was upgraded to 0.2.1; the installed SAO theme is retained.
+
+| Item | Verified evidence |
+|---|---|
+| Release commit | `5c648a71759bf2cc32f51f6d6b8789917b6c6b7a`; exact-commit CI `39000185132`, release `39000637396`, Docker `39001067638` all successful |
+| Panel | `v1.6.13`, hash `5c648a7`, arm64, healthy, zero container restarts |
+| Pinned panel image | `ghcr.io/aone2233/nekomari:v1.6.13@sha256:4be85cef3502ff050ef050d7dc86283c4bb88fe8555a254e0ce0b58614f56686` |
+| Backup | `/opt/nekomari/backups/pre-v1.6.13-20261017T035508Z`, root-only directory, WAL-safe SQLite backups, primary integrity check and metric quick check successful, SHA-256 rechecked after deployment |
+| Preserved files | Compose, theme/plugin files, original agent/unit/credential file and `/opt/komari`; an additional traffic-ledger snapshot immediately before agent restart; original files remain private |
+| Agent | `komari-agent-oc424-original-node.service`, `v1.6.13`, running executable matches published SHA-256 `1da870a63cf48585e83e3c6a29631ed3bf7574dc23f2ff4285f026284939f85c` |
+| Mint | 0.2.1, published ZIP SHA-256 `2a185c78b7709e49fa777a04a895f773bee135a9d79b00979e2474890c24d9ee`; assets installed before index, previous hashed assets retained for already-open tabs |
+| Fleet check | All 14 registered clients have fresh CPU samples; at 04:10 UTC the oldest actual sample was 17.3 seconds old. Fleet versions: one 1.6.13, ten 1.6.9, three 1.6.11 |
+| Ownership/security | Admin/install/terminal remain panel documents, normal recovery redirects to `/`, plugin pages remain theme-owned; guest access remains denied on the private site; no node was unhidden |
+
+The agent token-file, working directory `/opt/komari`, auto-update disable flag
+and traffic ledger are retained. The staged binary was checksum-verified, tested
+with `--help`, and atomically replaced rather than overwriting a running inode.
+`nekomari-docs`, nginx, TLS and unrelated services were not restarted.
+
+### Missing media and routes: actual cause
+
+- All 14 registered nodes already had four media/AI observations. Panel 1.6.12
+  lacked `public:getNodeInsights`, so Mint could not read those snapshots.
+- The older agents had no Mint return-route support or explicit route targets.
+  A normal ping task is not a route trace. Only OC424 is opted in at this stage.
+- Legacy ChatGPT/Claude results incorrectly called region-only observations
+  `unlocked`. The new agent reports `unknown` with `basis=region`; Mint also
+  renders older region-only reports neutrally instead of green actual unlocks.
+- Gemini is not implemented; no IP reputation score or account playback test is
+  claimed. A provider network classification is not proof of residential egress.
+
+The OC424 route drop-in is
+`/etc/systemd/system/komari-agent-oc424-original-node.service.d/40-mint-route-targets.conf`.
+It reuses the operator's existing panel targets, once per six-hour probe cycle:
+
+```ini
+[Service]
+Environment="AGENT_ROUTE_TARGETS=telecom=14.17.70.70,unicom=112.84.125.195,mobile=117.148.100.86"
+```
+
+First actual report at 04:06 UTC: telecom observed `163`, 20 hops, **not reached**;
+unicom observed `169`, reached in 16 hops; mobile observed `CMI / CMNET`, 20 hops,
+**not reached**. These are ASN observations, not CN2 GIA certification. OC424's
+Netflix and YouTube probes returned availability markers (YouTube region SG);
+ChatGPT/Claude remained region-only unknowns. OC424 remains hidden as before.
+The other 13 nodes still require their own staged agent/configuration rollout for
+return routes and TCP retransmission. Their existing media snapshots are readable
+through the upgraded panel after normal login.
+
+### Browser findings and remaining checks
+
+Production's private-site middleware returns an HTTP 401 REST error envelope
+before JSON-RPC dispatch. Mint 0.2.1 recognizes that shape and shows the login form;
+0.2.0 treated it as a connectivity error. The production login page was checked
+on both the loopback tunnel and public HTTPS, without exposing node cards or
+causing horizontal overflow. Account credentials and existing sessions were not
+read or reused; an authenticated production dashboard walkthrough remains for
+the operator. Authenticated real-data walkthroughs passed on isolated Nekomari
+and official Komari 1.6.0 instances using the same released ZIP.
+
+The existing injected Passkey script also receives 401 on its status URL and
+rejects its promise without a catch. This predates the theme change; it was not
+silently edited or disabled. Password/2FA and the original admin login links are
+retained; production WebAuthn login itself is not claimed as verified.
+
+Startup spent roughly 100 seconds writing the panel's own upgrade archive over
+the retained historical files; the container then became healthy. No historical
+backups were deleted to accelerate startup. Zero panic/fatal lines were observed.
+The previously observed unauthorized-agent request noise was absent in the final
+post-upgrade sample, not proven permanently resolved.
+
+For rollback, restore the backed-up Compose image reference and recreate only
+`nekomari`; keep live databases because the schema addition is backward compatible.
+The original agent is in `agent-before-upgrade`; remove only the new route drop-in,
+reload systemd and restart the same unit. Retain the current traffic ledger.
+Theme archives retain both the original and pre-0.2.1 versions. Never replace live
+SQLite/WAL files in place: a full database rollback requires a stopped panel,
+another backup of current data, and explicit consideration of newly collected data.
+
 ## v1.6.12 rollout (2026-10-17): panel only
 
 The first rollout since v1.6.9, and the first that **does not move the fleet**:

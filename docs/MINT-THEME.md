@@ -11,7 +11,7 @@ Import `nekomari-mint.zip` through the administration panel's theme page, activa
 it, and configure **Mint theme settings**. Do not unzip it into `frontend/dist`.
 Keep the previous theme available so switching back requires no server rollback.
 
-The additive server/agent changes on `main` provide the optional evidence below.
+The additive server/agent changes released in v1.6.13 provide the optional evidence below.
 An old agent does not provide TCP retransmission or route results; an old server
 returns method-not-found and Mint shows the basic monitoring view. Update both
 server and agent for the complete extension. Back up the database before any
