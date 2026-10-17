@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNodeDetails } from "@/contexts/NodeDetailsContext";
 import { NodeDetailsProvider } from "@/contexts/NodeDetailsProvider";
 import { Flex } from "@radix-ui/themes";
@@ -40,13 +40,21 @@ export const Layout = () => {
   const { settings, loading: settingsLoading } = useSettings();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedNodes, setSelectedNodes] = useState<string[]>([]);
-  const filteredNodes = Array.isArray(nodeDetail)
-    ? nodeDetail
-        .filter((node) =>
-          node.name.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-        .sort((a, b) => a.weight - b.weight)
-    : [];
+  // 必须 useMemo：以前这里是内联的 filter+sort，每次渲染都产生一个新数组，
+  // 而 NodeTable 用引用比较来同步它的本地副本（`if (syncedNodes !== nodes)`），
+  // 于是每 5 秒轮询都会触发一次渲染期的 setState 和第二次渲染 ——
+  // 这恰好抵消了 NodeListProvider 为保持列表引用稳定所做的工作。
+  const filteredNodes = useMemo(
+    () =>
+      Array.isArray(nodeDetail)
+        ? nodeDetail
+            .filter((node) =>
+              node.name.toLowerCase().includes(searchTerm.toLowerCase())
+            )
+            .sort((a, b) => a.weight - b.weight)
+        : [],
+    [nodeDetail, searchTerm]
+  );
 
   useEffect(() => {
     const interval = setInterval(() => { refresh() }, 5000);
