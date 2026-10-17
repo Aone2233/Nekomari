@@ -1,11 +1,14 @@
 package accounts
 
 import (
+	"errors"
+	"sync"
+	"time"
+
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/internal/dbcache"
-	"sync"
-	"time"
+	"gorm.io/gorm"
 )
 
 // Both caches are bounded by eviction rather than by clearing. clear() threw away
@@ -17,11 +20,17 @@ const (
 	sessionCacheMaxEntries          = 4096
 	sessionActivityMaxEntries       = 4096
 	sessionActivityCoalesceInterval = time.Minute
+	// sessionNegativeCacheTTL 是「这个 token 没有对应会话」的缓存时长。它比正缓存
+	// （30 秒）短：一条刚建好的会话不该被一个陈旧的否定答案挡住。
+	sessionNegativeCacheTTL = 10 * time.Second
 )
 
 type cachedSession struct {
 	record models.Session
 	until  time.Time
+	// valid 区分「查到了这个会话」与「查过、没有」：负缓存要能返回
+	// gorm.ErrRecordNotFound，而不是一个零值 Session 加 nil error。
+	valid bool
 }
 
 var sessionCache = struct {
@@ -36,8 +45,9 @@ var sessionActivity = struct {
 
 func loadSession(token string) (models.Session, error) {
 	db := dbcore.GetDBInstance()
+
+	now := time.Now()
 	sessionCache.Lock()
-	defer sessionCache.Unlock()
 	// Only the users revision empties the cache, because the cached record is a
 	// JOIN against users: a deleted or rewritten account must stop resolving.
 	//
@@ -52,15 +62,38 @@ func loadSession(token string) (models.Session, error) {
 		sessionCache.entries = make(map[string]cachedSession)
 		sessionCache.userRevision = userRevision
 	}
-	now := time.Now()
 	if entry, ok := sessionCache.entries[token]; ok && now.Before(entry.until) {
-		return entry.record, nil
+		record, valid := entry.record, entry.valid
+		sessionCache.Unlock()
+		if valid {
+			return record, nil
+		}
+		return models.Session{}, gorm.ErrRecordNotFound
 	}
+	sessionCache.Unlock()
+
+	// 查询在锁外进行。以前这条 JOIN 是在那把全局锁里跑的，而 token 完全由调用方
+	// 控制（任意 session_token cookie，见 web/api/principal.go），于是一串伪造或
+	// 过期的 cookie 会让每条请求都查一次库，并且把所有其它会话查找串行化在它后面。
 	var record models.Session
 	err := db.Select("sessions.*").Joins("JOIN users ON users.uuid = sessions.uuid").Where("sessions.session = ?", token).First(&record).Error
-	if err == nil {
-		pruneSessionCacheLocked(now)
-		sessionCache.entries[token] = cachedSession{record, now.Add(30 * time.Second)}
+
+	sessionCache.Lock()
+	defer sessionCache.Unlock()
+	// 查询期间 users 可能已经变了，所以这里重新对一次 revision，而不是直接写入。
+	if current := dbcache.Revision("users"); sessionCache.userRevision != current {
+		sessionCache.entries = make(map[string]cachedSession)
+		sessionCache.userRevision = current
+	}
+	pruneSessionCacheLocked(now)
+	switch {
+	case err == nil:
+		sessionCache.entries[token] = cachedSession{record: record, until: now.Add(30 * time.Second), valid: true}
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		// 负缓存。「没有这个会话」和「有这个会话」一样值得记住：没有它，洪泛伪造
+		// cookie 的每一条请求都会落到数据库上。TTL 比正缓存短，这样一条刚刚建好的
+		// 会话不会被一个陈旧的否定答案挡住。
+		sessionCache.entries[token] = cachedSession{until: now.Add(sessionNegativeCacheTTL)}
 	}
 	return record, err
 }
