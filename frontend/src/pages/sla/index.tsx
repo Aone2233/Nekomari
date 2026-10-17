@@ -42,35 +42,42 @@ export const SlaReportPage: React.FC = () => {
     return names;
   }, [nodeList]);
 
-  const load = useCallback(
-    async (window: SlaWindow) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await call<{ window: SlaWindow }, SlaReport>("public:getSlaReport", {
-          window,
-        });
+  // The request is issued here, with the state updates inside the promise callbacks
+  // rather than in a `load` helper the effect calls: that is the shape
+  // react-hooks/set-state-in-effect rejects, and the reason `npm run audit:compiler`
+  // was failing (exit 1) on this file. The `cancelled` flag additionally stops a slow
+  // response for a window the reader has already left from overwriting the new one.
+  useEffect(() => {
+    let cancelled = false;
+    call<{ window: SlaWindow }, SlaReport>("public:getSlaReport", { window: selectedWindow })
+      .then((result) => {
+        if (cancelled) return;
         setReport(result ?? null);
-      } catch (cause) {
+        setError(null);
+      })
+      .catch((cause) => {
         // An error is shown rather than swallowed: an empty table and a failed request
         // look identical to a reader, and only one of them means "nothing is wrong".
+        if (cancelled) return;
         setError(cause instanceof Error ? cause.message : String(cause));
         setReport(null);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [call],
-  );
-
-  useEffect(() => {
-    void load(selectedWindow);
-  }, [load, selectedWindow]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [call, selectedWindow]);
 
   // The parameter is not called `window`: shadowing the global here means
   // `window.location` and `window.history` resolve to the string, and the URL update
   // silently does nothing.
   const onWindowChange = useCallback((nextWindow: SlaWindow) => {
+    // 换窗口时立刻回到加载态并清掉上一个窗口的错误，否则旧窗口的报错会挂在新窗口上。
+    // 这是事件处理器，不是 effect body，所以在这里同步 setState 没有问题。
+    setLoading(true);
+    setError(null);
     setSelectedWindow(nextWindow);
     if (typeof globalThis === "undefined" || typeof globalThis.location === "undefined") return;
     const url = new URL(globalThis.location.href);
