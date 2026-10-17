@@ -46,7 +46,10 @@ foreach ($goos in $osList) {
         $env:GOARCH = $goarch
         $env:CGO_ENABLED = '0'
 
-        & go build -trimpath -ldflags "-X github.com/komari-monitor/komari-agent/update.CurrentVersion=$version" -o "$outPath"
+        # 这里的 -X 路径必须是本仓库的模块路径（agent/go.mod 的
+        # github.com/Aone2233/nekomari/agent）；写上游路径时 -X 静默失效，
+        # 版本号停在 "0.0.1"，探针启动时会自我替换成官方发布版。
+        & go build -trimpath -ldflags "-X github.com/Aone2233/nekomari/agent/update.CurrentVersion=$version" -o "$outPath"
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Failed to build for $goos/$goarch" -ForegroundColor $Red
             $failedBuilds += "$goos/$goarch"

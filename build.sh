@@ -55,14 +55,30 @@ node script/embed-theme.mjs
 echo "==> [4/5] 构建服务端"
 # 注入版本与 hash：main.go 用「hash == unknown」判断这是不是开发构建，并据此决定
 # 日志级别；不注入就会让本地/发布构建都跑在 Debug，且面板一直报 hash: unknown。
-VERSION="$(git -C "$ROOT" describe --tags --always 2>/dev/null || echo unknown)"
+#
+# 版本号必须是纯 X.Y.Z。插件门两端（internal/plugin/version.go 与面板市场 UI）都
+# 按「点分整数」比较，带后缀的版本被判为无法比较并【拒绝】每一个带 komari 约束的
+# 插件；所以这里取最近的 tag，而不是 describe 的 "v1.6.10-3-g4e7d389"。取不到就
+# 退回 0.0.1（默认值，可比较）。见 FORK.md。
+VERSION="$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null || echo v0.0.1)"
+if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "!! 最近的 tag '$VERSION' 不是纯 vX.Y.Z；插件门会拒绝所有带约束的插件。" >&2
+  echo "   本次本地构建回退到 v0.0.1。" >&2
+  VERSION="v0.0.1"
+fi
 VERSION_HASH="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 $GO_BIN build -trimpath \
   -ldflags="-X github.com/Aone2233/nekomari/utils.CurrentVersion=$VERSION -X github.com/Aone2233/nekomari/utils.VersionHash=$VERSION_HASH" \
   -o nekomari$EXT .
 
 echo "==> [5/5] 构建探针（agent/）"
-(cd agent && $GO_BIN build -o nekomari-agent$EXT .)
+# 探针的版本也必须注入。不注入时它停在 agent/update/update.go 的默认值 "0.0.1"，
+# 而探针启动时会拿这个值去判断「有没有新版本」（update.CheckAndUpdate）——
+# 0.0.1 是稳定旧版本，于是它会把刚构建出来的二进制替换成官方发布版并 os.Exit(42)。
+# 发布工作流一直注入这个值；build.sh 此前漏了。
+(cd agent && $GO_BIN build -trimpath \
+  -ldflags="-X github.com/Aone2233/nekomari/agent/update.CurrentVersion=$VERSION" \
+  -o nekomari-agent$EXT .)
 
 echo
 echo "构建完成："

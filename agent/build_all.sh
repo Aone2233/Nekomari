@@ -38,7 +38,12 @@ for GOOS in "${OS_LIST[@]}"; do
     fi
 
     # 构建二进制文件
-    env GOOS=$GOOS GOARCH=$GOARCH CGO_ENABLED=0 go build -trimpath -ldflags="-X github.com/komari-monitor/komari-agent/update.CurrentVersion=${VERSION}" -o "./build/$BINARY_NAME"
+    #
+    # 这里的 -X 路径必须是【本仓库】的模块路径（agent/go.mod 的
+    # github.com/Aone2233/nekomari/agent）。写上游路径时 -X 会静默失效（见
+    # docs/RELEASING.md 的那条警告），版本号停在 update.go 的默认值 "0.0.1"，
+    # 于是探针启动时会把自己替换成官方发布版并 os.Exit(42)。
+    env GOOS=$GOOS GOARCH=$GOARCH CGO_ENABLED=0 go build -trimpath -ldflags="-X github.com/Aone2233/nekomari/agent/update.CurrentVersion=${VERSION}" -o "./build/$BINARY_NAME"
 
     if [ $? -ne 0 ]; then
       echo -e "${RED}Failed to build for $GOOS/$GOARCH${NC}"
