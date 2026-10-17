@@ -29,6 +29,16 @@ interface TaskResult {
     exit_code: number | null;
     finished_at: string | null;
     created_at: string;
+    /**
+     * 轮询被本地超时停掉了，而服务端【没有】说这个任务已经结束。
+     *
+     * 这个字段存在是因为以前那条超时分支会伪造数据：它给一个还没结束的任务写上
+     * `finished_at: now` 与 `exit_code: -1`，再把 `result` 覆盖成超时标记。
+     * 于是界面上出现一个服务端从未报告过的完成时间，和一个看起来像真实退出码的 -1，
+     * 而任务真实的输出被丢掉了 —— 这是在「用来对全队执行命令」的页面上写数据，
+     * 不只是写 UI 状态。
+     */
+    polling_stopped?: boolean;
 }
 
 interface ExecResponse {
@@ -58,8 +68,6 @@ const COMMAND_EDITOR_LINE_HEIGHT_VAR = "--command-editor-line-height";
 const COMMAND_EDITOR_VERTICAL_PADDING_VAR = "--command-editor-vertical-padding";
 const COMMAND_EDITOR_COLLAPSED_HEIGHT = `calc(${COMMAND_EDITOR_COLLAPSED_LINES} * var(${COMMAND_EDITOR_LINE_HEIGHT_VAR}) + var(${COMMAND_EDITOR_VERTICAL_PADDING_VAR}))`;
 const COMMAND_EDITOR_LINE_NUMBER_LIMIT = 500;
-// 客户端标记“执行超时”的内部结果（避免在 UI 中展示硬编码中文）
-const TIMEOUT_RESULT_MARKER = "__komari_exec_timeout__";
 
 const parsePixelValue = (value: string) => {
     const parsedValue = Number.parseFloat(value);
@@ -265,18 +273,19 @@ const ExecContent = () => {
             pollTaskResult(taskId);
         }, 2000);
 
-        // 60秒后停止轮询并设置为超时状态
+        // 60秒后停止轮询，并把「还没结束的任务」标成【轮询已停止】——
+        // 不是「已完成」，也不是「超时失败」。服务端的 finished_at / exit_code / result
+        // 一律不动：这个任务可能在第 70 秒成功结束，而界面不该在那一刻之前编出一个结果。
         pollingTimeoutRef.current = setTimeout(() => {
-            // 将未完成的任务状态设置为超时
             setResults(prevResults =>
                 prevResults.map(result =>
                     result.finished_at === null
-                        ? { ...result, finished_at: new Date().toISOString(), exit_code: -1, result: TIMEOUT_RESULT_MARKER }
+                        ? { ...result, polling_stopped: true }
                         : result
                 )
             );
             clearPolling();
-            toast.warning(t("exec.pollingTimeout", "任务执行超时"));
+            toast.warning(t("exec.pollingStopped", "已停止轮询：任务可能仍在运行"));
         }, 60000);
     };
 
@@ -368,16 +377,17 @@ const ExecContent = () => {
         }).join(", ");
     };
 
-    // 超时标记结果展示为本地化文案
-    const displayResultText = (result: TaskResult) =>
-        result.result === TIMEOUT_RESULT_MARKER ? t("exec.status.timeout") : result.result;
+    // 超时不再是一个「结果」：轮询停下时我们只标 polling_stopped，服务端的
+    // result / exit_code / finished_at 一律照原样显示。这里因此不再需要哨兵值。
+    const displayResultText = (result: TaskResult) => result.result;
 
     const getTaskStatus = (result: TaskResult) => {
+        if (result.finished_at === null && result.polling_stopped) {
+            // 与「运行中」分开：轮询已经停了，所以界面不再刷新，但任务未必结束。
+            return { status: "polling-stopped", color: "orange" as const, text: t("exec.status.pollingStopped", "轮询已停止") };
+        }
         if (result.finished_at === null) {
             return { status: "running", color: "blue" as const, text: t("exec.status.running") };
-        }
-        if (result.result === TIMEOUT_RESULT_MARKER) {
-            return { status: "timeout", color: "orange" as const, text: t("exec.status.timeout", "超时") };
         }
         if (result.exit_code === 0) {
             return { status: "success", color: "green" as const, text: t("common.success") };
@@ -609,6 +619,22 @@ const ExecContent = () => {
                                     onClick={clearPolling}
                                 >
                                     {t("exec.stopPolling")}
+                                </Button>
+                            </Flex>
+                        )}
+
+                        {/* 轮询已停但任务未必结束：给出恢复轮询的入口，而不是留一个假结果 */}
+                        {!polling && taskId && results.some(r => r.polling_stopped) && (
+                            <Flex align="center" justify="between" className="text-sm text-gray-500">
+                                <Text size="2" color="gray">
+                                    {t("exec.pollingStoppedHint", "轮询已停止，这些任务可能仍在运行")}
+                                </Text>
+                                <Button
+                                    variant="soft"
+                                    size="1"
+                                    onClick={() => startPolling(taskId)}
+                                >
+                                    {t("exec.resumePolling", "继续轮询")}
                                 </Button>
                             </Flex>
                         )}
