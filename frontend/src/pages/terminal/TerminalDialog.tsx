@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { shouldSubmitOnEnter } from "./dialogKeys";
+
 const dialogSurface =
   "w-full overflow-visible rounded-[6px] border border-[#454545] bg-[#252526] text-[#cccccc] shadow-2xl";
 const secondaryButton =
@@ -125,7 +127,14 @@ export function TerminalDialog({
     <div
       className="fixed inset-0 z-[100010] flex items-start justify-center bg-black/60 px-4"
       onKeyDown={(event) => {
-        if (event.key === "Enter" && !isInput && !submitting) {
+        // 回车只在「这次 keydown 不是来自某个按钮」时才当作确认。
+        //
+        // 这段处理挂在全屏 backdrop 上，而「取消」按钮是它的子节点。回车激活聚焦的按钮
+        // 是那次 keydown 的【默认行为】，冒泡阶段的 preventDefault() 会把它抑制掉 ——
+        // 于是焦点在「取消」上按回车反而执行了确认，而这个对话框用 destructive 删文件。
+        // 判定在 dialogKeys.ts 里，有单测（script/dialogKeys.test.mjs）。
+        const confirmKey = shouldSubmitOnEnter(event, { submitting });
+        if (event.key === "Enter" && !isInput && confirmKey) {
           event.preventDefault();
           onSubmit();
         }
@@ -141,7 +150,7 @@ export function TerminalDialog({
           }
           return;
         }
-        if (event.key === "Enter" && isInput && !submitting) {
+        if (event.key === "Enter" && isInput && confirmKey) {
           event.preventDefault();
           onSubmit();
           return;
