@@ -38,6 +38,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -172,6 +173,11 @@ class Case:
     job_runs: bool
     verified: str | None  # None when the job never runs
     latest: bool
+    # workflow_run 携带的 head_branch。默认与 tag 相同（tag 推送触发的运行），
+    # 手动触发 release 工作流时它是分支名 —— 那正是下面那条用例。
+    head_branch: str | None = None
+    # 手动触发的情形下 `gh api .../releases` 会返回什么（检查器用桩实现喂进去）。
+    release_lookup: str = ""
 
 
 CASES = [
@@ -183,6 +189,19 @@ CASES = [
     Case("workflow_run success prerelease", "workflow_run", "success", "v1.6.9-rc1", True, "true", False),
     Case("release published", "release", "", "v1.6.9", True, "true", True),
     Case("workflow_dispatch", "workflow_dispatch", "", "v1.6.9", True, "true", True),
+    # 手动触发的 release：head_branch 是分支名，tag 必须从最新 Release 反查出来。
+    # 这条此前缺失，所以「有 Release、没有镜像」那个 bug 的真值表一直是绿的。
+    Case(
+        "workflow_run from a dispatched release (branch, not tag)",
+        "workflow_run",
+        "success",
+        "v1.6.9",
+        True,
+        "true",
+        True,
+        head_branch="main",
+        release_lookup="v1.6.9",
+    ),
 ]
 
 # Atoms used by the job-level `if` and by the metadata step's enable conditions.
@@ -195,11 +214,17 @@ def expression_value(expr: str, case: Case, workflow_env: dict, matrix_row: dict
     if expr == "github.event.release.tag_name":
         return case.tag if case.event == "release" else ""
     if expr == "github.event.workflow_run.head_branch":
-        return case.tag if case.event == "workflow_run" else ""
+        if case.event != "workflow_run":
+            return ""
+        return case.tag if case.head_branch is None else case.head_branch
     if expr == "github.event.workflow_run.conclusion":
         return case.conclusion
     if expr == "github.repository":
         return EXPECTED_REPOSITORY
+    if expr == "secrets.GITHUB_TOKEN":
+        # The Resolve tag step needs a token for the release lookup; the value is
+        # irrelevant here because `gh` is stubbed (see run_resolve_tag).
+        return "stub-token"
     if expr.startswith("env."):
         raw = workflow_env.get(expr[4:])
         if raw is None:
@@ -258,6 +283,17 @@ def run_resolve_tag(bash: str, step: dict, workflow_env: dict, matrix_row: dict,
         # The script is written as-is: it must not need any substitution of its own.
         script_path.write_text(step["run"], encoding="utf-8", newline="\n")
         env["GITHUB_OUTPUT"] = str(output_path)
+
+        # The step falls back to `gh api .../releases` when a workflow_run carries a
+        # branch name instead of a tag. Stub `gh` on PATH so that branch is exercised
+        # here instead of skipped (the check runs with no network by design).
+        bindir = Path(tmp) / "bin"
+        bindir.mkdir()
+        gh = bindir / "gh"
+        gh.write_text(f"#!/bin/sh\nprintf '%s\\n' {shlex.quote(case.release_lookup)}\n", encoding="utf-8", newline="\n")
+        gh.chmod(0o755)
+        env["PATH"] = str(bindir) + os.pathsep + os.environ.get("PATH", "")
+
         # The workflow scripts are ASCII today, but a GBK/CP1252 console locale must
         # not be able to crash the check on a stray byte in the step's output.
         proc = subprocess.run(
@@ -322,8 +358,21 @@ def check_truth_table(docker_yml: Path, workflow: dict, bash: str, quiet: bool, 
             problems.append(f"{docker_yml}: latest pushed={latest_pushed} for {case.name}, want {case.latest}")
         rows.append((case, job_runs, verified, version_pushed, latest_pushed))
 
-    # The rejected shape: a tag that is not a release tag must fail loudly.
-    bad = Case("rejected tag shape", "workflow_run", "success", "1.6.9", True, "true", False)
+    # The rejected shape: a value that is not a release tag must fail loudly. It goes
+    # through the release lookup (head_branch is not tag-shaped) and the lookup result
+    # is what the `v*` guard rejects — which is the case where the newest release is
+    # not a release tag either.
+    bad = Case(
+        "rejected tag shape",
+        "workflow_run",
+        "success",
+        "1.6.9",
+        True,
+        "true",
+        False,
+        head_branch="1.6.9",
+        release_lookup="1.6.9",
+    )
     code, _, output_text = run_resolve_tag(bash, step, workflow_env, matrix_rows[0], bad)
     if code == 0:
         problems.append(f"{docker_yml}: tag {bad.tag!r} was accepted; the `v*` check is gone")
