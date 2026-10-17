@@ -2,14 +2,17 @@
 //
 // 为什么需要它：Nekomari 服务端用 //go:embed defaultTheme/dist.tar.zst 把默认主题
 // 编进二进制（见 komari/web/public/public.go）。官方 CI 的做法是：
-//     tar -cf dist.tar -C komari-web/dist .
-//     zstd -19 -T0 -f dist.tar -o web/public/defaultTheme/dist.tar.zst
+//
+//	tar -cf dist.tar -C komari-web/dist .
+//	zstd -19 -T0 -f dist.tar -o web/public/defaultTheme/dist.tar.zst
+//
 // 但 Windows 上不一定有 zstd CLI，所以这里直接用 Nekomari 自身依赖的
 // github.com/klauspost/compress/zstd 来实现，保证与运行时解码器完全一致
-//（解码逻辑见 komari/web/public/embedded.go 的 decodeEmbeddedDist）。
+// （解码逻辑见 komari/web/public/embedded.go 的 decodeEmbeddedDist）。
 //
 // 用法：
-//     zstdpack -src <dist目录> -out <dist.tar.zst>
+//
+//	zstdpack -src <dist目录> -out <dist.tar.zst>
 package main
 
 import (
@@ -20,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 )
@@ -103,10 +107,21 @@ func run(src, out string, level int) error {
 			return err
 		}
 		hdr := &tar.Header{
-			Name:    name,
-			Mode:    0o644,
-			Size:    fi.Size(),
-			ModTime: fi.ModTime(),
+			Name: name,
+			Mode: 0o644,
+			Size: fi.Size(),
+			// ModTime 归零：tar 头不该带构建时间。
+			//
+			// 它修掉的是【一个】不可复现的来源，不是全部。实测（2026-10-13）：同一份
+			// frontend/dist 连打两次，字节相同；但重建一次前端再打包，归档就变了 ——
+			// 因为 rollup 的 chunk 切分在两次构建之间会变（同一个 chunk-_layout.js
+			// 一次是 1 个 import 的小块，另一次是 20+ 个），143 个 chunk 的文件名哈希
+			// 随之改变。所以「提交的归档 == 重建结果」这条断言做不到，CI 里也没有它；
+			// 归档的内容由 web/public 下的 Go 测试断言。
+			ModTime: time.Unix(0, 0).UTC(),
+			// 显式指定格式，否则 tar.Writer 会按第一个头推断，而不同 Go 版本对
+			// 需要 PAX 扩展的字段（长文件名等）判定可能不同。
+			Format:   tar.FormatGNU,
 			Typeflag: tar.TypeReg,
 		}
 		if err := tw.WriteHeader(hdr); err != nil {
