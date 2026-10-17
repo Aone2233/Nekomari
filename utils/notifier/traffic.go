@@ -62,8 +62,15 @@ func CheckTraffic() {
 			continue
 		}
 
-		// 计算不同类型的使用值
-		used := computeUsedByType(strings.ToLower(c.TrafficLimitType), r.Network.TotalUp, r.Network.TotalDown)
+		// 计算不同类型的使用值。
+		//
+		// 用 CycleUp/CycleDown（自计费周期重置日以来的累计），不是 TotalUp/TotalDown
+		// （内核自开机以来的累计）。c.TrafficLimit 是【周期】配额，所以拿开机累计去比
+		// 是在比较两个不同的量：重启后这个百分比会从头开始，开机超过一个周期时它又会
+		// 把周期前的流量算进来。协议里把两者的语义写得很清楚，见
+		// protocol/v2/jsonrpc.go 的 NetworkReport。首页的流量卡片踩的是同一个坑
+		// （commit 4e7d389），这里和 utils/notifier/traffic_forecast.go 是剩下两处。
+		used := computeUsedByType(strings.ToLower(c.TrafficLimitType), r.Network.CycleUp, r.Network.CycleDown)
 		if used <= 0 {
 			continue
 		}

@@ -206,11 +206,18 @@ func projectClient(now time.Time, client models.Client, day int) (forecast.Forec
 	return projection, window.Start, nil
 }
 
-// cycleTrafficSamples reads the node's cumulative traffic over its cycle as a time series.
+// cycleTrafficSamples reads the node's cycle-to-date traffic over its cycle as a time series.
 //
 // From the metric store rather than from the latest report, because a projection needs a series: the
-// report carries one cumulative total, and one number cannot produce a rate. `net.total.up` and
-// `net.total.down` are what the agent's counter is recorded as.
+// report carries one cumulative total, and one number cannot produce a rate.
+//
+// The series is `traffic.up` / `traffic.down`, which is the agent's CycleUp/CycleDown recorded as a
+// gauge (internal/metricstore/report_mapping.go) — the cycle-to-date total the plan limit is written
+// against. It used to read `net.total.up` / `net.total.down`, which is the kernel's counter **since
+// boot**: the two answer different questions, and the old comment here asserted they were the same
+// quantity, which was simply wrong. A node that rebooted mid-cycle restarted its projection from a
+// fraction of its real usage, and a node up for longer than one cycle carried pre-cycle traffic into
+// the first bucket of the window.
 //
 // The two are combined per bucket according to the node's limit type, so the series the projection sees
 // is the same quantity the limit is checked against — summing them for a `sum` node, taking up for an
@@ -222,11 +229,16 @@ func cycleTrafficSamples(now time.Time, client models.Client, window cycle.Cycle
 	}
 
 	interval := sampleInterval(window.Duration())
+	specs := make([]metric.BatchSeriesSpec, 0, len(cycleTrafficMetricNames))
+	for _, name := range cycleTrafficMetricNames {
+		specs = append(specs, metric.BatchSeriesSpec{
+			MetricName:   name,
+			Aggregations: []metric.Aggregation{metric.AggMax},
+			Interval:     interval,
+		})
+	}
 	result, err := store.SeriesBatch(context.Background(), metric.BatchSeriesQuery{
-		Specs: []metric.BatchSeriesSpec{
-			{MetricName: "net.total.up", Aggregations: []metric.Aggregation{metric.AggMax}, Interval: interval},
-			{MetricName: "net.total.down", Aggregations: []metric.Aggregation{metric.AggMax}, Interval: interval},
-		},
+		Specs:     specs,
 		EntityIDs: []string{client.UUID},
 		Start:     window.Start,
 		End:       now.UTC(),
@@ -235,9 +247,26 @@ func cycleTrafficSamples(now time.Time, client models.Client, window cycle.Cycle
 		return nil, err
 	}
 
-	limitType := strings.ToLower(client.TrafficLimitType)
-	ups := pointsByBucket(result, "net.total.up")
-	downs := pointsByBucket(result, "net.total.down")
+	return cycleSamplesFromSeries(strings.ToLower(client.TrafficLimitType), result), nil
+}
+
+// cycleTrafficMetricNames are the two series the projection reads — and the only ones it
+// reads. They are the agent's CycleUp/CycleDown recorded as a gauge: the cycle-to-date
+// total the plan limit is written against. Deliberately **not** `net.total.*`, which is
+// the kernel counter since boot; see the comment on cycleTrafficSamples.
+//
+// Both the query and the reader go through this slice, so there is one place to change
+// and one place to check.
+var cycleTrafficMetricNames = []string{metricstore.MetricTrafficUp, metricstore.MetricTrafficDown}
+
+// cycleSamplesFromSeries turns the queried series into the projection's samples.
+//
+// Pure, so the series it reads can be tested directly: hand it a result that carries
+// both the cycle series and the boot counter with different values, and the samples
+// must come from the cycle series.
+func cycleSamplesFromSeries(limitType string, result metric.BatchSeriesResult) []forecast.Sample {
+	ups := pointsByBucket(result, cycleTrafficMetricNames[0])
+	downs := pointsByBucket(result, cycleTrafficMetricNames[1])
 
 	// The union of both series' buckets, so a bucket present in only one of them still contributes.
 	// Taking the intersection instead would silently drop the first intervals of a node whose up counter
@@ -256,8 +285,8 @@ func cycleTrafficSamples(now time.Time, client models.Client, window cycle.Cycle
 
 	samples := make([]forecast.Sample, 0, len(buckets))
 	for _, at := range buckets {
-		up := valueAt(result, "net.total.up", at)
-		down := valueAt(result, "net.total.down", at)
+		up := valueAt(result, cycleTrafficMetricNames[0], at)
+		down := valueAt(result, cycleTrafficMetricNames[1], at)
 		total := combineByLimitType(limitType, int64(up), int64(down))
 		if total < 0 {
 			// A negative combined value means the counters are not comparable at this instant (one has
@@ -266,7 +295,7 @@ func cycleTrafficSamples(now time.Time, client models.Client, window cycle.Cycle
 		}
 		samples = append(samples, forecast.Sample{At: at, Total: total})
 	}
-	return samples, nil
+	return samples
 }
 
 // combineByLimitType mirrors `computeUsedByType` in traffic.go, so the projected quantity is the one the
