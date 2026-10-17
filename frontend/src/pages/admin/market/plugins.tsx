@@ -113,7 +113,15 @@ function isKomariCompatible(constraint: string | undefined, current: string) {
   };
   const currentVersion = parse(current);
   const requirement = (constraint || "").trim();
-  if (!requirement || !currentVersion) return true;
+  // 没有约束时无需比较，放行。
+  if (!requirement) return true;
+  // 有约束、但服务端版本不可解析时拒绝，而不是放行。
+  //
+  // 这里曾经是 `if (!requirement || !currentVersion) return true`：与
+  // internal/plugin/version.go 的 `return nil` 一起，让版本号带后缀时两端一致地
+  // 放行 —— 也就是整道门静默失效，插件装得上、加载时才炸。现在两端都拒绝，
+  // 方向一致，与 FORK.md 的描述相同。
+  if (!currentVersion) return false;
 
   let operator = "";
   let version = requirement;

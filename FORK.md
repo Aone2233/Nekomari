@@ -37,15 +37,31 @@ The plugin market gates every plugin on the server's version. Each entry carries
 `internal/plugin/version.go`).
 
 Both parsers accept **only numeric dotted versions** — the string is split on `.` and each part parsed as an
-integer. That has two consequences, and the second is silent:
+integer (both strip an optional leading `v`, so `v1.6.10` is fine). A version like `1.5.0-fix1` therefore does
+not parse, and neither end guesses when it cannot compare:
 
-- a version like `1.5.0-fix1` does not parse. The panel reads that as an unsatisfiable constraint and marks
-  every plugin as needing a newer server.
-- on the server the same failure takes the **opposite** branch: an unparseable `utils.CurrentVersion` is
-  deliberately ignored ("a malformed server version must not block plugin loading"), so a suffixed version
-  *passes* the server check while the UI says it cannot. The two ends disagree, which is the worst of both.
+- the panel refuses the plugin (`isKomariCompatible` in `frontend/src/pages/admin/market/plugins.tsx` returns
+  false for a constrained plugin whose server version it cannot parse);
+- the server refuses it too (`CheckKomariVersion` in `internal/plugin/version.go` returns an error naming the
+  unparseable version).
 
-So the version the release workflow writes into the binary has to be plain `X.Y.Z`.
+**Both ends used to fail open instead, and that was the worse failure.** The server returned nil ("a malformed
+server version must not block plugin loading") and the panel returned true, so a suffixed version *silently
+disabled the gate*: every constrained plugin installed cleanly and failed at load time — the residual risk
+described below, with nothing left to catch it. The two ends now agree, in the refusing direction, and
+`internal/plugin/version_test.go` pins both halves.
+
+So the version the release workflow writes into the binary has to be plain `X.Y.Z`. That is enforced in three
+places rather than stated once:
+
+| Where | What it enforces |
+|---|---|
+| `.github/workflows/release.yml` (resolve step) | the tag must match `^v[0-9]+\.[0-9]+\.[0-9]+$`; `v1.6.11-rc1` is refused before anything is built |
+| `build.sh` | takes the nearest tag (`git describe --tags --abbrev=0`) instead of `--always`, so a local build is not stamped `v1.6.10-3-g4e7d389`, and falls back to `v0.0.1` if even that is not `X.Y.Z` |
+| `internal/plugin/version_test.go` | `TestTheShippedVersionParses` and `TestAnUnparseableServerVersionRefusesAConstraint` |
+
+> `git describe --tags --always` was the original trap here: on any commit after a tag it produces
+> `v1.6.10-3-g4e7d389`, which neither parser can compare. `build.sh` used it until 2026-10-13.
 
 ### What the number means here
 

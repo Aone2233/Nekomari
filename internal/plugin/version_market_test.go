@@ -60,14 +60,36 @@ func readMarket(t *testing.T) marketIndex {
 	return index
 }
 
-// The shipped version must parse. A suffix here is the failure that makes the panel and the server disagree.
+// The shipped version must parse. A suffix here is the failure that makes both ends of
+// the plugin gate refuse every constrained entry.
 func TestTheShippedVersionParses(t *testing.T) {
 	if _, err := parseSemver(utils.CurrentVersion); err != nil {
 		t.Fatalf("the shipped version %q does not parse: %v\n"+
-			"Both the panel and the server split it on '.' and require every part to be an integer, so a "+
-			"suffix here makes the panel mark every plugin incompatible while the server silently allows "+
-			"them — see the comment at the top of this file.",
+			"Both the panel and the server split it on '.' and require every part to be an integer, and "+
+			"neither end guesses when it cannot compare: a suffix here refuses every plugin that carries a "+
+			"`komari` constraint — see the comment at the top of this file and FORK.md.",
 			utils.CurrentVersion, err)
+	}
+}
+
+// An unparseable server version must refuse a constraint rather than satisfy it.
+//
+// This is the direction that used to be wrong on both ends: the server returned nil
+// ("a malformed server version must not block plugin loading") and the panel returned
+// true, so a version like `v1.6.10-3-g4e7d389` silently disabled the whole gate and a
+// plugin needing a newer API installed cleanly and failed at load time.
+func TestAnUnparseableServerVersionRefusesAConstraint(t *testing.T) {
+	previous := utils.CurrentVersion
+	t.Cleanup(func() { utils.CurrentVersion = previous })
+
+	utils.CurrentVersion = "v1.6.10-3-g4e7d389"
+
+	if err := CheckKomariVersion(">=1.0.0"); err == nil {
+		t.Fatal("a constraint must be refused when the server version cannot be compared")
+	}
+	// 空约束不涉及比较，仍然放行 —— 拒绝它会把没有约束的插件也一起挡掉。
+	if err := CheckKomariVersion(""); err != nil {
+		t.Fatalf("an empty constraint needs no comparison and must still pass: %v", err)
 	}
 }
 
