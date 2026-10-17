@@ -1,6 +1,9 @@
 services:
   nekomari:
-    image: ghcr.io/aone2233/nekomari:v0.1.14
+    # 版本必须由部署者给出：这里曾经钉着 v0.1.14（落后约 30 个版本），而一个陈旧的
+    # 参考文件会被照抄。不要用 `latest` —— 它的含义是「上一个通过自身发布验证的版本」，
+    # 不等于「你测过的那个版本」。生产上还应带上 digest，见 docs/DEPLOY-OC424.md。
+    image: ghcr.io/aone2233/nekomari:${NEKOMARI_VERSION:?set NEKOMARI_VERSION to a released tag, e.g. v1.6.10}
     container_name: nekomari
     restart: unless-stopped
     # 与旧 Komari 实例一致：只监听回环，公网入口一律走宿主机 nginx。
