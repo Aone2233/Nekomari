@@ -479,11 +479,15 @@
     "status": {
       "polling": "正在获取最新执行状态...",
       "running": "正在运行",
-      "timeout": "超时"
+      "timeout": "超时",
+      "pollingStopped": "轮询已停止"
     },
     "stopPolling": "停止轮询",
     "taskStarted": "任务已启动",
-    "title": "远程执行"
+    "title": "远程执行",
+    "pollingStopped": "已停止轮询：任务可能仍在运行",
+    "pollingStoppedHint": "轮询已停止，这些任务可能仍在运行",
+    "resumePolling": "继续轮询"
   },
   "file_manager": {
     "action_failed": "文件操作失败",
@@ -1596,7 +1600,6 @@
   },
   "warn_https": "当前连接不是 HTTPS！您的敏感数据存在严重风险。请立即采取措施确保连接安全！复制操作可能无法使用！",
   "warn_websocket": "RPC2 请求失败，请检查网络连接或服务器状态！",
-
   "status": {
     "title": "状态与 SLA",
     "subtitle": "按所选时间窗，从已存指标计算可用率、延迟与中断。",
@@ -1624,7 +1627,6 @@
     "clamped": "已缩短到保留范围内",
     "navStatus": "状态"
   },
-
   "bulk": {
     "title": "批量编辑",
     "subtitle": "把一项改动应用到多个节点。只有你打开开关的字段会被发送。",
@@ -1663,7 +1665,6 @@
       "no": "可见"
     }
   },
-
   "maintenance": {
     "title": "维护窗口",
     "subtitle": "窗口开启期间，其中节点的告警会被抑制。指标照常采集。",
@@ -1690,7 +1691,6 @@
     "delete": "删除",
     "error": "窗口未保存"
   },
-
   "config": {
     "title": "配置导出与导入",
     "subtitle": "把面板的节点、任务、维护窗口、设置与通知策略导出为一个文件，也可以把一个文件应用回来。",
@@ -1716,7 +1716,6 @@
     "kind_remove": "不在文档中",
     "removalsNotDeleted": "有 {{count}} 条记录在面板里但不在文档中；它们被保留了。"
   },
-
   "forecast": {
     "title": "流量预测",
     "subtitle": "本周期各节点的流量走向，以及何时会触顶。每个预测都会附上它依据的数据。",
@@ -1742,5 +1741,7 @@
     "inDays": "{{days}} 天",
     "notThisCycle": "本周期不会",
     "basisDetail": "{{samples}} 个样本，覆盖周期 {{coverage}}%，±{{uncertainty}}%"
-  }
+  },
+  "status_load_failed": "无法加载节点列表",
+  "status_stale_warning": "刷新失败，显示的是上一次的状态"
 }

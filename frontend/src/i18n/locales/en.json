@@ -316,7 +316,12 @@
       "column": "Column",
       "loading_agent": "Fetching file from agent...",
       "maximize": "Maximize",
-      "menu": { "edit": "Edit", "file": "File", "terminal": "Terminal", "view": "View" },
+      "menu": {
+        "edit": "Edit",
+        "file": "File",
+        "terminal": "Terminal",
+        "view": "View"
+      },
       "minimap": "Minimap",
       "no_symbols": "No symbols found",
       "outline": "Outline",
@@ -585,11 +590,15 @@
     "status": {
       "polling": "Fetching the latest execution status...",
       "running": "Running",
-      "timeout": "Timeout"
+      "timeout": "Timeout",
+      "pollingStopped": "Polling stopped"
     },
     "stopPolling": "Stop polling",
     "taskStarted": "The task has been initiated.",
-    "title": "Remote Exec"
+    "title": "Remote Exec",
+    "pollingStopped": "Stopped polling: the task may still be running",
+    "pollingStoppedHint": "Polling stopped; these tasks may still be running",
+    "resumePolling": "Resume polling"
   },
   "go_to_home": "Go to home",
   "install": {
@@ -1591,7 +1600,6 @@
   },
   "warn_https": "The current connection is not HTTPS! Your sensitive data is at serious risk. Take immediate action to secure the connection! Copy may not available!",
   "warn_websocket": "RPC2 request failed, please check the network connection or server status!",
-
   "status": {
     "title": "Status and SLA",
     "subtitle": "Availability, latency and outages over the selected window, computed from stored metrics.",
@@ -1619,7 +1627,6 @@
     "clamped": "Shortened to the retained range",
     "navStatus": "Status"
   },
-
   "bulk": {
     "title": "Bulk edit",
     "subtitle": "Apply one change to many nodes. Only the fields you switch on are sent.",
@@ -1658,7 +1665,6 @@
       "no": "visible"
     }
   },
-
   "maintenance": {
     "title": "Maintenance windows",
     "subtitle": "While a window is open, its nodes' alerts are suppressed. Metrics keep recording.",
@@ -1685,7 +1691,6 @@
     "delete": "Delete",
     "error": "The window was not saved"
   },
-
   "config": {
     "title": "Configuration export and import",
     "subtitle": "Take the panel's nodes, tasks, maintenance windows, settings and notification policies as one file, and apply one back.",
@@ -1711,7 +1716,6 @@
     "kind_remove": "not in the document",
     "removalsNotDeleted": "{{count}} record(s) are in the panel and not in the document; they were left alone."
   },
-
   "forecast": {
     "title": "Traffic forecast",
     "subtitle": "Where each node's traffic is heading this cycle, and when it would reach its limit. A projection is shown with the data behind it.",
@@ -1737,5 +1741,7 @@
     "inDays": "{{days}} days",
     "notThisCycle": "not this cycle",
     "basisDetail": "{{samples}} samples, {{coverage}}% of cycle, ±{{uncertainty}}%"
-  }
+  },
+  "status_load_failed": "Could not load the node list",
+  "status_stale_warning": "Could not refresh; showing the last known state"
 }

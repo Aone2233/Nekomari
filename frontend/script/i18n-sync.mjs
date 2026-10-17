@@ -5,6 +5,10 @@ import process from 'process';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
+// 合并策略单独成模块，因为它有测试（script/i18n-parity.test.mjs），而本脚本一被
+// import 就会跑 main()。
+import { diffAndMerge } from './i18n-merge.mjs';
+
 // Load env from .env if present
 dotenv.config();
 
@@ -177,33 +181,6 @@ async function aiTranslateAll(pairs, targetLocale) {
   return out;
 }
 
-function diffAndMerge(sourceFlat, targetFlat) {
-  const result = {};
-  const added = [];
-  const updated = [];
-  const removed = [];
-
-  // Keep only keys that exist in source; copy target value if present (even empty), otherwise mark as added but DO NOT insert placeholder
-  for (const key of Object.keys(sourceFlat)) {
-    if (key in targetFlat) {
-      const val = targetFlat[key];
-      if (typeof val === 'string' && val.trim() === '') {
-        // treat empty as missing, don't include now
-        added.push(key);
-      } else {
-        result[key] = val;
-      }
-    } else {
-      added.push(key);
-    }
-  }
-  // Keys that exist in target but not in source should be removed
-  for (const key of Object.keys(targetFlat)) {
-    if (!(key in sourceFlat)) removed.push(key);
-  }
-  return { result, added, removed, updated };
-}
-
 function batchPairs(keys, sourceFlat, targetFlat) {
   const missing = [];
   for (const key of keys) {
@@ -241,7 +218,7 @@ async function main() {
     const targetObj = readJson(targetPath);
     const targetFlat = flatten(targetObj);
 
-    const { result, added, removed } = diffAndMerge(sourceFlat, targetFlat);
+    const { result, added, removed, keptOnlyInTarget } = diffAndMerge(sourceFlat, targetFlat);
 
     // AI fill for missing/empty
     // find missing from source perspective (not present in target or existing but blank)
@@ -267,6 +244,7 @@ async function main() {
       locale,
       added,
       removed,
+      keptOnlyInTarget,
       aiFilled: aiFilled.filter(x => x.text).map(x => x.key),
       stillEmpty: aiFilled.filter(x => !x.text).map(x => x.key),
     };
@@ -274,7 +252,7 @@ async function main() {
   if (!DRY_RUN && hasChange) writeJson(targetPath, merged);
 
   console.log(`Locale ${locale}: ${DRY_RUN ? (hasChange ? 'would update' : 'no change') : (hasChange ? 'updated' : 'no change')}`);
-    if (added.length || removed.length || missingPairs.length) {
+    if (added.length || keptOnlyInTarget.length || missingPairs.length) {
       console.log(JSON.stringify(changes, null, 2));
     }
   }
