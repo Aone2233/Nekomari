@@ -99,7 +99,10 @@ func StartStoreMigration(sourceDriver, sourceDSN string) error {
 	sourceFP := ResolveStoreMigrationSourceFingerprint(sourceDriver, sourceDSN)
 
 	if sourceFP == targetFP {
-		return fmt.Errorf("source and target metrics database are the same; nothing to migrate")
+		return fmt.Errorf("source and target metrics database are the same (%s); nothing to migrate. "+
+			"The inferred source is the last recorded target (config key %q), which equals the current "+
+			"target once a migration has completed — pass the source driver and DSN explicitly to migrate "+
+			"from an older database", targetFP, MigrationTargetKey)
 	}
 
 	srcCfg, err := configFromFingerprint(sourceFP, cfg)

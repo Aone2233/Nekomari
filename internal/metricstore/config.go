@@ -50,8 +50,18 @@ const (
 	MetricRollupMinuteRetentionMinutesKey     = "metric_rollup_minute_retention_minutes"
 	MetricRollupFiveMinuteRetentionMinutesKey = "metric_rollup_five_minute_retention_minutes"
 	MetricRollupHourRetentionHoursKey         = "metric_rollup_hour_retention_hours"
-	// MigrationTargetKey 记录上一次成功完成手动迁移的目标指纹（driver+dsn），
-	// 用于在下一次管理员手动迁移时推断默认源库。
+	// MigrationTargetKey 记录「当前 metrics 目标库的指纹（driver+dsn）」。
+	//
+	// 有两处会写它，而且都必须写：
+	//
+	//   - 一次手动迁移成功结束之后（store_migration.go）；
+	//   - metrics store 的配置被恢复/打开时（store.go）—— 那里的意思是「我们现在的
+	//     目标就是这个」。
+	//
+	// 它只被 ResolveStoreMigrationSourceFingerprint 用作第二优先级：管理员手动迁移
+	// 且没有填 source 时，默认「从上次的目标搬到现在的目标」。迁移完成之后这两个值
+	// 相等，于是不带 source 的第二次迁移会被明确拒绝 —— 那是有意的，不是把「源=目标」
+	// 静默当成一次空迁移。这条注释以前只说第一种写入者，与实际行为不符。
 	MigrationTargetKey = "metric_migration_target"
 )
 
