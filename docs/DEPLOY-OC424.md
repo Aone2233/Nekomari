@@ -3,11 +3,53 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.6.12 rollout (2026-10-17): panel only
+
+The first rollout since v1.6.9, and the first that **does not move the fleet**:
+`git diff --stat v1.6.9..v1.6.12 -- 'agent/**/*.go' protocol/` is empty, so only the panel
+container was replaced.
+
+| Step | Evidence |
+|---|---|
+| Start point | panel on `v1.6.10@sha256:6a5007ce…`, `Up 5 days (healthy)`, `/api/version` → `{"hash":"4e7d389","version":"v1.6.10"}` |
+| Image pulled and verified **by tag** | `docker pull …:v1.6.12` → `RepoDigests` `sha256:2a68e25a9540abd7f87918f445f5f45c5ab5311ea427c075b71419277e3c6b4f`; `arch=arm64/linux` on the aarch64 host. Pulling `tag@digest` still does not create the tag locally — the v1.6.9 trap, avoided |
+| The `latest` policy, end to end again | `v1.6.12` and `latest` resolve to the **same** digest `sha256:2a68e25a…`: `latest` moved because this release's verification passed |
+| Databases backed up first | `/opt/nekomari/backups/pre-v1.6.12-20261017T025201Z`, taken with `sqlite3.Connection.backup` (WAL-safe); both `quick_check=ok`, `integrity_check=ok`, `sha256sum -c` OK |
+| Compose | `image: …:v1.6.12@sha256:2a68e25a…`, written under a full-digest regex guard plus `docker compose config --quiet`; the previous file is kept as `docker-compose.yml.bak-pre-v1.6.12-20261017T025226Z`, so a rollback is that file plus `docker compose up -d` |
+| After the switch | `Up (healthy)`, `RestartCount=0`, started `2026-10-17T02:52:45Z`, `/api/version` → `{"hash":"d46ec5b","version":"v1.6.12"}` |
+
+Live checks against `http://127.0.0.1:25774`, so nginx and Cloudflare stay out of the picture:
+
+```
+/install                200  <title>Nekomari Monitor</title>
+/database-recovery      307  Location: /
+/admin                  200  <title>Nekomari</title>
+/sw.js                  200
+/manifest.webmanifest   200
+/assets/does-not-exist-abc123.js
+                        404  a missing asset is still not the SPA shell
+```
+
+`0` panic/fatal lines in the panel log since the switch.
+
+**The fleet.** Every client row reported within one info interval, and the panel log shows
+`200 POST /api/clients/v2/rpc` from each node's address. Versions: 11 on `v1.6.9`, 3 on `v1.6.11`
+(SB01, SB02, VT01, added after the v1.6.9 rollout and installed from the then-current release). The
+count is **14 clients, not the ten the v1.6.9 record lists** — the fleet grew, and the panel host's own
+node is now `hidden`, which is why a guest node list does not add up to it.
+
+**One thing to look at, and it is not from this rollout.** A single address appeared as a `401` on
+`/api/clients/v2/rpc` every ~5 s for the whole window (21 in 90 s), while three others produced two each
+during the restart. That is the shape `OPEN-WORK.md` records: an agent retrying with a credential that
+can never resolve — a deleted node, a re-installed node still running the old unit, or a second unit
+holding a rotated token. The panel-side symptom is a permanent 401 stream that reads like an authentication
+bug. It needs that node identified and its unit stopped; no panel change is involved.
+
 ## What is actually deployed (verified 2026-09-26)
 
 > **This table is the 2026-09-26 snapshot, kept for the D1/D2 evidence it carries; it is not
-> current.** The newest deployment record is the **v1.6.9 rollout** section below, then
-> **v1.6.7**. Read those for what is running now.
+> current.** The newest deployment record is the **v1.6.12 rollout** section above (2026-10-17),
+> then **v1.6.9**, then **v1.6.7**. Read those for what is running now.
 
 A commit or a tag proves *release*, never *deployment*. Each row below is a
 separate claim with the evidence that produced it. "Verified" means a command ran
