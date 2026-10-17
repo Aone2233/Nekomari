@@ -31,6 +31,10 @@ func Save(uuid string, params v2.UnlockParams) error {
 	if err != nil {
 		return err
 	}
+	routes, err := json.Marshal(params.Routes)
+	if err != nil {
+		return err
+	}
 	probedAt := params.ProbedAt
 	if probedAt.IsZero() {
 		probedAt = time.Now().UTC()
@@ -41,6 +45,7 @@ func Save(uuid string, params v2.UnlockParams) error {
 		EgressRegion: params.EgressRegion,
 		ProbedAt:     probedAt,
 		Results:      string(encoded),
+		Routes:       string(routes),
 		UpdatedAt:    time.Now().UTC(),
 	}
 	// 一次探测就是一份完整快照，直接整体替换，不需要合并。
@@ -123,6 +128,11 @@ func load(uuid string) (*v2.UnlockParams, error) {
 			// 存进去的 JSON 解不出来，说明记录已经损坏。返回空结果而不是让整个
 			// ip-info 接口失败 —— 解锁面板是附加信息，不该拖垮地理与延迟数据。
 			params.Results = nil
+		}
+	}
+	if report.Routes != "" {
+		if err := json.Unmarshal([]byte(report.Routes), &params.Routes); err != nil {
+			params.Routes = nil
 		}
 	}
 	return &params, nil

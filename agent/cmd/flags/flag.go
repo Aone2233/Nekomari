@@ -1,6 +1,7 @@
 package flags_pkg
 
 type Config struct {
+	RouteTargets        string  `json:"route_targets" env:"AGENT_ROUTE_TARGETS"`
 	AutoDiscoveryKey    string  `json:"auto_discovery_key" env:"AGENT_AUTO_DISCOVERY_KEY"`         // 自动发现密钥
 	DisableAutoUpdate   bool    `json:"disable_auto_update" env:"AGENT_DISABLE_AUTO_UPDATE"`       // 禁用自动更新
 	DisableWebSsh       bool    `json:"disable_web_ssh" env:"AGENT_DISABLE_WEB_SSH"`               // 禁用远程控制（web ssh 和 rce）

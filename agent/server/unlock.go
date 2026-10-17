@@ -6,6 +6,7 @@ import (
 	"time"
 
 	v2 "github.com/Aone2233/nekomari/agent/protocol/v2"
+	"github.com/Aone2233/nekomari/agent/routeprobe"
 	"github.com/Aone2233/nekomari/agent/unlock"
 )
 
@@ -41,6 +42,14 @@ func uploadUnlock() error {
 	defer cancel()
 
 	report := unlock.Probe(ctx, unlock.NewClient())
+	// Targets are operator opt-in; never start an unsolicited three-carrier trace.
+	if targets, err := routeprobe.ParseTargets(flags.RouteTargets); err != nil {
+		log.Println("Route probe configuration invalid:", err)
+	} else if len(targets) > 0 {
+		routeCtx, routeCancel := context.WithTimeout(context.Background(), 90*time.Second)
+		report.Routes = routeprobe.Probe(routeCtx, targets)
+		routeCancel()
+	}
 	log.Printf("Unlock probe: egress=%s/%s results=%d",
 		report.EgressIP, report.EgressRegion, len(report.Results))
 	return postV2RPC(v2.BuildUnlockPayload(report))

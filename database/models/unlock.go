@@ -16,5 +16,6 @@ type UnlockReport struct {
 	EgressRegion string    `json:"egress_region" gorm:"type:varchar(8)"`
 	ProbedAt     time.Time `json:"probed_at"`
 	Results      string    `json:"results" gorm:"type:text"`
+	Routes       string    `json:"routes" gorm:"type:text"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }

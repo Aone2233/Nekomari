@@ -40,6 +40,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/Aone2233/nekomari/agent/routeprobe"
 )
 
 // Status is the verdict for one service.
@@ -85,6 +87,7 @@ type Result struct {
 
 // Report 是一次完整探测的结果。
 type Report struct {
+	Routes []routeprobe.Result `json:"routes,omitempty"`
 	// EgressIP 是本次探测实际使用的出口地址，取自 Cloudflare trace 的 ip=。
 	// 它不一定等于节点自己的地址：本机群里有主机是经由另一台节点出网的。
 	EgressIP string `json:"egress_ip,omitempty"`

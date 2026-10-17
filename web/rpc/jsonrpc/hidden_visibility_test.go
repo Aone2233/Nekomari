@@ -239,6 +239,8 @@ func TestPublicPingTasksHideHiddenClients(t *testing.T) {
 //
 // 往名单里加方法之前先问：匿名调用者拿得到它返回的东西吗？
 var guestReachableAllowlist = map[string]bool{
+	// Probe-only summaries: existing non-hidden nodes, private-site gate, no egress IP.
+	"public:getNodeInsights":        true,
 	"common:getMe":                  true,
 	"common:getNodeRecentStatus":    true,
 	"common:getPublicInfo":          true,

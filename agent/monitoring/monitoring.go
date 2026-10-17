@@ -49,10 +49,11 @@ type loadReport struct {
 }
 
 type networkReport struct {
-	Up        uint64 `json:"up"`
-	Down      uint64 `json:"down"`
-	TotalUp   uint64 `json:"totalUp"`
-	TotalDown uint64 `json:"totalDown"`
+	TCPRetransPercent *float64 `json:"tcp_retrans_percent,omitempty"`
+	Up                uint64   `json:"up"`
+	Down              uint64   `json:"down"`
+	TotalUp           uint64   `json:"totalUp"`
+	TotalDown         uint64   `json:"totalDown"`
 	// CycleUp / CycleDown 是自**计费周期重置日**以来的累计流量（`--month-rotate`），
 	// 与 TotalUp/TotalDown 的语义不同 —— 后者是内核自开机累计，单调，可以取差值。
 	//
@@ -128,7 +129,8 @@ func GenerateReport() []byte {
 		message += fmt.Sprintf("failed to get network speed: %v\n", err)
 	}
 	data.Network = networkReport{
-		Up: networkUp, Down: networkDown,
+		TCPRetransPercent: tcpRetransPercent(),
+		Up:                networkUp, Down: networkDown,
 		TotalUp: totalUp, TotalDown: totalDown,
 		CycleUp: cycleUp, CycleDown: cycleDown,
 	}

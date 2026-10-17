@@ -57,3 +57,22 @@ func TestLatestStatusKernelTotalsDoNotDependOnBillingCycle(t *testing.T) {
 		t.Fatalf("failed kernel counters exposed by billing quality: %+v", got)
 	}
 }
+
+func TestLatestStatusMintCycleAndRetransmission(t *testing.T) {
+	retrans := 1.25
+	report := &v2.Report{Network: v2.NetworkReport{CycleUp: 100, CycleDown: 200, TCPRetransPercent: &retrans}}
+	got := latestStatusFromReport("node", report, true, nil)
+	if got.TrafficUp != nil || got.TrafficDown != nil {
+		t.Fatal("legacy cycle must be unknown")
+	}
+	report.Quality = map[string]string{"traffic_cycle": "ok"}
+	got = latestStatusFromReport("node", report, true, nil)
+	if got.TrafficUp == nil || *got.TrafficUp != 100 || got.TrafficDown == nil || *got.TrafficDown != 200 || got.TCPRetransPercent == nil || *got.TCPRetransPercent != 1.25 {
+		t.Fatalf("bad summary: %+v", got)
+	}
+	report.Quality["traffic_cycle"] = "unknown"
+	got = latestStatusFromReport("node", report, true, nil)
+	if got.TrafficUp != nil {
+		t.Fatal("unknown cycle reported as measured")
+	}
+}

@@ -8,6 +8,20 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Add optional [Nekomari Mint](https://github.com/Aone2233/komari-theme-nekomari-mint)
+  theme support without replacing the default theme or admin panel: a visibility-gated
+  `public:getNodeInsights` read endpoint provides stale-aware probe evidence and
+  redacted IP network metadata, with no raw egress IP or per-hop trace disclosure.
+- Preserve IPv4/IPv6 family in public ping history and expose quality-checked
+  billing-cycle traffic plus nullable host TCP retransmission in latest status.
+- Agent: collect Linux TCP counter deltas and support explicitly configured,
+  low-frequency public route targets. Route probing remains disabled by default;
+  ASN labels are observations, not route or unlock guarantees. See
+  [`docs/MINT-THEME.md`](./docs/MINT-THEME.md) for installation, limits and privacy.
+- These changes include agent source changes; adopting the full extension needs a
+  separately planned server/agent rollout. Installing the theme ZIP alone does not
+  upgrade either component.
+
 ## [v1.6.12] — 2026-10-17
 
 The rest of the 2026-10-13 audit batch

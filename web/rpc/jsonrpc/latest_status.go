@@ -33,6 +33,9 @@ type latestStatusRecord struct {
 	NetOut                *int64              `json:"net_out"`
 	NetTotalUp            *int64              `json:"net_total_up"`
 	NetTotalDown          *int64              `json:"net_total_down"`
+	TrafficUp             *int64              `json:"traffic_up"`
+	TrafficDown           *int64              `json:"traffic_down"`
+	TCPRetransPercent     *float64            `json:"tcp_retrans_percent"`
 	Process               *int                `json:"process"`
 	Connections           *int                `json:"connections"`
 	ConnectionsTCP        *int                `json:"connections_tcp"`
@@ -65,6 +68,13 @@ func latestStatusFromReport(uuid string, rep *v2.Report, online bool, ping map[s
 		Connections:    knownReportValue(rep, "connections", rep.Connections.TCP+rep.Connections.UDP),
 		ConnectionsTCP: knownReportValue(rep, "connections", rep.Connections.TCP), ConnectionsUdp: knownReportValue(rep, "connections", rep.Connections.UDP),
 		Online: online, Uptime: knownReportValue(rep, "uptime", rep.Uptime), Ping: ping,
+	}
+	// Cycle counters are absent on legacy agents; do not relabel kernel totals as billing traffic.
+	if rep.Quality["traffic_cycle"] == "ok" {
+		r.TrafficUp, r.TrafficDown = &rep.Network.CycleUp, &rep.Network.CycleDown
+	}
+	if value := rep.Network.TCPRetransPercent; value != nil && *value >= 0 && *value <= 100 {
+		r.TCPRetransPercent = value
 	}
 	if rep.GPU != nil {
 		r.Gpu = knownReportValue(rep, "gpu", rep.GPU.AverageUsage)

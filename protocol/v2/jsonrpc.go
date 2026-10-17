@@ -39,6 +39,16 @@ type UnlockParams struct {
 	EgressRegion string       `json:"egress_region,omitempty"`
 	ProbedAt     time.Time    `json:"probed_at"`
 	Results      []UnlockItem `json:"results"`
+	Routes       []RouteItem  `json:"routes,omitempty"`
+}
+
+type RouteItem struct {
+	Carrier string `json:"carrier"`
+	Target  string `json:"target"`
+	Label   string `json:"label"`
+	Reached bool   `json:"reached"`
+	Hops    int    `json:"hops"`
+	Error   string `json:"error,omitempty"`
 }
 
 // UnlockItem 是单个服务的结论。字段与 agent/unlock.Result 一一对应；服务端与探针是
@@ -238,8 +248,9 @@ type DiskReport struct {
 }
 
 type NetworkReport struct {
-	Up   int64 `json:"up"`
-	Down int64 `json:"down"`
+	TCPRetransPercent *float64 `json:"tcp_retrans_percent,omitempty"`
+	Up                int64    `json:"up"`
+	Down              int64    `json:"down"`
 	// TotalUp / TotalDown 是内核自开机以来的累计字节数：单调，可以做差得到"这段时间用了多少"。
 	TotalUp   int64 `json:"totalUp"`
 	TotalDown int64 `json:"totalDown"`
