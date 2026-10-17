@@ -13,15 +13,30 @@
 # directory. That is what makes it safe to run on a host that is already serving,
 # and safe to run in CI right after a release is published.
 #
-# Usage: deploy-verify.sh [workdir] [port] [version]
+# Usage: deploy-verify.sh [workdir] [port] [version] [arch]
 #   workdir  optional parent for a fresh, retained run directory
 #            default: a fresh mktemp -d that is removed on exit
 #   port     default: 25799
 #   version  default: the tag in the repo's latest release
+#   arch     default: the host's architecture (amd64 | arm64)
+#
+# arch 是参数而不是常量，因为参考面板主机是 arm64 而这里曾经只验 amd64：发布产物
+# 里 arm64 与 darwin 的交叉编译路径（release.yml 用 gcc-aarch64-linux-gnu）在发布
+# 之前【从未被执行过】。默认取主机架构，于是同一份脚本在 arm64 runner 上验的就是
+# arm64 资产。
 set -uo pipefail
 
 PORT="${2:-25799}"
 REPO="Aone2233/Nekomari"
+
+ARCH="${4:-$(uname -m)}"
+case "$ARCH" in
+  x86_64|amd64) ARCH=amd64 ;;
+  aarch64|arm64) ARCH=arm64 ;;
+  *) echo "unsupported architecture '$ARCH' (want amd64 or arm64)"; exit 1 ;;
+esac
+SRV_ASSET="nekomari-linux-${ARCH}"
+AG_ASSET="komari-agent-linux-${ARCH}"
 
 SRV=""; AG=""; WORK=""; OWN_WORK=0
 cleanup() {
@@ -67,15 +82,15 @@ step() { printf '\n=== %s ===\n' "$*"; }
 mkdir -- "$WORK/data" || exit 1
 cd -- "$WORK" || exit 1
 
-step "1. download the published artifacts (${VERSION})"
-for f in nekomari-linux-amd64 komari-agent-linux-amd64 SHA256SUMS.txt; do
+step "1. download the published artifacts (${VERSION}, linux/${ARCH})"
+for f in "$SRV_ASSET" "$AG_ASSET" SHA256SUMS.txt; do
   if curl -fsSL -o "$f" "$BASE/$f"; then ok "downloaded $f"; else bad "download $f"; fi
 done
-chmod +x nekomari-linux-amd64 komari-agent-linux-amd64 2>/dev/null
+chmod +x "$SRV_ASSET" "$AG_ASSET" 2>/dev/null
 
 step "2. verify checksums against SHA256SUMS.txt"
 if [ -f SHA256SUMS.txt ]; then
-  for f in nekomari-linux-amd64 komari-agent-linux-amd64; do
+  for f in "$SRV_ASSET" "$AG_ASSET"; do
     want=$(awk -v n="$f" '$2==n{print $1}' SHA256SUMS.txt)
     got=$(sha256sum "$f" | awk '{print $1}')
     if [ -n "$want" ] && [ "$want" = "$got" ]; then ok "$f checksum matches"; else bad "$f checksum (want ${want:-none} got $got)"; fi
@@ -85,20 +100,20 @@ else
 fi
 
 step "3. the published binaries report their version"
-v=$("./nekomari-linux-amd64" --help 2>&1 | head -1)
+v=$("./$SRV_ASSET" --help 2>&1 | head -1)
 case "$v" in *"$VERSION"*) ok "server banner shows $VERSION";; *) bad "banner: $v";; esac
 # The agent has no --version (it answers "unknown flag"), so look at the injected
 # string instead. This is the assertion that catches a version stamped as "main"
 # (a manual release used to do exactly that -- see the resolve job in release.yml):
 # that string is what the agent's self-updater compares against.
-if grep -aq -- "$VERSION" komari-agent-linux-amd64; then
+if grep -aq -- "$VERSION" "$AG_ASSET"; then
   ok "agent binary carries $VERSION"
 else
   bad "agent binary does not carry $VERSION"
 fi
 
 step "4. first run serves the install guide"
-./nekomari-linux-amd64 server -l "127.0.0.1:${PORT}" > server.log 2>&1 &
+./"$SRV_ASSET" server -l "127.0.0.1:${PORT}" > server.log 2>&1 &
 SRV=$!
 for _ in $(seq 1 30); do
   sleep 1
@@ -210,7 +225,7 @@ if [ -n "$tok" ]; then ok "agent token issued"; else bad "could not create an ag
 
 step "9. the agent connects and the node reports"
 if [ -n "$tok" ]; then
-  ./komari-agent-linux-amd64 -e "http://127.0.0.1:${PORT}" -t "$tok" -i 3 \
+  ./"$AG_ASSET" -e "http://127.0.0.1:${PORT}" -t "$tok" -i 3 \
     --disable-auto-update --disable-web-ssh > agent.log 2>&1 &
   AG=$!
   sleep 20

@@ -21,6 +21,16 @@ platform, creates the GitHub Release and attaches the artifacts plus
 > ```
 >
 > Only then tag. If CI is red, fix the cause and tag the fix.
+>
+> **Since 2026-10-13 this is enforced, not just advised.** `release.yml`'s `gate` job
+> asks the API for the `ci` conclusion on the resolved commit and fails the run unless
+> it is `success`; `build` and `build-agent-darwin` both `needs: [resolve, gate]`. A
+> tag on a commit that never ran CI now produces no Release at all. The manual check
+> above is still the polite way to find out before you push.
+
+A tag that is not plain `vX.Y.Z` is refused by the `resolve` step — a suffix such as
+`-rc1` cannot be compared by the plugin gate, so it would silently disable that check
+(see `FORK.md`).
 
 You can also run it manually from the Actions tab (`workflow_dispatch`) by
 supplying a tag name.
@@ -93,10 +103,21 @@ The one thing to know when reading the implementation: **only the automatic path
 a conclusion to read.** A release created by `release.yml` reaches `docker.yml`
 through `workflow_run` (GitHub suppresses `release: published` for events raised by
 `GITHUB_TOKEN`), and there the gate is `github.event.workflow_run.conclusion ==
-'success'` — anything else, `failure` included, keeps `latest` back. A **hand-published
-release** or a `workflow_dispatch` run carries no conclusion, so it publishes `latest`
-as it always did; if you publish by hand, you are the verification step. Both are
-spelled out at the tag-resolution step in `docker.yml`.
+'success'` — anything else, `failure` included, keeps `latest` back.
+
+**A manually dispatched release is a different shape, and it used to build no image
+at all.** `workflow_run` carries the *branch* in `head_branch` when the run was
+dispatched (it carries the tag only for a tag push), and the tag-resolution step
+rejected anything that did not start with `v` — so a `workflow_dispatch` release
+published a Release and no image, which is the opposite of what this file said. The
+step now falls back to the newest Release when `head_branch` is not tag-shaped. That
+case is in `deploy/docker-workflow-check.py`'s truth table, and the table's
+`head_branch` was previously always a tag, which is why it stayed green.
+
+A **hand-published release** (created in the GitHub UI, not by `release.yml`) reaches
+`docker.yml` through `release: published` and has no conclusion to read, so it
+publishes `latest` as it always did; if you publish by hand, you are the verification
+step. Both are spelled out at the tag-resolution step in `docker.yml`.
 
 It exists because of v1.6.6: its release verification failed (13 passed, 2 failed —
 the agent's WebSocket handshake was refused with `403 Forbidden`) **and the image had

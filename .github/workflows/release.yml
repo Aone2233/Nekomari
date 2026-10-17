@@ -30,6 +30,8 @@ on:
 
 permissions:
   contents: write
+  # gate 要读 ci.yml 的运行结论。
+  actions: read
 
 jobs:
   # 版本号只在这里解析一次。
@@ -57,9 +59,13 @@ jobs:
           else
             tag="$GITHUB_REF_NAME"
           fi
-          if [[ ! "$tag" =~ ^v[0-9A-Za-z][0-9A-Za-z._+-]*$ ]] ||
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
              ! git check-ref-format "refs/tags/$tag"; then
             echo "refusing to release with invalid tag '$tag'" >&2
+            echo "the version has to be plain vX.Y.Z. Both ends of the plugin gate compare it as" >&2
+            echo "numeric dotted parts (internal/plugin/version.go, frontend market UI), so a" >&2
+            echo "suffix like -rc1 cannot be compared and the check refuses instead of guessing." >&2
+            echo "See FORK.md." >&2
             exit 1
           fi
           echo "resolved tag: $tag"
@@ -91,9 +97,43 @@ jobs:
           echo "resolved commit: $sha"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
+  # 发布必须建立在「那个 commit 上 ci 是绿的」这个前提上。
+  #
+  # 此前这条规则只写在 docs/RELEASING.md 的散文里（"Wait for CI green on the exact
+  # commit before tagging"，并记着 v0.1.10 就是 CI 红着打了 tag），没有任何机制拦得住：
+  # 本工作流只构建、不跑测试，也不需要 ci 的结论。于是「拿一个从没跑过测试的 commit
+  # 发版」仍然是可复现的。这个 job 把它变成一道门。
+  gate:
+    name: require green ci on the release commit
+    runs-on: ubuntu-latest
+    needs: resolve
+    steps:
+      - name: Check the ci conclusion for the resolved commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ needs.resolve.outputs.sha }}
+        run: |
+          set -euo pipefail
+          conclusion="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SHA}&per_page=1" \
+            --jq '.workflow_runs[0].conclusion // "no-run"')"
+          case "$conclusion" in
+            success)
+              echo "ci on ${SHA} succeeded"
+              ;;
+            no-run)
+              echo "::error::no ci run found for ${SHA}; push it and let ci finish before tagging"
+              exit 1
+              ;;
+            *)
+              echo "::error::ci on ${SHA} concluded '${conclusion}'; a release has to be built from a commit ci passed"
+              exit 1
+              ;;
+          esac
+
   build:
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}
-    needs: resolve
+    needs: [resolve, gate]
     runs-on: ${{ matrix.runner }}
 
     strategy:
@@ -261,7 +301,7 @@ jobs:
   # 产物，那个选项才真的可用。
   build-agent-darwin:
     name: build agent darwin/${{ matrix.goarch }}
-    needs: resolve
+    needs: [resolve, gate]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -353,8 +393,22 @@ jobs:
         run: ls -la dist
 
       - name: Generate checksums
+        shell: bash
         working-directory: dist
-        run: sha256sum * | tee SHA256SUMS.txt
+        run: |
+          set -euo pipefail
+          # 以前这里是 `sha256sum * | tee SHA256SUMS.txt`：没有 pipefail，管道取的是
+          # tee 的退出码，于是 sha256sum 失败会被吞掉，发布一份【不完整】的清单。
+          # 而探针的自更新在拿不到校验和时是直接拒绝更新的（agent/update/update.go
+          # 的 "release checksum missing for %s"），一份坏清单会让全队静默停止更新。
+          sha256sum * > SHA256SUMS.txt
+          expected=$(find . -maxdepth 1 -type f ! -name SHA256SUMS.txt | wc -l)
+          actual=$(wc -l < SHA256SUMS.txt)
+          if [ "$actual" -ne "$expected" ]; then
+            echo "::error::SHA256SUMS.txt has $actual entries but dist holds $expected assets"
+            exit 1
+          fi
+          echo "checksummed $actual assets"
 
       - name: Create release
         uses: softprops/action-gh-release@v3
@@ -436,9 +490,22 @@ jobs:
   #
   # 放在 release 之后：产物必须先存在于 Release，才能像用户那样下载它们。
   verify:
-    name: verify the release deploys
+    name: verify the release deploys (${{ matrix.arch }})
     needs: [resolve, release]
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # arm64 是参考面板主机的架构（DEPLOY-OC424.md 记着 arch=arm64 on an aarch64
+        # host），而 release.yml 里 linux/arm64 走的是 gcc-aarch64-linux-gnu 交叉编译
+        # —— 这条路径在发布之前从未被执行过，也就从未被验证过。加一条原生 arm64 腿，
+        # 让「能编译」和「能跑」在同一个架构上都被证明。脚本自己识别主机架构，
+        # 所以这里不需要传 arch。
+        include:
+          - runner: ubuntu-latest
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v7
@@ -456,4 +523,4 @@ jobs:
           # Give the Release a moment to become downloadable, then run the same
           # script a user would: no source tree, no local build, only the assets.
           sleep 20
-          bash deploy/deploy-verify.sh "" 25799 "${{ needs.resolve.outputs.tag }}"
+          bash deploy/deploy-verify.sh "" 25799 "${{ needs.resolve.outputs.tag }}" "${{ matrix.arch }}"
