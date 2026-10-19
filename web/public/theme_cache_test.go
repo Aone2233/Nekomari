@@ -588,12 +588,23 @@ func waitForThemeCacheMarker(t *testing.T, timeout time.Duration) string {
 		if err != nil {
 			t.Fatalf("glob %q: %v", pattern, err)
 		}
-		if len(matches) == 1 {
-			return filepath.Dir(matches[0])
+		// The marker is written inside the .tmp-<pid> staging directory before the rename, so a
+		// glob can see it there first. Only a marker in a *published* directory means the cache
+		// is ready; returning the staging path made the caller read a directory that had just
+		// been renamed away (caught by Windows CI, whose rename is slower).
+		published := make([]string, 0, len(matches))
+		for _, match := range matches {
+			if strings.Contains(filepath.Base(filepath.Dir(match)), ".tmp-") {
+				continue
+			}
+			published = append(published, match)
 		}
-		if len(matches) > 1 {
+		if len(published) == 1 {
+			return filepath.Dir(published[0])
+		}
+		if len(published) > 1 {
 			t.Fatalf("%d cache directories carry a completion marker in %s: only one archive hash can be current",
-				len(matches), filepath.Join(DataDir, themeCacheDirName))
+				len(published), filepath.Join(DataDir, themeCacheDirName))
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("the disk cache did not appear within %s (nothing matched %q)", timeout, pattern)
