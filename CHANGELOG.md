@@ -8,7 +8,22 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.6.17] — 2026-10-19
+
+Hotfix for the startup integrity gate introduced in v1.6.16.
+
+- **A failed `PRAGMA quick_check` no longer refuses to start.** The reference database has a benign
+  freelist accounting mismatch (`Freelist: size is 20 but should be 21`) that SQLite reports while
+  every query keeps working. v1.6.16 turned that finding into a restart loop on OC424 and was rolled
+  back to v1.6.15. The finding is now logged as Error with the guidance to back up and run
+  `PRAGMA integrity_check`; `KOMARI_STRICT_DB_CHECK=1` restores the fail-fast behaviour for
+  operators who want it. Missing authentication indexes remain warnings.
+- Everything else in v1.6.16 is unchanged and included here.
+
 ## [v1.6.16] — 2026-10-19
+
+**Published but not deployed**: the startup integrity gate made it restart-loop on the reference
+database (see v1.6.17). The rest of the batch is included in v1.6.17.
 
 The operational and correctness follow-up to the review's first three batches.
 Panel-side only: `agent/**/*.go` and `protocol/` are untouched, so the fleet

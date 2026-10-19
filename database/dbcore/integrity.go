@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	logger "github.com/Aone2233/nekomari/utils/log"
@@ -214,20 +215,37 @@ func quoteSQLiteIdentifier(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
+// strictDatabaseCheckEnv turns a failed quick_check into a refused startup. It is off by
+// default: an integrity finding is not automatically an outage. A freelist accounting mismatch
+// ("Freelist: size is 20 but should be 21") is exactly that — SQLite reports it, every query
+// keeps working, and the reference panel had been serving on that database for months. Making
+// it fatal turns a warning into downtime, which is what happened when v1.6.16 was rolled out.
+// Operators who want the gate can set KOMARI_STRICT_DB_CHECK=1 and keep the database offline
+// until it has been restored.
+const strictDatabaseCheckEnv = "KOMARI_STRICT_DB_CHECK"
+
+func strictDatabaseCheck() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(strictDatabaseCheckEnv))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
 // verifyMainDatabaseIntegrity 在主库迁移完成后跑一次完整性检查。
 //
-// 返回 error 只表示 quick_check 失败：那意味着库本身是坏的，调用方应当让启动失败 ——
-// 继续跑只会让每个查询各自失败（日志里是一堆互不相关的错误），而唯一能指导动作的那句
-// 「库坏了，从备份恢复」会被埋掉。索引缺失是 Warn 而不是 error：缺索引只让认证变慢，
-// 不让它出错，为它拒绝启动等于拿一个性能问题换一次停机。
+// quick_check 失败默认只记录 Error 并继续启动；KOMARI_STRICT_DB_CHECK=1 时才返回 error
+// 让调用方拒绝启动。索引缺失同样只 Warn：缺索引只让认证变慢，不让它出错。
 func verifyMainDatabaseIntegrity(db *gorm.DB) error {
 	if db == nil {
 		return nil
 	}
 	if err := mainDatabaseQuickCheck(db); err != nil {
 		logger.Errorf("dbcore",
-			"main database failed PRAGMA quick_check: %v — restore it from data/backup/ or an off-host copy before trusting this instance", err)
-		return err
+			"main database failed PRAGMA quick_check: %v — the panel keeps running because an integrity finding is not automatically an outage; back up the database and run PRAGMA integrity_check before trusting it, or set %s=1 to refuse startup", err, strictDatabaseCheckEnv)
+		if strictDatabaseCheck() {
+			return err
+		}
 	}
 	missing, err := missingAuthenticationIndexes(db)
 	if err != nil {

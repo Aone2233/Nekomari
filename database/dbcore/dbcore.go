@@ -848,8 +848,9 @@ func doInitialize() error {
 	}
 
 	// 完整性检查放在所有 AutoMigrate 之后：这时看到的才是本进程实际要用的 schema。
-	// quick_check 失败让启动失败（坏库上的每个查询都会各自失败，日志里是一堆互不相关
-	// 的错误，而唯一能指导动作的那句话会被埋掉）；认证索引缺失只 Warn，见 integrity.go。
+	// quick_check 失败默认只记录 Error（KOMARI_STRICT_DB_CHECK=1 才拒绝启动）：freelist
+	// 计数不一致这类历史遗留问题不影响查询，却在 v1.6.16 上线时造成过重启循环；认证索引
+	// 缺失只 Warn，见 integrity.go。
 	if err := verifyMainDatabaseIntegrity(instance); err != nil {
 		return fmt.Errorf("main database failed its integrity check: %w", err)
 	}

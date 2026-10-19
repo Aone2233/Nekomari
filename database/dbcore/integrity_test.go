@@ -204,7 +204,23 @@ func TestVerifyMainDatabaseIntegrity(t *testing.T) {
 		}
 	})
 
-	t.Run("a corrupt database is an error", func(t *testing.T) {
+	t.Run("a failed quick_check warns but does not block by default", func(t *testing.T) {
+		t.Setenv(strictDatabaseCheckEnv, "")
+		db := openIntegrityTestDatabase(t)
+		sqlDB, err := db.DB()
+		if err != nil {
+			t.Fatalf("get sql.DB: %v", err)
+		}
+		if err := sqlDB.Close(); err != nil {
+			t.Fatalf("close test database: %v", err)
+		}
+		if err := verifyMainDatabaseIntegrity(db); err != nil {
+			t.Fatalf("an integrity finding must not stop startup by default: %v", err)
+		}
+	})
+
+	t.Run("a failed quick_check is fatal in strict mode", func(t *testing.T) {
+		t.Setenv(strictDatabaseCheckEnv, "1")
 		db := openIntegrityTestDatabase(t)
 		sqlDB, err := db.DB()
 		if err != nil {
@@ -214,7 +230,7 @@ func TestVerifyMainDatabaseIntegrity(t *testing.T) {
 			t.Fatalf("close test database: %v", err)
 		}
 		if err := verifyMainDatabaseIntegrity(db); err == nil {
-			t.Fatal("a failed quick_check must be returned so the caller can refuse to start")
+			t.Fatal("strict mode must return the quick_check failure so startup can be refused")
 		}
 	})
 
