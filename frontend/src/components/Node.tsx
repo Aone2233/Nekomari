@@ -24,6 +24,35 @@ interface NodeProps {
   isMobile: boolean;
   showIpTagsInCard: boolean;
 }
+
+/**
+ * The hover text behind the maintenance badge.
+ *
+ * The badge itself only carries the state, because that is the one fact worth a place on the
+ * card. Which window it is and when it ends are diagnosis details, so they go into the title: the
+ * server sends `name`/`reason` as free text the operator wrote, and `until` as an RFC3339
+ * instant. `until` is formatted in the browser's own zone, because the person reading it is
+ * looking at their own clock while the server answers in UTC. Its label is the existing
+ * `chart.endTime` string: the maintenance namespace has no end-time label and this page does not
+ * add locale keys for one.
+ */
+function maintenanceHint(
+  maintenance: NonNullable<Record["maintenance"]>,
+  labels: { window: string; endTime: string },
+): string {
+  const parts = [labels.window];
+  if (maintenance.name?.trim()) parts.push(maintenance.name.trim());
+  if (maintenance.reason?.trim()) parts.push(maintenance.reason.trim());
+  if (maintenance.until) {
+    const until = new Date(maintenance.until);
+    // 解析失败时宁可不显示时间，也不要让运维看到 "Invalid Date"。
+    if (!Number.isNaN(until.getTime())) {
+      parts.push(`${labels.endTime} ${until.toLocaleString()}`);
+    }
+  }
+  return parts.join(" · ");
+}
+
 const Node = React.memo(
   ({ basic, live, online, isMobile, showIpTagsInCard }: NodeProps) => {
   const [t] = useTranslation();
@@ -39,6 +68,13 @@ const Node = React.memo(
   const totalUpload = formatBytes(liveData.network.totalUp);
   const totalDownload = formatBytes(liveData.network.totalDown);
   //const totalTraffic = formatBytes(liveData.network.totalUp + liveData.network.totalDown);
+  const maintenance = liveData.maintenance;
+  const maintenanceTitle = maintenance
+    ? maintenanceHint(maintenance, {
+        window: t("maintenance.title"),
+        endTime: t("chart.endTime"),
+      })
+    : undefined;
   return (
     <Card
       style={{
@@ -110,8 +146,20 @@ const Node = React.memo(
                 }
               />
             </React.Suspense>
-            <Badge color={online ? "green" : "red"} variant="soft" className="km-node-status">
-              {online ? t("nodeCard.online") : t("nodeCard.offline")}
+            {/* 维护中优先于在线/离线：窗口内的节点是「计划内不可用」，把它画成红色
+                离线会让每一次计划重启都像一次故障。琥珀色 + title 里的窗口信息，
+                既区别于红绿两态，又能看出是哪次维护、到几点结束。 */}
+            <Badge
+              color={maintenance ? "amber" : online ? "green" : "red"}
+              variant="soft"
+              className="km-node-status"
+              title={maintenanceTitle}
+            >
+              {maintenance
+                ? t("maintenance.title")
+                : online
+                  ? t("nodeCard.online")
+                  : t("nodeCard.offline")}
             </Badge>
           </Flex>
         </Flex>

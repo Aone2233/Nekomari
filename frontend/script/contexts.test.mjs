@@ -73,6 +73,42 @@ test('kernel totals remain independent of billing-cycle availability', () => {
   assert.equal(network.totalDown, null);
 });
 
+test('a maintenance window rides along with the status and disappears with it', () => {
+  const { mergeLiveData } = load(path.join(root, '../utils/liveData.ts'));
+  const input = { node: { client: 'node', online: true, cpu: 5,
+    maintenance: { name: 'Disk swap', reason: 'chassis work', until: '2026-10-20T03:00:00Z' } } };
+
+  const inside = mergeLiveData(input, null);
+  const window = inside.data.data.node.maintenance;
+  // Field by field rather than deepEqual: the module is evaluated in a separate vm context, so
+  // its objects carry another realm's Object.prototype and deepStrictEqual would compare prototypes.
+  assert.equal(window.name, 'Disk swap');
+  assert.equal(window.reason, 'chassis work');
+  assert.equal(window.until, '2026-10-20T03:00:00Z');
+  // Display data must not cost the cards a render: the same payload twice is the same object,
+  // and Node is memoised on it.
+  assert.equal(mergeLiveData(input, inside), inside);
+  assert.equal(inside.data.data.node.cpu.usage, 5);
+
+  // The window closed: the server stops sending the field, and the badge has to go with it
+  // rather than keep asserting a window that ended.
+  delete input.node.maintenance;
+  const outside = mergeLiveData(input, inside);
+  assert.notEqual(outside, inside);
+  assert.equal(outside.data.data.node.maintenance, undefined);
+  assert.equal(outside.data.data.node.cpu.usage, 5);
+});
+
+test('an empty maintenance object still means the node is inside a window', () => {
+  const { mergeLiveData } = load(path.join(root, '../utils/liveData.ts'));
+  // A window may carry no name and no reason; "in maintenance" is the presence of the object,
+  // so normalising must not turn it into "no window".
+  const live = mergeLiveData({ node: { client: 'node', online: true, maintenance: {} } }, null);
+  // Spread into this realm for the same reason as above: the assertion is about the keys, not
+  // about which context constructed the object.
+  assert.deepEqual({ ...live.data.data.node.maintenance }, {});
+});
+
 // Exercise real React context identity across the new module boundaries. Effects
 // intentionally do not run in SSR; HTTP/connection lifecycles are separate tests.
 for (const [name, provider, hook, field] of [

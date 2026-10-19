@@ -205,6 +205,14 @@ func WebSocketV2RPC(c *gin.Context) {
 	}
 	agent_runtime.SetConnectedClients(uuid, conn)
 	agent_runtime.MarkV2Client(uuid)
+	// The agent only holds the rollout target in memory, so a node that restarted would otherwise resume
+	// tracking the newest release and silently undo its part of a rollout. The panel persists the target per
+	// node, so this is where a connecting (or reconnecting) node re-learns it. A failure is logged and the
+	// connection continues: the next dispatch re-sends the target anyway, and refusing the connection would
+	// turn a display problem into a monitoring outage.
+	if err := resendPersistedAgentUpdateTarget(conn, uuid, clients.GetTargetVersion); err != nil {
+		logger.Errorf("client-api", "failed to re-send the persisted agent update target to client %s: %v", uuid, err)
+	}
 	go notifierOnline(uuid, conn.ID)
 	defer func() {
 		agent_runtime.DeleteClientConditionally(uuid, conn)
@@ -244,6 +252,44 @@ func WebSocketV2RPC(c *gin.Context) {
 			}
 		}
 	}
+}
+
+// agentUpdateTargetWriter is the part of a v2 connection the rollout re-send needs. Taking the interface
+// rather than *connection.SafeConn keeps the behaviour testable without a live WebSocket.
+type agentUpdateTargetWriter interface {
+	WriteJSON(v any) error
+}
+
+// resendPersistedAgentUpdateTarget re-sends the version the panel has pinned for this node, so a node that
+// connects after a panel restart (or after being offline during the rollout) re-learns its target.
+//
+// An empty target means the node tracks releases and nothing is sent: the agent's default is already "follow
+// the newest release", so an explicit clear event would only be redundant traffic on every connect. A lookup
+// error is returned for the caller to log; a write error is returned because the caller decides whether the
+// connection survives it.
+//
+// resendPersistedAgentUpdateTarget 重新下发面板为该节点钉住的版本，使面板重启后、或 rollout 期间离线后
+// 才连上的节点重新获知目标。
+//
+// 空目标表示节点跟随发布，此时不发送：agent 的默认行为已经是“跟随最新发布”，每次连接都发一次清除事件
+// 只是多余的流量。查询错误返回给调用方记录日志，写入错误同样返回，由调用方决定连接是否继续。
+func resendPersistedAgentUpdateTarget(conn agentUpdateTargetWriter, uuid string, lookup func(string) (string, error)) error {
+	stored, err := lookup(uuid)
+	if err != nil {
+		return fmt.Errorf("read the persisted rollout target: %w", err)
+	}
+	target := strings.TrimSpace(stored)
+	if target == "" {
+		return nil
+	}
+	if err := conn.WriteJSON(v2.Request{
+		JSONRPC: v2.Version,
+		Method:  v2.MethodAgentUpdate,
+		Params:  v2.UpdateParams{Target: target},
+	}); err != nil {
+		return fmt.Errorf("write the agent update request: %w", err)
+	}
+	return nil
 }
 
 func pushQueuedV2Events(conn *connection.SafeConn, uuid string) bool {

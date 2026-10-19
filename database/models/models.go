@@ -29,6 +29,11 @@ type Client struct {
 	SwapTotal        int64      `json:"swap_total" gorm:"type:bigint"`
 	DiskTotal        int64      `json:"disk_total" gorm:"type:bigint"`
 	Version          string     `json:"version,omitempty" gorm:"type:varchar(100)"`
+	// TargetVersion is the release the panel pinned this node to, or empty when
+	// the node should track releases again. It lives in the panel's database, not
+	// only in the agent's memory, so a rollout survives a panel restart: the panel
+	// re-sends it whenever the node connects (see web/api/client/report_v2.go).
+	TargetVersion string `json:"target_version,omitempty" gorm:"type:varchar(100)"`
 	// What the agent reported about this host's ICMP sockets: "raw", "ping",
 	// "none", or "" when an older agent has not said. The empty value means
 	// *unknown*, and the UI must render it as unknown rather than as a denial --

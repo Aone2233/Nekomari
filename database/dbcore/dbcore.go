@@ -3,11 +3,13 @@ package dbcore
 import (
 	"archive/zip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -272,29 +274,101 @@ func resolveDatabaseFile() string {
 	return dbFile
 }
 
+// upgradeArchiveRetention 是 data/backup 里保留的升级归档份数。
+//
+// 与 deploy/prune-upgrade-backups.sh 的默认值（3）一致：回滚需要的是「最近几次升级」，
+// 不是全部历史。那个脚本存在但没有定时任务，而运维不会主动去跑它 —— 实测的 5.5 GB
+// 旧归档就是这样攒出来的（每次版本变化 60-100 MB）。这里在每次成功写出新归档之后顺手
+// 剪枝，把「需要有人记得跑脚本」变成不需要记得。
+const upgradeArchiveRetention = 3
+
+// upgradeArchiveExcludedGlobs 是升级快照要排除的临时目录模式。
+//
+// 与固定名分开，是因为目录名带时间戳（theme-assets-backup-<ts>），数量与名字都随每次
+// 换主题变化，只能按模式匹配。
+var upgradeArchiveExcludedGlobs = []string{
+	filepath.Join(".", "data", "theme-assets-backup-*"),
+}
+
 // upgradeArchiveExclusions 返回升级快照需要排除的路径。
 //
-// 除归档自身（backup.zip 与 backup/ 目录）外，还排除本地 metric store：
-// 该归档的用途是回滚【面板自己的库与配置】，也就是启动迁移会改写的那部分；
-// 而 metric store（默认 ./data/metrics.db，60-100 MB 的 rollup）不被任何启动
-// 迁移触碰（旧监控表的导入是管理员显式触发的 web/migration 流程），把它一起
-// Deflate 压缩只是让这次启动备份又慢又占地方。
+// 归档的用途是**回滚这次升级**，所以它只需要装回滚真正会用到的东西：面板库
+// （komari.db，含配置）、当前主题（data/theme）、插件（data/plugin）。凡是不在这四项
+// 里的、又可能是若干个 GB 的目录，都不该在升级启动的窗口里被 Deflate 一遍。
 //
-// 只排除默认路径：metric DSN 存在配置库里，而取快照时 config.SetDb 还没执行
-// （见 backupOnVersionUpgrade），因此自定义到别处的 SQLite 库仍会被完整归档 ——
-// 这是安全的一侧。
+// 排除清单：
+//   - 归档自身：backup.zip 与 backup/ 目录（后者含历史升级归档与会话前快照）。
+//   - 本地 metric store（默认 ./data/metrics.db 及其 -wal/-shm）：60-100 MB 的
+//     rollup，不被任何启动迁移触碰（旧监控表的导入是管理员显式触发的 web/migration
+//     流程）。只排除默认路径：metric DSN 存在配置库里，而取快照时 config.SetDb 还没
+//     执行（见 backupOnVersionUpgrade），因此自定义到别处的 SQLite 库仍会被完整归档 ——
+//     这是安全的一侧。
+//   - 维护/换主题期间的临时目录：data/db-maintenance（维护窗前的库副本，实测 2.4 GB）、
+//     data/theme-backups（换主题留下的旧主题）与 data/theme-assets-backup-*（换主题前
+//     的资源备份）。它们都是「上一次动作的产物」，回滚这次升级不需要它们；而把它们
+//     一起打包正是 v1.6.15 上线时 90 秒 / 1.6 GB 的来源。
+//   - data/.uploading：分块上传的暂存区，内容随时可能被删，不属于任何可回滚的状态。
 //
-// 注意：恢复流程用的 pre-restore 快照【不】排除 metric store，因为那条路径会先
-// 删空 ./data，归档是恢复失败时唯一的副本。
+// 注意：恢复流程用的 pre-restore 快照【不】用这张表（见 doInitialize 第 4 步），
+// 因为那条路径会先删空 ./data，归档是恢复失败时唯一的副本 —— 那里多留一份比少留安全。
 func upgradeArchiveExclusions(backupDir string) map[string]struct{} {
 	exclude := map[string]struct{}{
-		filepath.Join(".", "data", "backup.zip"): {},
-		backupDir:                                {},
+		filepath.Join(".", "data", "backup.zip"):     {},
+		backupDir:                                    {},
+		filepath.Join(".", "data", "db-maintenance"): {},
+		filepath.Join(".", "data", "theme-backups"):  {},
+		filepath.Join(".", "data", ".uploading"):     {},
 	}
 	for _, suffix := range []string{"", "-wal", "-shm"} {
 		exclude[filepath.Join(".", "data", "metrics.db"+suffix)] = struct{}{}
 	}
+	// 带时间戳的目录只能按模式展开。匹配不到（没有换过主题、或目录已被清掉）不是错误：
+	// 排除一个不存在的路径本来就什么也不做。
+	for _, pattern := range upgradeArchiveExcludedGlobs {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			continue // 只可能是常量模式本身不合法，没有可修的东西
+		}
+		for _, match := range matches {
+			exclude[match] = struct{}{}
+		}
+	}
 	return exclude
+}
+
+// pruneUpgradeArchives 只保留 dir 里最新的 keep 份 upgrade-*.zip，删除更旧的。
+//
+// 只认 upgrade-*.zip：同一个目录里还住着 pre-restore-*.zip（恢复前的快照，属于另一条
+// 恢复路径的安全网）与 upgrade-*.zip.partial（打包中途的临时文件，甚至不是一个归档）。
+// 把它们算进保留策略，轻则删掉不该删的东西，重则删掉恢复失败时唯一的副本。
+//
+// 排序按**文件名**而不是修改时间：名字里的时间戳是写入端用同一个 UTC 布局生成的，
+// 字典序即时间序；而文件时间在复制/恢复/解压之后会变（历史归档被拷回目录时尤其明显），
+// 按它排序会保留错的那几份。
+//
+// 单个删除失败不影响其余文件（用 errors.Join 汇总后返回）：剪枝是尽力而为，一个被占用
+// 的旧归档不该让清理整体停摆。keep 小于 1 是调用方的编程错误，直接报错 —— 这个函数的
+// 全部职责就是「删文件」，而零值入参（比如某个结构体字段忘了填）绝不能悄悄删光备份。
+func pruneUpgradeArchives(dir string, keep int) error {
+	if keep < 1 {
+		return fmt.Errorf("invalid upgrade archive retention %d: keep at least one", keep)
+	}
+	archives, err := filepath.Glob(filepath.Join(dir, "upgrade-*.zip"))
+	if err != nil {
+		return fmt.Errorf("list upgrade archives in %s: %w", dir, err)
+	}
+	if len(archives) <= keep {
+		return nil
+	}
+	sort.Strings(archives)
+
+	var failures []error
+	for _, archive := range archives[:len(archives)-keep] {
+		if err := os.Remove(archive); err != nil && !errors.Is(err, os.ErrNotExist) {
+			failures = append(failures, fmt.Errorf("remove old upgrade archive %s: %w", filepath.Base(archive), err))
+		}
+	}
+	return errors.Join(failures...)
 }
 
 // backupOnVersionUpgrade 在检测到版本升级时，把当前 ./data 打包到
@@ -362,7 +436,13 @@ func backupOnVersionUpgrade() bool {
 		logger.Errorf("dbcore", "[upgrade-backup] failed to backup ./data before upgrade (from %q to %q): %v", prevVersion, versionID, zipErr)
 		return false
 	}
-	logger.Infof("dbcore", "[upgrade-backup] ./data backed up to %s before upgrade (from %q to %q); the local metric store is excluded and left in place", bakPath, prevVersion, versionID)
+	logger.Infof("dbcore", "[upgrade-backup] ./data backed up to %s before upgrade (from %q to %q); the local metric store and the maintenance/theme backup directories are excluded and left in place", bakPath, prevVersion, versionID)
+
+	// 归档成功后顺手剪枝。失败只 Warn：新归档已经写成，旧归档删不掉是磁盘占用问题，
+	// 不该在这里报成「备份失败」—— 那会让调用方以为没有可回滚的副本。
+	if pruneErr := pruneUpgradeArchives(backupDir, upgradeArchiveRetention); pruneErr != nil {
+		logger.Warnf("dbcore", "[upgrade-backup] could not prune %s down to the newest %d upgrade archives: %v", backupDir, upgradeArchiveRetention, pruneErr)
+	}
 	return true
 }
 
@@ -765,6 +845,13 @@ func doInitialize() error {
 		&models.TaskResult{},
 	); err != nil {
 		logger.Errorf("dbcore", "Failed to create Task and TaskResult table, it may already exist: %v", err)
+	}
+
+	// 完整性检查放在所有 AutoMigrate 之后：这时看到的才是本进程实际要用的 schema。
+	// quick_check 失败让启动失败（坏库上的每个查询都会各自失败，日志里是一堆互不相关
+	// 的错误，而唯一能指导动作的那句话会被埋掉）；认证索引缺失只 Warn，见 integrity.go。
+	if err := verifyMainDatabaseIntegrity(instance); err != nil {
+		return fmt.Errorf("main database failed its integrity check: %w", err)
 	}
 
 	return nil

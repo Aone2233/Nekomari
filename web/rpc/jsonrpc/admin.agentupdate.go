@@ -2,6 +2,7 @@ package jsonrpc
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Aone2233/nekomari/database/auditlog"
@@ -18,12 +19,15 @@ import (
 // version and whether it is connected — plus the ability to tell a node which version to run, which is the
 // v2 event channel that already carries exec, ping and terminal requests.
 //
-// ## Why the target is pushed repeatedly rather than set once
+// ## Where the target lives
 //
-// The agent holds the pushed target in memory and re-learns it from the panel, so the panel sends it on
-// every dispatch. That is not belt-and-braces: a node restarted in the middle of a rollout comes back with no
-// target, and without a re-send it would resume tracking the latest release — silently undoing the rollout for
-// that node and, worse, doing it in the direction of the newest release.
+// The panel persists it per node (models.Client.TargetVersion), and that record is what makes a rollout
+// survive a panel restart: an operator who pinned ten nodes to v0.1.41 and restarted the panel before the
+// fleet converged would otherwise silently lose the rest of the rollout. Dispatch still pushes the target to
+// every online node, because the agent deliberately keeps it in memory only (see agent/update/target.go) — a
+// node restarted mid-rollout comes back with no target and would resume tracking the newest release. A node
+// that is offline right now, or that connects later, is re-sent the same persisted record by the v2 connection
+// handler (web/api/client/report_v2.go). Two paths, one source of truth.
 //
 // ## Why this reports per node rather than a fleet verdict
 //
@@ -40,7 +44,7 @@ func init() {
 			{Name: "target", Type: "string", Required: true, Description: "Release tag, e.g. v0.1.41; empty clears the target"},
 			{Name: "dry_run", Type: "bool", Required: false, Description: "Report what would happen without dispatching"},
 		},
-		Returns: "Per-node outcomes: dispatched, already at target, or offline",
+		Returns: "Per-node outcomes: dispatched, already at target, or saved for a node that is offline",
 	})
 	// A fleet-wide binary change is the same class of operation as admin:exec: it makes every node
 	// run code the operator chose. It therefore takes the same second factor. The dry run is gated
@@ -65,6 +69,9 @@ type agentVersionRow struct {
 	Online bool `json:"online"`
 	// AtTarget is whether Version already matches the target asked about, when one was given.
 	AtTarget bool `json:"at_target,omitempty"`
+	// TargetVersion is the rollout target the panel has persisted for this node: the version it will be
+	// held at, including across a panel restart. Empty means the node tracks releases.
+	TargetVersion string `json:"target_version"`
 }
 
 // agentUpdateOutcome is what happened to one node.
@@ -80,8 +87,10 @@ type agentUpdateOutcome struct {
 const (
 	updateDispatched = "dispatched"
 	updateAtTarget   = "at_target"
-	updateOffline    = "offline"
-	updateFailed     = "failed"
+	// updateSaved is an offline node whose target was persisted: the panel now holds the rollout for it, and
+	// the request goes out when the node connects. It is not a failure and not a delivery.
+	updateSaved  = "saved"
+	updateFailed = "failed"
 )
 
 func adminAgentVersions(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
@@ -95,6 +104,7 @@ func adminAgentVersions(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.Jso
 		online := agentrt.IsAgentOnline(client.UUID)
 		rows = append(rows, agentVersionRow{
 			UUID: client.UUID, Name: client.Name, Version: client.Version, Online: online,
+			TargetVersion: client.TargetVersion,
 		})
 		// Counted by the version reported, with "unknown" for a node that has never connected — which is the
 		// first thing an operator wants to see, because such a node cannot be rolled at all.
@@ -116,6 +126,7 @@ func adminRollAgentUpdate(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 	if err := req.BindParams(&params); err != nil {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request body: "+err.Error(), nil)
 	}
+	target := strings.TrimSpace(params.Target)
 
 	all, err := clients.GetAllClientBasicInfo()
 	if err != nil {
@@ -129,16 +140,28 @@ func adminRollAgentUpdate(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 	}
 
 	outcomes := make([]agentUpdateOutcome, 0, len(all))
-	sent := 0
+	sent, saved := 0, 0
 	for _, client := range all {
 		if len(selected) > 0 && !selected[client.UUID] {
 			continue
 		}
 		row := agentUpdateOutcome{UUID: client.UUID, Name: client.Name}
 
+		// The target is persisted for every selected node, including one that is offline or already at the
+		// target: this record is the rollout. Delivery is a separate question, answered below. A dry run
+		// reports without writing, so a rehearsal cannot leave the fleet pinned.
+		if !params.DryRun {
+			if err := clients.SetTargetVersion(client.UUID, target); err != nil {
+				row.Status = updateFailed
+				row.Detail = "could not save the rollout target: " + err.Error()
+				outcomes = append(outcomes, row)
+				continue
+			}
+		}
+
 		// The target is compared with the same normalisation the agent uses, so the panel and the node cannot
 		// disagree about whether a node is already there and dispatch an install that does nothing.
-		if params.Target != "" && sameReleaseVersion(client.Version, params.Target) {
+		if target != "" && sameReleaseVersion(client.Version, target) {
 			row.Status = updateAtTarget
 			row.Detail = client.Version
 			outcomes = append(outcomes, row)
@@ -150,25 +173,27 @@ func adminRollAgentUpdate(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 			outcomes = append(outcomes, row)
 			continue
 		}
-		// Online first, because an offline node's request cannot be delivered now and the operator should know
-		// that rather than assume it will arrive.
+		// An offline node cannot be handed the target now, but the persisted record means it is not lost: the
+		// panel re-sends it when the node connects. Saying "saved" rather than "failed" is the difference
+		// between a rollout waiting for a node and a rollout that did not happen.
 		if !agentrt.IsAgentOnline(client.UUID) {
-			row.Status = updateOffline
-			row.Detail = "not connected; the request was not delivered"
+			row.Status = updateSaved
+			row.Detail = "saved; will be sent when the node connects"
 			outcomes = append(outcomes, row)
+			saved++
 			continue
 		}
-		if !agentrt.DispatchV2Event(client.UUID, v2.MethodAgentUpdate, v2.UpdateParams{Target: params.Target}) {
+		if !agentrt.DispatchV2Event(client.UUID, v2.MethodAgentUpdate, v2.UpdateParams{Target: target}) {
 			row.Status = updateFailed
 			row.Detail = "the panel could not dispatch to this node"
 			outcomes = append(outcomes, row)
 			continue
 		}
 		row.Status = updateDispatched
-		if params.Target == "" {
+		if target == "" {
 			row.Detail = "target cleared; this node will track releases again"
 		} else {
-			row.Detail = params.Target
+			row.Detail = target
 		}
 		outcomes = append(outcomes, row)
 		sent++
@@ -188,17 +213,18 @@ func adminRollAgentUpdate(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		}
 	}
 
-	if !params.DryRun && params.Target != "" && sent > 0 {
-		// Logged with the count and the version, not the node list: the fleet is ten nodes here, but a rule
+	if !params.DryRun && target != "" && (sent > 0 || saved > 0) {
+		// Logged with the counts and the version, not the node list: the fleet is ten nodes here, but a rule
 		// that only works for ten is not a rule. Which nodes succeeded is answerable from their reported
-		// versions a moment later, and that is the more trustworthy record.
+		// versions a moment later, and that is the more trustworthy record. Saved nodes are counted
+		// separately because a rollout waiting for an offline node is an intentional state, not a delivery.
 		actor, ip := auditActor(ctx)
 		auditlog.Log(ip, actor,
-			"roll agent update: target="+params.Target+" dispatched="+itoa(sent), "warn")
+			"roll agent update: target="+target+" dispatched="+itoa(sent)+" saved="+itoa(saved), "warn")
 	}
 
 	return map[string]any{
-		"target":   params.Target,
+		"target":   target,
 		"dry_run":  params.DryRun,
 		"outcomes": outcomes,
 	}, nil

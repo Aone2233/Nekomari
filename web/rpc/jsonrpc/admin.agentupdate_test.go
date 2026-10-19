@@ -1,12 +1,19 @@
 package jsonrpc
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Aone2233/nekomari/cmd/flags"
+	"github.com/Aone2233/nekomari/database/clients"
+	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
 // The two copies of the v2 protocol must agree on the method names.
@@ -144,5 +151,184 @@ func TestTheTargetComparisonIgnoresTheReleaseTagPrefix(t *testing.T) {
 			t.Errorf("sameReleaseVersion(%q, %q) = %v, want %v (%s)",
 				tc.reported, tc.target, got, tc.want, tc.why)
 		}
+	}
+}
+
+// rolloutOutcomesOf reads the per-node outcomes out of the handler's response.
+func rolloutOutcomesOf(t *testing.T, result any, uuid string) agentUpdateOutcome {
+	t.Helper()
+	payload, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("roll result = %T, want an object", result)
+	}
+	outcomes, ok := payload["outcomes"].([]agentUpdateOutcome)
+	if !ok {
+		t.Fatalf("outcomes = %T", payload["outcomes"])
+	}
+	for _, outcome := range outcomes {
+		if outcome.UUID == uuid {
+			return outcome
+		}
+	}
+	t.Fatalf("no outcome for %s in %+v", uuid, outcomes)
+	return agentUpdateOutcome{}
+}
+
+// createRolloutClient inserts one client row into the shared test database.
+func createRolloutClient(t *testing.T, uuid, version string) {
+	t.Helper()
+	flags.DatabaseType = flags.DatabaseTypeSQLite
+	flags.DatabaseFile = "file:jsonrpc-agent-update?mode=memory&cache=shared"
+	if err := dbcore.GetDBInstance().Create(&models.Client{
+		UUID: uuid, Name: uuid, Token: "token-" + uuid, Version: version,
+	}).Error; err != nil {
+		t.Fatalf("create client %s: %v", uuid, err)
+	}
+}
+
+// An offline node cannot be handed the target now, but the panel must keep it:
+// otherwise a rollout that started while the node was down either silently skips
+// it or, on the next release, moves it forward instead of pinning it.
+func TestRollAgentUpdatePersistsTargetForAnOfflineNode(t *testing.T) {
+	const uuid = "client-roll-offline"
+	createRolloutClient(t, uuid, "")
+
+	result, jerr := adminRollAgentUpdate(context.Background(), rpc.NewRequest(1, "admin:rollAgentUpdate", map[string]any{
+		"uuids":  []string{uuid},
+		"target": "v0.1.41",
+	}))
+	if jerr != nil {
+		t.Fatalf("roll: %v", jerr)
+	}
+
+	outcome := rolloutOutcomesOf(t, result, uuid)
+	if outcome.Status != updateSaved {
+		t.Fatalf("offline outcome = %q (%s), want %q", outcome.Status, outcome.Detail, updateSaved)
+	}
+	if !strings.Contains(outcome.Detail, "when the node connects") {
+		t.Fatalf("offline detail = %q, want it to promise a re-send on connect", outcome.Detail)
+	}
+	stored, err := clients.GetTargetVersion(uuid)
+	if err != nil {
+		t.Fatalf("read persisted target: %v", err)
+	}
+	if stored != "v0.1.41" {
+		t.Fatalf("persisted target = %q, want v0.1.41", stored)
+	}
+}
+
+// A node that already runs the target is still pinned: "no work to do now" is not
+// the same as "this node may move on at the next release".
+func TestRollAgentUpdatePinsANodeAlreadyAtTarget(t *testing.T) {
+	const uuid = "client-roll-at-target"
+	createRolloutClient(t, uuid, "0.1.41")
+
+	result, jerr := adminRollAgentUpdate(context.Background(), rpc.NewRequest(1, "admin:rollAgentUpdate", map[string]any{
+		"uuids":  []string{uuid},
+		"target": "v0.1.41",
+	}))
+	if jerr != nil {
+		t.Fatalf("roll: %v", jerr)
+	}
+	if outcome := rolloutOutcomesOf(t, result, uuid); outcome.Status != updateAtTarget {
+		t.Fatalf("at-target outcome = %q (%s), want %q", outcome.Status, outcome.Detail, updateAtTarget)
+	}
+	stored, err := clients.GetTargetVersion(uuid)
+	if err != nil {
+		t.Fatalf("read persisted target: %v", err)
+	}
+	if stored != "v0.1.41" {
+		t.Fatalf("persisted target = %q, want v0.1.41", stored)
+	}
+}
+
+// A dry run is a rehearsal: it must not leave the fleet pinned.
+func TestRollAgentUpdateDryRunDoesNotPersistTheTarget(t *testing.T) {
+	const uuid = "client-roll-dry-run"
+	createRolloutClient(t, uuid, "")
+
+	result, jerr := adminRollAgentUpdate(context.Background(), rpc.NewRequest(1, "admin:rollAgentUpdate", map[string]any{
+		"uuids":   []string{uuid},
+		"target":  "v0.1.41",
+		"dry_run": true,
+	}))
+	if jerr != nil {
+		t.Fatalf("dry run: %v", jerr)
+	}
+	if outcome := rolloutOutcomesOf(t, result, uuid); outcome.Status != updateDispatched {
+		t.Fatalf("dry-run outcome = %q (%s)", outcome.Status, outcome.Detail)
+	}
+	stored, err := clients.GetTargetVersion(uuid)
+	if err != nil {
+		t.Fatalf("read persisted target: %v", err)
+	}
+	if stored != "" {
+		t.Fatalf("dry run persisted target = %q, want empty", stored)
+	}
+}
+
+// Clearing the target is a persisted write too: the node must come back as
+// "tracks releases" rather than keep the old pin forever.
+func TestRollAgentUpdateClearsThePersistedTarget(t *testing.T) {
+	const uuid = "client-roll-clear"
+	createRolloutClient(t, uuid, "")
+	if err := clients.SetTargetVersion(uuid, "v0.1.40"); err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+
+	result, jerr := adminRollAgentUpdate(context.Background(), rpc.NewRequest(1, "admin:rollAgentUpdate", map[string]any{
+		"uuids":  []string{uuid},
+		"target": "",
+	}))
+	if jerr != nil {
+		t.Fatalf("clear: %v", jerr)
+	}
+	if outcome := rolloutOutcomesOf(t, result, uuid); outcome.Status != updateSaved {
+		t.Fatalf("clear outcome for an offline node = %q (%s), want %q", outcome.Status, outcome.Detail, updateSaved)
+	}
+	stored, err := clients.GetTargetVersion(uuid)
+	if err != nil {
+		t.Fatalf("read persisted target: %v", err)
+	}
+	if stored != "" {
+		t.Fatalf("cleared target = %q, want empty", stored)
+	}
+}
+
+// agentVersions must expose the persisted target next to the reported version,
+// so the page can show "pinned to X, running Y" without a second call.
+func TestAgentVersionsExposesThePersistedTarget(t *testing.T) {
+	const pinned = "client-versions-pinned"
+	const free = "client-versions-free"
+	createRolloutClient(t, pinned, "0.1.41")
+	createRolloutClient(t, free, "0.1.41")
+	if err := clients.SetTargetVersion(pinned, "v0.1.40"); err != nil {
+		t.Fatalf("seed target: %v", err)
+	}
+	if err := clients.SetTargetVersion(free, ""); err != nil {
+		t.Fatalf("clear target: %v", err)
+	}
+
+	result, jerr := adminAgentVersions(context.Background(), nil)
+	if jerr != nil {
+		t.Fatalf("agent versions: %v", jerr)
+	}
+	payload, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("versions result = %T", result)
+	}
+	rows, ok := payload["rows"].([]agentVersionRow)
+	if !ok {
+		t.Fatalf("rows = %T", payload["rows"])
+	}
+	seen := map[string]agentVersionRow{}
+	for _, row := range rows {
+		seen[row.UUID] = row
+	}
+	if row := seen[pinned]; row.TargetVersion != "v0.1.40" {
+		t.Fatalf("pinned row target = %q, want v0.1.40", row.TargetVersion)
+	}
+	if row := seen[free]; row.TargetVersion != "" {
+		t.Fatalf("unpinned row target = %q, want empty", row.TargetVersion)
 	}
 }

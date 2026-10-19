@@ -5,6 +5,7 @@ import (
 	"fmt"
 	logger "github.com/Aone2233/nekomari/utils/log"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/Aone2233/nekomari/database/dbcore"
@@ -259,4 +260,44 @@ func SaveClient(updates map[string]interface{}) error {
 		return err
 	}
 	return nil
+}
+
+// SetTargetVersion records the agent version the panel wants this node to run.
+//
+// An empty target clears the pin, so the node tracks releases again. The panel
+// stores this per node rather than relying on the dispatch that just happened:
+// a node that is offline during a rollout, or an agent that restarted and lost
+// the in-memory target, re-learns it when it next connects.
+//
+// SetTargetVersion 记录面板希望该节点运行的 agent 版本。
+//
+// 空目标表示清除钉版本，节点重新跟随发布。面板按节点持久化，而不是只依赖刚刚
+// 那次下发：rollout 期间离线的节点、或重启后丢失内存目标的 agent，会在下次连接
+// 时重新获知目标。
+func SetTargetVersion(clientUUID, target string) error {
+	db := dbcore.GetDBInstance()
+	target = strings.TrimSpace(target)
+	result := db.Model(&models.Client{}).Where("uuid = ?", clientUUID).Update("target_version", target)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("no such client: %s", clientUUID)
+	}
+	return nil
+}
+
+// GetTargetVersion returns the persisted rollout target for one node. An empty
+// result means the node follows releases; an unknown node is an error so a
+// caller cannot mistake a stale UUID for "no pin".
+//
+// GetTargetVersion 返回某个节点已持久化的 rollout 目标。空结果表示该节点跟随发布；
+// 节点不存在时返回错误，避免调用方把过期的 UUID 误认为“未钉版本”。
+func GetTargetVersion(clientUUID string) (string, error) {
+	db := dbcore.GetDBInstance()
+	var client models.Client
+	if err := db.Select("target_version").Where("uuid = ?", clientUUID).First(&client).Error; err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(client.TargetVersion), nil
 }

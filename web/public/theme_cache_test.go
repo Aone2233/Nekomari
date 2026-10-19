@@ -573,3 +573,147 @@ func TestATruncatedCacheIsDetectedAndRebuilt(t *testing.T) {
 		t.Errorf("the rebuilt document is not the archive's (%d bytes vs %d)", len(body), len(raw[IndexFile]))
 	}
 }
+
+// waitForThemeCacheMarker 轮询等待默认主题的缓存出现 .complete，返回缓存目录。
+//
+// 预热是异步的（PrewarmDefaultThemeCache 起一个 goroutine），测试只能等它落地。判据用
+// 标记文件而不是「目录存在」：目录在解压过程中就已经出现，而标记只在全部条目写完、
+// 字节数核对通过、rename 之后才出现 —— 那才是「可以用了」的那一刻。
+func waitForThemeCacheMarker(t *testing.T, timeout time.Duration) string {
+	t.Helper()
+	pattern := filepath.Join(DataDir, themeCacheDirName, "*", themeCacheMarker)
+	deadline := time.Now().Add(timeout)
+	for {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			t.Fatalf("glob %q: %v", pattern, err)
+		}
+		if len(matches) == 1 {
+			return filepath.Dir(matches[0])
+		}
+		if len(matches) > 1 {
+			t.Fatalf("%d cache directories carry a completion marker in %s: only one archive hash can be current",
+				len(matches), filepath.Join(DataDir, themeCacheDirName))
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the disk cache did not appear within %s (nothing matched %q)", timeout, pattern)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// 启动预热必须真的把缓存建出来，而且整个过程不碰内存副本 —— 预热买的是「第一个访客
+// 不用等 300-370ms」，不是「内存里多一份 33 MiB」。
+func TestPrewarmMaterialisesTheDiskCache(t *testing.T) {
+	t.Chdir(t.TempDir())
+	cacheRoot := enableThemeCacheForTest(t)
+	forgetEmbeddedDistForTest(t)
+
+	PrewarmDefaultThemeCache()
+
+	dir := waitForThemeCacheMarker(t, 5*time.Second)
+	// 标记出现说明文件已经写完；<-themeCacheSettled() 再等后台那次调用整体返回，
+	// 这样用例结束时的状态重置不会与它打架。
+	<-themeCacheSettled()
+	if want := filepath.Join(cacheRoot, embeddedDistArchiveKey()); dir != want {
+		t.Fatalf("the prewarmed cache directory = %q, want %q", dir, want)
+	}
+	if _, err := os.Stat(filepath.Join(dir, IndexFile)); err != nil {
+		t.Fatalf("the prewarmed cache has no %q: %v", IndexFile, err)
+	}
+	if defaultDistFiles != nil {
+		t.Fatalf("prewarming loaded the in-memory archive (%d entries); the point is that no request ever needs it", len(defaultDistFiles))
+	}
+}
+
+// 预热之后的第一个请求必须直接吃缓存（这正是预热的意义），而且仍然不加载内存副本。
+func TestTheFirstRequestAfterPrewarmIsServedFromTheCache(t *testing.T) {
+	router := newRouter(t)
+	enableThemeCacheForTest(t)
+	forgetEmbeddedDistForTest(t)
+	forgetHashedAssetManifests()
+
+	PrewarmDefaultThemeCache()
+	dir := waitForThemeCacheMarker(t, 5*time.Second)
+	<-themeCacheSettled()
+
+	response := get(t, router, "/themes/default/dist/index.html")
+	if response.Code != http.StatusOK {
+		t.Fatalf("GET /themes/default/dist/index.html = %d, want 200", response.Code)
+	}
+	archived, err := os.ReadFile(filepath.Join(dir, IndexFile))
+	if err != nil {
+		t.Fatalf("read the cached document: %v", err)
+	}
+	if !bytes.Equal(response.Body.Bytes(), archived) {
+		t.Error("the first request did not serve the prewarmed document")
+	}
+	if defaultDistFiles != nil {
+		t.Errorf("the first request after prewarming loaded the in-memory archive (%d entries)", len(defaultDistFiles))
+	}
+}
+
+// 缓存被关闭时预热是 no-op：不建目录、不起后台工作、不加载内存副本。
+func TestPrewarmIsANoOpWhenTheCacheIsDisabled(t *testing.T) {
+	t.Chdir(t.TempDir())
+	// 内嵌归档的内存副本可能已经被前面的用例解出来（它们走的就是回退路径），先丢掉，
+	// 否则「预热没有加载它」这条断言会去衡量别人留下的状态。
+	forgetEmbeddedDistForTest(t)
+	// TestMain 关掉了缓存（既有用例走内存回退路径）；这里把那条前提写成断言。
+	themeCacheEnabled = false
+	resetThemeCache()
+	t.Cleanup(resetThemeCache)
+
+	PrewarmDefaultThemeCache()
+	// 给一个「本来会写盘」的 goroutine 足够的时间出现。
+	time.Sleep(100 * time.Millisecond)
+
+	cacheRoot := filepath.Join(DataDir, themeCacheDirName)
+	if _, err := os.Stat(cacheRoot); !os.IsNotExist(err) {
+		t.Errorf("prewarming created %q although the disk cache is disabled (stat error %v)", cacheRoot, err)
+	}
+	if defaultDistFiles != nil {
+		t.Errorf("prewarming loaded the in-memory archive (%d entries) although the disk cache is disabled", len(defaultDistFiles))
+	}
+}
+
+// 重复预热 —— 以及预热之后到来的请求 —— 只能物化一次：一次多余的 33 MiB 写入是白花的
+// 磁盘与 CPU，单飞（themeCacheState 的 done）的意义正是这个。
+func TestPrewarmDoesNotMaterialiseTwice(t *testing.T) {
+	router := newRouter(t)
+	enableThemeCacheForTest(t)
+	forgetEmbeddedDistForTest(t)
+	forgetHashedAssetManifests()
+
+	PrewarmDefaultThemeCache()
+	dir := waitForThemeCacheMarker(t, 5*time.Second)
+	<-themeCacheSettled()
+	marker := filepath.Join(dir, themeCacheMarker)
+	before, err := os.Stat(marker)
+	if err != nil {
+		t.Fatalf("stat the completion marker: %v", err)
+	}
+
+	// 再预热两次（等它们各自返回，别把后台 goroutine 留到用例之后），以及一个请求。
+	<-prewarmDefaultThemeCacheAsync()
+	<-prewarmDefaultThemeCacheAsync()
+	if response := get(t, router, "/themes/default/dist/index.html"); response.Code != http.StatusOK {
+		t.Fatalf("GET /themes/default/dist/index.html = %d, want 200", response.Code)
+	}
+
+	after, err := os.Stat(marker)
+	if err != nil {
+		t.Fatalf("stat the completion marker after the extra prewarms: %v", err)
+	}
+	if !after.ModTime().Equal(before.ModTime()) {
+		t.Errorf("the cache was materialised again (%v -> %v): prewarming a finished extraction must be a no-op",
+			before.ModTime(), after.ModTime())
+	}
+	entries, err := filepath.Glob(filepath.Join(DataDir, themeCacheDirName, "*"))
+	if err != nil {
+		t.Fatalf("glob the cache root: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("%d entries in %s, want exactly one cache directory", len(entries), filepath.Join(DataDir, themeCacheDirName))
+	}
+}

@@ -59,10 +59,16 @@ type themeCacheManifest struct {
 
 // themeCacheState 按进程缓存一次物化结果。err 非 nil 时不再重试：只读文件系统不会
 // 因为第二个请求就变成可写。
+//
+// 为什么不是 sync.Once：物化现在有两条入口 —— 启动预热（后台 goroutine）与第一个请求。
+// 用例之间需要清状态（它们会 t.Chdir 到各自的临时目录），而重置一个**正在 Do 里**的
+// sync.Once 会让进程直接 fatal（"sync: unlock of unlocked mutex"），那不是一条用例失败，
+// 是整个测试二进制崩掉。done 通道同时表达两件事：只做一次，以及「这次做完了没有」。
 type themeCacheState struct {
-	once sync.Once
+	mu   sync.Mutex
 	dir  string
 	err  error
+	done chan struct{} // 非 nil 表示物化已开始；关闭表示 dir/err 已经写定
 }
 
 var defaultThemeCache themeCacheState
@@ -120,20 +126,51 @@ func embeddedDistArchiveKey() string {
 // defaultThemeCacheDir 返回默认主题磁盘缓存的目录，必要时先把它物化出来。
 //
 // 返回的目录一定带匹配的标记文件；物化失败时返回 error，调用方回退到内存 map。
-// 失败只记录一次（sync.Once 的语义），不会每次请求都刷一行日志。
+// 一次物化只有一次：并发的调用方（启动预热与第一个请求）都等同一个 done —— 重复写
+// 33 MiB 是白花的磁盘与 CPU。失败也只记录一次，不会每次请求都刷一行日志。
 func defaultThemeCacheDir() (string, error) {
-	defaultThemeCache.once.Do(func() {
-		defaultThemeCache.dir, defaultThemeCache.err = materializeDefaultThemeCache()
-		if defaultThemeCache.err != nil {
-			logger.Warnf("theme-cache",
-				"default theme disk cache unavailable, falling back to the in-memory archive: %v",
-				defaultThemeCache.err)
-			return
-		}
-		logger.Infof("theme-cache", "default theme materialised at %s; the in-memory copy is no longer needed",
-			defaultThemeCache.dir)
-	})
-	return defaultThemeCache.dir, defaultThemeCache.err
+	defaultThemeCache.mu.Lock()
+	if done := defaultThemeCache.done; done != nil {
+		defaultThemeCache.mu.Unlock()
+		<-done // 已经有人在物化：等它的结果，而不是再写一遍
+		defaultThemeCache.mu.Lock()
+		dir, err := defaultThemeCache.dir, defaultThemeCache.err
+		defaultThemeCache.mu.Unlock()
+		return dir, err
+	}
+	done := make(chan struct{})
+	defaultThemeCache.done = done
+	defaultThemeCache.mu.Unlock()
+
+	dir, err := materializeDefaultThemeCache()
+	if err != nil {
+		logger.Warnf("theme-cache",
+			"default theme disk cache unavailable, falling back to the in-memory archive: %v", err)
+	} else {
+		logger.Infof("theme-cache", "default theme materialised at %s; the in-memory copy is no longer needed", dir)
+	}
+
+	defaultThemeCache.mu.Lock()
+	defaultThemeCache.dir, defaultThemeCache.err = dir, err
+	defaultThemeCache.mu.Unlock()
+	close(done)
+	return dir, err
+}
+
+// themeCacheSettled 返回一个在「已经开始的那次物化」结束后关闭的 channel；没有正在跑的
+// 物化时返回一个已关闭的 channel。
+//
+// 只给测试用：预热是异步的，而用例在重置状态（它们会 t.Chdir 到各自的临时目录）之前
+// 必须确认后台那次物化已经落地，否则 t.TempDir 的清理会与它打架。
+func themeCacheSettled() <-chan struct{} {
+	defaultThemeCache.mu.Lock()
+	defer defaultThemeCache.mu.Unlock()
+	if done := defaultThemeCache.done; done != nil {
+		return done
+	}
+	settled := make(chan struct{})
+	close(settled)
+	return settled
 }
 
 // materializeDefaultThemeCache 把内嵌归档解到 data/.theme-cache/<archive-hash>/ 并返回该目录。
@@ -386,6 +423,47 @@ func writeArchiveEntry(target string, reader io.Reader) (int64, error) {
 	return written, closeErr
 }
 
+// PrewarmDefaultThemeCache 在后台开始物化默认主题的磁盘缓存。
+//
+// 为什么需要预热：物化挂在第一次资源查找上（见上面的注释），而它要写 1080 个文件、
+// 32.96 MiB —— 实测 300-370ms，全部落在第一个访客的请求上。启动时预热把这段时间挪到
+// 进程还没有负载的时候。
+//
+// 为什么是异步：启动不该为一次磁盘写入停下来。预热失败（只读文件系统、权限、磁盘满）
+// 与「第一个请求触发物化」失败时的行为完全相同：defaultThemeCacheDir 把失败缓存在
+// state 里、只记一次 Warn，随后所有查找回退到内存副本。
+//
+// 不会重复物化：预热、第一个请求、以及任何并发调用都等同一个 done（见
+// themeCacheState）。已经物化过、正在物化、或物化失败过时，这里要么立刻返回，要么与
+// 那次物化共享同一个结果。
+//
+// 缓存被关闭（KOMARI_THEME_CACHE=0 或包级开关）时什么都不做，调用方不必自己判断 ——
+// 但调用方仍要判断**主题**：这份缓存就是内嵌归档，只有默认主题用它（见
+// internal/server/bootstrap.go 的调用点）。
+func PrewarmDefaultThemeCache() {
+	_ = prewarmDefaultThemeCacheAsync()
+}
+
+// prewarmDefaultThemeCacheAsync 与 PrewarmDefaultThemeCache 相同，但交还一个在后台那次
+// 物化结束后关闭的 channel。
+//
+// 只给测试用：预热是异步的，而用例在重置状态或清理 t.TempDir 之前必须等它落地 ——
+// 否则会出现「用例已经结束、后台还在往刚被删掉的临时目录里写」这种竞态。
+func prewarmDefaultThemeCacheAsync() <-chan struct{} {
+	done := make(chan struct{})
+	if !themeCacheAllowed() {
+		close(done)
+		return done
+	}
+	go func() {
+		defer close(done)
+		// 失败已由 defaultThemeCacheDir 记过一次 Warn，这里只需要把这次物化推进完；
+		// 回退到内存副本的决定由请求路径做。
+		_, _ = defaultThemeCacheDir()
+	}()
+	return done
+}
+
 // lookupDefaultThemeCachedAsset 在默认主题的磁盘缓存里查找 name（相对归档根，例如
 // "index.html"、"assets/entry-*.js"、"admin/index.html"）。
 //
@@ -463,8 +541,9 @@ func themeCacheRelativeName(name string) (string, bool) {
 
 // resetThemeCache 清空缓存状态：已物化的目录、失败结果与环境判断。
 //
-// 只给测试用：状态按进程缓存（sync.Once），而用例之间会 t.Chdir 到各自的临时目录，
-// DataDir 因此指向不同的地方。
+// 只给测试用：状态按进程缓存，而用例之间会 t.Chdir 到各自的临时目录，DataDir 因此
+// 指向不同的地方。调用前必须确认没有在跑的物化（themeCacheSettled），否则后台那次
+// 物化会在重置之后把结果写回来 —— 不会崩，但会让后面的用例看到一个指向已删目录的状态。
 func resetThemeCache() {
 	defaultThemeCache = themeCacheState{}
 	themeCacheEnvOnce = sync.Once{}
