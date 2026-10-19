@@ -407,9 +407,9 @@ func writeArchiveEntry(target string, reader io.Reader) (int64, error) {
 //   - Last-Modified 是真实的，If-Modified-Since 也能正确命中，而且重启进程不会让
 //     所有缓存的校验值失效（用进程启动时间时每次重启都会强制回源一次）。
 //
-// 名字来自 URL，所以这里再校验一次：clean 之后仍带 ".."、或以 "/" 开头的一律拒绝，
-// 无论它来自哪条路由；目录内定位再用 isSafePath 复核。两道都不是装饰 —— 这个路径
-// 最终会交给 os.Open。
+// 名字来自 URL，所以这里再校验一次：clean 之后仍含 ".." 的拒绝；前导 "/" 先剥掉，
+// 等价于从归档根解析（路由交上来的路径本来就带前导斜杠），再由 isSafePath 复核目录内
+// 定位。两道都不是装饰 —— 这个路径最终会交给 os.Open。
 func lookupDefaultThemeCachedAsset(name string) (assetSource, bool, bool) {
 	if !themeCacheAllowed() {
 		return assetSource{}, false, false
