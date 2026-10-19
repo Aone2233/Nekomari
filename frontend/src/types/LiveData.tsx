@@ -3,6 +3,22 @@ export type LiveData = {
     data: { [key: string]: Record };
 };
 
+/**
+ * One node's maintenance-window state at the moment the status was assembled
+ * (common:getNodesLatestStatus, field `maintenance`).
+ *
+ * The object is present only while the node is inside a window — that presence is the
+ * signal, not a flag inside it: a window may carry no name and no reason, and "in a window"
+ * still has to be sayable. `until` is the window's end as an RFC3339 instant, derived by the
+ * server; the front-end formats it for display and never decides the window itself, because a
+ * client clock a minute off would make the badge flicker at the edges.
+ */
+export type MaintenanceStatus = {
+  name?: string;
+  reason?: string;
+  until?: string;
+};
+
 export type Record = {
   cpu: {
     usage: number | null;
@@ -54,6 +70,7 @@ export type Record = {
   sample_interval_seconds?: number;
   message: string;
   updated_at: string;
+  maintenance?: MaintenanceStatus;
 };
 
 export type LiveDataResponse = {

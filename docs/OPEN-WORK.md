@@ -21,8 +21,10 @@ static assets, admin-copy deduplication, idle timeout, lazy chart, list polling)
 (on-demand language bundles, definition/fingerprint caches on the ingest path, RPC2 exponential
 backoff); and the third one (default-theme disk cache, plugin-hook cap and timer, cgroup-aware soft
 memory limit, byte-budgeted reads, the coarse-rollup measurement, and a prompt-based service-worker
-update). The memory/performance table is empty as a result; the review's remaining items are the
-feature gaps below, and the dated report holds their evidence.
+update). v1.6.16 then closed the operational follow-up (upgrade-archive exclusions and retention,
+startup integrity/index check, theme-cache warm-up, H6 target persistence, and maintenance in node
+status; the SLA half of maintenance remains). The memory/performance table is empty as a result;
+the review's remaining items are the feature gaps below, and the dated report holds their evidence.
 
 ## Decisions waiting on the owner
 
@@ -101,8 +103,8 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 
 | Item | Where | Why it is still here |
 |---|---|---|
-| The H6 rollout target is not persisted and is never re-sent on connection | `web/rpc/jsonrpc/admin.agentupdate.go`, `agent/update/target.go` | The agent holds it in memory; after a restart a pinned rollback silently resumes tracking releases. Needs a stored target and a resend on connect |
-| Maintenance windows are absent from node status and SLA | `web/rpc/jsonrpc/latest_status.go`, `internal/sla` | H3's acceptance asks the status page to distinguish maintenance from down; planned work still reads as an outage. Needs a status field and an SLA exclusion rule |
+| Clearing a rollout target while a node is offline is not re-sent, so an agent that has not restarted keeps its in-memory old target | `web/api/client/report_v2.go`, `agent/update/target.go` | v1.6.16 persists non-empty targets and re-sends them on connect; an explicit empty clear is omitted so an unpinned fleet does not get a message on every connection. Decide whether to send it always |
+| Maintenance windows are still normal operation in SLA | `internal/sla` | v1.6.16 added the `maintenance` field to node status and a dashboard badge, but availability and percentiles still count window'ed samples. Needs a defined exclusion rule and tests |
 | `admin:getClientToken` returns an agent credential without the second factor | `web/rpc/jsonrpc/admin.client.go` | The same class as the credential export fixed on 2026-10-19; whether a token read belongs behind step-up is a policy call, and the API-key exemption would still apply |
 | Selected nodes in the admin table have no bulk action | `frontend/src/pages/admin/index.tsx` | The checkboxes only change a count; the bulk page is reachable from the new menu but not from a selection. Wire the selection to it or remove the checkboxes |
 | Feedback from the `2026-10-18` feature audit not yet scheduled | `docs/audits/2026-10-18/feature-gaps.md` §FG-10…FG-20 | Per-item evidence and effort: audit-log filters/export, metric/record CSV export, exec result history, forecast cost column, CPU temperature and disk I/O (agent release), HTTP status/TLS expiry (agent release), single-account/roles decision, English server errors in the UI |
@@ -113,8 +115,9 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | Nine of ten nodes still run the agent as root | `docs/DEPLOY-OC424.md` | The NOSLA pattern (unprivileged user + `AmbientCapabilities=CAP_NET_RAW`) works; JPKD2 is Alpine, which has no `setcap`. Moving them is a fleet-wide change with its own risk |
 | Release verification does not exercise an installed theme, and there is no authenticated admin smoke test against the real panel | `deploy/deploy-verify.sh` | Both were proposed in the v0.1.19 review; the arm64 leg was added 2026-10-13, these two were not |
+| Release artifacts have checksums but no SBOM, provenance attestation or signed tag | `.github/workflows/release.yml` | The pipeline is otherwise gated by CI; adding `attest-build-provenance` and an SBOM is a workflow change with its own contract tests |
 | The panel's own `data/backup/upgrade-*.zip` archives are still on the same disk as the databases | `database/dbcore/dbcore.go` | **Waiting on you**: it needs a destination and an authorisation. One off-host copy exists (MAC-WAN, verified) |
-| The pre-upgrade archive also copies temporary directories, so a version change spends ~90 s and 1.6 GB before the panel listens | `database/dbcore/dbcore.go` | The exclusion list names `metrics.db` and the backup directory only; `db-maintenance/` (2.4 GB here) and `theme-backups/` are not needed for rollback. Found during the v1.6.15 rollout; the 5.5 GB of old archives also needs a retention rule (`deploy/prune-upgrade-backups.sh` exists but is not scheduled) |
+| The 5.5 GB of upgrade archives already on disk only shrink on the next version change | `database/dbcore/dbcore.go`, `deploy/prune-upgrade-backups.sh` | v1.6.16 excludes the temporary directories and keeps the three newest archives after a successful upgrade, but the files already present remain until that next upgrade, and the standalone prune script is still not scheduled |
 | OIDC + 2FA makes SSO login fail-closed with no way for the browser to answer the challenge | `docs/ROADMAP.md` §F12 | Deliberately shipped as a gate, not half a state machine. Needs a one-time pending token plus a code prompt; production impact is zero while OIDC is off |
 | `sso_id` survives a password change, and `DeleteAllSessions()` is global | `database/accounts/` | Policy questions now that the SSO path requires TOTP; recommendation was (b)+(c) in the audit report |
 | A committed admin password from the SECRETS incident still has to be changed | `docs/SECRETS.md` incident 4 | An ops action on the live panel, not a repository change |

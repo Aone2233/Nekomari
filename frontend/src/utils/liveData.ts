@@ -1,4 +1,4 @@
-import type { LiveDataResponse, Record as LiveRecord } from "../types/LiveData";
+import type { LiveDataResponse, MaintenanceStatus, Record as LiveRecord } from "../types/LiveData";
 
 export const UNKNOWN_LIVE_RECORD: LiveRecord = {
   cpu: { usage: null }, ram: { used: null }, swap: { used: null },
@@ -7,6 +7,30 @@ export const UNKNOWN_LIVE_RECORD: LiveRecord = {
   connections: { tcp: null, udp: null }, uptime: null, process: null,
   message: "", updated_at: "",
 };
+
+/**
+ * The maintenance field, kept as an object whose presence means "inside a window".
+ *
+ * Two decisions live here. An empty object is kept rather than dropped, because a window whose
+ * name and reason are blank is still a window and the card still has to say so. And the value is
+ * passed through without a clock comparison: the server decided whether the node is inside a
+ * window at the instant it built the response, so the client never has to — a local clock a minute
+ * off would otherwise flicker the badge at the edges of every window.
+ */
+function normalizeMaintenance(value: unknown): MaintenanceStatus | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const source = value as { [key: string]: unknown };
+  const status: MaintenanceStatus = {};
+  const text = (key: "name" | "reason" | "until") => {
+    const field = source[key];
+    if (typeof field !== "string" || field.trim() === "") return;
+    status[key] = field;
+  };
+  text("name");
+  text("reason");
+  text("until");
+  return status;
+}
 
 export function usagePercent(used: number | null, total: number | null | undefined): number | null {
   return used !== null && typeof total === "number" && total > 0 ? used / total * 100 : null;
@@ -52,6 +76,9 @@ export function mergeLiveData(result: Record<string, any>, previous: LiveDataRes
       quality: record.quality, sampled_at: record.sampled_at, received_at: record.received_at,
       counter_epoch: record.counter_epoch, sample_interval_seconds: record.sample_interval_seconds,
       message: "", updated_at: record.time ?? "",
+      // 只有在窗口内服务端才带这个对象；下一次响应没有它，记录就会被重建，徽标随之消失
+      // （JSON.stringify 比较会看到这个字段从有到无）。
+      maintenance: normalizeMaintenance(record.maintenance),
     };
     const old = previousData?.data[uuid];
     if (old && JSON.stringify(old) === JSON.stringify(nextRecord)) data[uuid] = old;

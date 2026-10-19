@@ -8,6 +8,38 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.6.16] — 2026-10-19
+
+The operational and correctness follow-up to the review's first three batches.
+Panel-side only: `agent/**/*.go` and `protocol/` are untouched, so the fleet
+does not move.
+
+- **A version upgrade no longer spends ~90 seconds and 1.6 GB archiving temporary data.** The
+  pre-upgrade snapshot excluded only `metrics.db` and `data/backup`, so it copied
+  `db-maintenance/` (2.4 GB on the reference host), `theme-backups/`, `theme-assets-backup-*`
+  and `.uploading`. Those are now excluded. The archive keeps the three newest `upgrade-*.zip`
+  files and leaves `.partial` and `pre-restore-*.zip` alone; the first upgrade also prunes the
+  5.5 GB already accumulated in `data/backup`.
+- **The main database is checked at startup.** `PRAGMA quick_check` runs after AutoMigrate, and
+  the columns authentication relies on (`sessions.session`, `clients.token`, `users.username`,
+  `users.uuid`) are checked through `sqlite_master`/`PRAGMA index_info`; a missing index is
+  warned about with the consequence named (a full table scan). A failed `quick_check` stops
+  startup rather than serving a damaged database.
+- **The default theme's disk cache is warmed at startup** when the active theme is the built-in
+  one, so the first visitor no longer pays the ~300 ms extraction. Installed themes skip it: they
+  are served from `data/theme/<short>/`, not from the embedded archive.
+- **H6 rollout targets now survive a panel restart.** The target is persisted per node
+  (`clients.target_version`), written for every selected node including offline and already-at-
+  target ones, reported as `saved` instead of `offline`, exposed through `agentVersions`, and
+  re-sent when a v2 agent connects. A dry run never writes. Clearing a target while a node is
+  offline is not re-sent as an explicit clear (the agent keeps its in-memory target until it
+  restarts); that edge is recorded in `OPEN-WORK.md`.
+- **Maintenance windows appear in node status.** `common:getNodesLatestStatus` carries an optional
+  `maintenance {name, reason, until}` object while a node is inside a window, and the dashboard
+  card renders an amber maintenance badge instead of treating the node as plainly offline. SLA
+  still counts window'ed samples as normal operation; that half remains in `OPEN-WORK.md`.
+- The embedded archive was rebuilt (1,075 files, 32.93 MiB → 5.09 MiB).
+
 ## [v1.6.15] — 2026-10-19
 
 The 2026-10-18 improvement review, in three batches. Panel-side only:

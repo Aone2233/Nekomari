@@ -331,6 +331,12 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 	}
 	req.BindParams(&params)
 
+	// One instant for the whole response. Maintenance state answers "inside a
+	// window now", and the ping window below covers "the last hour"; taking the
+	// clock once means two nodes in one response cannot land on different sides
+	// of a window boundary.
+	now := time.Now().UTC()
+
 	meta := rpc.MetaFromContext(ctx)
 	ids := params.UUIDs
 	if params.UUID != "" {
@@ -380,7 +386,7 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 			}
 		}
 		if len(missing) > 0 {
-			end := time.Now().UTC()
+			end := now
 			if batch, err := tasks.GetPingRecordsBatch(missing, -1, end.Add(-1*time.Hour), end); err == nil {
 				prefetchedPing = batch
 			}
@@ -395,7 +401,11 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		if includePing {
 			stats = getPingStatsForNode(uuid, pingTasks, prefetchedPing)
 		}
-		respMap[uuid] = latestStatusFromReport(uuid, rep, onlineSet[uuid], stats)
+		record := latestStatusFromReport(uuid, rep, onlineSet[uuid], stats)
+		// nil outside a window: the field is omitted, so callers that predate it
+		// see exactly the response they saw before.
+		record.Maintenance = maintenanceStatusFor(now, uuid)
+		respMap[uuid] = record
 	}
 
 	// 选择逻辑

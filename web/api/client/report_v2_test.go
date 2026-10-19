@@ -2,8 +2,13 @@ package client
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
+	"github.com/Aone2233/nekomari/cmd/flags"
+	"github.com/Aone2233/nekomari/database/clients"
+	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/Aone2233/nekomari/database/models"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 )
 
@@ -124,4 +129,127 @@ func BenchmarkReportParamsDecode(b *testing.B) {
 			}
 		}
 	})
+}
+
+// recordingAgentUpdateWriter stands in for a v2 connection: it records what the
+// panel would put on the wire and can be told to fail the write.
+type recordingAgentUpdateWriter struct {
+	written []any
+	err     error
+}
+
+func (w *recordingAgentUpdateWriter) WriteJSON(v any) error {
+	if w.err != nil {
+		return w.err
+	}
+	w.written = append(w.written, v)
+	return nil
+}
+
+// The connect-time re-send is what makes a rollout survive an agent restart: the
+// agent keeps the target in memory only, so a node that reconnects must be told
+// again. This pins the exact event the panel sends.
+func TestResendPersistedAgentUpdateTargetSendsThePinnedVersion(t *testing.T) {
+	writer := &recordingAgentUpdateWriter{}
+	lookup := func(uuid string) (string, error) {
+		if uuid != "node-1" {
+			t.Fatalf("lookup uuid = %q", uuid)
+		}
+		return "v0.1.41", nil
+	}
+	if err := resendPersistedAgentUpdateTarget(writer, "node-1", lookup); err != nil {
+		t.Fatalf("re-send: %v", err)
+	}
+	if len(writer.written) != 1 {
+		t.Fatalf("wrote %d payloads, want 1", len(writer.written))
+	}
+	request, ok := writer.written[0].(v2.Request)
+	if !ok {
+		t.Fatalf("payload = %T, want v2.Request", writer.written[0])
+	}
+	if request.JSONRPC != v2.Version || request.Method != v2.MethodAgentUpdate {
+		t.Fatalf("payload = %+v, want a %s request", request, v2.MethodAgentUpdate)
+	}
+	params, ok := request.Params.(v2.UpdateParams)
+	if !ok {
+		t.Fatalf("params = %T, want v2.UpdateParams", request.Params)
+	}
+	if params.Target != "v0.1.41" {
+		t.Fatalf("target = %q, want v0.1.41", params.Target)
+	}
+}
+
+// A cleared target must send nothing: the agent's default is already "follow the
+// newest release", so an explicit clear event on every connect is pure noise.
+func TestResendPersistedAgentUpdateTargetSkipsClearedTargets(t *testing.T) {
+	for _, stored := range []string{"", "   "} {
+		writer := &recordingAgentUpdateWriter{}
+		lookup := func(string) (string, error) { return stored, nil }
+		if err := resendPersistedAgentUpdateTarget(writer, "node-1", lookup); err != nil {
+			t.Fatalf("re-send with %q: %v", stored, err)
+		}
+		if len(writer.written) != 0 {
+			t.Fatalf("stored %q wrote %+v, want nothing", stored, writer.written)
+		}
+	}
+}
+
+// A lookup failure is reported to the caller (which logs it) and writes nothing.
+func TestResendPersistedAgentUpdateTargetReportsLookupFailure(t *testing.T) {
+	writer := &recordingAgentUpdateWriter{}
+	lookupErr := errors.New("database is closed")
+	lookup := func(string) (string, error) { return "", lookupErr }
+	err := resendPersistedAgentUpdateTarget(writer, "node-1", lookup)
+	if !errors.Is(err, lookupErr) {
+		t.Fatalf("error = %v, want the lookup failure", err)
+	}
+	if len(writer.written) != 0 {
+		t.Fatalf("wrote %+v after a lookup failure", writer.written)
+	}
+}
+
+// A write failure must not be swallowed: the caller logs it, the connection stays.
+func TestResendPersistedAgentUpdateTargetReportsWriteFailure(t *testing.T) {
+	writeErr := errors.New("broken pipe")
+	writer := &recordingAgentUpdateWriter{err: writeErr}
+	lookup := func(string) (string, error) { return "v0.1.41", nil }
+	err := resendPersistedAgentUpdateTarget(writer, "node-1", lookup)
+	if !errors.Is(err, writeErr) {
+		t.Fatalf("error = %v, want the write failure", err)
+	}
+}
+
+// End to end over the real database: a pinned node receives agent.update on
+// connect, and once the operator clears the pin it receives nothing.
+func TestResendPersistedAgentUpdateTargetUsesThePersistedRecord(t *testing.T) {
+	flags.DatabaseType = flags.DatabaseTypeSQLite
+	flags.DatabaseFile = "file:v2-connect-target?mode=memory&cache=shared"
+	const uuid = "client-v2-connect-target"
+	if err := dbcore.GetDBInstance().Create(&models.Client{
+		UUID: uuid, Name: uuid, Token: "token-" + uuid,
+	}).Error; err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+
+	if err := clients.SetTargetVersion(uuid, "v0.1.40"); err != nil {
+		t.Fatalf("pin target: %v", err)
+	}
+	writer := &recordingAgentUpdateWriter{}
+	if err := resendPersistedAgentUpdateTarget(writer, uuid, clients.GetTargetVersion); err != nil {
+		t.Fatalf("re-send pinned target: %v", err)
+	}
+	if len(writer.written) != 1 {
+		t.Fatalf("pinned node got %d payloads, want 1", len(writer.written))
+	}
+
+	if err := clients.SetTargetVersion(uuid, ""); err != nil {
+		t.Fatalf("clear target: %v", err)
+	}
+	writer = &recordingAgentUpdateWriter{}
+	if err := resendPersistedAgentUpdateTarget(writer, uuid, clients.GetTargetVersion); err != nil {
+		t.Fatalf("re-send cleared target: %v", err)
+	}
+	if len(writer.written) != 0 {
+		t.Fatalf("cleared node got %+v, want nothing", writer.written)
+	}
 }
