@@ -119,6 +119,15 @@ export default defineConfig(({ mode }) => {
             "**/FileEditorDialog-*.css",
             "**/editor.worker-*.js",
             ...monacoLanguageChunkGlobs,
+            // 语言包是典型的「按需数据」：entry 只内联 en，其余 4 个由 i18n/config.ts 动态
+            // import。不排除的话，SW 安装会把这 4 个 chunk 在后台整份下载一遍（约 100 KB
+            // gzip），首访省下的传输量又被加回去。排除后：在线切换语言照常按需拉取（文件名
+            // 带内容哈希，浏览器 HTTP 缓存长期有效）；离线且从未加载过该语言时切换会失败并
+            // 保持当前语言（ensureLanguage 的 catch 分支），不会出现空白首帧。
+            "**/chunk-zh_CN-*.js",
+            "**/chunk-zh_TW-*.js",
+            "**/chunk-ja_JP-*.js",
+            "**/chunk-id_ID-*.js",
             // 国旗（258 个 svg）与 OS 图标（33 个：26 svg + 4 webp + 3 ico）按需加载。
             //
             // 实测（2026-10-13，对构建产物取 gzip）：国旗 653 KB 原始 / 约 273 KB gzip，

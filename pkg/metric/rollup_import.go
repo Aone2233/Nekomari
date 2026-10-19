@@ -117,7 +117,7 @@ func (s *Store) RebuildCoarserRollups(ctx context.Context, source time.Duration)
 
 	s.retentionMu.RLock()
 	defer s.retentionMu.RUnlock()
-	defs, err := s.ListMetrics(ctx)
+	defs, err := s.listMetricsFresh(ctx)
 	if err != nil {
 		return err
 	}

@@ -14,11 +14,13 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**Updated 2026-10-19, after the `2026-10-18` review** (`docs/audits/2026-10-18/SUMMARY.md`). Its
-low-risk batch shipped (sensitive-operation gate on credential export and fleet rollout, menu entries
-for the five standalone pages, maintenance suppression for load/ping alerts, gzip for static assets,
-admin-copy deduplication, idle timeout, lazy chart, list polling). The review's remaining items are
-the two tables below; the dated report holds their evidence.
+**Updated 2026-10-19, after the `2026-10-18` review** (`docs/audits/2026-10-18/SUMMARY.md`). Two
+batches shipped: the low-risk one (sensitive-operation gate on credential export and fleet rollout,
+menu entries for the five standalone pages, maintenance suppression for load/ping alerts, gzip for
+static assets, admin-copy deduplication, idle timeout, lazy chart, list polling) and the next one
+(on-demand language bundles, definition/fingerprint caches on the ingest path, RPC2 exponential
+backoff). The review's remaining items are the two tables below; the dated report holds their
+evidence.
 
 ## Decisions waiting on the owner
 
@@ -100,11 +102,8 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | The embedded default theme is still decoded eagerly at startup (~33 MB resident, ~70 MB transient peak) | `web/public/embedded.go` | The duplicate `admin/` copy was removed 2026-10-19 (~8.3 MB); lazy or disk-backed decoding needs a decision about read-only/container filesystems and an asset-cache design |
 | The coarse rollup in-memory tree is estimated, not measured | `pkg/metric/coarse_rollup.go` | Estimate 55–70 KB/series (100 nodes ≈ 130 MB) from code and t-digest sizes; the acceleration harness needs an injectable clock (the code reads `time.Now()`), then 2 h of real traffic or a heap profile |
 | The metric read budget counts rows, not bytes | `web/rpc/jsonrpc/budget.go` | 250k rows × measured 534 B/row ≈ 133 MB transient per request, four concurrent chart slots; changing admission from rows to bytes needs its own pass and tests |
-| Writing a report batch still re-reads all metric definitions and re-fingerprints every point | `pkg/metric/store.go`, `pkg/metric/raw_points.go` | Measured 147 KB / 2,573 allocs per 180-point batch (definition SELECT ~29%, JSON+SHA256+hex ~29%, empty maps ~13%); a cache needs invalidation on definition changes and per-series fingerprints |
 | A plugin response hook buffers up to 32 MB, copies it once more, and leaves a 30 s timer per request | `internal/plugin/hook.go` | No cost without a plugin that hooks a response; lowering the cap to 1–2 MB changes what a plugin can rewrite, so it is a plugin-contract change |
 | There is no `GOMEMLIMIT` or cgroup awareness | process startup | Go's GC cannot see `docker -m` or `MemoryMax`; a default memory limit needs an owner decision (too low turns the collector into the bottleneck) |
-| All five locale bundles are statically imported into the entry and every standalone page | `frontend/src/i18n/config.ts` | 125 KiB gzip, 24% of the entry; needs per-language dynamic import, a non-blocking first paint, and a language menu that no longer reads `resources` |
-| RPC2 reconnect gives up after 15 s (3 s × 5, no backoff) | `frontend/src/lib/rpc2.ts` | After a panel restart longer than that, every call falls back to HTTP until the page is reloaded; exponential backoff is a behaviour change worth its own test |
 | The service worker updates silently and chunk hashes change every build, so an open tab can request a chunk that no longer exists | `frontend/vite.config.ts`, `PWAUpdatePrompt.tsx` | Needs an update-prompt policy or a retained previous `dist`; the build is not reproducible, which makes the window wider |
 
 ## Feature gaps (from the 2026-10-18 review)

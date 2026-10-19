@@ -12,6 +12,41 @@ import { RPC2ConnectionState } from "../types/rpc2";
 import i18n from "../i18n/config";
 
 /**
+ * Whether another reconnect should be scheduled.
+ *
+ * maxAttempts <= 0 means "keep trying": a panel restart or a laptop that wakes from sleep must
+ * recover on its own rather than leaving every call on the HTTP fallback until the page reloads.
+ * A positive value is still honoured for callers that deliberately want a bounded number of tries.
+ *
+ * Exported for the client tests, which exercise the rule without timers.
+ */
+export function shouldAttemptReconnect(attempt: number, maxAttempts: number): boolean {
+  return maxAttempts <= 0 || attempt < maxAttempts;
+}
+
+/**
+ * Exponential backoff with jitter for one reconnect attempt (1-based).
+ *
+ * Fixed-interval retries are worst in both directions: too fast while the server is down (a fleet
+ * of open panels hammers a restarting process) and too slow to notice recovery. The cap keeps a
+ * long outage from turning into an indefinite wait; the ±20% jitter stops every tab from retrying
+ * in lockstep. random is injectable so the bounds are testable.
+ */
+export function nextReconnectDelay(
+  attempt: number,
+  baseDelay: number,
+  maxDelay: number,
+  random: () => number = Math.random,
+): number {
+  const safeBase = Math.max(1, baseDelay);
+  const safeCap = Math.max(safeBase, maxDelay);
+  const exponent = Math.min(Math.max(1, attempt) - 1, 16);
+  const exponential = Math.min(safeCap, safeBase * 2 ** exponent);
+  const jitter = 0.8 + random() * 0.4;
+  return Math.max(1, Math.round(exponential * jitter));
+}
+
+/**
  * RPC2 客户端类
  * 支持通过 WebSocket 和 HTTP POST 调用 JSON-RPC 2.0 接口
  */
@@ -26,6 +61,11 @@ export class RPC2Client {
   }>();
   private reconnectAttempts = 0;
   private reconnectTimeout?: NodeJS.Timeout;
+  // A hidden tab must not keep retrying: it waits for visibilitychange instead of waking the
+  // radio every few seconds, and the pending attempt is scheduled when the tab becomes visible.
+  private visibilityWait = false;
+  private visibilityHandler?: () => void;
+  private pendingReconnectDelay?: number;
   private heartbeatInterval?: NodeJS.Timeout;
   private stableConnectionTimeout?: NodeJS.Timeout;
   private manualDisconnect = false;
@@ -47,7 +87,10 @@ export class RPC2Client {
       autoConnect: true,
       autoReconnect: true,
       reconnectInterval: 3000,
-      maxReconnectAttempts: 5,
+      // 0 means unlimited: the reconnect keeps backing off (see nextReconnectDelay) instead of
+      // giving up after 15 seconds, which used to strand every call on the HTTP fallback.
+      maxReconnectAttempts: 0,
+      maxReconnectDelay: 30000,
       requestTimeout: 30000,
       enableHeartbeat: true,
       heartbeatInterval: 15000,
@@ -96,6 +139,7 @@ export class RPC2Client {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = undefined;
     }
+    this.clearVisibilityWait();
     this.setConnectionState(RPC2ConnectionState.CONNECTING);
 
     let socket: WebSocket | null = null;
@@ -152,7 +196,7 @@ export class RPC2Client {
       this.setConnectionState(RPC2ConnectionState.DISCONNECTED);
       this.eventListeners.onError?.(error as Error);
       if (!this.manualDisconnect && this.options.autoReconnect &&
-          this.reconnectAttempts < this.options.maxReconnectAttempts) {
+          shouldAttemptReconnect(this.reconnectAttempts, this.options.maxReconnectAttempts)) {
         this.attemptReconnect();
       }
       throw error;
@@ -184,6 +228,7 @@ export class RPC2Client {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = undefined;
     }
+    this.clearVisibilityWait();
 
     // 清理心跳包定时器
     if (this.heartbeatInterval) {
@@ -412,6 +457,7 @@ export class RPC2Client {
     socket.onopen = () => {
       if (this.ws !== socket) return;
       this.setConnectionState(RPC2ConnectionState.CONNECTED);
+      this.clearVisibilityWait();
       if (this.stableConnectionTimeout) {
         clearTimeout(this.stableConnectionTimeout);
       }
@@ -449,7 +495,7 @@ export class RPC2Client {
       this.eventListeners.onDisconnect?.();
 
       if (!this.manualDisconnect && this.options.autoReconnect &&
-          this.reconnectAttempts < this.options.maxReconnectAttempts) {
+          shouldAttemptReconnect(this.reconnectAttempts, this.options.maxReconnectAttempts)) {
         this.attemptReconnect();
       }
     };
@@ -554,13 +600,58 @@ export class RPC2Client {
     this.setConnectionState(RPC2ConnectionState.RECONNECTING);
     this.eventListeners.onReconnecting?.(this.reconnectAttempts);
 
+    const delay = nextReconnectDelay(
+      this.reconnectAttempts,
+      this.options.reconnectInterval,
+      this.options.maxReconnectDelay,
+    );
+    this.scheduleReconnect(delay);
+  }
+
+  private scheduleReconnect(delay: number): void {
+    if (this.manualDisconnect) return;
+    // Waiting for the tab to be visible is not just politeness: a hidden panel retrying every
+    // 30 seconds keeps a phone's radio awake for a page nobody is looking at. The delay already
+    // computed for this attempt is kept and used when the tab comes back.
+    if (typeof document !== "undefined" && document.hidden) {
+      this.pendingReconnectDelay = delay;
+      this.waitForVisibility();
+      return;
+    }
+    this.pendingReconnectDelay = undefined;
     this.reconnectTimeout = setTimeout(() => {
       this.reconnectTimeout = undefined;
       if (this.manualDisconnect) return;
       this.connect().catch(() => {
         // Failed handshakes are scheduled by connect() when no close event is emitted.
       });
-    }, this.options.reconnectInterval);
+    }, delay);
+  }
+
+  private waitForVisibility(): void {
+    if (this.visibilityWait || typeof document === "undefined") return;
+    this.visibilityWait = true;
+    const handler = () => {
+      if (document.hidden) return;
+      this.clearVisibilityWait();
+      if (this.reconnectTimeout || this.manualDisconnect) return;
+      this.scheduleReconnect(this.pendingReconnectDelay ?? nextReconnectDelay(
+        this.reconnectAttempts,
+        this.options.reconnectInterval,
+        this.options.maxReconnectDelay,
+      ));
+    };
+    this.visibilityHandler = handler;
+    document.addEventListener("visibilitychange", handler);
+  }
+
+  private clearVisibilityWait(): void {
+    if (!this.visibilityWait) return;
+    if (this.visibilityHandler) {
+      document.removeEventListener("visibilitychange", this.visibilityHandler);
+      this.visibilityHandler = undefined;
+    }
+    this.visibilityWait = false;
   }
 }
 

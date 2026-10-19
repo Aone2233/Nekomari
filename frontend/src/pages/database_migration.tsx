@@ -26,6 +26,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import GuideHeader from "@/components/GuideHeader";
+import { normalizeLanguage } from "@/utils/language";
 import { SettingCard, SettingCardLabel } from "@/components/admin/SettingCard";
 import RestrictedLoginDialog, {
   type RestrictedAuthStatus,
@@ -179,7 +180,9 @@ function formatBytes(value: number, locale: string): string {
 
 export default function DatabaseMigration() {
   const { t, i18n } = useTranslation();
-  const locale = i18n.resolvedLanguage || i18n.language || "en-US";
+  // Intl 只接受 BCP-47 标签，而 i18next 的语言码是 zh_CN 这种形态：直接交给 NumberFormat
+  // 会抛 RangeError，所以先归一成 zh-CN 再兜底。
+  const locale = normalizeLanguage(i18n.resolvedLanguage || i18n.language) || "en-US";
   const formatNumber = useCallback(
     (value: number) => new Intl.NumberFormat(locale).format(value),
     [locale],

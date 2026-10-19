@@ -59,6 +59,34 @@ The low-risk half of the 2026-10-18 improvement review
 The embedded default theme archive (`web/public/defaultTheme/dist.tar.zst`) was rebuilt from this batch's
 frontend build, so the shipped binary serves the new menu, the lazy chart and the 2FA prompt.
 
+The second batch of the same review:
+
+- **The entry no longer ships four languages nobody asked for.** `i18n/config.ts` imports English
+  statically and loads the other four with `import()`; the seven entries await `initI18n()` before
+  rendering, so the first frame is in the detected language rather than keys. The entry bundle fell
+  from 804 KiB raw / 269 KiB gzip to 508 KiB / 165 KiB (gzip −104 KiB); the four locale chunks
+  (24–27 KiB gzip each) are fetched when the language is actually selected. They are also excluded
+  from the service-worker precache: precaching them would download the same ~100 KiB in the
+  background and cancel the saving. Offline, a language that was never loaded falls back to the
+  current one instead of showing an empty screen. The five standalone pages do not benefit: their
+  builds inline dynamic imports by design, so each still contains every language.
+- **Ingest no longer re-reads and re-hashes on every batch.** `pkg/metric` keeps an immutable
+  snapshot of the definitions table (invalidated by every definition write; maintenance paths read
+  the committed table directly) and a bounded content-addressed cache for tag fingerprints.
+  `Point.normalized` no longer allocates empty maps on this path. A 180-point batch with no tags
+  fell from 165.5 KiB / 2,692 allocations to 55.0 KiB / 153 (−67% bytes, −94% allocations); with
+  tags, 203 KiB / 3,563 to 108 KiB / 2,325. The benchmark is `BenchmarkWriteBatchIngest`.
+- **RPC2 reconnect backs off instead of giving up.** A fixed 3 s retry that stopped after five
+  attempts left every call on the HTTP fallback once a panel restart lasted longer than 15 s. The
+  client now retries indefinitely by default (`maxReconnectAttempts: 0`), with exponential backoff
+  capped at 30 s and ±20% jitter, and waits for the tab to be visible rather than retrying in the
+  background. A positive attempt cap is still honoured for callers that want one.
+- The embedded archive was rebuilt again for this batch (1,083 files, 32.96 MiB → 5.07 MiB), and a
+  v1.6.14 + batch A arm64 build was exercised on OC424 against a copy of the production data: the
+  theme entry serves 292,808 B as 92,984 B gzip, the admin entry 803,226 B as 277,776 B, conditional
+  requests still answer 304 without a body, range requests still answer 206 identity, all five
+  standalone pages answer 200 and the served admin chunk carries all five menu paths.
+
 ## [v1.6.13] — 2026-10-17
 
 - Keep ChatGPT/Claude region-only results `unknown`: observing an exit country does

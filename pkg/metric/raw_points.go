@@ -123,7 +123,14 @@ func prepareMetricPoints(points []Point) ([]preparedMetricPoint, error) {
 		if err := point.Validate(); err != nil {
 			return nil, fmt.Errorf("point %d (metric %q, entity %q): %w", i, point.MetricName, point.EntityID, err)
 		}
-		point = point.normalized()
+		// Only the timestamp needs normalising here: tagsFingerprint already
+		// maps a nil tag set and an empty tag set to the same canonical "{}", so
+		// the empty maps Point.normalized would allocate per point are wasted on
+		// this path.
+		//
+		// 这里只需要规范化时间：tagsFingerprint 已经把 nil 标签集合与空标签集合
+		// 映射到同一个 canonical "{}"，因此 Point.normalized 为每个点分配的空 map
+		// 在这条路径上没有用途。
 		tagsHash, tagsJSON, err := tagsFingerprint(point.Tags)
 		if err != nil {
 			return nil, err
@@ -139,7 +146,7 @@ func prepareMetricPoints(points []Point) ([]preparedMetricPoint, error) {
 			tagsJSON:   tagsJSON,
 			labelsHash: labelsHash,
 			labelsJSON: labelsJSON,
-			timestamp:  point.Timestamp.UnixMilli(),
+			timestamp:  point.Timestamp.UTC().UnixMilli(),
 			value:      point.Value,
 		})
 	}
