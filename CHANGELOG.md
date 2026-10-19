@@ -8,6 +8,11 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.6.15] — 2026-10-19
+
+The 2026-10-18 improvement review, in three batches. Panel-side only:
+`agent/**/*.go` and `protocol/` are untouched, so the fleet does not move.
+
 The low-risk half of the 2026-10-18 improvement review
 ([`docs/audits/2026-10-18/SUMMARY.md`](./docs/audits/2026-10-18/SUMMARY.md)). Panel-side only:
 `agent/**/*.go` and `protocol/` are untouched, so the fleet does not move.
