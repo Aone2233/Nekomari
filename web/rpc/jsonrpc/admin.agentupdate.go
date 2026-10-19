@@ -6,8 +6,8 @@ import (
 
 	"github.com/Aone2233/nekomari/database/auditlog"
 	"github.com/Aone2233/nekomari/database/clients"
-	v2 "github.com/Aone2233/nekomari/protocol/v2"
 	"github.com/Aone2233/nekomari/pkg/rpc"
+	v2 "github.com/Aone2233/nekomari/protocol/v2"
 	agentrt "github.com/Aone2233/nekomari/web/agent"
 )
 
@@ -42,6 +42,11 @@ func init() {
 		},
 		Returns: "Per-node outcomes: dispatched, already at target, or offline",
 	})
+	// A fleet-wide binary change is the same class of operation as admin:exec: it makes every node
+	// run code the operator chose. It therefore takes the same second factor. The dry run is gated
+	// too, which is deliberate rather than incidental: the gate is keyed on the method, and a dry
+	// run that could be called without one would still disclose the fleet's version distribution.
+	rpc.MarkSensitive("admin:rollAgentUpdate")
 	RegisterWithGroupAndMeta("agentVersions", rpc.RoleAdmin, adminAgentVersions, &rpc.MethodMeta{
 		Name:    "admin:agentVersions",
 		Summary: "Each node's reported agent version and whether it is connected",

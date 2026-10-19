@@ -43,6 +43,12 @@ const (
 	// connection cannot pin a worker indefinitely. WebSocket connections are not
 	// affected: this bounds only the initial header read.
 	httpReadHeaderTimeout = 10 * time.Second
+	// Retire an idle keep-alive connection. Without this the server never closes one: Go's
+	// IdleTimeout defaults to 0, which falls back to ReadTimeout - also 0 here - so a client or a
+	// proxy's pooled upstream connection keeps a goroutine and its read/write buffers for the life
+	// of the process. 120 s is longer than the only long poll the panel has (the agent's 25 s pull)
+	// and does not apply to WebSockets, whose connection is hijacked before this timeout matters.
+	httpIdleTimeout = 120 * time.Second
 	// Keep an independent budget for report flushing and store teardown. Reusing
 	// the HTTP deadline here can skip queued metric writes after a slow request.
 	resourceCleanupTimeout = 30 * time.Second
@@ -133,16 +139,24 @@ func (a *App) BuildRouter() error {
 	return nil
 }
 
+// newHTTPServer is the one place the panel's HTTP timeouts are chosen, so the guided modes and the
+// normal server cannot drift apart. WriteTimeout is deliberately absent: it would cut file downloads
+// and terminal streams, which have their own deadlines.
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		IdleTimeout:       httpIdleTimeout,
+	}
+}
+
 // Run starts the normal HTTP server and blocks until shutdown or fatal error.
 func (a *App) Run() error {
 	// The HTML injector runs outside the hook chain so it sees the final
 	// response: plugin hooks can still rewrite the body, then the registered
 	// head/body fragments are embedded into every text/html page.
-	a.server = &http.Server{
-		Addr:              a.listenAddr,
-		Handler:           plugin.HTMLInjectHandler(plugin.WrapHandler(a.engine)),
-		ReadHeaderTimeout: httpReadHeaderTimeout,
-	}
+	a.server = newHTTPServer(a.listenAddr, plugin.HTMLInjectHandler(plugin.WrapHandler(a.engine)))
 	serverErr := make(chan error, 1)
 	logger.Infof("server", "Starting server on %s ...", a.listenAddr)
 	go func() {

@@ -16,6 +16,8 @@ var sensitiveMethodsAllowlist = []string{
 	"admin:dbExec",
 	"admin:dbQuery",
 	"admin:exec",
+	"admin:exportConfigSecrets",
+	"admin:rollAgentUpdate",
 }
 
 func TestSensitiveMethodsAreAnExplicitList(t *testing.T) {
@@ -89,6 +91,45 @@ func TestDatabaseRPCsRequireASecondFactor(t *testing.T) {
 		allowed := call(method, withoutTwoFactor.UUID)
 		if allowed != nil && allowed.Error != nil && allowed.Error.Code == rpc.PermissionDenied {
 			t.Fatalf("%s was refused for an account without 2FA: %+v", method, allowed.Error)
+		}
+	}
+}
+
+// TestEverySensitiveMethodRefusesASessionWithoutASecondFactor walks the reviewed list itself
+// rather than a hand-copied subset. The two lists must not drift: a method that is marked
+// sensitive but never exercised is a gate that could be broken by a typo in its name, and this
+// catches that without reaching any handler (the gate runs before Dispatch).
+func TestEverySensitiveMethodRefusesASessionWithoutASecondFactor(t *testing.T) {
+	account, err := accounts.CreateAccount("stepup-gate-user", "StepUp-gate-Passw0rd")
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	secret, _, err := accounts.Generate2Fa()
+	if err != nil {
+		t.Fatalf("generate 2fa secret: %v", err)
+	}
+	if err := accounts.Enable2Fa(account.UUID, secret); err != nil {
+		t.Fatalf("enable 2fa: %v", err)
+	}
+
+	principal := rpc.PrincipalFromRole(rpc.RoleAdmin)
+	principal.UserUUID = account.UUID
+	meta := &rpc.ContextMeta{Principal: principal, Permission: rpc.RoleAdmin, UserUUID: account.UUID}
+
+	for _, method := range sensitiveMethodsAllowlist {
+		if !rpc.IsSensitive(method) {
+			t.Fatalf("%s is in the allowlist but not marked sensitive", method)
+		}
+		response := dispatchWithSensitive(context.Background(), nil, meta, &rpc.JsonRpcRequest{
+			Version: rpc.RPC_VERSION,
+			Method:  method,
+			Params:  map[string]any{},
+		})
+		if response == nil || response.Error == nil {
+			t.Fatalf("%s without a second factor returned %#v, want a refusal", method, response)
+		}
+		if response.Error.Code != rpc.PermissionDenied {
+			t.Fatalf("%s without a second factor = %+v, want PermissionDenied", method, response.Error)
 		}
 	}
 }

@@ -93,20 +93,23 @@ const Node = React.memo(
           </Flex>
           <Flex gap="2" align="center" style={{ flex: "none" }} className="km-node-chart">
             {live?.message && <Tips color="#CE282E">{live.message}</Tips>}
-            <MiniPingChartFloat
-              uuid={basic.uuid}
-              hours={24}
-              trigger={
-                <IconButton
-                  variant="ghost"
-                  size="1"
-                  title={t("nodeCard.chart", "Chart")}
-                  aria-label={t("nodeCard.chart", "Chart")}
-                >
-                  <TrendingUp size="14" />
-                </IconButton>
-              }
-            />
+            {/* fallback={null}：这里只是图表图标，加载期间留空比放一个骨架更不打扰。 */}
+            <React.Suspense fallback={null}>
+              <MiniPingChartFloat
+                uuid={basic.uuid}
+                hours={24}
+                trigger={
+                  <IconButton
+                    variant="ghost"
+                    size="1"
+                    title={t("nodeCard.chart", "Chart")}
+                    aria-label={t("nodeCard.chart", "Chart")}
+                  >
+                    <TrendingUp size="14" />
+                  </IconButton>
+                }
+              />
+            </React.Suspense>
             <Badge color={online ? "green" : "red"} variant="soft" className="km-node-status">
               {online ? t("nodeCard.online") : t("nodeCard.offline")}
             </Badge>
@@ -269,7 +272,11 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import type { NodeBasicInfo } from "@/contexts/NodeListContext";
 import PriceTags from "./PriceTags";
 import { TrendingUp } from "lucide-react";
-import MiniPingChartFloat from "./MiniPingChartFloat";
+// 每张节点卡都挂着这个图表入口，但图表本身是「悬停 3 秒或点击才打开」的功能，
+// 而 recharts（约首访 JS 的三分之一）正好挂在这条静态边上。用 React.lazy 把
+// MiniPingChartFloat 从节点列表的 chunk 里切出去，首访只下载节点卡；recharts 由
+// Float 内部再切一层（见 MiniPingChartFloat.tsx），只在第一次打开弹层时加载。
+const MiniPingChartFloat = React.lazy(() => import("./MiniPingChartFloat"));
 import { getOSImage, getOSName } from "@/utils";
 import { usePublicInfo } from "@/contexts/PublicInfoContext";
 export const NodeGrid = ({ nodes, liveData, onlineSet }: NodeGridProps) => {

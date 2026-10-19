@@ -92,7 +92,7 @@ export const NodeListProvider: React.FC<{ children: React.ReactNode }> = ({
         if (!mountedRef.current || refreshSeq !== refreshSeqRef.current) return;
         setError(err?.message || "An error occurred while fetching data");
         // 刻意不清空列表。以前这里 setNodeList([])，于是一次失败的轮询就把整页内容
-        // 换成一行错误 —— 而 5 秒后下一次轮询多半就成功了。保留上一次的好数据，让页面
+        // 换成一行错误 —— 而下一次轮询（60 秒后）多半就成功了。保留上一次的好数据，让页面
         // 自己说明「这是旧数据」；列表为 null（从未成功过）时页面才知道该显示错误页。
       })
       .finally(() => {

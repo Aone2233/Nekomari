@@ -1,4 +1,4 @@
-import { Badge, Button, Card, Checkbox, Flex, Heading, Table, Text, TextArea } from "@radix-ui/themes";
+import { Badge, Button, Card, Checkbox, Flex, Heading, Table, Text, TextArea, TextField } from "@radix-ui/themes";
 import { useTranslation } from "react-i18next";
 import React, { useCallback, useMemo, useState } from "react";
 import { parseDocument, planCounts } from "./configFormat";
@@ -22,8 +22,10 @@ import { parseDocument, planCounts } from "./configFormat";
  *   - **Removals are shown as "will not be deleted", not as a warning to act on.** The server never
  *     deletes on import, and a page that implied otherwise would make an operator edit their file in
  *     fear.
- *   - **"Include secrets" says what it does.** The box produces a file that carries agent tokens, and
- *     the label says so rather than being a quiet checkbox next to Export.
+ *   - **"Include secrets" says what it does, and asks for the second factor.** The box produces a
+ *     file that carries agent tokens, and the server puts that export behind the sensitive-operation
+ *     gate: an account with 2FA enabled is refused without a fresh one-time password. So the box is
+ *     followed by a code field rather than being a quiet checkbox next to Export.
  */
 
 export interface ImportPlanChange {
@@ -45,8 +47,18 @@ export interface ImportPlan {
 }
 
 export interface ConfigExportPageProps {
-  /** exportConfig returns the document the page offers as a file. */
-  exportConfig?: (includeSecrets: boolean) => Promise<Record<string, unknown>>;
+  /**
+   * exportConfig returns the document the page offers as a file.
+   *
+   * twoFactorCode is the sensitive-operation one-time password, needed when the document carries
+   * credentials and the account has 2FA enabled; it is optional so an account without a factor (and
+   * the fixture) can call this with the flag alone. A one-argument implementation still satisfies the
+   * type, which is what keeps the mounted fixture compiling.
+   */
+  exportConfig?: (
+    includeSecrets: boolean,
+    twoFactorCode?: string,
+  ) => Promise<Record<string, unknown>>;
   /** planImport reports what an import would do, without doing it. */
   planImport?: (document: Record<string, unknown>) => Promise<ImportPlan>;
   /** importConfig applies the document. */
@@ -63,6 +75,9 @@ export const ConfigExportPage: React.FC<ConfigExportPageProps> = ({
 }) => {
   const { t } = useTranslation();
   const [includeSecrets, setIncludeSecrets] = useState(false);
+  // The one-time password for the credential export. Kept even while the box is unchecked so a
+  // mistyped checkbox does not also clear the code the operator just read off their phone.
+  const [twoFactorCode, setTwoFactorCode] = useState("");
   const [text, setText] = useState(initialText);
   // The text the plan below was computed for. Storing it rather than a boolean is what invalidates
   // the plan when the box changes: a plan for a different document is worse than no plan.
@@ -80,18 +95,21 @@ export const ConfigExportPage: React.FC<ConfigExportPageProps> = ({
     setBusy(true);
     setError(null);
     try {
-      const document = await exportConfig(includeSecrets);
+      const document = await exportConfig(includeSecrets, twoFactorCode);
       const encoded = JSON.stringify(document, null, 2);
       setText(encoded);
       setPlan(null);
       setPlannedFor(null);
       setResult(null);
+      // A one-time password is one-time: once the export has succeeded the code is spent, and
+      // leaving it in the field would make the next click fail with a refusal that reads like a bug.
+      if (includeSecrets) setTwoFactorCode("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setBusy(false);
     }
-  }, [exportConfig, includeSecrets]);
+  }, [exportConfig, includeSecrets, twoFactorCode]);
 
   const onPlan = useCallback(async () => {
     if (!planImport || !parsed.document) return;
@@ -161,6 +179,21 @@ export const ConfigExportPage: React.FC<ConfigExportPageProps> = ({
               {t("config.includeSecrets")}
             </Text>
           </Flex>
+          {/* The field is not validated here: the page cannot know whether this account has 2FA
+              enabled, and refusing an empty code would break the account that does not need one. An
+              empty value is left out of the request, and the server's refusal — with its own wording
+              — is what reaches the error line. */}
+          {includeSecrets && (
+            <TextField.Root
+              value={twoFactorCode}
+              onChange={(event) => setTwoFactorCode(event.target.value)}
+              placeholder={t("account.2fa_otp_input_prompt")}
+              aria-label={t("account.2fa_otp_input_prompt")}
+              autoComplete="one-time-code"
+              data-testid="config-2fa-code"
+              style={{ width: 260 }}
+            />
+          )}
           {includeSecrets && (
             <Badge color="red" data-testid="config-secrets-warning">
               {t("config.secretsWarning")}

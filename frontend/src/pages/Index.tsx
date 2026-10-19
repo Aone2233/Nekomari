@@ -145,7 +145,10 @@ const Index = () => {
     };
     const startPolling = () => {
       if (interval === undefined && !document.hidden) {
-        interval = window.setInterval(refresh, 5000);
+        // 这里刷的是节点列表本身（名称、价格、流量上限、在线集合），这些字段很少变；
+        // 每 2 秒的实时状态由 LiveDataProvider 那一路推送，不靠这次轮询。5 秒一次会让
+        // 每个打开的面板每分钟多打 12 次列表请求，而它几乎总是返回同样的内容。
+        interval = window.setInterval(refresh, 60000);
       }
     };
     const handleVisibilityChange = () => {

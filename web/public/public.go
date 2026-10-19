@@ -164,7 +164,9 @@ func serveAsset(c *gin.Context, source assetSource, name string, hashedAssets ma
 			header.Set("Cache-Control", "no-cache")
 		}
 	}
-	http.ServeContent(c.Writer, c.Request, name, source.modTime, source.reader)
+	// 正文的发送方式（Vary 与 gzip 的取舍）由 serveAssetContent 统一决定，见 gzip.go。
+	// 后台的 serveAdminAsset 走同一个出口，两处的静态资源因此不会被压缩与否分成两类。
+	serveAssetContent(c, source, name)
 }
 
 // panelPinnedMimeTypes 是面板**依赖**其 Content-Type 的少数几个扩展名。
@@ -480,7 +482,11 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		}
 
 		if strings.HasPrefix(embedPath, DistDir+"/") {
-			if content, ok := defaultDistFiles[strings.TrimPrefix(embedPath, DistDir+"/")]; ok {
+			// embeddedDistContent 而不是直接查 defaultDistFiles：归档里 admin/ 与
+			// standalone/admin/ 是同一批文件的两份副本，加载时只保留 admin/ 一份
+			// （见 embedded.go 的 dedupeAdminCopies），所以 standalone/admin/... 的
+			// 查找要回退到那里去取。
+			if content, ok := embeddedDistContent(strings.TrimPrefix(embedPath, DistDir+"/")); ok {
 				return embeddedAsset(embedPath, content), true
 			}
 		} else if content, err := fs.ReadFile(defaultThemeFS, embedPath); err == nil {
@@ -495,7 +501,7 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		// 这个形式，于是面板的主题页永远是一张破图。
 		//
 		// 放在最后而不是最前：先查 dist 分支保持既有解析顺序不变，只有它没命中时才考虑根级文件。
-		if content, ok := defaultDistFiles[embedPath]; ok {
+		if content, ok := embeddedDistContent(embedPath); ok {
 			return embeddedAsset(embedPath, content), true
 		}
 
@@ -574,7 +580,10 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		if isHashedAsset(adminAssetKey(relative), adminHashedAssets()) {
 			header.Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
-		http.ServeContent(c.Writer, c.Request, path.Base(relative), source.modTime, source.reader)
+		// 与 serveAsset 共用同一个正文出口（含 gzip）：后台资源同样是静态文件，而它恰好是
+		// 面板里最大的那批（入口包与按需加载的 Monaco 块）。name 仍传 path.Base(relative)，
+		// 保持这次调用原来的形状。
+		serveAssetContent(c, source, path.Base(relative))
 	}
 
 	// 核心逻辑：获取文件内容（供 index.html 改写与 favicon 等需要完整内容的分支使用）

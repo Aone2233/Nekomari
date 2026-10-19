@@ -8,6 +8,57 @@ Nekomari's own.
 
 ## [Unreleased]
 
+The low-risk half of the 2026-10-18 improvement review
+([`docs/audits/2026-10-18/SUMMARY.md`](./docs/audits/2026-10-18/SUMMARY.md)). Panel-side only:
+`agent/**/*.go` and `protocol/` are untouched, so the fleet does not move.
+
+- **Two fleet-impacting RPCs were outside the sensitive-operation gate.** `admin:exportConfig` with
+  `include_secrets=true` exported every agent token, and `admin:rollAgentUpdate` could make the whole fleet
+  install an arbitrary release; neither was marked sensitive, while `admin:exec` was. A stolen admin session
+  on an account with 2FA could do both without a second factor. Credential export now has its own method,
+  `admin:exportConfigSecrets`, registered with `rpc.MarkSensitive`; the safe export refuses
+  `include_secrets` instead of silently dropping it, and the refusal names the method that can do it. The
+  reviewed allowlist grows to five methods and a test walks the list itself, so a method that is marked but
+  not reviewed fails. API keys remain exempt, as they are for every sensitive method (`OPEN-WORK.md`).
+- **Five delivered pages had no entrance.** The SLA report, bulk edit, maintenance windows, configuration
+  import/export and traffic forecast are standalone documents under `/standalone/<page>/<page>.html` — they
+  cannot be routes (a theme replaces that router, roadmap H0) and no theme can know they exist. The panel's
+  operations menu now lists all five (new tab), and `script/menu-reachability.test.mjs` asserts every page in
+  the build table has a menu entry with the build's exact path, a valid icon and `newTab`.
+- **A maintenance window only silenced offline alerts.** `sendLoadNotification` — the shared exit for
+  host-metric and ping rules — had no window check, so a planned reboot still woke the operator for the ping
+  loss it caused; roadmap H3's acceptance names offline and ping. Alerts for clients inside a window are now
+  dropped (not deferred: a point threshold is about a moment, and a late "CPU was high" is not actionable),
+  logged with the window's name, and collection is untouched.
+- **Static assets were served uncompressed, and the embedded theme stored the admin twice.** `serveAsset`
+  now gzips compressible assets above 1 KiB when the client offers it (`Vary: Accept-Encoding`, no
+  `Content-Length`, Range stays identity, 304 stays bodyless) and the panel's own `/admin` assets use the
+  same path. On a self-hosted panel without a compressing proxy this is the difference between ~1.6 MiB and
+  ~0.4 MiB on a first visit; through Cloudflare nothing changes because the edge already compresses. The
+  embedded archive contained `standalone/admin/**` and `admin/**` byte-for-byte identical (~250 files,
+  8.3 MiB); loading keeps one copy and `/standalone/admin/...` falls back to it, and only when the bytes
+  are equal, so a future divergence degrades to "no deduplication" rather than serving the wrong file.
+- **Idle keep-alive connections were never retired.** The server set `ReadHeaderTimeout` but not
+  `IdleTimeout`, and Go's zero value falls back to `ReadTimeout` — also zero — so an idle connection could
+  hold a goroutine and its buffers for the process's lifetime. Both the normal and the guided servers now
+  share one constructor with a 120 s idle timeout; `WriteTimeout` stays unset because it would cut downloads
+  and terminal streams.
+- **The public dashboard downloaded recharts to render a hover-only chart.** The mini ping chart is behind a
+  three-second hover, but a static import put recharts (363 KiB raw / ~107 KiB gzipped) in the first visit.
+  The float and the chart are both lazy now; the float's own chunk is 2.2 KiB and recharts is fetched only
+  when the popover opens. The service worker still precaches the chart chunk under the existing policy
+  (ROADMAP B1), so this is a first-paint and parse saving, not a reduction in total bytes over a visit.
+- **The node list was refetched every five seconds.** Its fields (name, price, limits, the online set)
+  barely change, and the two-second live status has its own path; the interval is now 60 s, with the
+  existing visibility pause unchanged. Every open panel makes 12× fewer list requests per minute.
+- **The configuration export asks for the second factor where it needs one.** The export page collects a
+  one-time password when "include secrets" is checked and calls the new sensitive method; an account
+  without 2FA still exports with the field empty, because the server is the authority on whether a factor
+  is enrolled.
+
+The embedded default theme archive (`web/public/defaultTheme/dist.tar.zst`) was rebuilt from this batch's
+frontend build, so the shipped binary serves the new menu, the lazy chart and the 2FA prompt.
+
 ## [v1.6.13] — 2026-10-17
 
 - Keep ChatGPT/Claude region-only results `unknown`: observing an exit country does
