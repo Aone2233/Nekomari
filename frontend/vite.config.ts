@@ -81,7 +81,10 @@ export default defineConfig(({ mode }) => {
         extensions: ["tsx", "jsx"],
       }),
       VitePWA({
-        registerType: "autoUpdate",
+        // "prompt", not "autoUpdate": an update that activates itself clears the old precache, and
+        // an already-open tab then lazily imports a chunk that no longer exists (blank page). The
+        // waiting worker is released by PWAUpdatePrompt's button, which reloads at the same time.
+        registerType: "prompt",
         includeAssets: ["favicon.ico", "assets/pwa-icon.webp"],
         manifest: {
           name: "Nekomari",

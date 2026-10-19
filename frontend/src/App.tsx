@@ -16,7 +16,6 @@ import { routes } from "./routes";
 import Loading from "./components/loading";
 import { PublicInfoProvider } from "./contexts/PublicInfoProvider";
 import { PWAInstallPrompt } from "./components/PWAInstallPrompt";
-import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import { Toaster } from "./components/ui/sonner";
 import { RPC2Provider } from "./contexts/RPC2Provider";
@@ -95,7 +94,6 @@ export const App = () => {
                   <OfflineIndicator />
                   {routing}
                   <PWAInstallPrompt />
-                  <PWAUpdatePrompt />
                 </NodeListProvider>
               </PublicInfoProvider>
             </RPC2Provider>

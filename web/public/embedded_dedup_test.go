@@ -140,13 +140,7 @@ func TestDedupeAdminCopiesOnlyDropsIdenticalCopies(t *testing.T) {
 func TestTheStandaloneAdminPathFallsBackToTheSharedCopy(t *testing.T) {
 	router := newRouter(t)
 
-	files, err := loadEmbeddedDist()
-	if err != nil {
-		t.Fatalf("the embedded archive does not load: %v", err)
-	}
-	if len(files) == 0 {
-		t.Fatal("the embedded archive is empty")
-	}
+	files := mustEmbeddedDistFiles(t)
 	// 未去重的视图：用来确认选中的这个文件**本来**有 standalone/admin/ 这一份
 	// （也就是这条用例真的在验证回退，而不是验证一个恰好存在的键）。
 	raw, err := decodeEmbeddedDistEntries(embeddedDistArchive)

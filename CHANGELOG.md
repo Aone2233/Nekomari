@@ -87,6 +87,43 @@ The second batch of the same review:
   requests still answer 304 without a body, range requests still answer 206 identity, all five
   standalone pages answer 200 and the served admin chunk carries all five menu paths.
 
+The third batch of the same review:
+
+- **The default theme no longer lives in memory.** The embedded archive used to be unpacked into a
+  `map[string][]byte` during `init` — 32.96 MiB of files, ~33 MB resident, ~70 MB at startup peak.
+  The first request for a default-theme asset now streams the archive to
+  `data/.theme-cache/<sha256-of-archive>/` (staging directory, entry/byte-count verification, then a
+  `\.complete` marker and rename) and serving reads files from disk. A complete cache means a miss is
+  a real 404, so a stale chunk does not unpack the whole archive again. If the directory cannot be
+  written, the loader falls back to the lazy in-memory copy; `KOMARI_THEME_CACHE=0` forces that path.
+  The cost is about 300 ms on the first default-theme request of a fresh data directory; the tests
+  compare every extracted file with the archive and assert the in-memory map stays nil.
+- **Plugin response hooks are bounded at 2 MiB and no longer leave a timer behind.** The buffer cap
+  was 32 MiB (and the body was copied once more for JavaScript), so one hooked large response could
+  pin ~64 MB; the cap is now 2 MiB and larger responses take the existing passthrough. The per-request
+  `time.After` became a stopped `time.NewTimer`.
+- **A soft memory limit follows the container's own ceiling.** `KOMARI_MEMORY_LIMIT` (bytes or
+  `512MiB`/`1GiB`, `off`/`0` to disable) wins, an existing `GOMEMLIMIT` is respected, otherwise cgroup
+  v2 `memory.max` or cgroup v1 `memory.limit_in_bytes` is used. The installed limit is 90% of the
+  ceiling with a 64 MiB floor, logged once; an unparseable override warns and falls through.
+- **Read admission now has a byte budget as well as a row budget.** Each row is charged at the
+  measured 534 B, and a public query is capped at 96 MiB in addition to 250,000 rows; four concurrent
+  chart slots therefore have a ~384 MiB envelope instead of ~533 MiB.
+- **The coarse rollup tree was measured instead of estimated.** A 24 h simulation (injectable clock)
+  puts it at ~30.5 KiB/series (200-series run), i.e. ~5.5 MiB for 9 nodes × 21 series and ~61 MiB for
+  100 nodes — lower than the 55–70 KiB estimate because a 24 h parent keeps ~23 one-hour children,
+  not 24–48, and the live digests are smaller than their encoded form. It remains linear, has no leak,
+  and a test fails above 80 KiB/series.
+- **PWA updates ask instead of replacing the page.** `registerType` is now `"prompt"`; a banner offers
+  Update / Later and reloads when the waiting worker takes over, with an hourly `registration.update()`
+  for long-lived tabs. The prompt moved out of the shared `App` into the main entry, so the admin and
+  standalone builds no longer import the PWA virtual module. With prompt registration there is no
+  generated `registerSW.js`; the archive contract now asserts the registration code exists in the
+  built JavaScript instead.
+- The embedded archive was rebuilt for this batch (1,075 files, 32.93 MiB → 5.09 MiB), and the live
+  OC424 panel was switched back to the built-in default theme at the owner's request (recorded in
+  `docs/DEPLOY-OC424.md`; the v1.6.14 image was not replaced).
+
 ## [v1.6.13] — 2026-10-17
 
 - Keep ChatGPT/Claude region-only results `unknown`: observing an exit country does

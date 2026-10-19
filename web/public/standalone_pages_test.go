@@ -50,15 +50,13 @@ var standalonePages = []standalonePage{
 // Each page must be in the embedded bundle. If the build script stops copying it, or the path
 // changes, this is what notices.
 func TestStandalonePagesAreEmbedded(t *testing.T) {
-	if _, err := loadEmbeddedDist(); err != nil {
-		t.Fatalf("the embedded dist archive does not load: %v", err)
-	}
+	files := mustEmbeddedDistFiles(t)
 	for _, page := range standalonePages {
 		entry := fmt.Sprintf("standalone/%s/%s.html", page.name, page.name)
-		content, ok := defaultDistFiles[entry]
+		content, ok := files[entry]
 		if !ok {
 			present := make([]string, 0, 16)
-			for name := range defaultDistFiles {
+			for name := range files {
 				if strings.HasPrefix(name, "standalone/") {
 					present = append(present, name)
 				}
@@ -76,9 +74,10 @@ func TestStandalonePagesAreEmbedded(t *testing.T) {
 // the theme's `/assets/`. A single `chunk-*.js` reference would be a file the installed theme
 // can shadow, which is the collision the separate build exists to prevent.
 func TestStandalonePagesAreSelfContained(t *testing.T) {
+	files := mustEmbeddedDistFiles(t)
 	for _, page := range standalonePages {
 		entry := fmt.Sprintf("standalone/%s/%s.html", page.name, page.name)
-		content := string(defaultDistFiles[entry])
+		content := string(files[entry])
 		if content == "" {
 			continue // the previous test already reported the absence
 		}
@@ -103,9 +102,10 @@ func TestStandalonePagesAreSelfContained(t *testing.T) {
 // Each bundle has to be one file with React in it. Chunked output would resolve against the
 // theme's assets, and a bundle without React renders nothing.
 func TestStandaloneBundlesAreWhole(t *testing.T) {
+	files := mustEmbeddedDistFiles(t)
 	for _, page := range standalonePages {
 		entry := fmt.Sprintf("standalone/%s/%s.js", page.name, page.name)
-		content, ok := defaultDistFiles[entry]
+		content, ok := files[entry]
 		if !ok {
 			t.Errorf("%q is not embedded", entry)
 			continue
@@ -127,9 +127,10 @@ func TestStandaloneBundlesAreWhole(t *testing.T) {
 
 // Each stylesheet must be there too: an unstyled page is still a broken page.
 func TestStandaloneStylesheetsAreEmbedded(t *testing.T) {
+	files := mustEmbeddedDistFiles(t)
 	for _, page := range standalonePages {
 		entry := fmt.Sprintf("standalone/%s/%s.css", page.name, page.name)
-		content, ok := defaultDistFiles[entry]
+		content, ok := files[entry]
 		if !ok {
 			t.Errorf("%q is not embedded", entry)
 			continue
@@ -144,7 +145,7 @@ func TestStandaloneStylesheetsAreEmbedded(t *testing.T) {
 // directories and are copied in, so a mistake there could plausibly take the panel's own index
 // with it — and that failure would be a blank panel, not a missing report.
 func TestThePanelEntrySurvivesTheStandaloneBuilds(t *testing.T) {
-	if _, ok := defaultDistFiles[IndexFile]; !ok {
+	if _, ok := mustEmbeddedDistFiles(t)[IndexFile]; !ok {
 		t.Fatalf("the panel's own %q is missing from the embedded bundle", IndexFile)
 	}
 }
@@ -153,7 +154,7 @@ func TestThePanelEntrySurvivesTheStandaloneBuilds(t *testing.T) {
 // directory over the embedded bundle, so a page at a path a theme might legally use is a page
 // that disappears when a theme installs a file there.
 func TestStandaloneFilesStayUnderTheirPrefix(t *testing.T) {
-	for name := range defaultDistFiles {
+	for name := range mustEmbeddedDistFiles(t) {
 		if !strings.Contains(name, "standalone") {
 			continue
 		}

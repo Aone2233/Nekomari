@@ -11,7 +11,17 @@ import (
 const maxMetricPoints = 4096
 const maxMetricEntities = 256
 const maxMetricKeys = 32
+
+// maxMetricTotalPoints caps the rows one historical metric request may scan.
 const maxMetricTotalPoints = 250000
+
+// maxMetricTotalBytes caps the estimated transient allocation of one historical
+// metric request. The row ceiling alone is not a memory bound: at the measured
+// ~534 B per materialized row (docs/audits/2026-10-18/backend-memory.md §3.1)
+// 250,000 rows is ~133 MiB of live accumulator state for a single chart.
+// 96 MiB therefore binds first (at ~188,000 rows) and keeps the four public
+// chart slots inside a ~384 MiB transient envelope instead of ~533 MiB.
+const maxMetricTotalBytes = 96 << 20
 
 // Historical-query admission.
 //
@@ -81,7 +91,7 @@ func queryBudget(ctx context.Context, method string) (context.Context, func(), *
 	if class == queryAdminConsole {
 		return bounded, release, nil
 	}
-	return metric.WithReadBudget(bounded, maxMetricTotalPoints), release, nil
+	return metric.WithReadBudgetBytes(bounded, maxMetricTotalPoints, maxMetricTotalBytes), release, nil
 }
 
 // acquireQuerySlot takes a slot immediately when one is free and otherwise waits

@@ -5,6 +5,7 @@ import "./global.css";
 import "@radix-ui/themes/styles.css";
 import { initI18n } from "./i18n/config";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
 import { App } from "./App";
 
 // 首帧要等当前语言：先 render 再等语言包到，屏幕上会先出现 key、再整片替换成译文。
@@ -17,6 +18,10 @@ void initI18n().then(() => {
         <BrowserRouter>
           <App />
         </BrowserRouter>
+        {/* The update prompt belongs to the panel shell, which is the only document that
+            registers the service worker. Keeping it here rather than in App means the admin
+            and standalone builds do not import the PWA virtual module at all. */}
+        <PWAUpdatePrompt />
       </StrictMode>
     </ErrorBoundary>,
   );

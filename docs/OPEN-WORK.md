@@ -14,13 +14,15 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**Updated 2026-10-19, after the `2026-10-18` review** (`docs/audits/2026-10-18/SUMMARY.md`). Two
+**Updated 2026-10-19, after the `2026-10-18` review** (`docs/audits/2026-10-18/SUMMARY.md`). Three
 batches shipped: the low-risk one (sensitive-operation gate on credential export and fleet rollout,
 menu entries for the five standalone pages, maintenance suppression for load/ping alerts, gzip for
-static assets, admin-copy deduplication, idle timeout, lazy chart, list polling) and the next one
+static assets, admin-copy deduplication, idle timeout, lazy chart, list polling); the next one
 (on-demand language bundles, definition/fingerprint caches on the ingest path, RPC2 exponential
-backoff). The review's remaining items are the two tables below; the dated report holds their
-evidence.
+backoff); and the third one (default-theme disk cache, plugin-hook cap and timer, cgroup-aware soft
+memory limit, byte-budgeted reads, the coarse-rollup measurement, and a prompt-based service-worker
+update). The memory/performance table is empty as a result; the review's remaining items are the
+feature gaps below, and the dated report holds their evidence.
 
 ## Decisions waiting on the owner
 
@@ -94,17 +96,6 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | netstatic: a 1 Gbps-only plausibility ceiling, a NIC whitelist that is a startup snapshot, and `--include-nics` that cannot include `br*`/`veth*`/`tap*`/`lo*` | `agent/monitoring/netstatic/static.go`, `agent/monitoring/unit/net.go`, `agent/cmd/root.go` | Three separate under/over-counting bugs on the same counter; **each moves the fleet**, so they belong in one agent release |
 | Legacy ping quantiles are unknown across the migration window | `web/rpc/jsonrpc/public.metric.go` | **Accepted**: the report says so itself |
 | Timestamps render in the viewer's own timezone with no zone label | ~33 remaining `toLocaleString*` sites | The shared helper now exists (`components/status/slaFormat.ts`'s `formatTime`, which takes the language and appends the zone) and the SLA incident list — the surface where a shareable report makes the ambiguity matter — uses it. The rest are the same one-line change, site by site |
-
-## Memory and performance (from the 2026-10-18 review)
-
-| Item | Where | Why it is still here |
-|---|---|---|
-| The embedded default theme is still decoded eagerly at startup (~33 MB resident, ~70 MB transient peak) | `web/public/embedded.go` | The duplicate `admin/` copy was removed 2026-10-19 (~8.3 MB); lazy or disk-backed decoding needs a decision about read-only/container filesystems and an asset-cache design |
-| The coarse rollup in-memory tree is estimated, not measured | `pkg/metric/coarse_rollup.go` | Estimate 55–70 KB/series (100 nodes ≈ 130 MB) from code and t-digest sizes; the acceleration harness needs an injectable clock (the code reads `time.Now()`), then 2 h of real traffic or a heap profile |
-| The metric read budget counts rows, not bytes | `web/rpc/jsonrpc/budget.go` | 250k rows × measured 534 B/row ≈ 133 MB transient per request, four concurrent chart slots; changing admission from rows to bytes needs its own pass and tests |
-| A plugin response hook buffers up to 32 MB, copies it once more, and leaves a 30 s timer per request | `internal/plugin/hook.go` | No cost without a plugin that hooks a response; lowering the cap to 1–2 MB changes what a plugin can rewrite, so it is a plugin-contract change |
-| There is no `GOMEMLIMIT` or cgroup awareness | process startup | Go's GC cannot see `docker -m` or `MemoryMax`; a default memory limit needs an owner decision (too low turns the collector into the bottleneck) |
-| The service worker updates silently and chunk hashes change every build, so an open tab can request a chunk that no longer exists | `frontend/vite.config.ts`, `PWAUpdatePrompt.tsx` | Needs an update-prompt policy or a retained previous `dist`; the build is not reproducible, which makes the window wider |
 
 ## Feature gaps (from the 2026-10-18 review)
 

@@ -7,11 +7,45 @@ import (
 	"io"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/klauspost/compress/zstd"
 )
 
+// defaultDistFiles 是内嵌归档在**内存**里的那份副本（去重之后）。
+//
+// 它不再是 init() 的产物：磁盘缓存可用时（生产默认）根本不需要这 33 MiB，所以它由
+// embeddedDistFiles() 在第一次真的用到时才解开。保留这个包级变量是为了让测试仍能把
+// 归档换成合成数据（pwa_assets_test.go 的 withSyntheticArchive）。
 var defaultDistFiles map[string][]byte
+
+// embeddedDistOnce 保证 loadEmbeddedDist 只跑一次；失败结果缓存下来，不反复重试。
+var (
+	embeddedDistOnce sync.Once
+	embeddedDistErr  error
+)
+
+// embeddedDistFiles 返回内嵌归档在内存里的那份副本，第一次用到时才解开它。
+//
+// 惰性是有意的：init() 里无条件解开就是 33 MiB 常驻 + 启动瞬时约 70 MiB —— 那正是
+// 这一批次要消掉的东西。生产路径（磁盘缓存可用）不会走到这里；缓存不可用（只读文件
+// 系统、权限、磁盘满）时 openAsset 回退到这里，于是行为与改动前完全一致。
+//
+// 已经有人把 defaultDistFiles 换成别的（合成归档）时直接返回它，不再去解真归档。
+func embeddedDistFiles() map[string][]byte {
+	if defaultDistFiles != nil {
+		return defaultDistFiles
+	}
+	embeddedDistOnce.Do(func() {
+		files, err := loadEmbeddedDist()
+		if err != nil {
+			embeddedDistErr = err
+			return
+		}
+		defaultDistFiles = files
+	})
+	return defaultDistFiles
+}
 
 // standaloneAdminPrefix 是归档里面板后台界面的**第二份**副本。
 //
@@ -70,14 +104,15 @@ func dedupeAdminCopies(files map[string][]byte) {
 // 时必须回到 admin/ 去取。反过来，若某次构建让两边真的不同，去重不会删，这里也就命中
 // 它自己那一份 —— 两处配合的结果是「去重只在安全时生效」。
 func embeddedDistContent(embedPath string) ([]byte, bool) {
-	if content, ok := defaultDistFiles[embedPath]; ok {
+	files := embeddedDistFiles()
+	if content, ok := files[embedPath]; ok {
 		return content, true
 	}
 	relative, ok := strings.CutPrefix(embedPath, standaloneAdminPrefix)
 	if !ok {
 		return nil, false
 	}
-	content, ok := defaultDistFiles[AdminDistDir+"/"+relative]
+	content, ok := files[AdminDistDir+"/"+relative]
 	return content, ok
 }
 
