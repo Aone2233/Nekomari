@@ -3,6 +3,29 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.6.15 rollout (2026-10-19)
+
+The first release built from the three batches of the 2026-10-18 review. The
+image is panel-only relative to v1.6.14: `agent/**/*.go` and `protocol/` are
+unchanged, so no agent was restarted and the fleet did not move.
+
+| Item | Evidence |
+|---|---|
+| Release | tag `v1.6.15` on merge commit `0a9939f`; release run `39257884223` and Docker run `39258956244` both successful |
+| CI gate | the `ci` run on `0a9939f` was green before the tag; the release workflow's gate confirmed it again |
+| Pinned panel image | `ghcr.io/aone2233/nekomari:v1.6.15@sha256:7041fad94d53d5be798e91b7f29861e4eb4e21738bf52c55597c7b431598cc3c` (arm64) |
+| Backup | `/opt/nekomari/backups/pre-v1.6.15-20261019T131904Z`: WAL-safe SQLite backups of `komari.db` and `metrics.db`, the previous compose file, and `SHA256SUMS` |
+| Change | compose image digest pinned, `docker compose up -d`; the container recreated against the same bind mount |
+| Startup | the pre-upgrade archive took ~90 s and 1.6 GB because the archive includes the 2.4 GB `db-maintenance/` directory (see OPEN-WORK); the panel then listened normally |
+| Verification | `/api/version` = `v1.6.15` hash `0a9939f`; container healthy; `/api/public` 200; gzip active on the installed theme (`/app.js` 64,797 → 21,936 B, `/style.css` 12,953 → 4,097 B); default-theme cache materialised (36 MB); soft memory limit 921.6 MiB (90% of the 1 GiB cgroup); 11 established connections |
+| Rollback | restore the previous compose line (`v1.6.14@sha256:f66c4992…`) and `docker compose up -d`; the databases and data directory are untouched, and the pre-upgrade archive is in the backup directory |
+
+The active public theme at the end of the rollout was **CRT**, not the built-in
+default: the default had been restored at 12:27 UTC, and the CRT theme was then
+installed and selected at 13:19 UTC (the same operator action that put
+`theme-crt/` beside this checkout). That is a config value, not part of the
+image; switching back is the same one-row change recorded below.
+
 ## Default theme restored (2026-10-19)
 
 The public site had been serving the installed **SAO** theme. At the owner's
@@ -18,9 +41,10 @@ one config value, so switching back is the same operation in reverse.
 | Rollback | stop the container, set `theme` back to `"SAO"`, start it; the SAO directory and every other config row are unchanged |
 | Not changed | panel image `v1.6.14`, agents, nginx/TLS, data other than the theme row |
 
-The built-in theme served here is the one embedded in the **v1.6.14 image**, not
-the batch A/B frontend from this repository: the local branch has not been
-deployed.
+At the time of this switch the built-in theme was the one embedded in the
+**v1.6.14 image**; v1.6.15 (the batch A/B/C frontend) was deployed later the
+same day, and the operator then selected the installed CRT theme at 13:19 UTC.
+See the v1.6.15 section above.
 
 ## v1.6.13 Mint canary (2026-10-17)
 
