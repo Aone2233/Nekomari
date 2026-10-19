@@ -164,7 +164,9 @@ func serveAsset(c *gin.Context, source assetSource, name string, hashedAssets ma
 			header.Set("Cache-Control", "no-cache")
 		}
 	}
-	http.ServeContent(c.Writer, c.Request, name, source.modTime, source.reader)
+	// 正文的发送方式（Vary 与 gzip 的取舍）由 serveAssetContent 统一决定，见 gzip.go。
+	// 后台的 serveAdminAsset 走同一个出口，两处的静态资源因此不会被压缩与否分成两类。
+	serveAssetContent(c, source, name)
 }
 
 // panelPinnedMimeTypes 是面板**依赖**其 Content-Type 的少数几个扩展名。
@@ -232,14 +234,17 @@ const (
 	IndexFile = "index.html" // 相对于 DistDir
 )
 
+// init 只确保主题目录存在。
+//
+// 内嵌归档**不在这里**解开：那是 33 MiB 常驻 + 启动瞬时约 70 MiB，而默认主题现在由
+// 磁盘缓存（theme_cache.go）供给 —— 成功时连 map 都不需要建；失败时
+// embeddedDistFiles() 会在第一次查找时补上那份内存副本，行为与改动前一致。
+//
+// 解压失败因此不再让进程起不来，而是让默认主题的资源两条路都查不到（404）。归档是
+// 构建期嵌进来的，它能不能解开由 web/public 的用例保证（embedded_theme_test.go 等），
+// 不是一个需要在这里 fail-fast 的运行时条件。
 func init() {
 	_ = os.MkdirAll("./data/theme", 0755)
-
-	var err error
-	defaultDistFiles, err = loadEmbeddedDist()
-	if err != nil {
-		panic("load embedded default frontend: " + err.Error())
-	}
 }
 
 // shellCacheControl 是 SPA 外壳的缓存策略：够短，能被边缘缓存，过期后走校验。
@@ -479,8 +484,25 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 			return assetSource{}, false
 		}
 
+		// 默认主题的解析顺序：嵌入式元数据（PublicFS，只有主题清单）→ 磁盘缓存 →
+		// 内存里的归档副本。
+		//
+		// 磁盘缓存命中时交回的是一个 *os.File：从 serveAsset 到 gzip 出口都只要求
+		// io.ReadSeeker，所以这一层不需要知道内容是从磁盘还是从 map 来的。
 		if strings.HasPrefix(embedPath, DistDir+"/") {
-			if content, ok := defaultDistFiles[strings.TrimPrefix(embedPath, DistDir+"/")]; ok {
+			distRelative := strings.TrimPrefix(embedPath, DistDir+"/")
+			if source, hit, cacheIsTheArchive := lookupDefaultThemeCachedAsset(distRelative); hit {
+				return source, true
+			} else if cacheIsTheArchive {
+				// 缓存是归档的完整副本，未命中就是归档里没有：不必再解一份内存副本
+				// （一个过期资源的 404 就会把 33 MiB 全解出来，收益一次归零）。
+				return assetSource{}, false
+			}
+			// embeddedDistContent 而不是直接查内存 map：归档里 admin/ 与
+			// standalone/admin/ 是同一批文件的两份副本，加载时只保留 admin/ 一份
+			// （见 embedded.go 的 dedupeAdminCopies），所以 standalone/admin/... 的
+			// 查找要回退到那里去取。
+			if content, ok := embeddedDistContent(distRelative); ok {
 				return embeddedAsset(embedPath, content), true
 			}
 		} else if content, err := fs.ReadFile(defaultThemeFS, embedPath); err == nil {
@@ -495,7 +517,12 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		// 这个形式，于是面板的主题页永远是一张破图。
 		//
 		// 放在最后而不是最前：先查 dist 分支保持既有解析顺序不变，只有它没命中时才考虑根级文件。
-		if content, ok := defaultDistFiles[embedPath]; ok {
+		if source, hit, cacheIsTheArchive := lookupDefaultThemeCachedAsset(embedPath); hit {
+			return source, true
+		} else if cacheIsTheArchive {
+			return assetSource{}, false
+		}
+		if content, ok := embeddedDistContent(embedPath); ok {
 			return embeddedAsset(embedPath, content), true
 		}
 
@@ -574,7 +601,10 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		if isHashedAsset(adminAssetKey(relative), adminHashedAssets()) {
 			header.Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
-		http.ServeContent(c.Writer, c.Request, path.Base(relative), source.modTime, source.reader)
+		// 与 serveAsset 共用同一个正文出口（含 gzip）：后台资源同样是静态文件，而它恰好是
+		// 面板里最大的那批（入口包与按需加载的 Monaco 块）。name 仍传 path.Base(relative)，
+		// 保持这次调用原来的形状。
+		serveAssetContent(c, source, path.Base(relative))
 	}
 
 	// 核心逻辑：获取文件内容（供 index.html 改写与 favicon 等需要完整内容的分支使用）

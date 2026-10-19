@@ -301,8 +301,35 @@ func bytesPerSecondToMbps(bytesPerSecond int64) float32 {
 	return float32(float64(bytesPerSecond) * 8 / 1_000_000)
 }
 
+// filterMaintenanceSuppressed drops the clients whose alert falls inside a maintenance window.
+//
+// Roadmap H3's acceptance says offline *and ping* notifications are suppressed inside a window, and
+// the host-metric rules share this exit with the ping rules. The offline path already asks the same
+// question; without this filter a planned reboot silenced the offline alert but still woke the
+// operator for the ping loss the reboot caused. Suppression applies to the alert, never to
+// collection: the metric rows are still written, which is what keeps the window's chart honest.
+//
+// It is a variable-shaped seam for the same reason the sweeper has one: the boundary can be tested
+// without a database, and a test that drives a real window through the scheduler would be slower
+// and less precise.
+func filterMaintenanceSuppressed(now time.Time, clientUUIDs []string, alertName string) []string {
+	if len(clientUUIDs) == 0 {
+		return nil
+	}
+	kept := make([]string, 0, len(clientUUIDs))
+	for _, uuid := range clientUUIDs {
+		if decision := maintenanceFor(now, uuid); decision.Suppress {
+			logger.Infof("notifier", "%s is inside a %s; the %q alert is suppressed", uuid, decision.Reason, alertName)
+			continue
+		}
+		kept = append(kept, uuid)
+	}
+	return kept
+}
+
 // sendLoadNotification 发送负载通知
 func sendLoadNotification(clientUUIDs []string, task models.LoadNotification) {
+	clientUUIDs = filterMaintenanceSuppressed(time.Now().UTC(), clientUUIDs, task.Name)
 	if len(clientUUIDs) == 0 {
 		return
 	}

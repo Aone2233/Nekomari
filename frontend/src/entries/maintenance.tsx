@@ -3,8 +3,8 @@ import { createRoot } from "react-dom/client";
 import { Theme } from "@radix-ui/themes";
 import "@radix-ui/themes/styles.css";
 import "../global.css";
-// i18n must be initialized before any component renders.
-import "../i18n/config";
+// 首帧要等当前语言：initI18n 会在这里按需加载当前语言的 chunk。
+import { initI18n } from "../i18n/config";
 import ErrorBoundary from "../components/ErrorBoundary";
 import { RPC2Provider } from "../contexts/RPC2Provider";
 import { MaintenanceShell } from "../pages/maintenance";
@@ -22,14 +22,16 @@ if (!root) {
   throw new Error("the maintenance page needs a #root element");
 }
 
-createRoot(root).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <Theme appearance="inherit" scaling="110%" style={{ minHeight: "100vh" }}>
-        <RPC2Provider>
-          <MaintenanceShell />
-        </RPC2Provider>
-      </Theme>
-    </ErrorBoundary>
-  </StrictMode>,
-);
+void initI18n().then(() => {
+  createRoot(root).render(
+    <StrictMode>
+      <ErrorBoundary>
+        <Theme appearance="inherit" scaling="110%" style={{ minHeight: "100vh" }}>
+          <RPC2Provider>
+            <MaintenanceShell />
+          </RPC2Provider>
+        </Theme>
+      </ErrorBoundary>
+    </StrictMode>,
+  );
+});

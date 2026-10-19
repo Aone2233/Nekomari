@@ -122,3 +122,20 @@ func TestAdminQueryBudgetIsIsolatedFromCharts(t *testing.T) {
 		t.Fatalf("admin query inherited the public %s deadline: %s left", queryWorkDeadline, remaining)
 	}
 }
+
+// The chart budget used to bound rows only, and rows are not a memory bound: at
+// the measured ~534 B per materialized row, 250,000 rows is ~133 MiB of live
+// accumulator state for one chart, and four public slots can hold four of those.
+// The byte ceiling must therefore bind below the row ceiling, and the four slots
+// together must stay inside a documented transient envelope.
+func TestMetricReadBudgetCarriesAByteCeiling(t *testing.T) {
+	const measuredBytesPerRow = 534 // docs/audits/2026-10-18/backend-memory.md §3.1
+	rowCeilingBytes := int64(maxMetricTotalPoints) * measuredBytesPerRow
+	if int64(maxMetricTotalBytes) >= rowCeilingBytes {
+		t.Fatalf("byte ceiling %d does not bind below the row ceiling %d", maxMetricTotalBytes, rowCeilingBytes)
+	}
+	const maxChartTransientEnvelope = 384 << 20
+	if total := int64(maxMetricTotalBytes) * int64(querySlotsCapacity); total > maxChartTransientEnvelope {
+		t.Fatalf("four chart slots can hold %d transient bytes, want <= %d", total, int64(maxChartTransientEnvelope))
+	}
+}

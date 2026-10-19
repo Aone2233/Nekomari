@@ -61,9 +61,15 @@ const (
 )
 
 // maxHookBufferBytes caps how much of a response the hook chain buffers
-// for rewriting. Larger responses pass through to the client unmodified;
-// it is a variable so tests can lower it.
-var maxHookBufferBytes = 32 << 20
+// for rewriting. Larger responses pass through to the client unmodified
+// (see bufferedResponseWriter.Write), so the cap only decides how much memory
+// one in-flight hooked response may pin: 2 MiB is enough for the panel's own
+// JSON and HTML pages, while a plugin that needs to rewrite something larger
+// (assets, downloads, streamed bodies) must use the streaming route, which is
+// already forwarded without modification. It is a variable so tests can lower
+// it, and the previous 32 MiB was high enough that a single hooked large
+// response could hold two copies of it before the response left the process.
+var maxHookBufferBytes = 2 << 20
 
 // maxHTMLInjectBufferBytes caps how much of a text/html response the HTML
 // injector buffers before injecting plugin fragments. Larger responses pass

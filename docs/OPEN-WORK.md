@@ -14,6 +14,16 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
+**Updated 2026-10-19, after the `2026-10-18` review** (`docs/audits/2026-10-18/SUMMARY.md`). Three
+batches shipped: the low-risk one (sensitive-operation gate on credential export and fleet rollout,
+menu entries for the five standalone pages, maintenance suppression for load/ping alerts, gzip for
+static assets, admin-copy deduplication, idle timeout, lazy chart, list polling); the next one
+(on-demand language bundles, definition/fingerprint caches on the ingest path, RPC2 exponential
+backoff); and the third one (default-theme disk cache, plugin-hook cap and timer, cgroup-aware soft
+memory limit, byte-budgeted reads, the coarse-rollup measurement, and a prompt-based service-worker
+update). The memory/performance table is empty as a result; the review's remaining items are the
+feature gaps below, and the dated report holds their evidence.
+
 ## Decisions waiting on the owner
 
 Things that are not engineering problems but need a person to choose. Each one says what
@@ -86,6 +96,16 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | netstatic: a 1 Gbps-only plausibility ceiling, a NIC whitelist that is a startup snapshot, and `--include-nics` that cannot include `br*`/`veth*`/`tap*`/`lo*` | `agent/monitoring/netstatic/static.go`, `agent/monitoring/unit/net.go`, `agent/cmd/root.go` | Three separate under/over-counting bugs on the same counter; **each moves the fleet**, so they belong in one agent release |
 | Legacy ping quantiles are unknown across the migration window | `web/rpc/jsonrpc/public.metric.go` | **Accepted**: the report says so itself |
 | Timestamps render in the viewer's own timezone with no zone label | ~33 remaining `toLocaleString*` sites | The shared helper now exists (`components/status/slaFormat.ts`'s `formatTime`, which takes the language and appends the zone) and the SLA incident list — the surface where a shareable report makes the ambiguity matter — uses it. The rest are the same one-line change, site by site |
+
+## Feature gaps (from the 2026-10-18 review)
+
+| Item | Where | Why it is still here |
+|---|---|---|
+| The H6 rollout target is not persisted and is never re-sent on connection | `web/rpc/jsonrpc/admin.agentupdate.go`, `agent/update/target.go` | The agent holds it in memory; after a restart a pinned rollback silently resumes tracking releases. Needs a stored target and a resend on connect |
+| Maintenance windows are absent from node status and SLA | `web/rpc/jsonrpc/latest_status.go`, `internal/sla` | H3's acceptance asks the status page to distinguish maintenance from down; planned work still reads as an outage. Needs a status field and an SLA exclusion rule |
+| `admin:getClientToken` returns an agent credential without the second factor | `web/rpc/jsonrpc/admin.client.go` | The same class as the credential export fixed on 2026-10-19; whether a token read belongs behind step-up is a policy call, and the API-key exemption would still apply |
+| Selected nodes in the admin table have no bulk action | `frontend/src/pages/admin/index.tsx` | The checkboxes only change a count; the bulk page is reachable from the new menu but not from a selection. Wire the selection to it or remove the checkboxes |
+| Feedback from the `2026-10-18` feature audit not yet scheduled | `docs/audits/2026-10-18/feature-gaps.md` §FG-10…FG-20 | Per-item evidence and effort: audit-log filters/export, metric/record CSV export, exec result history, forecast cost column, CPU temperature and disk I/O (agent release), HTTP status/TLS expiry (agent release), single-account/roles decision, English server errors in the UI |
 
 ## Release, deployment and operations
 

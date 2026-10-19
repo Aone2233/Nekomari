@@ -8,15 +8,14 @@ import {
 } from "./contexts/ThemeContext";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useSystemTheme } from "./hooks/useSystemTheme";
-// Ensure i18n is initialized before any component renders
-import "./i18n/config";
+// i18n 由入口在 createRoot 之前初始化（见 src/i18n/config 的 initI18n，入口是
+// src/main.tsx 与 src/entries/*.tsx）：App 不参与初始化，也不该让静态 import 抢在它之前。
 import { Suspense } from "react";
 import { useRoutes } from "react-router-dom";
 import { routes } from "./routes";
 import Loading from "./components/loading";
 import { PublicInfoProvider } from "./contexts/PublicInfoProvider";
 import { PWAInstallPrompt } from "./components/PWAInstallPrompt";
-import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import { Toaster } from "./components/ui/sonner";
 import { RPC2Provider } from "./contexts/RPC2Provider";
@@ -95,7 +94,6 @@ export const App = () => {
                   <OfflineIndicator />
                   {routing}
                   <PWAInstallPrompt />
-                  <PWAUpdatePrompt />
                 </NodeListProvider>
               </PublicInfoProvider>
             </RPC2Provider>

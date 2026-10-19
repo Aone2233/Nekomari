@@ -57,6 +57,16 @@ type Store struct {
 	// retentionMu serializes a retention change with writes and compaction so a
 	// disabled metric cannot be repopulated by an in-flight operation.
 	retentionMu sync.RWMutex
+	// definitionsMu guards the cached metric definition snapshot used by the
+	// ingest path.
+	//
+	// definitionsMu 保护写入路径使用的指标定义快照缓存。
+	definitionsMu sync.RWMutex
+	// definitions is the cached snapshot of the definitions table; nil means
+	// the next reader reloads it.
+	//
+	// definitions 是定义表的缓存快照；nil 表示下一次读取需要重新加载。
+	definitions *definitionsSnapshot
 	// ingestMu keeps the exact-sample upsert and its hot-rollup update atomic
 	// with respect to other writers.
 	ingestMu sync.Mutex
@@ -498,10 +508,14 @@ func (s *Store) CreateMetric(ctx context.Context, def Definition) error {
 		now,
 		now,
 	)
-	if err != nil && isUniqueViolation(err) {
-		return fmt.Errorf("%w: metric %q", ErrAlreadyExists, def.Name)
+	if err != nil {
+		if isUniqueViolation(err) {
+			return fmt.Errorf("%w: metric %q", ErrAlreadyExists, def.Name)
+		}
+		return err
 	}
-	return err
+	s.invalidateDefinitions()
+	return nil
 }
 
 // UpsertMetric inserts a metric definition or, if one with the same name already
@@ -543,8 +557,12 @@ func (s *Store) UpsertMetric(ctx context.Context, def Definition) error {
 		now,
 		now,
 	)
-	if err != nil || def.RetentionDays != 0 {
+	if err != nil {
 		return err
+	}
+	s.invalidateDefinitions()
+	if def.RetentionDays != 0 {
+		return nil
 	}
 	_, err = s.deleteSeries(ctx, Query{MetricName: def.Name})
 	return err
@@ -571,31 +589,30 @@ func (s *Store) GetMetric(ctx context.Context, name string) (Definition, error) 
 	return def, err
 }
 
-// ListMetrics lists all metric definitions.
+// ListMetrics lists all metric definitions. The result is served from the
+// store's definition cache and copied before it is returned, so callers can
+// reorder or mutate the slice without corrupting the cache; metadata maps are
+// copied for the same reason.
 //
-// ListMetrics 按名称升序列出所有指标定义。
+// ListMetrics 按名称升序列出所有指标定义。结果来自 Store 的定义缓存，并且在返回
+// 前被复制，调用方可以重排或修改切片而不破坏缓存；metadata map 同样被复制。
 func (s *Store) ListMetrics(ctx context.Context) ([]Definition, error) {
 	if err := s.ensureOpen(); err != nil {
 		return nil, err
 	}
-	rows, err := s.reader().QueryContext(ctx, fmt.Sprintf(
-		`SELECT name, type, unit, description, retention_days, metadata, created_at_milli, updated_at_milli FROM %s ORDER BY name ASC`,
-		s.tables.definitions,
-	))
+	snapshot, err := s.metricDefinitions(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var out []Definition
-	for rows.Next() {
-		def, err := scanDefinition(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, def)
+	if len(snapshot.sorted) == 0 {
+		return nil, nil
 	}
-	return out, rows.Err()
+	out := make([]Definition, len(snapshot.sorted))
+	copy(out, snapshot.sorted)
+	for i := range out {
+		out[i].Metadata = cloneStringMap(out[i].Metadata)
+	}
+	return out, nil
 }
 
 // DeleteMetric deletes a metric definition and all of its raw and rollup data.
@@ -625,6 +642,7 @@ func (s *Store) DeleteMetric(ctx context.Context, name string) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	s.invalidateDefinitions()
 	_, rawErr := s.deleteRawPoints(name, "", nil)
 	_, hotErr := s.deleteHotRollups(name, "", nil, nil)
 	_, coarseErr := s.deleteCoarseRollupsMatching(name, "", nil)
@@ -674,6 +692,7 @@ func (s *Store) UpdateMetricRetention(ctx context.Context, name string, retentio
 	if err := tx.Commit(); err != nil {
 		return Definition{}, err
 	}
+	s.invalidateDefinitions()
 	return s.GetMetric(ctx, name)
 }
 
@@ -725,6 +744,7 @@ func (s *Store) SetMetricRetention(ctx context.Context, name string, retentionDa
 	if err := tx.Commit(); err != nil {
 		return Definition{}, err
 	}
+	s.invalidateDefinitions()
 	if retentionDays == 0 {
 		_, rawErr := s.deleteRawPoints(name, "", nil)
 		_, hotErr := s.deleteHotRollups(name, "", nil, nil)
@@ -919,24 +939,35 @@ func (s *Store) WriteBatch(ctx context.Context, points []Point) error {
 // points whose definition has zero retention. Definitions are the source of
 // truth for a metric's retention and lifecycle, so accepting an unknown name
 // would create data that compaction and retention cleanup cannot manage.
+//
+// The lookup runs against the store's cached definition snapshot and reuses the
+// caller's slice whenever no point is dropped, so a healthy batch costs no
+// allocation here. Every definition mutation invalidates the snapshot, so a
+// retention change is honoured by the next write.
 func (s *Store) filterDisabledMetricPoints(ctx context.Context, points []Point) ([]Point, error) {
-	defs, err := s.ListMetrics(ctx)
+	snapshot, err := s.metricDefinitions(ctx)
 	if err != nil {
 		return nil, err
 	}
-	definitions := make(map[string]Definition, len(defs))
-	for _, def := range defs {
-		definitions[def.Name] = def
-	}
-	filtered := make([]Point, 0, len(points))
-	for _, point := range points {
-		def, ok := definitions[point.MetricName]
+	var filtered []Point
+	for i, point := range points {
+		def, ok := snapshot.byName[point.MetricName]
 		if !ok {
 			return nil, fmt.Errorf("%w: metric %q", ErrNotFound, point.MetricName)
 		}
 		if def.RetentionDays > 0 {
-			filtered = append(filtered, point)
+			if filtered != nil {
+				filtered = append(filtered, point)
+			}
+			continue
 		}
+		if filtered == nil {
+			filtered = make([]Point, 0, len(points))
+			filtered = append(filtered, points[:i]...)
+		}
+	}
+	if filtered == nil {
+		return points, nil
 	}
 	return filtered, nil
 }
@@ -1267,7 +1298,7 @@ func (s *Store) CleanupExpired(ctx context.Context, now time.Time) (int64, error
 	s.retentionMu.Lock()
 	defer s.retentionMu.Unlock()
 
-	defs, err := s.ListMetrics(ctx)
+	defs, err := s.listMetricsFresh(ctx)
 	if err != nil {
 		return 0, err
 	}

@@ -1,18 +1,11 @@
 import { DropdownMenu, IconButton } from "@radix-ui/themes";
 import { type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { resources } from "../i18n/config";
+import { ensureLanguage, SUPPORTED_LANGUAGES } from "../i18n/config";
 import { writeLanguageCookie } from "@/utils/language";
 interface LanguageSwitch {
   icon?: ReactNode;
 }
-
-const languages: { code: string; name: string }[] = Object.entries(resources)
-  .filter(([, res]) => typeof res === "object" && res !== null && "name" in res && typeof (res as any).name === "string")
-  .map(([code, res]) => ({
-    code,
-    name: (res as any).name as string,
-  })).sort((a, b) => a.code.localeCompare(b.code));
 
 const LanguageSwitch = ({ icon }: LanguageSwitch = {}) => {
   const { i18n, t } = useTranslation();
@@ -32,19 +25,33 @@ const LanguageSwitch = ({ icon }: LanguageSwitch = {}) => {
       </svg>
     </IconButton>
   );
+
+  const switchLanguage = async (code: string) => {
+    try {
+      // 语言包是动态 import 的：先把包装上再切语言。反过来会让切换后的第一帧渲染出 key，
+      // 等 chunk 到了才替换成译文。
+      await ensureLanguage(code);
+    } catch (error) {
+      // chunk 拿不到（离线、发版后旧 hash 404）时保持当前语言，而不是切成一屏 key。
+      console.warn(`i18n: could not load the ${code} bundle`, error);
+      return;
+    }
+    await i18n.changeLanguage(code);
+    writeLanguageCookie(code);
+  };
+
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger className="km-language-switch">{trigger}</DropdownMenu.Trigger>
       <DropdownMenu.Content>
-        {languages.map((lang) => (
+        {SUPPORTED_LANGUAGES.map((lang) => (
           <DropdownMenu.Item
             key={lang.code}
             onClick={() => {
-              i18n.changeLanguage(lang.code);
-              writeLanguageCookie(lang.code);
+              void switchLanguage(lang.code);
             }}
           >
-            {lang.name} ({lang.code.slice(0, 2)})
+            {lang.name}
           </DropdownMenu.Item>
         ))}
       </DropdownMenu.Content>

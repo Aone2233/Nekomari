@@ -16,6 +16,11 @@ import (
 
 // Bootstrap initializes the data directory, primary database, and settings.
 func (a *App) Bootstrap() error {
+	// Calibrate the collector before anything large is allocated. The database,
+	// the metric store's page caches and the plugin runtimes all come later, and
+	// a soft limit installed after them would only constrain the next spike.
+	applyMemoryLimit()
+
 	if err := os.MkdirAll("./data/theme", os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create theme directory: %w", err)
 	}

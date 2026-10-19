@@ -79,10 +79,7 @@ func TestPanelOwnedRoutesAreNotTakenOverByAnInstalledTheme(t *testing.T) {
 
 	// 内嵌归档的根文档：这就是 panel-owned 路径必须拿到的那一份。先确认归档自己是对的，
 	// 否则下面的比较会把"归档被换成了主题构建"误报成"路由接错了"。
-	files, err := loadEmbeddedDist()
-	if err != nil {
-		t.Fatalf("the embedded archive does not load: %v", err)
-	}
+	files := mustEmbeddedDistFiles(t)
 	rootDocument := string(files[IndexFile])
 	if problems := panelDocumentProblems(files, rootDocument); len(problems) > 0 {
 		t.Fatalf("the embedded archive's own %s is not the panel's front end, so this test cannot mean anything: %v",

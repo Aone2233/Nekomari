@@ -313,12 +313,46 @@ func runHookTurnTimeout(host *jsruntime.Host, name string, timeout time.Duration
 	}) {
 		return false, false
 	}
+	return true, waitHookTurn(done, timeout, newHookTimer)
+}
+
+// waitHookTurn waits for done or for the timeout, reporting whether the
+// timeout won. The timer is stopped on both paths: a hook that returns
+// immediately must not leave a timer behind to fire later, because this runs
+// once per hooked HTTP request (and the default budget is 30 s).
+//
+// The timer factory is a parameter so tests can assert the stop without
+// depending on Go's runtime timer internals.
+func waitHookTurn(done <-chan struct{}, timeout time.Duration, newTimer func(time.Duration) hookTimer) (timedOut bool) {
+	timer := newTimer(timeout)
+	defer timer.Stop()
 	select {
 	case <-done:
-		return true, false
-	case <-time.After(timeout):
-		return true, true
+		return false
+	case <-timer.C():
+		return true
 	}
+}
+
+// hookTimer is the minimal timer surface waitHookTurn needs: the timeout
+// channel and Stop. newHookTimer wraps time.NewTimer in production.
+type hookTimer interface {
+	C() <-chan time.Time
+	Stop()
+}
+
+type systemHookTimer struct {
+	timer *time.Timer
+}
+
+func (t systemHookTimer) C() <-chan time.Time { return t.timer.C }
+func (t systemHookTimer) Stop()               { t.timer.Stop() }
+
+// newHookTimer is the production timer source; tests replace it to observe the
+// Stop call. A stopped timer is what keeps a fast hook from pinning one timer
+// per request until the budget expires.
+var newHookTimer = func(d time.Duration) hookTimer {
+	return systemHookTimer{timer: time.NewTimer(d)}
 }
 
 func (m *Manager) logHookError(h *hookEntry, err error) {

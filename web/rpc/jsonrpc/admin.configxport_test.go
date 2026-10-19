@@ -21,10 +21,17 @@ import (
 
 func exportConfig(t *testing.T, includeSecrets bool) map[string]any {
 	t.Helper()
-	result, rpcErr := adminExportConfig(nil, &rpc.JsonRpcRequest{
-		Version: rpc.RPC_VERSION, Method: "admin:exportConfig",
-		Params: map[string]any{"include_secrets": includeSecrets},
-	})
+	// The credential export moved to its own (sensitive) method, so the helper follows the same
+	// split the panel has: one method never carries credentials, the other always does.
+	request := &rpc.JsonRpcRequest{Version: rpc.RPC_VERSION, Method: "admin:exportConfig"}
+	var result any
+	var rpcErr *rpc.JsonRpcError
+	if includeSecrets {
+		request.Method = "admin:exportConfigSecrets"
+		result, rpcErr = adminExportConfigSecrets(nil, request)
+	} else {
+		result, rpcErr = adminExportConfig(nil, request)
+	}
 	if rpcErr != nil {
 		t.Fatalf("export: %+v", rpcErr)
 	}
@@ -277,5 +284,25 @@ func TestAnImportDoesNotDeleteANodeTheDocumentOmits(t *testing.T) {
 	dbcore.GetDBInstance().Model(&models.Client{}).Where("uuid = ?", extra).Count(&count)
 	if count != 1 {
 		t.Fatal("the import deleted a node the document did not mention")
+	}
+}
+
+// The safe export must refuse include_secrets rather than ignore it. A caller that asked for
+// credentials and received a document without them would believe it had a backup of tokens it does
+// not have — the error is the feature.
+func TestTheSafeExportRefusesToCarrySecrets(t *testing.T) {
+	seedConfig(t)
+	_, rpcErr := adminExportConfig(nil, &rpc.JsonRpcRequest{
+		Version: rpc.RPC_VERSION, Method: "admin:exportConfig",
+		Params: map[string]any{"include_secrets": true},
+	})
+	if rpcErr == nil {
+		t.Fatal("admin:exportConfig accepted include_secrets=true; credentials must only leave through admin:exportConfigSecrets")
+	}
+	if rpcErr.Code != rpc.InvalidParams {
+		t.Fatalf("error code = %d, want InvalidParams", rpcErr.Code)
+	}
+	if !strings.Contains(rpcErr.Message, "admin:exportConfigSecrets") {
+		t.Fatalf("refusal does not name the method that can do it: %q", rpcErr.Message)
 	}
 }

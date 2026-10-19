@@ -11,11 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	logger "github.com/Aone2233/nekomari/utils/log"
 	"github.com/Aone2233/nekomari/web/api"
 	frontendpublic "github.com/Aone2233/nekomari/web/public"
 	"github.com/Aone2233/nekomari/web/security"
+	"github.com/gin-gonic/gin"
 )
 
 type guideController interface {
@@ -57,11 +57,7 @@ func (a *App) runGuideServer(controller guideController, cfg guideServerConfig) 
 		r.NoRoute(guideNoRoute(cfg.pagePath, cfg.missingAPI, handlers))
 	})
 
-	server := &http.Server{
-		Addr:              a.listenAddr,
-		Handler:           r,
-		ReadHeaderTimeout: httpReadHeaderTimeout,
-	}
+	server := newHTTPServer(a.listenAddr, r)
 	a.engine = r
 	a.server = server
 	serverErr := make(chan error, 1)

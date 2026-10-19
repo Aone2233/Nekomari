@@ -3,6 +3,25 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## Default theme restored (2026-10-19)
+
+The public site had been serving the installed **SAO** theme. At the owner's
+request the active theme was set back to the built-in default
+(`theme = "default"`). The SAO theme files were not touched and the change is
+one config value, so switching back is the same operation in reverse.
+
+| Item | Evidence |
+|---|---|
+| Backup before the change | `/opt/nekomari/data/komari.db.bak-theme-restore-20261019T122700Z` (SQLite `.backup`, taken while the panel was running) |
+| Change | container stopped, `update configs set value='"default"' where key='theme'`, container started |
+| Verification | container healthy; `/api/public` 200; `/` serves the built-in panel (`/assets/entry-index-CBqMPayg.js`, `<title>Orderly Status</title>`), zero `SAO` markers in the document; 13 established connections after the restart |
+| Rollback | stop the container, set `theme` back to `"SAO"`, start it; the SAO directory and every other config row are unchanged |
+| Not changed | panel image `v1.6.14`, agents, nginx/TLS, data other than the theme row |
+
+The built-in theme served here is the one embedded in the **v1.6.14 image**, not
+the batch A/B frontend from this repository: the local branch has not been
+deployed.
+
 ## v1.6.13 Mint canary (2026-10-17)
 
 The panel and **only this host's original agent** were upgraded. Other agents,

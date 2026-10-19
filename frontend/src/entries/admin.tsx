@@ -34,8 +34,8 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import "@radix-ui/themes/styles.css";
 import "../global.css";
-// i18n must be initialized before any component renders.
-import "../i18n/config";
+// 首帧要等当前语言：initI18n 会在这里按需加载当前语言的 chunk。
+import { initI18n } from "../i18n/config";
 import ErrorBoundary from "../components/ErrorBoundary";
 import { App } from "../App";
 
@@ -44,12 +44,14 @@ if (!root) {
   throw new Error("the admin bundle needs a #root element");
 }
 
-createRoot(root).render(
-  <ErrorBoundary>
-    <StrictMode>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </StrictMode>
-  </ErrorBoundary>,
-);
+void initI18n().then(() => {
+  createRoot(root).render(
+    <ErrorBoundary>
+      <StrictMode>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </StrictMode>
+    </ErrorBoundary>,
+  );
+});

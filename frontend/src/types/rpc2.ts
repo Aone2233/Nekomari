@@ -107,10 +107,12 @@ export interface RPC2ConnectionOptions {
   autoConnect?: boolean;
   /** 自动重连 */
   autoReconnect?: boolean;
-  /** 重连间隔（毫秒） */
+  /** 重连间隔（毫秒，指数退避的起点） */
   reconnectInterval?: number;
-  /** 最大重连次数 */
+  /** 最大重连次数；0（默认）表示一直重试，正数仍按上限停止 */
   maxReconnectAttempts?: number;
+  /** 单次重连等待的上限（毫秒，默认 30000） */
+  maxReconnectDelay?: number;
   /** 请求超时时间（毫秒） */
   requestTimeout?: number;
   /** 启用心跳包 */

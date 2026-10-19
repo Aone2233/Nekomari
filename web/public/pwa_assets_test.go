@@ -204,7 +204,8 @@ func TestPWAArchivesAreServedFromTheEmbeddedArchive(t *testing.T) {
 // embedded_theme_test.go / panel_routes_test.go 现在一并报告的那批失败 —— 所以这种情况
 // 下跳过而不是误报。落地之后（判据与那两个文件用的是同一个：面板前端的标题）这里是硬断言。
 func TestThePanelsPWAFilesInTheRealArchiveAreServed(t *testing.T) {
-	if len(defaultDistFiles) == 0 {
+	files := mustEmbeddedDistFiles(t)
+	if len(files) == 0 {
 		t.Fatal("the embedded archive did not load, so nothing here can be judged")
 	}
 	if !embeddedArchiveIsThePanelsFrontEnd() {
@@ -214,15 +215,18 @@ func TestThePanelsPWAFilesInTheRealArchiveAreServed(t *testing.T) {
 	}
 	router := pwaRouter(t)
 
-	names := []string{"sw.js", "registerSW.js", "manifest.webmanifest", "manifest.json", FaviconFile}
-	for name := range defaultDistFiles {
+	// registerSW.js is not a file in prompt mode: the registration is bundled into the entry
+	// (see embedded_theme_test.go, which asserts the registration code exists). The remaining
+	// files are still served by the panel itself and must round-trip byte-for-byte.
+	names := []string{"sw.js", "manifest.webmanifest", "manifest.json", FaviconFile}
+	for name := range files {
 		if strings.HasPrefix(name, "workbox-") && strings.HasSuffix(name, ".js") {
 			names = append(names, name)
 		}
 	}
 
 	for _, name := range names {
-		content, embedded := defaultDistFiles[name]
+		content, embedded := files[name]
 		if !embedded {
 			t.Errorf("%q is not in the embedded archive: the panel's own build emits it, and its absence is only visible as a service worker that never registers", name)
 			continue
@@ -261,7 +265,7 @@ func TestThePanelsPWAFilesInTheRealArchiveAreServed(t *testing.T) {
 // 是因为其中一条换掉时另一条还在；两条都换掉意味着面板前端的身份变了，那时这三个文件要
 // 一起改。
 func embeddedArchiveIsThePanelsFrontEnd() bool {
-	document := defaultDistFiles[IndexFile]
+	document := embeddedDistFiles()[IndexFile]
 	if len(document) == 0 {
 		return false
 	}

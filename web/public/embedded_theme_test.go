@@ -52,13 +52,7 @@ type embeddedThemeManifest struct {
 
 func loadEmbeddedTheme(t *testing.T) (map[string][]byte, embeddedThemeManifest) {
 	t.Helper()
-	files, err := loadEmbeddedDist()
-	if err != nil {
-		t.Fatalf("the embedded archive does not load: %v", err)
-	}
-	if len(files) == 0 {
-		t.Fatal("the embedded archive is empty")
-	}
+	files := mustEmbeddedDistFiles(t)
 	raw, err := PublicFS.ReadFile("defaultTheme/komari-theme.json")
 	if err != nil {
 		t.Fatalf("the embedded theme manifest is missing from the binary: %v", err)
@@ -224,9 +218,12 @@ func TestTheEmbeddedArchiveCarriesThePanelsOwnPages(t *testing.T) {
 	}
 	// The panel's document registers the service worker its build generates, and the PWA manifests are
 	// what make the panel installable: without them every first visit logs a 404 and installs nothing.
+	//
+	// registerSW.js is no longer a file: registerType is "prompt", so the registration lives in the
+	// entry bundle (PWAUpdatePrompt uses useRegisterSW), and the assertion below checks that code is
+	// present instead of a generated script whose name is an implementation detail of the plugin.
 	for _, name := range []string{
 		"sw.js",
-		"registerSW.js",
 		"manifest.json",
 		"manifest.webmanifest",
 		"favicon.ico",
@@ -245,6 +242,16 @@ func TestTheEmbeddedArchiveCarriesThePanelsOwnPages(t *testing.T) {
 	}
 	if !workbox {
 		t.Error("no workbox-*.js in the embedded archive, so the service worker the panel ships cannot run")
+	}
+	registration := false
+	for name, content := range files {
+		if strings.HasSuffix(name, ".js") && bytes.Contains(content, []byte("serviceWorker.register")) {
+			registration = true
+			break
+		}
+	}
+	if !registration {
+		t.Error("no built JavaScript registers the service worker: the prompt exists but nothing would ever update")
 	}
 	// The admin is the panel's own interface, served out of this subtree for `/admin`
 	// (see admin_theme_test.go). A theme build at the archive root would drop it.

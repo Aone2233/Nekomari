@@ -368,6 +368,9 @@ func (s *Store) Restructure(ctx context.Context, report func(RestructureProgress
 	if err := s.ensureOpen(); err != nil {
 		return RestructureResult{}, err
 	}
+	// The rebuild replaces the physical definitions table, so the ingest
+	// snapshot must be dropped even when the rebuild stops half way.
+	defer s.invalidateDefinitions()
 	shape, err := s.inspectSchema(ctx)
 	if err != nil {
 		return RestructureResult{}, err
@@ -484,7 +487,7 @@ func (s *Store) rebuildNormalizedSchema(ctx context.Context, report func(Restruc
 	if err := s.validateRestructurePrefix(); err != nil {
 		return RestructureResult{}, err
 	}
-	definitions, err := s.ListMetrics(ctx)
+	definitions, err := s.listMetricsFresh(ctx)
 	if err != nil {
 		return RestructureResult{}, err
 	}
@@ -649,6 +652,9 @@ func (s *Store) DiscardHistory(ctx context.Context, report func(RestructureProgr
 	if err := s.ensureOpen(); err != nil {
 		return RestructureResult{}, err
 	}
+	// Discarding history can rebuild the physical tables, so the ingest
+	// snapshot must be dropped even when the operation stops half way.
+	defer s.invalidateDefinitions()
 
 	shape, err := s.inspectSchema(ctx)
 	if err != nil {
@@ -719,7 +725,7 @@ func (s *Store) discardNormalizedHistory(ctx context.Context, report func(Restru
 	s.rollupViewMu.Lock()
 	defer s.rollupViewMu.Unlock()
 
-	definitions, err := s.ListMetrics(ctx)
+	definitions, err := s.listMetricsFresh(ctx)
 	if err != nil {
 		return RestructureResult{}, err
 	}
@@ -986,7 +992,7 @@ func (s *Store) validateRestructurePrefix() error {
 
 func (s *Store) readDefinitionsForShape(ctx context.Context, shape metricSchemaShape) ([]Definition, error) {
 	if shape.definitionsNormalized {
-		return s.ListMetrics(ctx)
+		return s.listMetricsFresh(ctx)
 	}
 	if shape.definitionsLegacy {
 		return s.readLegacyDefinitions(ctx)
@@ -1334,7 +1340,7 @@ func (s *Store) rebuildDailyRollups(ctx context.Context) error {
 	if hourly == 0 || daily == 0 {
 		return nil
 	}
-	defs, err := s.ListMetrics(ctx)
+	defs, err := s.listMetricsFresh(ctx)
 	if err != nil {
 		return err
 	}

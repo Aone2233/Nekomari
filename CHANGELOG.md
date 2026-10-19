@@ -8,6 +8,127 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.6.15] — 2026-10-19
+
+The 2026-10-18 improvement review, in three batches. Panel-side only:
+`agent/**/*.go` and `protocol/` are untouched, so the fleet does not move.
+
+The low-risk half of the 2026-10-18 improvement review
+([`docs/audits/2026-10-18/SUMMARY.md`](./docs/audits/2026-10-18/SUMMARY.md)). Panel-side only:
+`agent/**/*.go` and `protocol/` are untouched, so the fleet does not move.
+
+- **Two fleet-impacting RPCs were outside the sensitive-operation gate.** `admin:exportConfig` with
+  `include_secrets=true` exported every agent token, and `admin:rollAgentUpdate` could make the whole fleet
+  install an arbitrary release; neither was marked sensitive, while `admin:exec` was. A stolen admin session
+  on an account with 2FA could do both without a second factor. Credential export now has its own method,
+  `admin:exportConfigSecrets`, registered with `rpc.MarkSensitive`; the safe export refuses
+  `include_secrets` instead of silently dropping it, and the refusal names the method that can do it. The
+  reviewed allowlist grows to five methods and a test walks the list itself, so a method that is marked but
+  not reviewed fails. API keys remain exempt, as they are for every sensitive method (`OPEN-WORK.md`).
+- **Five delivered pages had no entrance.** The SLA report, bulk edit, maintenance windows, configuration
+  import/export and traffic forecast are standalone documents under `/standalone/<page>/<page>.html` — they
+  cannot be routes (a theme replaces that router, roadmap H0) and no theme can know they exist. The panel's
+  operations menu now lists all five (new tab), and `script/menu-reachability.test.mjs` asserts every page in
+  the build table has a menu entry with the build's exact path, a valid icon and `newTab`.
+- **A maintenance window only silenced offline alerts.** `sendLoadNotification` — the shared exit for
+  host-metric and ping rules — had no window check, so a planned reboot still woke the operator for the ping
+  loss it caused; roadmap H3's acceptance names offline and ping. Alerts for clients inside a window are now
+  dropped (not deferred: a point threshold is about a moment, and a late "CPU was high" is not actionable),
+  logged with the window's name, and collection is untouched.
+- **Static assets were served uncompressed, and the embedded theme stored the admin twice.** `serveAsset`
+  now gzips compressible assets above 1 KiB when the client offers it (`Vary: Accept-Encoding`, no
+  `Content-Length`, Range stays identity, 304 stays bodyless) and the panel's own `/admin` assets use the
+  same path. On a self-hosted panel without a compressing proxy this is the difference between ~1.6 MiB and
+  ~0.4 MiB on a first visit; through Cloudflare nothing changes because the edge already compresses. The
+  embedded archive contained `standalone/admin/**` and `admin/**` byte-for-byte identical (~250 files,
+  8.3 MiB); loading keeps one copy and `/standalone/admin/...` falls back to it, and only when the bytes
+  are equal, so a future divergence degrades to "no deduplication" rather than serving the wrong file.
+- **Idle keep-alive connections were never retired.** The server set `ReadHeaderTimeout` but not
+  `IdleTimeout`, and Go's zero value falls back to `ReadTimeout` — also zero — so an idle connection could
+  hold a goroutine and its buffers for the process's lifetime. Both the normal and the guided servers now
+  share one constructor with a 120 s idle timeout; `WriteTimeout` stays unset because it would cut downloads
+  and terminal streams.
+- **The public dashboard downloaded recharts to render a hover-only chart.** The mini ping chart is behind a
+  three-second hover, but a static import put recharts (363 KiB raw / ~107 KiB gzipped) in the first visit.
+  The float and the chart are both lazy now; the float's own chunk is 2.2 KiB and recharts is fetched only
+  when the popover opens. The service worker still precaches the chart chunk under the existing policy
+  (ROADMAP B1), so this is a first-paint and parse saving, not a reduction in total bytes over a visit.
+- **The node list was refetched every five seconds.** Its fields (name, price, limits, the online set)
+  barely change, and the two-second live status has its own path; the interval is now 60 s, with the
+  existing visibility pause unchanged. Every open panel makes 12× fewer list requests per minute.
+- **The configuration export asks for the second factor where it needs one.** The export page collects a
+  one-time password when "include secrets" is checked and calls the new sensitive method; an account
+  without 2FA still exports with the field empty, because the server is the authority on whether a factor
+  is enrolled.
+
+The embedded default theme archive (`web/public/defaultTheme/dist.tar.zst`) was rebuilt from this batch's
+frontend build, so the shipped binary serves the new menu, the lazy chart and the 2FA prompt.
+
+The second batch of the same review:
+
+- **The entry no longer ships four languages nobody asked for.** `i18n/config.ts` imports English
+  statically and loads the other four with `import()`; the seven entries await `initI18n()` before
+  rendering, so the first frame is in the detected language rather than keys. The entry bundle fell
+  from 804 KiB raw / 269 KiB gzip to 508 KiB / 165 KiB (gzip −104 KiB); the four locale chunks
+  (24–27 KiB gzip each) are fetched when the language is actually selected. They are also excluded
+  from the service-worker precache: precaching them would download the same ~100 KiB in the
+  background and cancel the saving. Offline, a language that was never loaded falls back to the
+  current one instead of showing an empty screen. The five standalone pages do not benefit: their
+  builds inline dynamic imports by design, so each still contains every language.
+- **Ingest no longer re-reads and re-hashes on every batch.** `pkg/metric` keeps an immutable
+  snapshot of the definitions table (invalidated by every definition write; maintenance paths read
+  the committed table directly) and a bounded content-addressed cache for tag fingerprints.
+  `Point.normalized` no longer allocates empty maps on this path. A 180-point batch with no tags
+  fell from 165.5 KiB / 2,692 allocations to 55.0 KiB / 153 (−67% bytes, −94% allocations); with
+  tags, 203 KiB / 3,563 to 108 KiB / 2,325. The benchmark is `BenchmarkWriteBatchIngest`.
+- **RPC2 reconnect backs off instead of giving up.** A fixed 3 s retry that stopped after five
+  attempts left every call on the HTTP fallback once a panel restart lasted longer than 15 s. The
+  client now retries indefinitely by default (`maxReconnectAttempts: 0`), with exponential backoff
+  capped at 30 s and ±20% jitter, and waits for the tab to be visible rather than retrying in the
+  background. A positive attempt cap is still honoured for callers that want one.
+- The embedded archive was rebuilt again for this batch (1,083 files, 32.96 MiB → 5.07 MiB), and a
+  v1.6.14 + batch A arm64 build was exercised on OC424 against a copy of the production data: the
+  theme entry serves 292,808 B as 92,984 B gzip, the admin entry 803,226 B as 277,776 B, conditional
+  requests still answer 304 without a body, range requests still answer 206 identity, all five
+  standalone pages answer 200 and the served admin chunk carries all five menu paths.
+
+The third batch of the same review:
+
+- **The default theme no longer lives in memory.** The embedded archive used to be unpacked into a
+  `map[string][]byte` during `init` — 32.96 MiB of files, ~33 MB resident, ~70 MB at startup peak.
+  The first request for a default-theme asset now streams the archive to
+  `data/.theme-cache/<sha256-of-archive>/` (staging directory, entry/byte-count verification, then a
+  `\.complete` marker and rename) and serving reads files from disk. A complete cache means a miss is
+  a real 404, so a stale chunk does not unpack the whole archive again. If the directory cannot be
+  written, the loader falls back to the lazy in-memory copy; `KOMARI_THEME_CACHE=0` forces that path.
+  The cost is about 300 ms on the first default-theme request of a fresh data directory; the tests
+  compare every extracted file with the archive and assert the in-memory map stays nil.
+- **Plugin response hooks are bounded at 2 MiB and no longer leave a timer behind.** The buffer cap
+  was 32 MiB (and the body was copied once more for JavaScript), so one hooked large response could
+  pin ~64 MB; the cap is now 2 MiB and larger responses take the existing passthrough. The per-request
+  `time.After` became a stopped `time.NewTimer`.
+- **A soft memory limit follows the container's own ceiling.** `KOMARI_MEMORY_LIMIT` (bytes or
+  `512MiB`/`1GiB`, `off`/`0` to disable) wins, an existing `GOMEMLIMIT` is respected, otherwise cgroup
+  v2 `memory.max` or cgroup v1 `memory.limit_in_bytes` is used. The installed limit is 90% of the
+  ceiling with a 64 MiB floor, logged once; an unparseable override warns and falls through.
+- **Read admission now has a byte budget as well as a row budget.** Each row is charged at the
+  measured 534 B, and a public query is capped at 96 MiB in addition to 250,000 rows; four concurrent
+  chart slots therefore have a ~384 MiB envelope instead of ~533 MiB.
+- **The coarse rollup tree was measured instead of estimated.** A 24 h simulation (injectable clock)
+  puts it at ~30.5 KiB/series (200-series run), i.e. ~5.5 MiB for 9 nodes × 21 series and ~61 MiB for
+  100 nodes — lower than the 55–70 KiB estimate because a 24 h parent keeps ~23 one-hour children,
+  not 24–48, and the live digests are smaller than their encoded form. It remains linear, has no leak,
+  and a test fails above 80 KiB/series.
+- **PWA updates ask instead of replacing the page.** `registerType` is now `"prompt"`; a banner offers
+  Update / Later and reloads when the waiting worker takes over, with an hourly `registration.update()`
+  for long-lived tabs. The prompt moved out of the shared `App` into the main entry, so the admin and
+  standalone builds no longer import the PWA virtual module. With prompt registration there is no
+  generated `registerSW.js`; the archive contract now asserts the registration code exists in the
+  built JavaScript instead.
+- The embedded archive was rebuilt for this batch (1,075 files, 32.93 MiB → 5.09 MiB), and the live
+  OC424 panel was switched back to the built-in default theme at the owner's request (recorded in
+  `docs/DEPLOY-OC424.md`; the v1.6.14 image was not replaced).
+
 ## [v1.6.13] — 2026-10-17
 
 - Keep ChatGPT/Claude region-only results `unknown`: observing an exit country does

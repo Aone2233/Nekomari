@@ -39,3 +39,27 @@ test('uses HTTP when no WebSocket request has been sent', async () => {
   client.callViaHTTP = async () => 'ok';
   assert.equal(await client.call('public:getVersion'), 'ok');
 });
+
+// The old client stopped after 5 attempts at a fixed 3 s interval, so a panel restart longer
+// than 15 s left every call on the HTTP fallback until the page was reloaded. The default is now
+// unlimited attempts with exponential backoff, capped and jittered.
+test('reconnect is unbounded by default and backs off to a cap', () => {
+  assert.equal(exports.shouldAttemptReconnect(0, 0), true);
+  assert.equal(exports.shouldAttemptReconnect(999, 0), true);
+  assert.equal(exports.shouldAttemptReconnect(4, 5), true);
+  assert.equal(exports.shouldAttemptReconnect(5, 5), false);
+
+  const base = 3000;
+  const cap = 30000;
+  const noJitter = () => 0.5;
+  const delays = [1, 2, 3, 4, 5, 6].map((attempt) =>
+    exports.nextReconnectDelay(attempt, base, cap, noJitter),
+  );
+  assert.deepEqual(delays, [3000, 6000, 12000, 24000, 30000, 30000]);
+  for (let i = 1; i < delays.length; i++) {
+    assert.ok(delays[i] >= delays[i - 1], `delay shrank: ${delays}`);
+  }
+
+  assert.equal(exports.nextReconnectDelay(3, base, cap, () => 0), 9600);
+  assert.equal(exports.nextReconnectDelay(3, base, cap, () => 1), 14400);
+});

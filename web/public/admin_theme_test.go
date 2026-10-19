@@ -83,7 +83,7 @@ func TestTheAdminDocumentIsServedForItsPrefix(t *testing.T) {
 // reachable: the document is one file the route names explicitly, its assets are looked up by name from the
 // archive.
 func TestTheAdminBundleAndItsChunksResolve(t *testing.T) {
-	files, _ := loadEmbeddedDist()
+	files := mustEmbeddedDistFiles(t)
 	router := newRouter(t)
 
 	// Every asset the admin document references, plus one lazily-imported chunk, so the check is not just
@@ -156,7 +156,7 @@ func TestTheAdminHashedAssetsAreCachedForALongTime(t *testing.T) {
 	}
 }
 func TestTheAdminArchiveCarriesItsManifest(t *testing.T) {
-	files, _ := loadEmbeddedDist()
+	files := mustEmbeddedDistFiles(t)
 
 	if _, ok := files["admin/index.html"]; !ok {
 		t.Fatal("admin/index.html is not in the archive")

@@ -152,7 +152,7 @@ func (s *Store) recoverPendingCoarseRollups(ctx context.Context) error {
 	if !s.coarseRecoveryPending {
 		return nil
 	}
-	definitions, err := s.ListMetrics(ctx)
+	definitions, err := s.listMetricsFresh(ctx)
 	if err != nil {
 		return err
 	}

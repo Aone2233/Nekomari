@@ -1,6 +1,9 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { Popover } from "@radix-ui/themes";
-import MiniPingChart from "./MiniPingChart";
+// 图表只在弹层 open 时才渲染（悬停 3 秒或点击），但静态 import 会把 recharts 一起
+// 拖进调用方的 chunk，让首访下载一个大多数访客不会打开的功能。lazy 把这条边变成
+// 「第一次打开弹层时的一次按需请求」，之后由模块缓存复用。
+const MiniPingChart = React.lazy(() => import("./MiniPingChart"));
 
 interface FloatMiniPingChartProps {
   uuid: string;
@@ -80,12 +83,14 @@ const MiniPingChartFloat: React.FC<FloatMiniPingChartProps> = ({
         }}
       >
         {open && (
-          <MiniPingChart
-            hours={hours}
-            uuid={uuid}
-            width="100%"
-            height={chartHeight}
-          />
+          <React.Suspense fallback={null}>
+            <MiniPingChart
+              hours={hours}
+              uuid={uuid}
+              width="100%"
+              height={chartHeight}
+            />
+          </React.Suspense>
         )}
       </Popover.Content>
     </Popover.Root>

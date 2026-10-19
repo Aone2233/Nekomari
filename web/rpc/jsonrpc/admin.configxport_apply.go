@@ -26,14 +26,27 @@ func jsonMarshal(value any) ([]byte, error)    { return json.Marshal(value) }
 func jsonUnmarshal(data []byte, out any) error { return json.Unmarshal(data, out) }
 
 func init() {
+	// Two export methods rather than one method with a dangerous flag.
+	//
+	// The sensitive-operation gate is keyed on the *method name* (pkg/rpc/sensitive.go), not on a
+	// request parameter, so "export the credentials too" cannot be gated on include_secrets while
+	// staying inside admin:exportConfig. Splitting the method is what makes the gate expressible:
+	// the safe export stays a one-click operation, and the credential export is a separately
+	// registered operation that the transport refuses without a second factor.
 	RegisterWithGroupAndMeta("exportConfig", rpc.RoleAdmin, adminExportConfig, &rpc.MethodMeta{
 		Name:    "admin:exportConfig",
 		Summary: "Export nodes, tasks, windows, settings and notification policies as one JSON document",
-		Params: []rpc.ParamMeta{
-			{Name: "include_secrets", Type: "bool", Required: false, Description: "Include credentials; excluded by default"},
-		},
-		Returns: "Document; secrets_included says whether it carries credentials",
+		Returns: "Document; credentials are always excluded (use admin:exportConfigSecrets for those)",
 	})
+	RegisterWithGroupAndMeta("exportConfigSecrets", rpc.RoleAdmin, adminExportConfigSecrets, &rpc.MethodMeta{
+		Name:    "admin:exportConfigSecrets",
+		Summary: "Export the same document including credentials; requires sensitive-operation 2FA",
+		Params: []rpc.ParamMeta{
+			{Name: "2fa_code", Type: "string", Required: false, Description: "One-time password; required when the account has 2FA enabled"},
+		},
+		Returns: "Document; secrets_included is true",
+	})
+	rpc.MarkSensitive("admin:exportConfigSecrets")
 	RegisterWithGroupAndMeta("planConfigImport", rpc.RoleAdmin, adminPlanConfigImport, &rpc.MethodMeta{
 		Name:    "admin:planConfigImport",
 		Summary: "Report what importing a document would do, without applying it",
@@ -53,16 +66,36 @@ func init() {
 }
 
 func adminExportConfig(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	// include_secrets used to be a parameter here. Refusing it rather than ignoring it matters:
+	// a caller that asks for credentials and silently receives a document without them would
+	// believe it had a backup of the tokens it does not have. The error names the method that can
+	// do it, so the fix is in the message.
 	var params struct {
 		IncludeSecrets bool `json:"include_secrets"`
 	}
 	_ = req.BindParams(&params)
+	if params.IncludeSecrets {
+		return nil, rpc.MakeError(rpc.InvalidParams,
+			"credentials are not exported by admin:exportConfig; call admin:exportConfigSecrets, which requires sensitive-operation 2FA", nil)
+	}
+	return exportConfiguration(ctx, false)
+}
 
-	document, err := configxport.Export(exportStore{}, params.IncludeSecrets, utils.CurrentVersion)
+// adminExportConfigSecrets is the credential-carrying export. pkg/rpc's gate has already checked
+// the second factor before this handler runs (init above registers it with rpc.MarkSensitive); the
+// 2fa_code parameter is consumed by the transport, so it is deliberately not read here. The audit
+// line below is the second half: a file that carries agent tokens is named in the trail even when
+// the caller was legitimate.
+func adminExportConfigSecrets(ctx context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	return exportConfiguration(ctx, true)
+}
+
+func exportConfiguration(ctx context.Context, includeSecrets bool) (any, *rpc.JsonRpcError) {
+	document, err := configxport.Export(exportStore{}, includeSecrets, utils.CurrentVersion)
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to export configuration: "+err.Error(), nil)
 	}
-	if params.IncludeSecrets {
+	if includeSecrets {
 		// A secrets export is worth naming in the audit trail: the file it produces is now a
 		// credential store, and docs/SECRETS.md exists because that has gone wrong here before.
 		actor, ip := auditActor(ctx)
