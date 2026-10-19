@@ -3,6 +3,35 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.6.16 rollback and v1.6.17 hotfix (2026-10-19)
+
+v1.6.16 was published (tag on `bd989ab`) and rolled out at 15:01 UTC. It refused
+to start: `PRAGMA quick_check` reports a **benign freelist accounting
+mismatch** on this database ("Main freelist: size is 20 but should be 21"),
+which SQLite reports while every query keeps working. The container
+restart-looped, and the compose image was rolled back to v1.6.15
+(`sha256:7041fad9…`) until v1.6.17 was ready.
+
+v1.6.17 (tag on `a51bff9`) makes integrity findings advisory by default;
+`KOMARI_STRICT_DB_CHECK=1` is the opt-in fail-fast gate. The same production
+database was reproduced in a canary with the v1.6.17 arm64 binary before the
+rollout: it logged the finding and started.
+
+| Item | Evidence |
+|---|---|
+| Release | `v1.6.17` on `a51bff9`; release run `39276095962` and Docker run `39277156005` successful |
+| Pinned panel image | `ghcr.io/aone2233/nekomari:v1.6.17@sha256:6d4a280649fe4acc766bed7a3239d3f5dafc0ec1c8e60b25f5f359133d1586e3` (arm64) |
+| Backup | `/opt/nekomari/backups/pre-v1.6.17-20261019T151359Z` (WAL-safe SQLite backups, previous compose, `SHA256SUMS`) |
+| Repair | container stopped; `sqlite3 komari.db "VACUUM;"` — before: freelist error, after: `quick_check` `ok` |
+| Startup | 21 s to `/api/public` 200; pre-upgrade archive **21 MB** (v1.6.15's was 1.6 GB), archives pruned to 3, `data/backup` 5.5 GB → 1.6 GB |
+| Verification | `/api/version` = `v1.6.17` hash `a51bff9`, healthy; `quick_check` ok; `clients.target_version` column present; gzip `/app.js` 72,519 → 24,887 B; 12 connections; container memory ~92 MB |
+| Rollback | compose back to `v1.6.15@sha256:7041fad9…`; databases and data directory untouched, backup above |
+
+The upgrade-archive fix from v1.6.16 is visible in this rollout: the archive
+excludes `db-maintenance/`, theme backups, `.uploading`, and keeps only three
+upgrade zips, which is why the pre-upgrade step dropped from ~90 s / 1.6 GB to
+seconds / 21 MB.
+
 ## v1.6.15 rollout (2026-10-19)
 
 The first release built from the three batches of the 2026-10-18 review. The
