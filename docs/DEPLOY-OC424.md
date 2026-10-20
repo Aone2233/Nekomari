@@ -52,6 +52,7 @@ Panel and deploy-script release; agents stay on v1.6.24.
 | Panel startup | 21 s to `/api/public` 200; `panel-upgrade-check.sh` **9 passed, 0 failed, 0 skipped**; /api/version = v1.6.25 hash 371d688; 0 ERROR |
 | Auth smoke | `panel-auth-smoke.py` 3/3 with the API key (admin RPC + HTML + theme asset) after the token-read step-up change |
 | Agent fleet | unchanged at **12/12 v1.6.24**; no agent binary changes in this release |
+| SB01 reinstall | OpenRC installer re-run with `--force` over the MAC-WAN jump; it reused the existing credential file, wrote a `supervise-daemon` init script, started the service, and the panel showed v1.6.24 online. A `SIGKILL` of the child was respawned within 10 s; a graceful `SIGTERM` intentionally stops the supervisor |
 | Changes | fractional ping summaries/UI; `admin:getClientToken` sensitive for sessions (API key exemption unchanged); OpenRC installer/upgrade script; protocol contract test |
 | Verification | BERO panel Go test/vet/build + frontend test/lint/build; local install harness 37/37, upgrade harness 35/35; CI 7/7 |
 
