@@ -49,11 +49,11 @@ same disk). A copy is now pulled nightly by the OVH KS-LE-B host.
 |---|---|
 | Destination host | OVH KS-LE-B `jkr-node-01`, Beauharnois (BHS), Ubuntu 24.04 |
 | Destination path | `/srv/backups/oc424` (0700, files 0600) |
-| Storage | `/dev/md3` 410 G RAID1; **366 G available, 6% used** at setup |
-| Archive size | ~98 MB (102,186,879 B for the first one; `metrics.db` dominates) |
+| Storage | `/dev/md3` 410 G RAID1; **366 G available, 6% used**; two backups used 195 MB |
+| Archive size | ~98 MB each (102,186,879 B / 102,111,035 B; `metrics.db` dominates) |
 | Retention | 14 newest `oc424-*.tar.zst`; worst case ~1.4 GB, under 0.4% of the volume |
 | Schedule | daily 03:30 UTC via `/home/ubuntu/oc424-backup.sh`, log `/home/ubuntu/oc424-backup.log` |
-| First copy | `oc424-20261020T053721Z.tar.zst`, sha256 `3c9fd370…` |
+| Copies | `oc424-20261020T053721Z.tar.zst` (sha256 `3c9fd370…`, v1.6.20) and `oc424-20261020T061639Z.tar.zst` (sha256 `1a6c0bdb…`, v1.6.21) |
 | Contents | SQLite `.backup` of `komari.db` and `metrics.db`, `docker-compose.yml`, `INFO` (host/time/panel version); zstd level 3 |
 | Pull authority | OVH holds a dedicated ed25519 key; OC424's `authorized_keys` entry is `restrict,command="/usr/local/bin/oc424-backup-stream.sh"`, so the key can only stream a backup, not open a shell. OC424 holds no key to OVH |
 | Integrity | `zstd -t` before publishing + `.sha256` sidecar; failed pulls leave only a `.tmp` that the trap removes |
@@ -62,6 +62,22 @@ same disk). A copy is now pulled nightly by the OVH KS-LE-B host.
 Caveat: the archive is **not encrypted at rest**; access is limited to `ubuntu`/`root` on
 OVH. If that disk is not in the trust boundary, add `age`/`gpg` before upload. The
 archive contains panel secrets (agent tokens, notification credentials).
+
+## v1.6.21 rollout (2026-10-20)
+
+Audit-log filtering/CSV export, Windows build reproducibility verification, and the
+nightly OVH off-host backup (above). Panel-side only; no agent was restarted.
+
+| Item | Evidence |
+|---|---|
+| Remote build | BERO: Go test/vet/build, `npm test` 178/178, lint, two builds `diff` 0, theme repack + `web/public` tests |
+| Release | tag `v1.6.21` on `5da645b`; release run `39378428070`, Docker run `39379110908` successful |
+| Release assets | 10, including `sbom.spdx.json` and provenance attestation |
+| Pinned panel image | `ghcr.io/aone2233/nekomari:v1.6.21@sha256:fafbb31713fcaa4f5597097eb7fdb1e3287502b2021a420b624a2bb4ffa122c3` (arm64) |
+| Backup | `/opt/nekomari/backups/pre-v1.6.21-20261020T054933Z`; pre-deploy `quick_check` `ok`; OVH refreshed after the rollout (v1.6.21 copy) |
+| Startup | 21 s to `/api/public` 200; archive 21 MB; 3 archives / 62 MB |
+| Verification | `deploy/panel-upgrade-check.sh`: **9 passed, 0 failed, 0 skipped**; version/hash, healthy, 0 restarts, `quick_check` ok, 3 archives, 0 ERROR; gzip 24,887 B; 12 connections; ~92 MB RSS |
+| Rollback | compose back to `v1.6.20@sha256:f9189855…`; data untouched, backups above |
 
 ## v1.6.20 rollout (2026-10-20)
 
