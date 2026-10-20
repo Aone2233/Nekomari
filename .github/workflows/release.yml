@@ -371,6 +371,19 @@ jobs:
     name: create release
     needs: [resolve, build, build-agent-darwin]
     runs-on: ubuntu-latest
+    # 这是唯一需要「签名」能力的作业：它创建 Release（contents: write），并让下面的
+    # attest-build-provenance 用 OIDC 换一张 Sigstore 的短期证书（id-token: write）、
+    # 再把出证结果登记进仓库的 attestation 存储（attestations: write）。
+    #
+    # job 级 permissions 会【整体覆盖】工作流级那一份，不写就等于 none —— 所以
+    # actions: read 必须原样写回来：工作流级本来就给它（gate 要读 ci.yml 的运行结论，
+    # download-artifact 也走 Actions 的产物服务）。只加在这一个作业上，gate/build/
+    # verify 仍用工作流级的 contents: write + actions: read，权限面没有变大。
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      actions: read
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v7
@@ -392,6 +405,26 @@ jobs:
       - name: List artifacts
         run: ls -la dist
 
+      # SBOM 在算校验和【之前】生成：下面的 SHA256SUMS.txt 覆盖 dist 里的每一个文件
+      # （那一步的计数断言就是这么定义的），所以 sbom.spdx.json 必须在那之前落盘 ——
+      # 否则它会成为唯一一个既没有校验和、也没有出证的附件。
+      #
+      # 两个 upload 输入都关掉：SBOM 不单独进 workflow artifact，也不由这个 action 自己
+      # 上传到 Release（此刻 Release 还不存在）。它留在 dist 里，由下面
+      # softprops/action-gh-release 的 files: dist/** 一起发出去。
+      #
+      # 参数名按 anchore/sbom-action@v0 的 action.yml 核对过（path / format /
+      # output-file / upload-artifact / upload-release-assets 都在输入表里）；
+      # deploy/check-action-inputs.py 在 CI 里逐个 action 再核一遍。
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: dist
+          format: spdx-json
+          output-file: dist/sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
       - name: Generate checksums
         shell: bash
         working-directory: dist
@@ -409,6 +442,29 @@ jobs:
             exit 1
           fi
           echo "checksummed $actual assets"
+
+      # 出证（build provenance）：GitHub 用 OIDC 在 Sigstore 侧签名，把「这个 commit 上
+      # 这次 workflow 跑出来的字节」记下来，使用者可以 gh attestation verify 核对手上
+      # 那个文件是不是这里产出的。
+      #
+      # subject-path 只列**构建出来的二进制**：sbom.spdx.json 是本作业里 syft 生成的
+      # 产物、不是被构建的输入，给它出证会让「provenance 覆盖了构建产物」这句话变得含糊
+      # （它仍然被 SHA256SUMS.txt 覆盖、也在 Release 附件里）。SHA256SUMS.txt 同理不列。
+      #
+      # subject-path 是一个 CSV 风格的列表（actions/attest 用 csv-parse 解析它，再逐行
+      # 交给 @actions/glob），所以这里换行写两条 glob，而不是让 shell 去展开。
+      #
+      # 版本选 v4 而不是 v2：v2 也是 composite，但落到 actions/attest@v2，而那是 node20
+      # 运行时 —— 每次发布都会打印 Node20 弃用警告，最后会被强制换掉；本仓库其余 action
+      # 都在各自当前大版本上（deploy/check-action-versions.py 存在的理由就是这件事）。
+      # v4 落到 actions/attest@v4（node24），输入契约不变：subject-path 仍是 csv 风格的
+      # 列表、逐行交给 @actions/glob（actions/attest@v4 的 src/subject.ts）。
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            dist/nekomari-*
+            dist/komari-agent-*
 
       - name: Create release
         uses: softprops/action-gh-release@v3
@@ -429,10 +485,19 @@ jobs:
             |---|---|
             | `nekomari-<os>-<arch>` | Server + web panel (default theme embedded) |
             | `komari-agent-<os>-<arch>` | Monitoring agent (probe) |
+            | `sbom.spdx.json` | SPDX SBOM for the binaries above (syft) |
+            | `SHA256SUMS.txt` | Checksums for every attached file |
 
             > The agent asset intentionally keeps the `komari-agent-` prefix: that is the
             > name the agent's self-updater looks for (`agent/update/update.go`).
             > Renaming it would break auto-update.
+
+            Every attached binary also carries a **build provenance attestation** signed by
+            this workflow run. Verify one before running it:
+
+            ```bash
+            gh attestation verify ./nekomari-linux-amd64 -R ${{ github.repository }}
+            ```
 
             ### Quick start
 

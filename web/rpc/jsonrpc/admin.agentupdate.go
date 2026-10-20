@@ -29,6 +29,15 @@ import (
 // that is offline right now, or that connects later, is re-sent the same persisted record by the v2 connection
 // handler (web/api/client/report_v2.go). Two paths, one source of truth.
 //
+// ## Why a cleared target has a pending marker
+//
+// "Target is empty" and "the node has been told the target is empty" are different states. Clearing a pin
+// dispatches an empty target, and the agent forgets its target on receipt — but a node that was offline at
+// that moment never receives it, and nothing in the record would remind the panel: an empty target is
+// indistinguishable from "never pinned", so the reconnect path would send nothing and that node would keep
+// running the old pin until it restarted. models.Client.TargetVersionPendingClear records exactly that
+// debt: cleared while the node could not be reached, still to be delivered on its next connect.
+//
 // ## Why this reports per node rather than a fleet verdict
 //
 // A rollout is per node: one that is offline gets nothing, one already at the target is a no-op, and both are
@@ -72,6 +81,9 @@ type agentVersionRow struct {
 	// TargetVersion is the rollout target the panel has persisted for this node: the version it will be
 	// held at, including across a panel restart. Empty means the node tracks releases.
 	TargetVersion string `json:"target_version"`
+	// PendingClear reports a cleared target that the node has not been told about yet, because it was
+	// offline when the pin was removed. Omitted for the normal case, so the existing row shape is unchanged.
+	PendingClear bool `json:"pending_clear,omitempty"`
 }
 
 // agentUpdateOutcome is what happened to one node.
@@ -104,7 +116,7 @@ func adminAgentVersions(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.Jso
 		online := agentrt.IsAgentOnline(client.UUID)
 		rows = append(rows, agentVersionRow{
 			UUID: client.UUID, Name: client.Name, Version: client.Version, Online: online,
-			TargetVersion: client.TargetVersion,
+			TargetVersion: client.TargetVersion, PendingClear: client.TargetVersionPendingClear,
 		})
 		// Counted by the version reported, with "unknown" for a node that has never connected — which is the
 		// first thing an operator wants to see, because such a node cannot be rolled at all.
@@ -146,12 +158,18 @@ func adminRollAgentUpdate(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 			continue
 		}
 		row := agentUpdateOutcome{UUID: client.UUID, Name: client.Name}
+		online := agentrt.IsAgentOnline(client.UUID)
 
 		// The target is persisted for every selected node, including one that is offline or already at the
 		// target: this record is the rollout. Delivery is a separate question, answered below. A dry run
 		// reports without writing, so a rehearsal cannot leave the fleet pinned.
+		//
+		// A clear is different from a pin: the node has to be *told* the target is gone, because the agent
+		// only keeps it in memory. When the node is not connected the clear cannot go out now, so the pending
+		// marker records the debt and the connection handler settles it on the next connect.
 		if !params.DryRun {
-			if err := clients.SetTargetVersion(client.UUID, target); err != nil {
+			pendingClear := target == "" && !online
+			if err := clients.SetAgentUpdateState(client.UUID, target, pendingClear); err != nil {
 				row.Status = updateFailed
 				row.Detail = "could not save the rollout target: " + err.Error()
 				outcomes = append(outcomes, row)
@@ -176,7 +194,7 @@ func adminRollAgentUpdate(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		// An offline node cannot be handed the target now, but the persisted record means it is not lost: the
 		// panel re-sends it when the node connects. Saying "saved" rather than "failed" is the difference
 		// between a rollout waiting for a node and a rollout that did not happen.
-		if !agentrt.IsAgentOnline(client.UUID) {
+		if !online {
 			row.Status = updateSaved
 			row.Detail = "saved; will be sent when the node connects"
 			outcomes = append(outcomes, row)
@@ -184,6 +202,17 @@ func adminRollAgentUpdate(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 			continue
 		}
 		if !agentrt.DispatchV2Event(client.UUID, v2.MethodAgentUpdate, v2.UpdateParams{Target: target}) {
+			// The node looked connected but the request did not go out. For a pin the persisted target is
+			// already the retry; for a clear the retry is the pending marker, without which the node would
+			// keep running the old pin even after reconnecting.
+			if target == "" {
+				if err := clients.SetTargetVersionClearPending(client.UUID, true); err != nil {
+					row.Status = updateFailed
+					row.Detail = "the panel could not dispatch to this node and could not record the retry: " + err.Error()
+					outcomes = append(outcomes, row)
+					continue
+				}
+			}
 			row.Status = updateFailed
 			row.Detail = "the panel could not dispatch to this node"
 			outcomes = append(outcomes, row)

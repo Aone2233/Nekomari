@@ -74,6 +74,13 @@ THEME_HTML = (
     '</head><body><div id="root"></div></body></html>'
 )
 BARE_HTML = '<!doctype html><html><body>nothing is referenced here</body></html>'
+# An installed theme may ship its own layout at the site root; the CRT theme does exactly this.
+ROOT_THEME_HTML = (
+    '<!doctype html><html><head><title>status</title>'
+    '<script type="module" src="/app.js"></script>'
+    '<link rel="stylesheet" href="/style.css">'
+    '</head><body><div id="root"></div></body></html>'
+)
 ASSET_BODY = "console.log('theme');"
 
 
@@ -115,12 +122,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/":
             if mode == "no-assets":
                 self._send(200, BARE_HTML, "text/html; charset=utf-8")
+            elif mode == "root-assets":
+                self._send(200, ROOT_THEME_HTML, "text/html; charset=utf-8")
             elif mode == "not-html":
                 self._send(200, RPC_OK)
             else:
                 self._send(200, THEME_HTML, "text/html; charset=utf-8")
             return
-        if path.startswith("/assets/"):
+        if path.startswith("/assets/") or path in ("/app.js", "/style.css"):
             if mode == "asset-missing":
                 self._send(404, BARE_HTML, "text/html; charset=utf-8")
             elif mode == "asset-html":
@@ -133,7 +142,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     modes = ("ok", "rpc-error", "rpc-unauthorized", "rpc-not-rpc", "no-database-size",
-             "no-assets", "not-html", "asset-missing", "asset-html")
+             "no-assets", "root-assets", "not-html", "asset-missing", "asset-html")
     for mode in modes:
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         httpd.mode = mode
@@ -261,6 +270,7 @@ assert module.human_bytes(0) == "0 B"
 assert module.human_bytes(1024) == "1.0 KiB"
 assert module.human_bytes(4096) == "4.0 KiB"
 
+ROOT_THEME_DOC = '<script src="/app.js"></script><link rel="stylesheet" href="/style.css">'
 document = (
     '<script type="module" src="/assets/entry-index-0badc0de.js"></script>'
     '<link rel="stylesheet" href="/assets/entry-index-0badc0de.css">'
@@ -278,6 +288,8 @@ assert module.check_theme_document(200, "text/html; charset=utf-8", document)[0]
 assert module.check_theme_document(200, "application/json", document)[0] is False
 assert module.check_theme_document(404, "text/html", document)[0] is False
 assert module.check_theme_document(200, "text/html", "<html></html>")[0] is False
+assert module.theme_asset_path(ROOT_THEME_DOC) == "/app.js"
+assert module.check_theme_document(200, "text/html", ROOT_THEME_DOC)[0] is True
 assert module.check_asset_response(200, "text/javascript; charset=utf-8", 18)[0] is True
 assert module.check_asset_response(200, "text/html", 18)[0] is False
 assert module.check_asset_response(404, "text/javascript", 0)[0] is False
@@ -312,7 +324,8 @@ run_case rpc-error rpc-error 1 "Permission denied"
 run_case rpc-unauthorized rpc-unauthorized 1 "401.*rejected"
 run_case rpc-not-rpc rpc-not-rpc 1 "status is 'error'.*boom"
 run_case no-database-size no-database-size 1 "carries no database size"
-run_case no-assets no-assets 1 "references no build under /assets/ or /themes/"
+run_case no-assets no-assets 1 "references no same-origin JavaScript or stylesheet"
+run_case root-assets root-assets 0 "3/3 checks passed"
 run_case not-html not-html 1 "not text/html"
 run_case asset-missing asset-missing 1 "answered 404, not 200"
 run_case asset-html asset-html 1 "fell through to the document"

@@ -2,8 +2,18 @@ package admin
 
 import (
 	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/gin-gonic/gin"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 // A preview that exceeds the size limit must still return the part that fits, with a notice that says so.
@@ -158,5 +168,234 @@ func TestTruncationIsAConditionNotAFailure(t *testing.T) {
 	// The content that fits is still there — that is the whole point of reporting rather than failing.
 	if got := buffer.String(); got != "0123" {
 		t.Errorf("buffer holds %q, want the first 4 bytes", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The diagnostic summary's runtime block: process and connection-pool readings
+// ---------------------------------------------------------------------------
+
+// pprofSummaryData runs the summary handler and returns the decoded "data" object.
+func pprofSummaryData(t *testing.T) map[string]any {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodGet, "/api/admin/pprof/summary", nil)
+
+	pprofSummaryHandler(context)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("summary status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	var envelope struct {
+		Status string         `json:"status"`
+		Data   map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("summary is not valid JSON: %v", err)
+	}
+	if envelope.Status != "success" {
+		t.Fatalf("summary status field = %q, want success", envelope.Status)
+	}
+	return envelope.Data
+}
+
+// runtimeBlock pulls the runtime object out of the decoded summary.
+func runtimeBlock(t *testing.T, data map[string]any) map[string]any {
+	t.Helper()
+	block, ok := data["runtime"].(map[string]any)
+	if !ok {
+		t.Fatalf("summary has no runtime object: %v", data)
+	}
+	return block
+}
+
+// The runtime block must carry the process readings with a stable JSON type, and the existing
+// counters must still be there — the frontend renders one list, and a missing field means a blank
+// row rather than an error.
+func TestPprofSummaryReportsProcessReadings(t *testing.T) {
+	runtimeValues := runtimeBlock(t, pprofSummaryData(t))
+
+	if _, ok := runtimeValues["goroutines"].(float64); !ok {
+		t.Errorf("runtime.goroutines is missing or not a number: %v", runtimeValues["goroutines"])
+	}
+	if _, ok := runtimeValues["memory"].(map[string]any); !ok {
+		t.Errorf("runtime.memory is missing or not an object: %v", runtimeValues["memory"])
+	}
+
+	rss, ok := runtimeValues["rss_bytes"].(float64)
+	if !ok {
+		t.Fatalf("runtime.rss_bytes is missing or not a number: %v", runtimeValues["rss_bytes"])
+	}
+	// 0 means "unknown" on platforms without /proc/self/statm, so the assertion follows the
+	// platform rather than pinning one value: on Linux this process must read its own RSS, and
+	// nowhere else may it claim a reading it cannot produce.
+	if runtime.GOOS == "linux" {
+		if rss <= 0 {
+			t.Errorf("runtime.rss_bytes = %v on linux, want the process's resident size", rss)
+		}
+	} else if rss != 0 {
+		t.Errorf("runtime.rss_bytes = %v on %s, want 0 (unknown): only Linux provides /proc/self/statm", rss, runtime.GOOS)
+	}
+
+	uptime, ok := runtimeValues["uptime_seconds"].(float64)
+	if !ok {
+		t.Fatalf("runtime.uptime_seconds is missing or not a number: %v", runtimeValues["uptime_seconds"])
+	}
+	if uptime < 0 {
+		t.Errorf("runtime.uptime_seconds = %v, want a non-negative number of seconds", uptime)
+	}
+}
+
+// The pool block is reported when the main database is ready and omitted when it is not — a
+// field carrying fake zeroes would tell the operator "the pool is empty" when the truth is
+// "there is no pool yet".
+func TestPprofSummaryReportsTheMainDatabasePool(t *testing.T) {
+	runtimeValues := runtimeBlock(t, pprofSummaryData(t))
+
+	pool, present := runtimeValues["db_pool"]
+	ready := dbcore.ReadyDBInstance() != nil
+	if !ready {
+		if present {
+			t.Errorf("runtime.db_pool is present (%v) although the main database is not initialised", pool)
+		}
+		return
+	}
+	poolValues, ok := pool.(map[string]any)
+	if !ok {
+		t.Fatalf("runtime.db_pool is missing or not an object while the main database is ready: %v", pool)
+	}
+	for _, field := range []string{"open", "in_use", "idle", "wait_count", "wait_duration_ms"} {
+		value, ok := poolValues[field].(float64)
+		if !ok {
+			t.Errorf("db_pool.%s is missing or not a number: %v", field, poolValues[field])
+			continue
+		}
+		if value < 0 {
+			t.Errorf("db_pool.%s = %v, want a non-negative counter", field, value)
+		}
+	}
+}
+
+// processRSSBytes must report a reading only where it can read one.
+func TestProcessRSSBytes(t *testing.T) {
+	rss := processRSSBytes()
+	if runtime.GOOS == "linux" {
+		if rss == 0 {
+			t.Error("processRSSBytes() = 0 on linux, where /proc/self/statm is available")
+		}
+		return
+	}
+	if rss != 0 {
+		t.Errorf("processRSSBytes() = %d on %s, want 0 (unknown)", rss, runtime.GOOS)
+	}
+}
+
+// databasePoolSnapshot maps sql.DBStats onto the response shape, and a nil handle stays nil.
+func TestDatabasePoolSnapshotReadsConnectionStats(t *testing.T) {
+	if got := databasePoolSnapshot(nil); got != nil {
+		t.Errorf("databasePoolSnapshot(nil) = %+v, want nil", got)
+	}
+
+	db, err := gorm.Open(sqlite.Open("file:"+filepath.ToSlash(filepath.Join(t.TempDir(), "pool.db"))), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get sql.DB: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	sqlDB.SetMaxOpenConns(2)
+	sqlDB.SetMaxIdleConns(2)
+	if err := sqlDB.Ping(); err != nil {
+		t.Fatalf("ping test database: %v", err)
+	}
+
+	snapshot := databasePoolSnapshot(sqlDB)
+	if snapshot == nil {
+		t.Fatal("databasePoolSnapshot returned nil for a live pool")
+	}
+	if snapshot.Open < 1 {
+		t.Errorf("open = %d after a query, want at least one connection", snapshot.Open)
+	}
+	if snapshot.InUse != 0 {
+		t.Errorf("in_use = %d while no query is running", snapshot.InUse)
+	}
+	if snapshot.Idle < 0 || snapshot.WaitCount < 0 || snapshot.WaitDurationMS < 0 {
+		t.Errorf("pool counters must be non-negative: %+v", snapshot)
+	}
+}
+
+// The pool is omitted before the main database exists; once it does, the snapshot is real.
+func TestMainDatabasePool(t *testing.T) {
+	if dbcore.ReadyDBInstance() == nil {
+		if got := mainDatabasePool(); got != nil {
+			t.Errorf("mainDatabasePool() = %+v before the database is ready, want nil", got)
+		}
+		return
+	}
+	if got := mainDatabasePool(); got == nil {
+		t.Fatal("mainDatabasePool() = nil although the main database is ready")
+	}
+}
+
+// The JSON names are the contract frontend-nav renders against: pin them, so a rename here fails
+// this test instead of silently blanking the diagnostic page.
+func TestPprofDatabasePoolJSONContract(t *testing.T) {
+	raw, err := json.Marshal(pprofDatabasePool{Open: 3, InUse: 1, Idle: 2, WaitCount: 4, WaitDurationMS: 5})
+	if err != nil {
+		t.Fatalf("marshal pool: %v", err)
+	}
+	var decoded map[string]float64
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("the pool object is not a flat number object: %v", err)
+	}
+	want := map[string]float64{
+		"open":             3,
+		"in_use":           1,
+		"idle":             2,
+		"wait_count":       4,
+		"wait_duration_ms": 5,
+	}
+	if len(decoded) != len(want) {
+		t.Errorf("db_pool has fields %v, want exactly %v", decoded, want)
+	}
+	for field, value := range want {
+		if got, ok := decoded[field]; !ok || got != value {
+			t.Errorf("db_pool.%s = %v (present: %v), want %v", field, got, ok, value)
+		}
+	}
+}
+
+// rss_bytes and uptime_seconds are always present (0 means unknown for RSS); db_pool exists only
+// when the pool does.
+func TestPprofSummaryPoolFieldIsOmittedWhenUnavailable(t *testing.T) {
+	var summary pprofSummary
+	summary.Runtime.RSSBytes = 123
+	summary.Runtime.UptimeSeconds = 45
+
+	raw, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatalf("marshal summary: %v", err)
+	}
+	encoded := string(raw)
+	if strings.Contains(encoded, "db_pool") {
+		t.Errorf("a summary without a pool still encodes db_pool: %s", encoded)
+	}
+	for _, want := range []string{`"rss_bytes":123`, `"uptime_seconds":45`} {
+		if !strings.Contains(encoded, want) {
+			t.Errorf("summary does not encode %s: %s", want, encoded)
+		}
+	}
+
+	summary.Runtime.DBPool = &pprofDatabasePool{Open: 1}
+	raw, err = json.Marshal(summary)
+	if err != nil {
+		t.Fatalf("marshal summary with a pool: %v", err)
+	}
+	if !strings.Contains(string(raw), `"db_pool"`) {
+		t.Errorf("a summary with a pool does not encode db_pool: %s", raw)
 	}
 }

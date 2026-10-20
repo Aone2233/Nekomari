@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { SettingCard, SettingCardLabel } from "@/components/admin/SettingCard";
 import { formatBytes } from "@/utils/unitHelper";
+import { formatUptime } from "@/utils/timeFormat";
 
 const pprofProfileNameSchema = z.enum([
   "cpu",
@@ -34,6 +35,16 @@ const pprofProfileSchema = z.object({
   timed: z.boolean().optional(),
   preview: pprofEndpointSchema.optional(),
 });
+// A sql.DB pool snapshot. The keys are the wire field names: this page is a diagnostics view,
+// and five new locale keys to translate "open / in_use / idle / wait" would buy nothing that the
+// numbers underneath do not already say. See poolText for how they are presented.
+const pprofDbPoolSchema = z.object({
+  open: z.number().int().nonnegative(),
+  in_use: z.number().int().nonnegative(),
+  idle: z.number().int().nonnegative(),
+  wait_count: z.number().int().nonnegative(),
+  wait_duration_ms: z.number().finite().nonnegative(),
+});
 const pprofSummarySchema = z.object({
   profiles: z.array(pprofProfileSchema),
   runtime: z.object({
@@ -44,6 +55,14 @@ const pprofSummarySchema = z.object({
       heap_objects: z.number().int().nonnegative(),
       sys: z.number().finite().nonnegative(),
     }),
+    // Added after the page shipped, so all four are optional: a panel still on the older server
+    // must keep rendering this page instead of failing the whole response as "invalid summary".
+    // rss_bytes is 0 on platforms where the server cannot read it, which is "unavailable" rather
+    // than "zero bytes" — the renderer hides it instead of printing "0 B".
+    rss_bytes: z.number().finite().nonnegative().optional(),
+    uptime_seconds: z.number().finite().nonnegative().optional(),
+    db_pool: pprofDbPoolSchema.optional(),
+    metrics_db: pprofDbPoolSchema.optional(),
   }),
   duration: z.object({
     default_seconds: z.number().int().min(1).max(30),
@@ -58,6 +77,7 @@ const pprofSummaryResponseSchema = z.object({
 
 type PprofProfile = z.infer<typeof pprofProfileSchema>;
 type PprofSummary = z.infer<typeof pprofSummarySchema>;
+type PprofDbPool = z.infer<typeof pprofDbPoolSchema>;
 type PprofPreview = {
   profile: PprofProfile;
   text: string;
@@ -101,13 +121,43 @@ async function responseError(response: Response, fallback: string): Promise<stri
   return `${fallback} (${response.status})`;
 }
 
-function OverviewMetric({ label, value }: { label: string; value: string }) {
+/**
+ * poolText renders one connection pool.
+ *
+ * The state words are the wire field names on purpose (see pprofDbPoolSchema): the labels this
+ * page shows are data, and the one thing a reader must not have to do here is map a translated
+ * sentence back onto the field they are debugging. `wait` is included only when something
+ * actually waited, so a healthy pool stays three numbers wide.
+ */
+function poolText(pool: PprofDbPool): string {
+  const parts = [`open ${pool.open}`, `in_use ${pool.in_use}`, `idle ${pool.idle}`];
+  if (pool.wait_count > 0) {
+    parts.push(`wait ${pool.wait_count} (${Math.round(pool.wait_duration_ms)} ms)`);
+  }
+  return parts.join(" · ");
+}
+
+function OverviewMetric({
+  label,
+  value,
+  tone,
+  testId,
+}: {
+  label: string;
+  value: string;
+  /** Amber marks a figure that deserves a second look (someone waited on a connection). */
+  tone?: "amber";
+  testId?: string;
+}) {
   return (
-    <div className="min-w-0 border-b border-[var(--gray-a5)] py-3 last:border-b-0">
+    <div
+      className="min-w-0 border-b border-[var(--gray-a5)] py-3 last:border-b-0"
+      data-testid={testId}
+    >
       <Text as="div" size="1" color="gray">
         {label}
       </Text>
-      <Text as="div" size="3" weight="medium" className="break-words">
+      <Text as="div" size="3" weight="medium" className="break-words" color={tone}>
         {value}
       </Text>
     </div>
@@ -415,28 +465,67 @@ export default function PprofPage() {
         description={t("pprof.runtime_overview_description")}
       >
         {summary ? (
-          <div className="grid w-full grid-cols-1 gap-x-6 sm:grid-cols-2 lg:grid-cols-5">
-            <OverviewMetric
-              label={t("pprof.goroutines")}
-              value={summary.runtime.goroutines.toLocaleString()}
-            />
-            <OverviewMetric
-              label={t("pprof.heap_alloc")}
-              value={formatBytes(summary.runtime.memory.heap_alloc)}
-            />
-            <OverviewMetric
-              label={t("pprof.heap_inuse")}
-              value={formatBytes(summary.runtime.memory.heap_inuse)}
-            />
-            <OverviewMetric
-              label={t("pprof.heap_objects")}
-              value={summary.runtime.memory.heap_objects.toLocaleString()}
-            />
-            <OverviewMetric
-              label={t("pprof.runtime_sys")}
-              value={formatBytes(summary.runtime.memory.sys)}
-            />
-          </div>
+          <Flex direction="column" gap="3" className="w-full">
+            <div className="grid w-full grid-cols-1 gap-x-6 sm:grid-cols-2 lg:grid-cols-5">
+              <OverviewMetric
+                label={t("pprof.goroutines")}
+                value={summary.runtime.goroutines.toLocaleString()}
+              />
+              <OverviewMetric
+                label={t("pprof.heap_alloc")}
+                value={formatBytes(summary.runtime.memory.heap_alloc)}
+              />
+              <OverviewMetric
+                label={t("pprof.heap_inuse")}
+                value={formatBytes(summary.runtime.memory.heap_inuse)}
+              />
+              <OverviewMetric
+                label={t("pprof.heap_objects")}
+                value={summary.runtime.memory.heap_objects.toLocaleString()}
+              />
+              <OverviewMetric
+                label={t("pprof.runtime_sys")}
+                value={formatBytes(summary.runtime.memory.sys)}
+              />
+              {/* "RSS" has no locale key and does not need one: it is the acronym admins use, and
+                  0 means the server could not read it (non-Linux), not that the process is empty. */}
+              {summary.runtime.rss_bytes ? (
+                <OverviewMetric
+                  label="RSS"
+                  value={formatBytes(summary.runtime.rss_bytes)}
+                  testId="pprof-metric-rss"
+                />
+              ) : null}
+              {summary.runtime.uptime_seconds !== undefined ? (
+                <OverviewMetric
+                  label={t("nodeCard.uptime")}
+                  value={formatUptime(summary.runtime.uptime_seconds, t)}
+                  testId="pprof-metric-uptime"
+                />
+              ) : null}
+            </div>
+            {summary.runtime.db_pool || summary.runtime.metrics_db ? (
+              <div className="grid w-full grid-cols-1 gap-x-6 sm:grid-cols-2">
+                {summary.runtime.db_pool ? (
+                  <OverviewMetric
+                    label={t("settings.database.main")}
+                    value={poolText(summary.runtime.db_pool)}
+                    testId="pprof-db-pool"
+                    // 有连接真的等过（wait_count>0）才标黄：空闲池是常态，标黄会把常态噪声化。
+                    tone={summary.runtime.db_pool.wait_count > 0 ? "amber" : undefined}
+                  />
+                ) : null}
+                {summary.runtime.metrics_db ? (
+                  <OverviewMetric
+                    label={t("settings.database.monitoring")}
+                    value={poolText(summary.runtime.metrics_db)}
+                    testId="pprof-metrics-db-pool"
+                    tone={summary.runtime.metrics_db.wait_count > 0 ? "amber" : undefined}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+          </Flex>
         ) : (
           <Text size="2" color="gray" className="w-full py-3">
             {summaryLoading ? t("loading") : t("pprof.summary_unavailable")}

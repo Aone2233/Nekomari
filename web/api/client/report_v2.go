@@ -206,12 +206,13 @@ func WebSocketV2RPC(c *gin.Context) {
 	agent_runtime.SetConnectedClients(uuid, conn)
 	agent_runtime.MarkV2Client(uuid)
 	// The agent only holds the rollout target in memory, so a node that restarted would otherwise resume
-	// tracking the newest release and silently undo its part of a rollout. The panel persists the target per
-	// node, so this is where a connecting (or reconnecting) node re-learns it. A failure is logged and the
+	// tracking the newest release and silently undo its part of a rollout; symmetrically, a node that was
+	// offline when its pin was cleared has to be told the target is gone. The panel persists both facts per
+	// node, so this is where a connecting (or reconnecting) node re-learns them. A failure is logged and the
 	// connection continues: the next dispatch re-sends the target anyway, and refusing the connection would
 	// turn a display problem into a monitoring outage.
-	if err := resendPersistedAgentUpdateTarget(conn, uuid, clients.GetTargetVersion); err != nil {
-		logger.Errorf("client-api", "failed to re-send the persisted agent update target to client %s: %v", uuid, err)
+	if err := resendPersistedAgentUpdateTarget(conn, uuid, clients.AgentUpdateState, clients.SetTargetVersionClearPending); err != nil {
+		logger.Errorf("client-api", "failed to reconcile the persisted agent update state for client %s: %v", uuid, err)
 	}
 	go notifierOnline(uuid, conn.ID)
 	defer func() {
@@ -260,26 +261,43 @@ type agentUpdateTargetWriter interface {
 	WriteJSON(v any) error
 }
 
-// resendPersistedAgentUpdateTarget re-sends the version the panel has pinned for this node, so a node that
-// connects after a panel restart (or after being offline during the rollout) re-learns its target.
+// resendPersistedAgentUpdateTarget reconciles one connecting node with the rollout state the panel has
+// persisted for it. Two states need a message:
 //
-// An empty target means the node tracks releases and nothing is sent: the agent's default is already "follow
-// the newest release", so an explicit clear event would only be redundant traffic on every connect. A lookup
-// error is returned for the caller to log; a write error is returned because the caller decides whether the
-// connection survives it.
+//   - a pinned target, because a node that restarted mid-rollout would otherwise resume tracking the newest
+//     release and silently undo its part of the rollout;
+//   - a clear that the node never received, because it was offline when the operator removed the pin. The
+//     agent keeps its target in memory only, so an empty target alone does not stop it: it needs to be told.
 //
-// resendPersistedAgentUpdateTarget 重新下发面板为该节点钉住的版本，使面板重启后、或 rollout 期间离线后
-// 才连上的节点重新获知目标。
+// The normal state — no pin and nothing pending — sends nothing: the agent's default is already "follow the
+// newest release", so a clear event on every connect would be pure noise.
 //
-// 空目标表示节点跟随发布，此时不发送：agent 的默认行为已经是“跟随最新发布”，每次连接都发一次清除事件
-// 只是多余的流量。查询错误返回给调用方记录日志，写入错误同样返回，由调用方决定连接是否继续。
-func resendPersistedAgentUpdateTarget(conn agentUpdateTargetWriter, uuid string, lookup func(string) (string, error)) error {
-	stored, err := lookup(uuid)
+// A delivered clear is acknowledged by clearing the pending marker, so the debt is paid exactly once. A
+// failed write leaves the marker in place and the next connect retries it. Lookup and write errors are
+// returned for the caller to log; the connection itself survives them.
+//
+// resendPersistedAgentUpdateTarget 让一个刚连上的节点与其在面板侧持久化的 rollout 状态对齐。只有两种
+// 状态需要发消息：
+//
+//   - 已钉的目标（节点重启后会跟随最新发布，从而静默回退 rollout）；
+//   - 节点从未收到的清除（清除时节点离线；agent 只把目标存在内存里，仅把面板记录置空并不会让它停下）。
+//
+// 常态（无钉版本、无待下发清除）不发送任何消息：agent 默认就跟随最新发布，每次连接都发清除事件只是噪音。
+//
+// 清除真正送达后会把 pending 标记清掉，因此这笔债只结算一次；写入失败则保留标记，下次连接重试。查询与
+// 写入错误都返回给调用方记录日志，连接本身不受影响。
+func resendPersistedAgentUpdateTarget(
+	conn agentUpdateTargetWriter,
+	uuid string,
+	lookup func(string) (string, bool, error),
+	clearPending func(string, bool) error,
+) error {
+	stored, pendingClear, err := lookup(uuid)
 	if err != nil {
-		return fmt.Errorf("read the persisted rollout target: %w", err)
+		return fmt.Errorf("read the persisted rollout state: %w", err)
 	}
 	target := strings.TrimSpace(stored)
-	if target == "" {
+	if target == "" && !pendingClear {
 		return nil
 	}
 	if err := conn.WriteJSON(v2.Request{
@@ -288,6 +306,14 @@ func resendPersistedAgentUpdateTarget(conn agentUpdateTargetWriter, uuid string,
 		Params:  v2.UpdateParams{Target: target},
 	}); err != nil {
 		return fmt.Errorf("write the agent update request: %w", err)
+	}
+	if !pendingClear {
+		return nil
+	}
+	// The node has now been told; the debt is paid. Failing to record that is
+	// reported but harmless: the next connect would send the clear again.
+	if err := clearPending(uuid, false); err != nil {
+		return fmt.Errorf("clear the pending rollout reset: %w", err)
 	}
 	return nil
 }

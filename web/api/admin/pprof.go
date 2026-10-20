@@ -3,19 +3,23 @@ package admin
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"runtime"
 	runtimepprof "runtime/pprof"
 	"runtime/trace"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/web/api"
+	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -133,11 +137,33 @@ type pprofMemorySummary struct {
 	Sys         uint64 `json:"sys"`
 }
 
+// pprofDatabasePool is a snapshot of one database/sql connection pool.
+//
+// 字段名直接用 sql.DBStats 的语义，前端不需要换算：open 是当前打开的连接（含空闲），
+// in_use 是正被查询占用的，idle 是池里可复用的，wait_count 是「想要连接但池已满」的累计
+// 次数，wait_duration_ms 是为这些等待累计花掉的毫秒数。wait_count 持续增长说明池太小、或
+// 有慢查询长期占住连接 —— 诊断页要回答的正是这个问题，所以这五个字段都取累计值而不是瞬时值。
+type pprofDatabasePool struct {
+	Open           int   `json:"open"`
+	InUse          int   `json:"in_use"`
+	Idle           int   `json:"idle"`
+	WaitCount      int64 `json:"wait_count"`
+	WaitDurationMS int64 `json:"wait_duration_ms"`
+}
+
 type pprofSummary struct {
 	Profiles []pprofProfileInfo `json:"profiles"`
 	Runtime  struct {
 		Goroutines int                `json:"goroutines"`
 		Memory     pprofMemorySummary `json:"memory"`
+		// RSSBytes 是进程的常驻内存。读不到时是 0，含义是「未知」而不是「零字节」：
+		// 目前只有 Linux 提供 /proc/self/statm，其它平台一律 0，前端据此隐藏该列。
+		RSSBytes uint64 `json:"rss_bytes"`
+		// UptimeSeconds 是进程启动至今的整秒数。
+		UptimeSeconds int64 `json:"uptime_seconds"`
+		// DBPool 是主库的连接池；主库尚未初始化（启动早期）时为 nil，字段整个省略 ——
+		// 省略比给一组假的 0 更诚实，前端按「字段不存在」处理即可。
+		DBPool *pprofDatabasePool `json:"db_pool,omitempty"`
 	} `json:"runtime"`
 	Duration struct {
 		DefaultSeconds int `json:"default_seconds"`
@@ -167,6 +193,75 @@ func RegisterPprofRoutes(group *gin.RouterGroup) {
 	for _, name := range runtimeProfileNames {
 		pprofGroup.GET("/"+name, downloadRuntimeProfile(name))
 	}
+}
+
+// processStartTime is the moment this package was initialised, which is what "how long has this
+// process been up" means for a diagnostic page. Reading the real start time differs per platform
+// (/proc/self/stat on Linux, GetProcessTimes on Windows) and would buy at most the few
+// milliseconds between process start and package init.
+var processStartTime = time.Now()
+
+// processRSSBytes returns the resident set size of this process, or 0 when it cannot be read.
+//
+// Only Linux's /proc/self/statm is read: its second field is the number of resident pages, and
+// multiplying by the page size gives the same figure ps/top report. No new dependency and no
+// platform API — the file simply does not exist elsewhere, so the function returns 0 there. In
+// the response that 0 therefore means **unknown**, not zero bytes (see the field comment and the
+// frontend contract in the task); the panel hides the reading instead of showing a false zero.
+func processRSSBytes() uint64 {
+	raw, err := os.ReadFile("/proc/self/statm")
+	if err != nil {
+		return 0
+	}
+	fields := strings.Fields(string(raw))
+	if len(fields) < 2 {
+		return 0
+	}
+	pages, err := strconv.ParseUint(fields[1], 10, 64)
+	if err != nil {
+		return 0
+	}
+	return pages * uint64(os.Getpagesize())
+}
+
+// databasePoolSnapshot turns sql.DBStats into the shape the diagnostic page renders.
+//
+// Only Stats() is used — no Ping, no new connection. The page exists to be readable when a slow
+// query has filled the pool, and anything that waits for a connection would block it exactly
+// when it is needed.
+func databasePoolSnapshot(db *sql.DB) *pprofDatabasePool {
+	if db == nil {
+		return nil
+	}
+	stats := db.Stats()
+	return &pprofDatabasePool{
+		Open:           stats.OpenConnections,
+		InUse:          stats.InUse,
+		Idle:           stats.Idle,
+		WaitCount:      stats.WaitCount,
+		WaitDurationMS: stats.WaitDuration.Milliseconds(),
+	}
+}
+
+// mainDatabasePool returns the main database's connection pool, or nil before it is initialised.
+//
+// ReadyDBInstance deliberately does not trigger initialisation (and never calls Fatalf), so an
+// early diagnostic request omits the field instead of opening the database.
+//
+// The metric store's pool is not reported: it lives inside pkg/metric's Store, which exports no
+// *sql.DB or pool-stat accessor. Adding metrics_db therefore needs a new accessor in pkg/metric
+// (or internal/metricstore) first — out of scope for this change, and a nil placeholder here
+// would be a field that never carries data.
+func mainDatabasePool() *pprofDatabasePool {
+	db := dbcore.ReadyDBInstance()
+	if db == nil {
+		return nil
+	}
+	sqlDB, err := db.DB()
+	if err != nil || sqlDB == nil {
+		return nil
+	}
+	return databasePoolSnapshot(sqlDB)
 }
 
 // pprofSummaryHandler returns the current profile inventory and inexpensive
@@ -204,6 +299,9 @@ func pprofSummaryHandler(c *gin.Context) {
 	}
 
 	response.Runtime.Goroutines = runtime.NumGoroutine()
+	response.Runtime.RSSBytes = processRSSBytes()
+	response.Runtime.UptimeSeconds = int64(time.Since(processStartTime) / time.Second)
+	response.Runtime.DBPool = mainDatabasePool()
 	response.Runtime.Memory = pprofMemorySummary{
 		HeapAlloc:   mem.HeapAlloc,
 		HeapInuse:   mem.HeapInuse,
