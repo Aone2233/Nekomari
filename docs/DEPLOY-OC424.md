@@ -40,6 +40,21 @@ is the offline test for the script (fake panel + `docker`/`sqlite3` stubs; no ho
 The rollout sections below predate the script; their **Verification** rows are what it prints,
 so from the next rollout on that row can be filled in from its output.
 
+## v1.6.25 rollout (2026-10-20)
+
+Panel and deploy-script release; agents stay on v1.6.24.
+
+| Item | Evidence |
+|---|---|
+| Release | tag `v1.6.25` on `371d688`; release run `39409527520`, Docker run `39410362266` successful |
+| Pinned panel image | `ghcr.io/aone2233/nekomari:v1.6.25@sha256:a8b311dedfbaacf0edd13cbe9bab14c92e91e7d23fddafef634f364f2d3397bf` (arm64) |
+| Backup | `/opt/nekomari/backups/pre-v1.6.25-20261020T104011Z`; pre-deploy `quick_check` `ok` |
+| Panel startup | 21 s to `/api/public` 200; `panel-upgrade-check.sh` **9 passed, 0 failed, 0 skipped**; /api/version = v1.6.25 hash 371d688; 0 ERROR |
+| Auth smoke | `panel-auth-smoke.py` 3/3 with the API key (admin RPC + HTML + theme asset) after the token-read step-up change |
+| Agent fleet | unchanged at **12/12 v1.6.24**; no agent binary changes in this release |
+| Changes | fractional ping summaries/UI; `admin:getClientToken` sensitive for sessions (API key exemption unchanged); OpenRC installer/upgrade script; protocol contract test |
+| Verification | BERO panel Go test/vet/build + frontend test/lint/build; local install harness 37/37, upgrade harness 35/35; CI 7/7 |
+
 ## v1.6.24 rollout (2026-10-20)
 
 Ping gains sub-millisecond precision. Both the panel and the agents were upgraded.
