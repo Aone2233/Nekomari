@@ -8,6 +8,7 @@ import (
 	"github.com/Aone2233/nekomari/internal/sla"
 	"github.com/Aone2233/nekomari/pkg/metric"
 	"github.com/Aone2233/nekomari/pkg/rpc"
+	"github.com/Aone2233/nekomari/utils/notifier"
 )
 
 // public.sla.go
@@ -132,6 +133,7 @@ func publicGetSlaReportWithStore(ctx context.Context, params publicSlaReportPara
 		Interval:    interval,
 		WindowLabel: label,
 		Clamped:     clampReason,
+		Exclusions:  slaMaintenanceExclusions(entityIDs, start, end),
 		Now:         now,
 	})
 	if err != nil {
@@ -148,6 +150,41 @@ func publicGetSlaReportWithStore(ctx context.Context, params publicSlaReportPara
 		Count:           len(report.Nodes),
 		Presets:         presets,
 	}, nil
+}
+
+// slaMaintenanceExclusions reads each entity's maintenance windows and clips them to
+// the report window, so the report can subtract scheduled time from availability,
+// coverage, latency and incidents.
+//
+// One read per entity against the notifier's cached window list: the SLA report covers
+// a fleet, and turning that into one database query per node would be a new cost on a
+// guest-readable path. A node with no window contributes no entry, so a deployment that
+// never schedules maintenance passes an empty map and gets exactly the old report.
+func slaMaintenanceExclusions(entityIDs []string, start, end time.Time) map[string][]sla.Interval {
+	exclusions := make(map[string][]sla.Interval, len(entityIDs))
+	for _, entityID := range entityIDs {
+		windows := notifier.WindowsFor(entityID, start, end)
+		if len(windows) == 0 {
+			continue
+		}
+		intervals := make([]sla.Interval, 0, len(windows))
+		for _, window := range windows {
+			windowStart, windowEnd := window.Start, window.End
+			if windowStart.Before(start) {
+				windowStart = start
+			}
+			if windowEnd.After(end) {
+				windowEnd = end
+			}
+			if windowStart.Before(windowEnd) {
+				intervals = append(intervals, sla.Interval{Start: windowStart, End: windowEnd})
+			}
+		}
+		if len(intervals) > 0 {
+			exclusions[entityID] = intervals
+		}
+	}
+	return exclusions
 }
 
 // resolveSlaWindow turns the request into a window, a label and a clamp reason.

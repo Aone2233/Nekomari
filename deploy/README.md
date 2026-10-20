@@ -14,7 +14,7 @@ for the incident that rule came from.
 | Script | What it does |
 |---|---|
 | `agent-footprint.sh` | Measures what the agent costs the host it runs on: resident memory, CPU over a window, the agent's own socket byte counters, disk writes, threads, file descriptors and its effective capabilities. Takes `[unit] [system\|user] [window-seconds]` and works for a user unit with the agent running as another account. Redacts the agent token out of `ExecStart`. Results and the resulting minimum-spec recommendation are in `docs/AGENT-FOOTPRINT.md`. |
-| `deploy-verify.sh` | Proves a **published release** actually deploys: downloads the assets, checks `SHA256SUMS.txt`, starts the server on its own port and data directory, completes the first-run install via the API, confirms the panel's own routes serve the panel's own documents (`/install` by its title *and* its `/assets/entry-*` naming, `/database-recovery` by its `307` to `/`, `/admin` by its title), connects an agent, confirms the node reports. Cleans up after itself. Runs in CI as the `verify` job. |
+| `deploy-verify.sh` | Proves a **published release** actually deploys: downloads the assets, checks `SHA256SUMS.txt`, starts the server on its own port and data directory, completes the first-run install via the API, confirms the panel's own routes serve the panel's own documents (`/install` by its title *and* its `/assets/entry-*` naming, `/database-recovery` by its `307` to `/`, `/admin` by its title), connects an agent, confirms the node reports. Cleans up after itself. Runs in CI as the `verify` job. When `KOMARI_BASE_URL` and `KOMARI_API_KEY` are also set it adds one step against *that* panel — the admin API and the theme it serves — and skips it otherwise. |
 | `verify-image.sh` | Pulls a published container image and proves the binary inside it actually starts. Listing tags needs `read:packages`, but that is not the question — the question is whether the binary executes on the image's own base, which is what broke in v0.1.1 (glibc binary in a musl base). |
 | `verify-settings-persist.sh` | Runs a real upgrade (old image → new image) against a **copy** of production data and diffs the settings. Evidence that an update does not reset anything, rather than an assurance. |
 | `test-volume-footgun.sh` | Reproduces the anonymous-volume trap: install without `-v`, recreate the container, watch the settings disappear. |
@@ -35,6 +35,8 @@ for the incident that rule came from.
 | Script | What it does |
 |---|---|
 | `healthcheck.py` | Post-deployment check of the running instance: host services, container, agent unit, databases, API reachability, which nodes are actually reporting, retained history, the ip-info endpoints, private-IP rejection, active theme. |
+| `panel-auth-smoke.py` | The half the anonymous checks cannot see: it calls the **admin API with the panel's API key** (`admin:getDatabaseSize` over `POST /api/rpc2`) and then fetches `/` to confirm the panel serves an HTML document that references a theme build, and that the referenced asset loads as a file rather than as another document. No password, no session cookie, no 2FA code — so it neither needs the account's password nor sends a login notification per run. Reads `KOMARI_BASE_URL` and `KOMARI_API_KEY`; missing either prints `SKIP` and exits 0, which is what lets `deploy-verify.sh` call it unconditionally. |
+| `panel-auth-smoke.test.sh` | Proves the above can fail, which is the whole point: a stub panel answers the same requests with a JSON-RPC error, a 401, a non-JSON-RPC body, an empty result, a document with no build references, a non-HTML document, a 404 asset and an asset served as HTML, and the exit code plus the named reason are pinned for each — alongside the `SKIP` path and direct assertions on the JSON-shape helpers. Offline and deterministic; nothing leaves 127.0.0.1. |
 | `panel-probe.sh` | The always-on version of the check above: every 10 minutes it records the origin TTFB (the only number that implicates the panel, so it has the tight threshold) plus the public TTFB with the `cf-ray` POP and cache status, one line per run. A sample only counts as healthy when curl succeeded, the status is 200 and the body is a valid success envelope — a fast 500 or a refused connection exits nonzero and names the reason instead of looking fast. Installed with `hosts/panel-probe.{service,timer}`. `docs/PERFORMANCE.md` explains how to read it. |
 | `panel-probe.test.sh` | Proves `panel-probe.sh` can actually fail: local listeners serve a 200 envelope, a 200 with an HTML or `{"status":"error"}` body, a 500 and a deliberately slow response, and the assertions pin the exit code and the named reason for each, plus a refused connection and a zero `time_starttransfer`. Offline and deterministic; `PROBE_LOG` points at a temp file, so it never touches `/var/log`. |
 | `node_status.py` | Which nodes are live. Distinguishes a restored-but-silent node from a reconnected one. |
@@ -200,6 +202,26 @@ instead of a bare 401.
 
 `enable-2fa.py` enrols the account and prints the secret and `otpauth://` URI; that
 secret is the only way back in short of the `disable-2fa` CLI.
+
+### Verifying a deployment with the API key instead
+
+`panel-auth-smoke.py` does not log in at all: it authenticates with the panel's API key
+(`Settings -> API key`), which needs no password, no session cookie and no 2FA code, and which
+does not send a login notification the way `/api/login` does. That is what makes it safe to
+run after every upgrade, and from a CI variable.
+
+```bash
+export KOMARI_BASE_URL='https://panel.example.com'   # the deployed panel, not 127.0.0.1
+export KOMARI_API_KEY='<panel: Settings -> API key>'
+python3 deploy/panel-auth-smoke.py                  # exit 0 = passed, 1 = a named check failed
+```
+
+It checks two things the anonymous checks cannot: that `admin:getDatabaseSize` answers for a key
+holder (judged on the **body**, because `/api/rpc2` is JSON-RPC 2.0 and reports a rejection as
+HTTP 200 with an `error` member), and that `GET /` returns an HTML document naming a theme
+build under `/assets/` or `/themes/` whose asset really loads. Missing either variable prints
+`SKIP` and exits 0, so `deploy-verify.sh` and CI can call it unconditionally;
+`deploy/panel-auth-smoke.test.sh` pins both directions.
 
 ## hosts/
 

@@ -31,6 +31,20 @@ export const duration = (nanoseconds: number): string => {
 };
 
 /**
+ * maintenanceExcludedText renders NodeReport.maintenance_excluded_seconds, or "" when nothing
+ * was excluded.
+ *
+ * The wire field is seconds (Go's `int64`) while `duration` speaks nanoseconds, so the
+ * conversion happens here rather than at the call site — a caller that forgot it would print
+ * "0m" for a ten-minute window. Empty means "nothing to explain": zero and a missing field are
+ * the ordinary case, and a badge saying "0m" would suggest an exclusion that did not happen.
+ */
+export const maintenanceExcludedText = (seconds: number | undefined): string => {
+  if (!seconds || seconds <= 0) return "";
+  return duration(seconds * 1_000_000_000);
+};
+
+/**
  * formatTime renders an instant in the reader's language **and names the zone**.
  *
  * 时区必须出现在屏幕上。SLA 报告的存在意义就是「把 URL 发给别人」，而故障起止时刻

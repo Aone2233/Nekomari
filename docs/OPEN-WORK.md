@@ -23,8 +23,10 @@ backoff); and the third one (default-theme disk cache, plugin-hook cap and timer
 memory limit, byte-budgeted reads, the coarse-rollup measurement, and a prompt-based service-worker
 update). v1.6.16 then closed the operational follow-up (upgrade-archive exclusions and retention,
 startup integrity/index check, theme-cache warm-up, H6 target persistence, and maintenance in node
-status; the SLA half of maintenance remains). The memory/performance table is empty as a result;
-the review's remaining items are the feature gaps below, and the dated report holds their evidence.
+status); v1.6.17 relaxed the startup integrity gate after it proved too strict on this database;
+v1.6.18 excluded maintenance windows from SLA, added the daily integrity check, and added an
+authenticated deploy verification script. The memory/performance table is empty as a result; the
+review's remaining items are the feature gaps below, and the dated report holds their evidence.
 
 ## Decisions waiting on the owner
 
@@ -104,7 +106,6 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Item | Where | Why it is still here |
 |---|---|---|
 | Clearing a rollout target while a node is offline is not re-sent, so an agent that has not restarted keeps its in-memory old target | `web/api/client/report_v2.go`, `agent/update/target.go` | v1.6.16 persists non-empty targets and re-sends them on connect; an explicit empty clear is omitted so an unpinned fleet does not get a message on every connection. Decide whether to send it always |
-| Maintenance windows are still normal operation in SLA | `internal/sla` | v1.6.16 added the `maintenance` field to node status and a dashboard badge, but availability and percentiles still count window'ed samples. Needs a defined exclusion rule and tests |
 | `admin:getClientToken` returns an agent credential without the second factor | `web/rpc/jsonrpc/admin.client.go` | The same class as the credential export fixed on 2026-10-19; whether a token read belongs behind step-up is a policy call, and the API-key exemption would still apply |
 | Selected nodes in the admin table have no bulk action | `frontend/src/pages/admin/index.tsx` | The checkboxes only change a count; the bulk page is reachable from the new menu but not from a selection. Wire the selection to it or remove the checkboxes |
 | Feedback from the `2026-10-18` feature audit not yet scheduled | `docs/audits/2026-10-18/feature-gaps.md` §FG-10…FG-20 | Per-item evidence and effort: audit-log filters/export, metric/record CSV export, exec result history, forecast cost column, CPU temperature and disk I/O (agent release), HTTP status/TLS expiry (agent release), single-account/roles decision, English server errors in the UI |
@@ -114,7 +115,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Item | Where | Why it is still here |
 |---|---|---|
 | Nine of ten nodes still run the agent as root | `docs/DEPLOY-OC424.md` | The NOSLA pattern (unprivileged user + `AmbientCapabilities=CAP_NET_RAW`) works; JPKD2 is Alpine, which has no `setcap`. Moving them is a fleet-wide change with its own risk |
-| Release verification does not exercise an installed theme, and there is no authenticated admin smoke test against the real panel | `deploy/deploy-verify.sh` | Both were proposed in the v0.1.19 review; the arm64 leg was added 2026-10-13, these two were not |
+| The authenticated deploy check has not been run against production | `deploy/panel-auth-smoke.py` | v1.6.18 added the script and the offline harness (CI), but a real panel run needs an API key and a rollout window; it has not been exercised against OC424 yet |
 | Release artifacts have checksums but no SBOM, provenance attestation or signed tag | `.github/workflows/release.yml` | The pipeline is otherwise gated by CI; adding `attest-build-provenance` and an SBOM is a workflow change with its own contract tests |
 | The panel's own `data/backup/upgrade-*.zip` archives are still on the same disk as the databases | `database/dbcore/dbcore.go` | **Waiting on you**: it needs a destination and an authorisation. One off-host copy exists (MAC-WAN, verified) |
 | Archive pruning only happens after an upgrade | `deploy/prune-upgrade-backups.sh` | v1.6.17 keeps the three newest archives (data/backup went from 5.5 GB to 1.6 GB), but a panel that never upgrades never prunes; schedule the script or fold it into the hourly maintenance |

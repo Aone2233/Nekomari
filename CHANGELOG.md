@@ -8,6 +8,28 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.6.18] — 2026-10-20
+
+The maintenance and verification follow-up. Panel-side only: `agent/**/*.go` and
+`protocol/` are untouched.
+
+- **Maintenance windows are excluded from SLA.** A sample bucket that overlaps a window is removed
+  from availability, latency percentiles and outage incidents; the coverage denominator drops the
+  same slots, a fully covered window reports "no data" instead of 100%, and an outage is not
+  merged across a window. `NodeReport.maintenance_excluded_seconds` reports how much of the
+  report window was excluded. The notifier's cached window list is reused, so this adds no
+  database query path.
+- **The main database is checked daily.** A scheduled `PRAGMA quick_check` plus the
+  authentication-index check runs every 24 hours and logs its result; it never blocks serving.
+  This complements the startup check (advisory since v1.6.17).
+- **Deployment verification can now check an authenticated panel and a loaded theme.**
+  `deploy/panel-auth-smoke.py` uses `KOMARI_BASE_URL` and `KOMARI_API_KEY` to call
+  `admin:getDatabaseSize` (a JSON-RPC error is not success) and to fetch the bundle the document
+  references, so a theme that did not load is a failure. Missing variables are a SKIP. Its offline
+  decision table runs in CI's `deploy-scripts` job.
+- The SLA page shows `maintenance_excluded_seconds` beside a node's figures, so a lower number is
+  explained rather than silently surprising.
+
 ## [v1.6.17] — 2026-10-19
 
 Hotfix for the startup integrity gate introduced in v1.6.16.

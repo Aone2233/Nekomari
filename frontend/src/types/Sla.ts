@@ -66,6 +66,14 @@ export interface SlaNodeReport {
   /** Interruptions in the node's own reporting. Not downtime; see the server. */
   reporting_gaps: SlaIncident[] | null;
   has_report: boolean;
+  /**
+   * How many seconds of the requested window fell inside maintenance windows for this node.
+   *
+   * Omitted by the server when nothing was excluded. It is what explains a coverage figure lower
+   * than the wall-clock window: excluded time is removed from both sides of the ratio, so without
+   * this the shortage looks like a fault rather than a scheduled window.
+   */
+  maintenance_excluded_seconds?: number;
 }
 
 export interface SlaReport {
