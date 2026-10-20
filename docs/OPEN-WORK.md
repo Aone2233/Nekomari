@@ -98,7 +98,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | The forecast detects a counter reset only on a net decrease, and `CrossesAt` can overflow | `internal/forecast/forecast.go` | Two boundary cases with no observed production trigger |
 | `PriceTags` has no "no expiry" state | `frontend/src/components/PriceTags.tsx` | Only checks `undefined`, so a `null` expiry reads as "expires in 30 days" |
 | Dragging under a filter reorders only the visible subset | `frontend/src/pages/admin/index.tsx` | Needs a decision about what reordering a filtered list should mean |
-| Ping latency is reported in whole milliseconds | `agent/server/task.go` | Two hosts in one city flatline at `0.0`; carrying microseconds is a value-precision change (the store's series identity is its tags, so it is safe) but touches agent → panel → store → frontend |
+| The status page's one-hour ping summary is still integer | `web/rpc/jsonrpc/public.go` | v1.6.24 made the metric series fractional and the agent reports `value_us`, but `pingStat.Latest/Avg/Min/Max` remain `int`; charts show decimals, the summary badge still truncates |
 | No uptime / restart-count metric exists | `internal/metricstore/definitions.go` | A capability gap: the panel cannot state "how long was this node up" |
 | One bad metric parameter fails a whole batch query | `web/rpc/jsonrpc/public.metric.go` | Should report per-key rather than all-or-nothing |
 | Agent ICMP permissions, ping precision and long-run footprint | `agent/` | netstatic's three counter bugs shipped in v1.6.22. Still open: non-root agents without `CAP_NET_RAW` cannot probe, ping timestamps are millisecond-precision, and peak/disk-growth footprint is unmeasured |

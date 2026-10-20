@@ -40,6 +40,21 @@ is the offline test for the script (fake panel + `docker`/`sqlite3` stubs; no ho
 The rollout sections below predate the script; their **Verification** rows are what it prints,
 so from the next rollout on that row can be filled in from its output.
 
+## v1.6.24 rollout (2026-10-20)
+
+Ping gains sub-millisecond precision. Both the panel and the agents were upgraded.
+
+| Item | Evidence |
+|---|---|
+| Release | tag `v1.6.24` on `0a08239`; release run `39399603759`, Docker run `39400540744` successful |
+| Pinned panel image | `ghcr.io/aone2233/nekomari:v1.6.24@sha256:0e69f14ab81fee9eeac05e918b5481faf65dd1c94e8b507c16c2a84651c75e2c` (arm64) |
+| Backup | `/opt/nekomari/backups/pre-v1.6.24-20261020T091755Z`; pre-deploy `quick_check` `ok` |
+| Panel startup | 21 s to `/api/public` 200; `panel-upgrade-check.sh` **9 passed, 0 failed, 0 skipped**; healthy, 0 restarts |
+| Agent fleet | **12/12 on v1.6.24**, targets cleared. PZYC was updated from a local asset (GitHub unreachable); SB01 was restarted after its OpenRC service exited (see v1.6.23 caveat) |
+| Precision check | Recent `ping.latency_ms` rollups contain fractional values (e.g. 314.762, 218.835 ms); 250 fractional buckets at the time of the check |
+| Storage | Same metric names, tags and series (433 ping series). `metrics.db` 168 MB vs the 169 MB pre-upgrade backup — within normal churn. The only growth is the `value_us` wire field (~20 B per ping result) |
+| Rollback | panel back to `v1.6.21@sha256:5da645b…`; agents keep `*.pre-v1.6.24` copies |
+
 ## v1.6.23 agent rollout (2026-10-20)
 
 Agent diagnostics release; panel stays on v1.6.21.
