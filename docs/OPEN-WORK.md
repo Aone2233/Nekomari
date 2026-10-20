@@ -2,7 +2,7 @@
 
 **This is the live list.** It is the only document in `docs/` that claims to say what is
 still open; every other one is a dated record of a moment. If you are looking for "what
-is left", read this file and nothing else.
+is left", read this file and nothing else. The long-term version plan (features, SLOs and exit criteria) is [`LONG-TERM-PLAN.md`](./LONG-TERM-PLAN.md).
 
 Rewritten 2026-10-13, after [`IMPROVEMENT-AUDIT-2026-10-13.md`](./IMPROVEMENT-AUDIT-2026-10-13.md).
 That audit found the reason this file had stopped being usable: the complete open list
