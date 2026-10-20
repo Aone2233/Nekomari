@@ -99,15 +99,16 @@ same disk). A copy is now pulled nightly by the OVH KS-LE-B host.
 |---|---|
 | Destination host | OVH KS-LE-B `jkr-node-01`, Beauharnois (BHS), Ubuntu 24.04 |
 | Destination path | `/srv/backups/oc424` (0700, files 0600) |
-| Storage | `/dev/md3` 410 G RAID1; **366 G available, 6% used**; two backups used 195 MB |
-| Archive size | ~98 MB each (102,186,879 B / 102,111,035 B; `metrics.db` dominates) |
-| Retention | 14 newest `oc424-*.tar.zst`; worst case ~1.4 GB, under 0.4% of the volume |
+| Storage | `/dev/md3` 410 G RAID1; **366 G available, 6% used**; four backups used 446 MB |
+| Archive size | ~160 MB each (three upgrade archives add ~62 MB; `metrics.db` dominates the rest) |
+| Retention | 14 newest `oc424-*.tar.zst`; worst case ~2.2 GB, under 0.6% of the volume |
 | Schedule | daily 03:30 UTC via `/home/ubuntu/oc424-backup.sh`, log `/home/ubuntu/oc424-backup.log` |
-| Copies | `oc424-20261020T053721Z.tar.zst` (sha256 `3c9fd370…`, v1.6.20) and `oc424-20261020T061639Z.tar.zst` (sha256 `1a6c0bdb…`, v1.6.21) |
-| Contents | SQLite `.backup` of `komari.db` and `metrics.db`, `docker-compose.yml`, `INFO` (host/time/panel version); zstd level 3 |
+| Copies | v1.6.20/v1.6.21/v1.6.24 snapshots plus the post-v1.6.24 one; newest `oc424-20261020T100354Z.tar.zst` (sha256 `a88ccf32…`, 160,485,471 B) |
+| Contents | SQLite `.backup` of `komari.db` and `metrics.db`, `docker-compose.yml`, `upgrade-archives/upgrade-*.zip`, `INFO` (host/time/panel version/archive count); zstd level 3 |
 | Pull authority | OVH holds a dedicated ed25519 key; OC424's `authorized_keys` entry is `restrict,command="/usr/local/bin/oc424-backup-stream.sh"`, so the key can only stream a backup, not open a shell. OC424 holds no key to OVH |
 | Integrity | `zstd -t` before publishing + `.sha256` sidecar; failed pulls leave only a `.tmp` that the trap removes |
 | Restore | download, `zstd -d | tar x`, stop the panel, put the two DBs back (keep the originals), start, then run `deploy/panel-upgrade-check.sh` |
+| Restore drill | 2026-10-20: extracted the v1.6.24 archive into `/srv/restore-test/data`, ran the v1.6.24 image on OVH `127.0.0.1:25779`, got `/api/public` 200 and `/api/version` = v1.6.24, then removed the container and directory |
 
 Caveat: the archive is **not encrypted at rest**; access is limited to `ubuntu`/`root` on
 OVH. If that disk is not in the trust boundary, add `age`/`gpg` before upload. The

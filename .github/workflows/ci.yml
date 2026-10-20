@@ -132,6 +132,10 @@ jobs:
         # The case that matters: `-t` must not survive into the unit's ExecStart.
         # See docs/SECRETS.md.
         run: bash deploy/install-node-agent.test.sh
+      - name: Test the agent upgrade script
+        # Idempotence via --version/SHA, init restart (systemd/OpenRC), capability
+        # restore, and rollback-binary pruning are all offline contracts.
+        run: bash deploy/upgrade-agent.test.sh
       - name: Test the panel health probe
         run: bash deploy/panel-probe.test.sh
       - name: Test the authenticated panel smoke (offline harness)

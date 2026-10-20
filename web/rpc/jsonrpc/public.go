@@ -2,6 +2,7 @@ package jsonrpc
 
 import (
 	"context"
+	"sort"
 	"strconv"
 	"time"
 
@@ -370,8 +371,11 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 	type recordsResp struct {
 		TaskId uint      `json:"task_id,omitempty"`
 		Time   time.Time `json:"time"`
-		Value  int       `json:"value"`
-		Client string    `json:"client,omitempty"`
+		// Value is milliseconds as a JSON number. Fractional since v1.6.24 (the agent
+		// reports value_us); being float64 keeps integer readings byte-identical on the
+		// wire — 20 encodes as 20 — while a 420µs probe no longer reads as 0.
+		Value  float64 `json:"value"`
+		Client string  `json:"client,omitempty"`
 		// PingType 是实际使用的探测协议（icmp/tcp/http）；dual 任务靠它区分两条记录。
 		PingType string `json:"ping_type,omitempty"`
 		Family   string `json:"family,omitempty"`
@@ -381,8 +385,8 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 	type clientBasicInfo struct {
 		Client string  `json:"client"`
 		Loss   float64 `json:"loss"`
-		Min    int     `json:"min"`
-		Max    int     `json:"max"`
+		Min    float64 `json:"min"`
+		Max    float64 `json:"max"`
 	}
 	type resp struct {
 		Count     int               `json:"count"`
@@ -427,40 +431,44 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to fetch ping records: "+err.Error(), nil)
 	}
 
-	clientStats := make(map[string]struct {
-		total, loss, min, max int
-	})
+	// Keep only what the caller may see, once: the per-client and per-task summaries
+	// below both work from this filtered set, so a hidden node's latency cannot leak
+	// into a guest's aggregate either.
+	visible := make([]models.PingRecord, 0, len(recs))
 	for _, r := range recs {
 		// History of a hidden node (for a guest) or of a node whose client row is gone
 		// is not public, including when the request named only a task.
 		if r.Client != "" && !clientHistoryReadable(hidden, isLogin, r.Client) {
 			continue
 		}
-		rec := recordsResp{Time: r.Time.UTC(), Value: r.Value, Client: r.Client, TaskId: r.TaskId, PingType: r.PingType, Role: r.Role, Family: r.Family}
-		stats := clientStats[r.Client]
-		stats.total++
-		if r.Value < 0 {
-			stats.loss++
-		} else {
-			if stats.min == 0 || r.Value < stats.min {
-				stats.min = r.Value
-			}
-			if r.Value > stats.max {
-				stats.max = r.Value
-			}
-		}
-		clientStats[r.Client] = stats
-		response.Records = append(response.Records, rec)
+		visible = append(visible, r)
+		response.Records = append(response.Records, recordsResp{
+			Time: r.Time.UTC(), Value: pingRecordMilliseconds(r), Client: r.Client,
+			TaskId: r.TaskId, PingType: r.PingType, Role: r.Role, Family: r.Family,
+		})
 	}
 
-	if len(clientStats) > 0 {
-		response.BasicInfo = make([]clientBasicInfo, 0, len(clientStats))
-		for client, stats := range clientStats {
+	if len(visible) > 0 {
+		byClient := make(map[string][]models.PingRecord, len(visible))
+		for _, r := range visible {
+			byClient[r.Client] = append(byClient[r.Client], r)
+		}
+		clients := make([]string, 0, len(byClient))
+		for client := range byClient {
+			clients = append(clients, client)
+		}
+		// Deterministic order: a summary that reshuffles between requests cannot be diffed.
+		sort.Strings(clients)
+		response.BasicInfo = make([]clientBasicInfo, 0, len(clients))
+		for _, client := range clients {
+			summary := summarizePingLatency(byClient[client])
 			loss := float64(0)
-			if stats.total > 0 {
-				loss = float64(stats.loss) / float64(stats.total) * 100
+			if summary.Total > 0 {
+				loss = float64(summary.Loss) / float64(summary.Total) * 100
 			}
-			response.BasicInfo = append(response.BasicInfo, clientBasicInfo{Client: client, Loss: loss, Min: stats.min, Max: stats.max})
+			response.BasicInfo = append(response.BasicInfo, clientBasicInfo{
+				Client: client, Loss: loss, Min: summary.Min, Max: summary.Max,
+			})
 		}
 	}
 
@@ -477,40 +485,25 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 			if params.UUID != "" && !t.AppliesToClient(params.UUID) {
 				continue
 			}
-			totalCount, lossCount, minLatency, maxLatency, sumLatency, validCount := 0, 0, 0, 0, 0, 0
-			for _, r := range recs {
+			taskRecords := make([]models.PingRecord, 0, len(visible))
+			for _, r := range visible {
 				if r.TaskId != t.Id {
 					continue
 				}
 				if params.UUID != "" && r.Client != params.UUID {
 					continue
 				}
-				totalCount++
-				if r.Value < 0 {
-					lossCount++
-				} else {
-					validCount++
-					sumLatency += r.Value
-					if minLatency == 0 || r.Value < minLatency {
-						minLatency = r.Value
-					}
-					if r.Value > maxLatency {
-						maxLatency = r.Value
-					}
-				}
+				taskRecords = append(taskRecords, r)
 			}
+			summary := summarizePingLatency(taskRecords)
 			lossRate := float64(0)
-			if totalCount > 0 {
-				lossRate = float64(lossCount) / float64(totalCount) * 100
-			}
-			avgLatency := 0
-			if validCount > 0 {
-				avgLatency = sumLatency / validCount
+			if summary.Total > 0 {
+				lossRate = float64(summary.Loss) / float64(summary.Total) * 100
 			}
 			taskInfo := map[string]any{
 				"id": t.Id, "name": t.Name, "type": t.Type, "interval": t.Interval,
-				"default_on": t.DefaultOn, "loss": lossRate, "min": minLatency,
-				"max": maxLatency, "avg": avgLatency, "total": totalCount,
+				"default_on": t.DefaultOn, "loss": lossRate, "min": summary.Min,
+				"max": summary.Max, "avg": summary.Avg, "total": summary.Total,
 			}
 			if params.UUID == "" && taskId != -1 {
 				taskInfo["clients"] = t.Clients
@@ -522,4 +515,67 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 
 	response.Count = len(response.Records)
 	return response, nil
+}
+
+// pingRecordMilliseconds returns one ping record's latency in milliseconds at the
+// precision the agent reported.
+//
+// ValueUS is the same measurement in microseconds and wins when present: Value is
+// truncated to whole milliseconds, so a 420µs probe would read as 0 without it — that
+// truncation is the "0 ms" the dashboard showed for two hosts in one city. Loss stays
+// the negative marker in Value (ValueUS is 0 for a failed probe), so every loss test in
+// this file keeps its meaning.
+func pingRecordMilliseconds(record models.PingRecord) float64 {
+	if record.Value < 0 {
+		return float64(record.Value)
+	}
+	if record.ValueUS > 0 {
+		return float64(record.ValueUS) / 1000
+	}
+	return float64(record.Value)
+}
+
+// pingLatencySummary is the decimal aggregate the summaries in this file report: integer
+// counts plus latency in fractional milliseconds. Min/Max/Avg stay 0 when Valid is 0,
+// which is how the response shape has always been read ("no measurement").
+type pingLatencySummary struct {
+	Total int
+	Loss  int
+	Valid int
+	Min   float64
+	Max   float64
+	Avg   float64
+}
+
+// summarizePingLatency aggregates records for one client or one task.
+//
+// Min is tracked with a flag rather than the old "min == 0 means unset" sentinel: with
+// fractional milliseconds a genuine 0.42 (or a real 0) must not be mistaken for "no
+// reading yet", and the sentinel silently dropped every sample below the smallest
+// non-zero value seen.
+func summarizePingLatency(records []models.PingRecord) pingLatencySummary {
+	var summary pingLatencySummary
+	var sum float64
+	minSet := false
+	for _, record := range records {
+		summary.Total++
+		if record.Value < 0 {
+			summary.Loss++
+			continue
+		}
+		value := pingRecordMilliseconds(record)
+		summary.Valid++
+		sum += value
+		if !minSet || value < summary.Min {
+			summary.Min = value
+			minSet = true
+		}
+		if value > summary.Max {
+			summary.Max = value
+		}
+	}
+	if summary.Valid > 0 {
+		summary.Avg = sum / float64(summary.Valid)
+	}
+	return summary
 }

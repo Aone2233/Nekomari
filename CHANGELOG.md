@@ -14,6 +14,24 @@ Nekomari's own.
   `komari-agent-*`, so credential backups are untouched. Measurements and long-term
   bounds are in `docs/AGENT-FOOTPRINT.md`.
 
+## [v1.6.25] — 2026-10-20
+
+- **Ping summaries show fractions.** The public ping records, the node-card `pingStat` and the
+  frontend formatting now use the `value_us` precision from v1.6.24: `records[].value`,
+  `basic_info`/tasks min/max/avg and the node-card latest/avg/min/max are `float64`, and the UI
+  renders below 1 ms as `<1 ms` instead of `0 ms`.
+- **`admin:getClientToken` is a sensitive operation.** A normal session now needs the sensitive
+  step-up to read an agent token; API keys keep their existing exemption by design. API-key actions
+  are attributed to `api_key` in the audit log instead of the all-zero placeholder UUID.
+- **The installer supports OpenRC**, and `upgrade-agent.sh` now uses `--version` for idempotence
+  (SHA-256 fallback for old agents), restores file capabilities, restarts under systemd or OpenRC
+  (including `zap` for crashed services), verifies the running inode, and prunes rollback binaries
+  to the current + newest copy. Both scripts have offline test harnesses in CI.
+- **The protocol copies are guarded by a contract test** comparing the root and agent
+  `protocol/v2` structures and the ping payload keys, so a one-sided field change fails CI.
+- Operations: the OVH backup was restored into a scratch panel and served `/api/public` 200 on
+  v1.6.24; the nightly stream now also carries the three upgrade archives (~160 MB per backup).
+
 ## [v1.6.24] — 2026-10-20
 
 Ping gets sub-millisecond precision without a new metric or series.

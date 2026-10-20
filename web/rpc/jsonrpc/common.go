@@ -52,14 +52,21 @@ func getAllPingTasksCached() ([]models.PingTask, error) {
 	return pingTasks, nil
 }
 
+// pingStat is the per-task ping summary attached to a node's latest status.
+//
+// Latency is fractional milliseconds (JSON number, so whole readings encode
+// unchanged): the agent reports value_us since v1.6.24, and an int here would truncate
+// 0.42ms to 0 — the "0 ms" two hosts in one city showed on the node cards. Latest is -1
+// when the task has no valid (non-loss) record at all, which is the sentinel the
+// response has always used.
 type pingStat struct {
 	Name   string  `json:"name"`
-	Latest int     `json:"latest"`
-	Avg    int     `json:"avg"`
+	Latest float64 `json:"latest"`
+	Avg    float64 `json:"avg"`
 	Tail   float64 `json:"tail"` // (P99-P50)/P50
 	Loss   float64 `json:"loss"` // 丢包率 %
-	Min    int     `json:"min"`
-	Max    int     `json:"max"`
+	Min    float64 `json:"min"`
+	Max    float64 `json:"max"`
 }
 
 // getPingStatsForNode 计算并缓存节点最近 1 小时 ping 统计。
@@ -120,44 +127,53 @@ func getPingStatsForNode(uuid string, pingTasks []models.PingTask, prefetched ma
 		if len(records) == 0 {
 			continue
 		}
-		latest := -1
+		// Latest stays -1 until a valid (non-loss) record is seen: "all probes failed"
+		// is not "0 ms", and this is the sentinel the response has always carried.
+		latest := -1.0
 		var latestTs time.Time
-		values := make([]int, 0, len(records))
-		sum := 0
+		values := make([]float64, 0, len(records))
+		sum := 0.0
 		valid := 0
 		total := 0
 		lossCount := 0
-		minLat := 0
-		maxLat := 0
+		minLat := 0.0
+		maxLat := 0.0
+		minSet := false
 		for _, r := range records {
 			total++
 			if r.Value < 0 { // 丢包
 				lossCount++
 				continue
 			}
-			values = append(values, r.Value)
-			sum += r.Value
+			// Fractional milliseconds: value_us is the same measurement at µs
+			// resolution and wins when present (see pingRecordMilliseconds).
+			value := pingRecordMilliseconds(r)
+			values = append(values, value)
+			sum += value
 			valid++
-			if minLat == 0 || r.Value < minLat {
-				minLat = r.Value
+			// minSet instead of "min == 0 means unset": a genuine 0 or a 0.42ms
+			// reading must not be mistaken for "no reading yet" and replaced.
+			if !minSet || value < minLat {
+				minLat = value
+				minSet = true
 			}
-			if r.Value > maxLat {
-				maxLat = r.Value
+			if value > maxLat {
+				maxLat = value
 			}
 			ts := r.Time
 			if latestTs.IsZero() || ts.After(latestTs) {
 				latestTs = ts
-				latest = r.Value
+				latest = value
 			}
 		}
-		avg := 0
+		avg := 0.0
 		if valid > 0 {
-			avg = sum / valid
+			avg = sum / float64(valid)
 		}
-		p50, p99 := 0, 0
+		p50, p99 := 0.0, 0.0
 		if len(values) > 0 {
-			sort.Ints(values)
-			percentile := func(vals []int, pct float64) int {
+			sort.Float64s(values)
+			percentile := func(vals []float64, pct float64) float64 {
 				if len(vals) == 0 {
 					return 0
 				}
@@ -174,15 +190,14 @@ func getPingStatsForNode(uuid string, pingTasks []models.PingTask, prefetched ma
 					return vals[lo]
 				}
 				frac := pos - float64(lo)
-				v := float64(vals[lo]) + (float64(vals[hi])-float64(vals[lo]))*frac
-				return int(math.Round(v))
+				return vals[lo] + (vals[hi]-vals[lo])*frac
 			}
 			p50 = percentile(values, 0.50)
 			p99 = percentile(values, 0.99)
 		}
 		tail := 0.0
 		if p50 > 0 && p99 >= p50 {
-			tail = float64(p99-p50) / float64(p50)
+			tail = (p99 - p50) / p50
 		}
 		lossRate := 0.0
 		if total > 0 {
