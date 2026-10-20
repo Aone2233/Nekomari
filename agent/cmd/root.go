@@ -196,6 +196,9 @@ var RootCmd = &cobra.Command{
 			if err != nil {
 				log.Println("Failed to start netstatic monitoring:", err)
 			}
+			// 白名单不是启动快照：netstatic 每次采样前都会重新问一次，所以启动之后才出现的
+			// 网桥、容器网卡或热插拔网卡会进入账本，而不是永远不被统计（且静默）。
+			netstatic.SetNICProvider(monitoring.InterfaceList)
 			nics, err := monitoring.InterfaceList()
 			if err != nil {
 				log.Println("Failed to get interface list for netstatic:", err)

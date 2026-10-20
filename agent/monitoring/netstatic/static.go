@@ -413,29 +413,6 @@ func safeDelta(cur, prev uint64) uint64 {
 	return 0
 }
 
-// assumedLinkBytesPerSecond 是判断增量是否可信时使用的链路速率上限（1 Gbps）。
-//
-// 为什么用一个假定值而不是读真实速率：`/sys/class/net/<iface>/speed` 在很多虚拟网卡上
-// 返回 -1 或不存在，而这条路走不通时**不能退回"不做检查"** —— 现场那次 59.5 GB 的假增量
-// 就是在一个读不到真实速率的节点上产生的。1 Gbps 是这类 VPS 的常见上限，配上下面的
-// headroom 已经足够宽松：一个 30 秒采样间隔在 1 Gbps 上最多 3.75 GB，×3 余量 = 11.25 GB，
-// 而假增量是 59.5 GB。真按 10 Gbps 网卡跑的机器由 ceilingBytes 的真实速率优先分支覆盖。
-const assumedLinkBytesPerSecond = 1e9 / 8
-
-// deltaHeadroom 给"瞬时速率可能短暂高于链路标称值"留的余量（网卡突发、计数器批量刷新）。
-const deltaHeadroom = 3
-
-// ceilingBytes 返回一段时间内物理上可能的字节数上限。
-//
-// 上限随 elapsed 线性增长，而不是固定在"一个采样间隔"：进程停了几小时再起来时，
-// 那段间隔里的累计增量是真实的，按一个间隔去卡会把它整段丢掉。
-func ceilingBytes(elapsed time.Duration) uint64 {
-	if elapsed <= 0 {
-		return 0
-	}
-	return uint64(elapsed.Seconds() * assumedLinkBytesPerSecond * deltaHeadroom)
-}
-
 // deltaGapLimit 是"上次记录与本次之间的时差"超过多少就拒绝一个区间增量。
 //
 // 一个桶代表不到一个 SaveInterval 的时间。若基线比这还旧（进程停了很久、或账本被
@@ -466,11 +443,14 @@ func plausibleDelta(name string, dtx, drx uint64, elapsed time.Duration) (bool, 
 			"%s: the previous sample is %s old, older than the %s bucket it would be attributed to",
 			name, elapsed.Round(time.Second), deltaGapLimit())
 	}
-	ceiling := ceilingBytes(elapsed)
+	// 上限按这张网卡的真实链路速率算：10G/25G 节点的繁忙区间必须通过，而同样的增量在
+	// 1 Gbps 链路上仍然要被拒绝。速率读不到时回退到 1 Gbps 假定值（见 linkspeed.go）。
+	rate := linkRateFor(name)
+	ceiling := rate.ceiling(elapsed)
 	if dtx > ceiling || drx > ceiling {
 		return false, fmt.Sprintf(
-			"%s: counted %s up / %s down in %s, more than the %s a 1 Gbps link can carry in that time",
-			name, humanBytes(dtx), humanBytes(drx), elapsed.Round(time.Second), humanBytes(ceiling))
+			"%s: counted %s up / %s down in %s, more than the %s a %s link can carry in that time",
+			name, humanBytes(dtx), humanBytes(drx), elapsed.Round(time.Second), humanBytes(ceiling), rate.String())
 	}
 	return true, ""
 }
@@ -491,6 +471,9 @@ func humanBytes(n uint64) string {
 }
 
 func sampleOnceLocked() {
+	// 白名单不是启动快照：每次采样前问一次，之后才出现的网桥/热插拔网卡才会被统计（见
+	// nicprovider.go）。刷新只在列表真的变化时写 store，所以这里的成本是一次枚举上网卡。
+	refreshNicsLocked()
 	ios, err := gnet.IOCounters(true)
 	if err != nil {
 		return
@@ -924,22 +907,7 @@ func SetNewConfig(newCfg NetStaticConfig) error {
 		startGoroutinesLocked()
 
 		// 当配置了指定网卡白名单时，清理不在白名单内的缓存与上次计数，避免无用数据积累
-		if len(cfg.Nics) > 0 {
-			allowed := make(map[string]struct{}, len(cfg.Nics))
-			for _, n := range cfg.Nics {
-				allowed[n] = struct{}{}
-			}
-			for name := range lastCounters {
-				if _, ok := allowed[name]; !ok {
-					delete(lastCounters, name)
-				}
-			}
-			for name := range staticCache {
-				if _, ok := allowed[name]; !ok {
-					delete(staticCache, name)
-				}
-			}
-		}
+		pruneUnmonitoredLocked()
 	}
 	// 立即写盘
 	persistLocked()

@@ -18,6 +18,7 @@ func resetState(t *testing.T) {
 	oldDirty, oldLastWrite := storeDirty, lastWriteUnix
 	oldSaveFilePath := SaveFilePath
 	oldDetect, oldRewrite := DefaultDetectInterval, DefaultRewriteInterval
+	oldProvider, oldProviderLogged := nicProvider, nicProviderFailureLogged
 
 	t.Cleanup(func() {
 		mu.Lock()
@@ -27,6 +28,7 @@ func resetState(t *testing.T) {
 		storeDirty, lastWriteUnix = oldDirty, oldLastWrite
 		SaveFilePath = oldSaveFilePath
 		DefaultDetectInterval, DefaultRewriteInterval = oldDetect, oldRewrite
+		nicProvider, nicProviderFailureLogged = oldProvider, oldProviderLogged
 	})
 
 	mu.Lock()
