@@ -10,7 +10,7 @@ minutes of the upgrade — the log window is the last `LOG_WINDOW` measured from
 from the moment the container started:
 
 ```bash
-EXPECTED_VERSION=v1.6.19 EXPECTED_HASH=5f4d7fa sudo -E bash deploy/panel-upgrade-check.sh
+EXPECTED_VERSION=v1.6.20 EXPECTED_HASH=01be2cf sudo -E bash deploy/panel-upgrade-check.sh
 ```
 
 It prints one `PASS` / `FAIL` / `SKIP` line per check and exits `0` (all passed, SKIP is not a
@@ -39,6 +39,24 @@ is the offline test for the script (fake panel + `docker`/`sqlite3` stubs; no ho
 
 The rollout sections below predate the script; their **Verification** rows are what it prints,
 so from the next rollout on that row can be filled in from its output.
+
+## v1.6.20 rollout (2026-10-20)
+
+Panel-upgrade hardening: daily archive pruning, the read-only post-upgrade check, the
+metric store's pool counters, and the admin bulk selection. Panel-side only; no agent
+was restarted. CI also caught a Windows-only theme-cache publish race, fixed here with
+a short rename retry instead of falling back to the 33 MiB in-memory archive.
+
+| Item | Evidence |
+|---|---|
+| Remote build | BERO (Go 1.26.9, Node 22): `go test ./...`, `go vet`, `go build`, `npm ci/test` (171/171), `npm run lint`, two builds byte-identical (`diff` 0), theme repacked and `web/public` tests green |
+| Release | tag `v1.6.20` on `01be2cf`; release run `39370322552`, Docker run `39370939266` successful |
+| Release assets | 10, including `sbom.spdx.json` and provenance attestation (same pipeline as v1.6.19) |
+| Pinned panel image | `ghcr.io/aone2233/nekomari:v1.6.20@sha256:f91898559ccd7b8a626ec4d774515817956c49d0494408e3188399f8cada0c4e` (arm64) |
+| Backup | `/opt/nekomari/backups/pre-v1.6.20b-20261020T043506Z` (WAL-safe backups, previous compose, `SHA256SUMS`); pre-deploy `quick_check` `ok` |
+| Startup | 23 s to `/api/public` 200; pre-upgrade archive 21 MB; 3 archives / 61.5 MB; `data/backup` 62 MB |
+| Verification | `deploy/panel-upgrade-check.sh` (the new command above): **9 passed, 0 failed, 0 skipped** — version `v1.6.20`, hash `01be2cf`, healthy, 0 restarts, `quick_check` ok, 3 archives, 0 ERROR lines; gzip `/app.js` 24,887 B; 12 connections; ~85 MB RSS |
+| Rollback | compose back to `v1.6.19@sha256:ec838740…`; data untouched, backup above |
 
 ## v1.6.19 rollout (2026-10-20)
 

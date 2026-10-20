@@ -29,6 +29,9 @@ The panel-upgrade hardening batch, plus the last two visibility gaps.
   across polling and filtering.
 - A source-level regression test pins the reproducible-build contract (`__BUILD_TIME__` resolution
   and the `export-subst` stamp) so the wall-clock build time cannot return unnoticed.
+- **The default-theme cache retries a briefly locked Windows rename** instead of falling back to the
+  33 MiB in-memory archive. CI hit the sharing violation during a prewarm; the retry keeps the disk
+  cache, which is the reason it exists.
 
 ## [v1.6.19] — 2026-10-20
 
