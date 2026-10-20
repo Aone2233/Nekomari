@@ -9,7 +9,13 @@ import type {
 } from "@/types/Sla";
 import { SLA_WINDOWS } from "@/types/Sla";
 import { normalizeLanguage } from "@/utils/language";
-import { availabilityText, coverageText, duration, formatTime } from "./slaFormat";
+import {
+  availabilityText,
+  coverageText,
+  duration,
+  formatTime,
+  maintenanceExcludedText,
+} from "./slaFormat";
 
 /**
  * The SLA report table (roadmap H1).
@@ -76,13 +82,26 @@ const NodeSection: React.FC<{
   taskNames?: Record<string, string>;
 }> = ({ node, name, taskNames }) => {
   const { t } = useTranslation();
+  // 空串表示「没有可解释的东西」：0 和缺失都是常态，渲染一条 "0m" 会暗示发生过排除。
+  const maintenanceExcluded = maintenanceExcludedText(node.maintenance_excluded_seconds);
 
   return (
     <Card data-testid="sla-node" data-entity-id={node.entity_id} data-has-report={String(node.has_report)}>
       <Flex direction="column" gap="3">
-        <Flex align="center" justify="between" gap="2">
+        <Flex align="center" justify="between" gap="2" wrap="wrap">
           <Heading size="4">{name}</Heading>
-          <Flex gap="2" align="center">
+          <Flex gap="2" align="center" wrap="wrap">
+            {/* 维护窗口把时间从可用率的两边一起扣掉，所以覆盖率会低于按钟表算的窗口。
+                把被排除的时长放在节点这一行，差额才是可解释的，而不是像节点少报了数据。 */}
+            {maintenanceExcluded && (
+              <Badge
+                color="amber"
+                data-testid="sla-maintenance-excluded"
+                data-seconds={String(node.maintenance_excluded_seconds)}
+              >
+                {t("maintenance.title")} · {maintenanceExcluded}
+              </Badge>
+            )}
             <Badge data-testid="sla-node-presence" data-coverage={node.presence.coverage.toFixed(4)}>
               {coverageText(
                 node.presence.observed_buckets,

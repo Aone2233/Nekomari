@@ -6,8 +6,10 @@
 # release binaries, verify them against SHA256SUMS.txt, start the server, complete
 # the first-run install through its API, confirm the panel's own routes serve the
 # panel's own documents rather than a theme's, connect an agent, and confirm the
-# node reports. Automatic runs use a throwaway directory; explicit workdirs retain
-# each run's artifacts for inspection.
+# node reports. One optional step goes further and checks a *deployed* panel by its API key
+# (admin API + the theme it serves), which is how an operator verifies a host after an
+# upgrade; it is skipped unless KOMARI_BASE_URL and KOMARI_API_KEY are set. Automatic runs
+# use a throwaway directory; explicit workdirs retain each run's artifacts for inspection.
 #
 # It deliberately avoids any running instance: its own port, its own data
 # directory. That is what makes it safe to run on a host that is already serving,
@@ -25,6 +27,10 @@
 # 之前【从未被执行过】。默认取主机架构，于是同一份脚本在 arm64 runner 上验的就是
 # arm64 资产。
 set -uo pipefail
+
+# Where this script lives, captured before the cd into the throwaway workdir below: the
+# authenticated smoke test is a sibling file, not something to look for on PATH.
+HERE=$(cd -- "$(dirname -- "$0")" && pwd)
 
 PORT="${2:-25799}"
 REPO="Aone2233/Nekomari"
@@ -213,7 +219,37 @@ case "$admin_title" in
   *) bad "/admin did not serve the panel's admin interface (title: ${admin_title:-none})";;
 esac
 
-step "8. log in and create an agent token"
+step "8. authenticated admin API and the theme it serves (optional)"
+# Steps 4-7 judge the *throwaway* instance above, and only through anonymous requests. They
+# cannot answer the two questions a real deployment raises: does the admin API work for
+# someone holding the panel's API key, and is the theme the panel serves actually loading
+# its build?
+#
+# This step therefore targets a *different* panel -- the one named by KOMARI_BASE_URL -- and
+# only runs when both variables are set. The API key is the one credential a deployment
+# check can hold: no password, no session cookie, no 2FA code, and no login notification per
+# run (deploy/panel-auth-smoke.py documents why, and deploy/nekomari_auth.py is the shared
+# helper for scripts that need more).
+#
+# SKIP, not FAIL, when the variables are absent: an unconfigured run was never asked to
+# authenticate, and a release job must not fail for a credential it does not have.
+if [ -n "${KOMARI_BASE_URL:-}" ] && [ -n "${KOMARI_API_KEY:-}" ]; then
+  PYTHON_BIN=""
+  for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1; then PYTHON_BIN="$candidate"; break; fi
+  done
+  if [ -z "$PYTHON_BIN" ]; then
+    printf '  SKIP  panel-auth-smoke.py: no python3 on PATH to run it\n'
+  elif "$PYTHON_BIN" "$HERE/panel-auth-smoke.py"; then
+    ok "authenticated admin API and theme load verified at ${KOMARI_BASE_URL}"
+  else
+    bad "authenticated admin API or theme load failed at ${KOMARI_BASE_URL}"
+  fi
+else
+  printf '  SKIP  panel-auth-smoke.py: set KOMARI_BASE_URL and KOMARI_API_KEY to check a deployed panel with its API key\n'
+fi
+
+step "9. log in and create an agent token"
 curl -fsS -c cookie.txt -X POST "http://127.0.0.1:${PORT}/api/login" \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"Deploy-Verify-2026"}' >/dev/null 2>&1
@@ -223,7 +259,7 @@ tok=$(curl -fsS -b cookie.txt -X POST "http://127.0.0.1:${PORT}/api/rpc2" \
   | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
 if [ -n "$tok" ]; then ok "agent token issued"; else bad "could not create an agent token"; fi
 
-step "9. the agent connects and the node reports"
+step "10. the agent connects and the node reports"
 if [ -n "$tok" ]; then
   ./"$AG_ASSET" -e "http://127.0.0.1:${PORT}" -t "$tok" -i 3 \
     --disable-auto-update --disable-web-ssh > agent.log 2>&1 &
@@ -246,7 +282,7 @@ if [ -n "$tok" ]; then
   kill $AG 2>/dev/null; AG=""
 fi
 
-step "10. shutdown and cleanup"
+step "11. shutdown and cleanup"
 kill $SRV 2>/dev/null; SRV=""
 sleep 1
 printf '\n===== %d passed, %d failed =====\n' "$pass" "$fail"

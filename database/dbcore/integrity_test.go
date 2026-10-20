@@ -1,6 +1,7 @@
 package dbcore
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -248,5 +249,115 @@ func TestQuoteSQLiteIdentifier(t *testing.T) {
 	}
 	if got := quoteSQLiteIdentifier(`we"ird`); got != `"we""ird"` {
 		t.Errorf("quoteSQLiteIdentifier did not escape the embedded quote: %q", got)
+	}
+}
+
+// withMainDatabaseInstance 临时把包级主库句柄指向 db，用例结束还原。
+//
+// RunMainDatabaseQuickCheck 读的是 ReadyDBInstance()，而那个句柄只由 Initialize 设置；
+// 这些用例不需要跑整条启动链（恢复、迁移、升级备份），所以直接换句柄。
+func withMainDatabaseInstance(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	previous := instance
+	instance = db
+	t.Cleanup(func() { instance = previous })
+}
+
+// OK 的判据：三项里任意一项有问题就不是 ok。
+func TestMainDatabaseIntegrityReportOK(t *testing.T) {
+	if !(MainDatabaseIntegrityReport{}).OK() {
+		t.Error("an empty report (nothing found) must be OK")
+	}
+	cases := []struct {
+		name   string
+		report MainDatabaseIntegrityReport
+	}{
+		{"a quick_check finding", MainDatabaseIntegrityReport{QuickCheckErr: errors.New("page 7 is never used")}},
+		{"an index-check failure", MainDatabaseIntegrityReport{IndexCheckErr: errors.New("query failed")}},
+		{"a missing index", MainDatabaseIntegrityReport{MissingIndexes: []string{"clients.token"}}},
+	}
+	for _, testCase := range cases {
+		if testCase.report.OK() {
+			t.Errorf("%s was reported as OK: %+v", testCase.name, testCase.report)
+		}
+	}
+}
+
+// 周期检查的正常路径：健康库给出一个干净的报告。
+func TestRunMainDatabaseQuickCheckOnAHealthyDatabase(t *testing.T) {
+	db := openIntegrityTestDatabase(t)
+	if err := db.AutoMigrate(&models.User{}, &models.Client{}, &models.Session{}); err != nil {
+		t.Fatalf("AutoMigrate: %v", err)
+	}
+	withMainDatabaseInstance(t, db)
+
+	report, err := RunMainDatabaseQuickCheck()
+	if err != nil {
+		t.Fatalf("RunMainDatabaseQuickCheck: %v", err)
+	}
+	if !report.OK() {
+		t.Fatalf("a healthy database produced a report with problems: %+v", report)
+	}
+	if report.QuickCheckErr != nil || report.IndexCheckErr != nil || len(report.MissingIndexes) != 0 {
+		t.Fatalf("the report carries stray findings: %+v", report)
+	}
+}
+
+// 结构问题必须落进报告，而不是 panic 或当作 ok —— 这里用已关闭的连接制造「检查没法通过」。
+func TestRunMainDatabaseQuickCheckReportsAFailedQuickCheck(t *testing.T) {
+	db := openIntegrityTestDatabase(t)
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get sql.DB: %v", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatalf("close test database: %v", err)
+	}
+	withMainDatabaseInstance(t, db)
+
+	report, err := RunMainDatabaseQuickCheck()
+	if err != nil {
+		// 句柄存在时检查本身应当跑完（把失败放进报告），而不是走「库没就绪」那条路。
+		t.Fatalf("the check ran against an existing handle, so no top-level error is expected: %v", err)
+	}
+	if report.QuickCheckErr == nil {
+		t.Fatal("a failed quick_check was not reported")
+	}
+	if report.OK() {
+		t.Fatal("OK() must be false when quick_check failed")
+	}
+}
+
+// 缺认证索引必须出现在报告里，而 quick_check 那一项保持干净（两个问题要分得开）。
+func TestRunMainDatabaseQuickCheckReportsMissingIndexes(t *testing.T) {
+	db := openIntegrityTestDatabase(t,
+		`CREATE TABLE users (uuid TEXT PRIMARY KEY, username TEXT NOT NULL)`,
+		`CREATE TABLE clients (uuid TEXT PRIMARY KEY, token TEXT NOT NULL)`,
+	)
+	withMainDatabaseInstance(t, db)
+
+	report, err := RunMainDatabaseQuickCheck()
+	if err != nil {
+		t.Fatalf("RunMainDatabaseQuickCheck: %v", err)
+	}
+	if report.QuickCheckErr != nil {
+		t.Fatalf("the fixture is structurally sound, quick_check should pass: %v", report.QuickCheckErr)
+	}
+	reportText := strings.Join(report.MissingIndexes, "\n")
+	for _, want := range []string{"users.username", "clients.token"} {
+		if !strings.Contains(reportText, want) {
+			t.Errorf("%q was not reported as missing: %v", want, report.MissingIndexes)
+		}
+	}
+	if report.OK() {
+		t.Fatal("OK() must be false when an authentication index is missing")
+	}
+}
+
+// 库还没就绪时返回错误：不初始化、不 panic、也不能静默地报 ok。
+func TestRunMainDatabaseQuickCheckWithoutADatabase(t *testing.T) {
+	withMainDatabaseInstance(t, nil)
+	if _, err := RunMainDatabaseQuickCheck(); err == nil {
+		t.Fatal("an uninitialised main database must be reported as an error, not checked silently")
 	}
 }

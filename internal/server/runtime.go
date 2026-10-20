@@ -13,6 +13,7 @@ import (
 	"github.com/Aone2233/nekomari/database"
 	"github.com/Aone2233/nekomari/database/accounts"
 	"github.com/Aone2233/nekomari/database/auditlog"
+	"github.com/Aone2233/nekomari/database/dbcore"
 	d_notification "github.com/Aone2233/nekomari/database/notification"
 	"github.com/Aone2233/nekomari/database/tasks"
 	"github.com/Aone2233/nekomari/internal/config"
@@ -259,6 +260,59 @@ func registerScheduledWork() {
 	// and one place to look when something is not running.
 	if err := scheduler.AddFunc("notifier:sweepDeferred", "@every 1m", notifier.SweepDeferredAlerts); err != nil {
 		logger.ErrorArgs("server", "Failed to add deferred alert task:", err)
+	}
+	// 主库完整性日检。启动时那次检查只回答「这个实例带着什么状态启动」；跑上几周之后，
+	// 库被外部改过、索引被人 DROP、磁盘出现坏页，启动那次都看不到。每日一次足够发现它们，
+	// 而 AddFunc 不立即执行 —— 第一次在注册 24 小时后，不会与启动检查在同一分钟里各写一份。
+	// 用固定间隔而不是固定墙钟时刻：面板可能在任何时刻启动，固定时刻只会让第一次检查等更久，
+	// 而这个任务不需要与任何外部事件对齐。
+	if err := scheduler.AddFunc("db:integrity", scheduler.Every(mainDatabaseIntegrityInterval), mainDatabaseIntegrityCheck); err != nil {
+		logger.ErrorArgs("server", "Failed to add main database integrity scheduled task:", err)
+	}
+}
+
+// mainDatabaseIntegrityInterval 是主库完整性检查的周期。
+//
+// 24 小时：quick_check 要读完整个库文件，而主库只有一条连接（dbcore 里 SetMaxOpenConns(1)），
+// 检查期间其它查询会排在它后面 —— 每天一次是「能发现运行期变化」与「检查本身不是负载」
+// 之间的折中。启动时另有一次，两者互补而不是重复：那次看的是启动状态，这次看的是运行状态。
+const mainDatabaseIntegrityInterval = 24 * time.Hour
+
+// mainDatabaseIntegrityCheck 是注册到调度器的日检入口。
+func mainDatabaseIntegrityCheck() {
+	reportMainDatabaseIntegrity(dbcore.RunMainDatabaseQuickCheck)
+}
+
+// reportMainDatabaseIntegrity 把一次检查结果写成日志。
+//
+// run 作为参数传入只是为了测试：这里真正容易错的是「什么算 ok、什么算问题、用哪个级别」，
+// 而那不需要真实数据库就能验证（真实检查由 database/dbcore 的用例覆盖）。注册那一步
+// （scheduler.AddFunc）没有对应的单元测试：调度器的 job 表没有 introspection，而
+// registerScheduledWork 同时注册了依赖数据库与配置的其它任务，单独把它拉进测试只会把
+// 整条启动链拖进来。这里覆盖的是它注册的那个函数。
+func reportMainDatabaseIntegrity(run func() (dbcore.MainDatabaseIntegrityReport, error)) {
+	report, err := run()
+	if err != nil {
+		// 日检失败（库还没就绪、查询被打断）不等于服务有问题：这是低频检查，下一个周期
+		// 会再试一次，所以只记 Warn，不影响任何请求路径。
+		logger.Warnf("server", "Daily main database integrity check could not run: %v", err)
+		return
+	}
+	if report.QuickCheckErr != nil {
+		logger.Errorf("server",
+			"Daily main database integrity check found a structural problem: %v — the panel keeps running; back up the database, run PRAGMA integrity_check, and restore it if the problem is real",
+			report.QuickCheckErr)
+	}
+	if report.IndexCheckErr != nil {
+		logger.Warnf("server", "Daily main database integrity check could not verify the authentication indexes: %v", report.IndexCheckErr)
+	}
+	for _, problem := range report.MissingIndexes {
+		logger.Errorf("server",
+			"Daily main database integrity check: the authentication path is missing an index: %s. Queries still return the right rows but fall back to a full table scan; rebuild the indexes (REINDEX) after taking a backup",
+			problem)
+	}
+	if report.OK() {
+		logger.Infof("server", "Daily main database integrity check passed (PRAGMA quick_check ok, authentication indexes present)")
 	}
 }
 

@@ -8,6 +8,7 @@
 package notifier
 
 import (
+	"sort"
 	"sync"
 	"time"
 
@@ -127,4 +128,45 @@ func ShouldSendLater(now, deliverAt time.Time) bool {
 // ActiveFor reports whether a client is inside a window at `now`, for the UI.
 func ActiveFor(now time.Time, clientUUID string) corewindow.Status {
 	return corewindow.Evaluate(now.UTC(), clientUUID, load(now.UTC()))
+}
+
+// WindowsFor returns the maintenance windows that cover clientUUID and intersect the
+// half-open range [start, end), ordered by start and then by id.
+//
+// It exists for readers that must discount maintenance time — the SLA report is the
+// first — and deliberately reuses load(), the notifier's cached window list: an SLA
+// report covers a fleet, and a per-node read path must not become a database query per
+// node. A window edit is already visible to the notifier within the same 30 s cache,
+// and the SLA report is a historical view, so sharing that freshness is the right
+// trade (see cacheTTL).
+//
+// An empty or inverted range intersects nothing, which is why it returns nil rather
+// than every covering window: half-open ranges mean no time, no evidence to exclude.
+func WindowsFor(clientUUID string, start, end time.Time) []corewindow.Window {
+	if clientUUID == "" {
+		return nil
+	}
+	start, end = start.UTC(), end.UTC()
+	if !start.Before(end) {
+		return nil
+	}
+	windows := load(time.Now().UTC())
+	matches := make([]corewindow.Window, 0, len(windows))
+	for _, window := range windows {
+		if !window.Covers(clientUUID) {
+			continue
+		}
+		windowStart, windowEnd := window.Start.UTC(), window.End.UTC()
+		if !windowStart.Before(end) || !windowEnd.After(start) {
+			continue // this window does not overlap [start, end)
+		}
+		matches = append(matches, window)
+	}
+	sort.SliceStable(matches, func(i, j int) bool {
+		if !matches[i].Start.Equal(matches[j].Start) {
+			return matches[i].Start.Before(matches[j].Start)
+		}
+		return matches[i].ID < matches[j].ID
+	})
+	return matches
 }

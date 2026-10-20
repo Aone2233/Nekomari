@@ -224,7 +224,12 @@ type ReportRequest struct {
 	WindowLabel string
 	// Clamped explains a shortened window, from WindowStart.
 	Clamped string
-	Now     time.Time
+	// Exclusions maps an entity id to the parts of the report window that must not
+	// count as evidence: maintenance windows. An entity with no entry (or an empty
+	// map) produces exactly the report it produced before this field existed, which
+	// is what keeps scheduled windows from changing any number outside them.
+	Exclusions map[string][]Interval
+	Now        time.Time
 }
 
 // Build reads the series and assembles the whole report.
@@ -311,6 +316,16 @@ func Build(ctx context.Context, req ReportRequest) (Report, error) {
 		index(latencyByEntity, bucket)
 	}
 
+	// Maintenance windows are per entity, clipped to the report and merged, so the same
+	// exclusion cannot discount the same second twice. Building the map once here keeps
+	// the per-node arithmetic free of clock and database access.
+	exclusions := make(map[string][]Interval, len(req.Exclusions))
+	for entityID, intervals := range req.Exclusions {
+		if normalized := normalizeIntervals(req.Start, req.End, intervals); len(normalized) > 0 {
+			exclusions[entityID] = normalized
+		}
+	}
+
 	window := req.End.Sub(req.Start)
 	for _, entityID := range entityOrder {
 		tasks := byEntity[entityID]
@@ -321,7 +336,7 @@ func Build(ctx context.Context, req ReportRequest) (Report, error) {
 		// more information.
 		presence := unionPresence(tasks, req.Start, req.End, req.Interval)
 		report.Nodes = append(report.Nodes,
-			BuildNodeReport(entityID, presence, tasks, latencyByEntity[entityID], window))
+			BuildNodeReportExcluding(entityID, presence, tasks, latencyByEntity[entityID], window, req.Interval, exclusions[entityID]))
 	}
 	return report, nil
 }
@@ -490,6 +505,10 @@ type NodeReport struct {
 	// a reader can see them rather than have them silently dropped.
 	Gaps      []Incident `json:"reporting_gaps"`
 	HasReport bool       `json:"has_report"`
+	// MaintenanceExcludedSeconds is how much of the report window was covered by
+	// maintenance windows for this node, so a page can explain a coverage figure that
+	// is lower than the wall-clock window. Omitted when nothing was excluded.
+	MaintenanceExcludedSeconds int64 `json:"maintenance_excluded_seconds,omitempty"`
 }
 
 // Report is the whole answer to one SLA request.

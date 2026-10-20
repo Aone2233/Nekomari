@@ -260,3 +260,51 @@ func verifyMainDatabaseIntegrity(db *gorm.DB) error {
 	}
 	return nil
 }
+
+// MainDatabaseIntegrityReport is the outcome of one periodic integrity check.
+//
+// The fields stay separate instead of collapsing into one error: a structural problem
+// (quick_check) and a schema problem (a missing index) have different consequences and different
+// fixes, and the daily task logs them at different levels.
+type MainDatabaseIntegrityReport struct {
+	// QuickCheckErr is set when PRAGMA quick_check reported a problem, or when it could not run.
+	QuickCheckErr error
+	// MissingIndexes lists the authentication indexes the schema lacks, each with its impact.
+	MissingIndexes []string
+	// IndexCheckErr is set when the index check itself could not run. It does not mean an index
+	// is missing.
+	IndexCheckErr error
+}
+
+// OK reports whether the check found nothing worth logging.
+func (r MainDatabaseIntegrityReport) OK() bool {
+	return r.QuickCheckErr == nil && r.IndexCheckErr == nil && len(r.MissingIndexes) == 0
+}
+
+// RunMainDatabaseQuickCheck runs the integrity and authentication-index checks against the
+// current main database. It is the body of the daily scheduled task registered in
+// internal/server (registerScheduledWork).
+//
+// Why a second entry point when startup already checks: the startup pass answers "what state did
+// this process start on". A panel that has been running for weeks can end up in a state startup
+// never saw — pages corrupted by the host, an index dropped by an external writer, a schema left
+// half-migrated. One daily read is enough to notice all three.
+//
+// It never panics and never initialises the database: when the handle is not ready it returns an
+// error instead, so a scheduled tick cannot turn a not-yet-initialised panel into a FATAL. It
+// does not log either — the caller chooses the level (Info when clean, Error when not), which
+// keeps the daily and startup wording from drifting apart.
+//
+// The call is synchronous and reads every page of the database; the scheduler runs it on its own
+// goroutine, so the HTTP server never waits for it. On SQLite it also holds the single writer
+// connection for the duration, which is the reason this runs daily rather than hourly.
+func RunMainDatabaseQuickCheck() (MainDatabaseIntegrityReport, error) {
+	var report MainDatabaseIntegrityReport
+	db := ReadyDBInstance()
+	if db == nil {
+		return report, errors.New("main database is not initialized")
+	}
+	report.QuickCheckErr = mainDatabaseQuickCheck(db)
+	report.MissingIndexes, report.IndexCheckErr = missingAuthenticationIndexes(db)
+	return report, nil
+}
