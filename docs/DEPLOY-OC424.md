@@ -3,6 +3,22 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.6.18 rollout (2026-10-20)
+
+Maintenance windows are excluded from SLA, the main database is checked daily, and
+deploy verification gained an authenticated/theme check. Panel-side only; no agent
+was restarted.
+
+| Item | Evidence |
+|---|---|
+| Remote build | BERO (Go 1.26.9, linux/amd64, Node 22): `go test ./...`, `go vet ./...`, `go build ./...`, `npm ci`, `npm test` (158/158), `npm run lint`, `npm run build` all green — no local compilation |
+| Release | tag `v1.6.18` on `95fe217`; release run `39350788990`, Docker run `39351489581` successful |
+| Pinned panel image | `ghcr.io/aone2233/nekomari:v1.6.18@sha256:ded94987a867adca49bd15a416271b6b4b8eed708303c5e54518cfd442fccf73` (arm64) |
+| Backup | `/opt/nekomari/backups/pre-v1.6.18-20261020T004349Z` (WAL-safe SQLite backups, previous compose, `SHA256SUMS`); pre-deploy `quick_check` was `ok` |
+| Startup | 21 s to `/api/public` 200; upgrade archive **21 MB**, archives kept at 3, `data/backup` 1.6 GB |
+| Verification | `/api/version` = `v1.6.18` hash `95fe217`, healthy; `quick_check` ok; gzip `/app.js` 24,887 B; 12 connections; container memory ~79 MB; no errors in the first five minutes |
+| Rollback | compose back to `v1.6.17@sha256:6d4a2806…`; data untouched, backup above |
+
 ## v1.6.16 rollback and v1.6.17 hotfix (2026-10-19)
 
 v1.6.16 was published (tag on `bd989ab`) and rolled out at 15:01 UTC. It refused
