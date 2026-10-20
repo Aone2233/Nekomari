@@ -54,7 +54,7 @@ precedence).
 | Remaining | SB01 is offline at v1.6.11; the panel persisted `target_version=v1.6.22` for its next connection. It needs an exec/SSH update once it is reachable |
 | Method | OC424/BERO/OVH/MAC/PZYC/HK04/NOSLA/MegaBox updated over SSH (SHA-256 verified, old binary kept as `*.pre-v1.6.22`); ATT/ShunDun/VT01 updated through the panel `admin:exec` task API |
 | Verification | `admin:agentVersions` counts: `v1.6.22: 11, v1.6.11: 1`; 11 online; targets cleared for the updated nodes (so they track future releases again) |
-| Operational finding | **Every agent unit runs `--disable-auto-update`**, so `admin:rollAgentUpdate` events are ignored. The panel's rollout is a no-op for this fleet; updates are an SSH/exec operation until the flag is removed. Removing it is a per-host policy change and was not done here |
+| Operational finding | The fleet was on **pre-H6 agents** (v1.6.9/v1.6.11/v1.6.14), which do not understand the `agent.update` event; that is why this rollout used SSH/exec. `--disable-auto-update` only stops the agent's periodic self-check — panel-requested events still work — and v1.6.22+ handles them. Future rollouts can use `admin:rollAgentUpdate` once every node is on v1.6.22+; SB01 is the exception until it reconnects |
 
 ## Off-host backup (OVH, 2026-10-20)
 

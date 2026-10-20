@@ -8,6 +8,17 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.6.23] — 2026-10-20
+
+Agent diagnostics and update semantics; panel unchanged.
+
+- **`komari-agent --version` prints the version and exits.** It was an unknown flag, so every
+  upgrade check had to parse the journal for the startup line instead.
+- **`--disable-auto-update` is now described accurately.** It disables the agent's *periodic*
+  self-update; panel-requested `agent.update` events still work. The v1.6.22 rollout had to be
+  manual because the fleet was on pre-H6 binaries that did not understand that event, not because
+  the flag blocks it. The flag's help text and the startup log say so.
+
 ## [v1.6.22] — 2026-10-20
 
 Agent-side fixes; the panel is unchanged.

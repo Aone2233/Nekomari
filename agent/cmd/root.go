@@ -28,6 +28,11 @@ var flags = pkg_flags.GlobalConfig
 
 var warningPanelHost, warningRunAsUser string
 
+// printVersion is bound to --version. It is a plain package variable rather than a
+// GlobalConfig field: the flag must work before the config file, environment and token
+// are read, and it must not be overridable by a config file.
+var printVersion bool
+
 // tokenOnCommandLine records whether this process was started with the token in
 // its arguments. It is read only by the one-time warning, after the token itself
 // is no longer reachable through this flag.
@@ -152,6 +157,10 @@ var RootCmd = &cobra.Command{
 			ShowToast()
 			return nil
 		}
+		if printVersion {
+			fmt.Println(update.CurrentVersion)
+			return nil
+		}
 		loadFromEnv() // 从环境变量加载配置，覆盖解析
 		if flags.ConfigFile != "" {
 			bytes, err := os.ReadFile(flags.ConfigFile)
@@ -266,6 +275,12 @@ var RootCmd = &cobra.Command{
 				log.Println("[ERROR]", err)
 			}
 			go update.DoUpdateWorks()
+		} else {
+			// --disable-auto-update is about the agent choosing to update itself. A panel
+			// rollout is an explicit operator action and still goes through the v2
+			// agent.update event, so saying this avoids the reading that the node ignores
+			// the panel entirely.
+			log.Println("Periodic auto-update is disabled; panel-requested update events are still accepted.")
 		}
 		go server.DoUploadBasicInfoWorks()
 		// 解锁探测要真的出网打 Netflix / YouTube / Cloudflare，所以单独一条慢循环，
@@ -311,7 +326,8 @@ func init() {
 		"Path to a JSON backup-status file; when set, the agent reports backup.age_seconds and backup.ok")
 	RootCmd.PersistentFlags().StringVar(&flags.UpdateRepo, "update-repo", "",
 		"GitHub repo (owner/name) used for auto-update; defaults to this fork's repository")
-	RootCmd.PersistentFlags().BoolVar(&flags.DisableAutoUpdate, "disable-auto-update", false, "Disable automatic updates")
+	RootCmd.PersistentFlags().BoolVar(&flags.DisableAutoUpdate, "disable-auto-update", false, "Disable periodic automatic updates (panel-requested updates still work)")
+	RootCmd.PersistentFlags().BoolVar(&printVersion, "version", false, "Print the agent version and exit")
 	RootCmd.PersistentFlags().BoolVar(&flags.DisableWebSsh, "disable-web-ssh", false, "Disable remote control(web ssh and rce)")
 	//RootCmd.PersistentFlags().BoolVar(&flags.MemoryModeAvailable, "memory-mode-available", false, "[deprecated]Report memory as available instead of used.")
 	RootCmd.PersistentFlags().Float64VarP(&flags.Interval, "interval", "i", 3.0, "Interval in seconds")
