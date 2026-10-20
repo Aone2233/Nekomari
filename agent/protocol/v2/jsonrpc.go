@@ -143,7 +143,33 @@ func BuildPingResultPayloadWithRole(taskID uint, pingType, role string, value in
 // 丢包不可比。面板靠这个字段把它们拆成两条序列，而不是混成一条曲线。
 //
 // 空 family 不写入字段：旧服务端会忽略它，旧 agent 也不会发它，两侧都保持兼容。
+//
+// 本函数保持旧签名与旧线缆形状（没有 value_us）：value 是毫秒，这是旧面板唯一认识的
+// 单位。真实测量路径请用 BuildPingResultPayloadWithRoleFamilyAndMicros 附带微秒值。
 func BuildPingResultPayloadWithRoleAndFamily(taskID uint, pingType, role, family string, value int, finishedAt time.Time) interface{} {
+	return buildPingResultPayload(taskID, pingType, role, family, value, nil, finishedAt)
+}
+
+// BuildPingResultPayloadWithRoleFamilyAndMicros 在带 role/family 的负载上再附加微秒精度。
+//
+// ## 为什么同时发两个字段
+//
+// 面板把 value 存成 ping 记录的毫秒值（Value<0 记为丢包），历史上只能到毫秒。亚毫秒的
+// 目标（同机房、loopback）在毫秒单位下不是 0 就是 1，图表上变成阶梯；而 ICMP 的平均
+// RTT 本来就有微秒分辨率。所以：
+//
+//   - value 仍是毫秒（微秒值 / 1000，截断），旧面板照旧工作；
+//   - value_us 是测量到的微秒值，新面板可以用它画出真实分辨率；失败时也是 -1，
+//     与 value 的丢包哨兵一致，避免"字段缺失"和"未知"两种含义混在一起；
+//   - 旧面板直接忽略不认识的 value_us（Go 的 json.Unmarshal 会跳过未知字段）。
+//
+// 本函数是 agent 真实测量路径唯一该用的构建函数。
+func BuildPingResultPayloadWithRoleFamilyAndMicros(taskID uint, pingType, role, family string, value int, valueUS int64, finishedAt time.Time) interface{} {
+	return buildPingResultPayload(taskID, pingType, role, family, value, &valueUS, finishedAt)
+}
+
+// buildPingResultPayload 组装 ping 结果通知；valueUS 为 nil 时不写 value_us（旧形状）。
+func buildPingResultPayload(taskID uint, pingType, role, family string, value int, valueUS *int64, finishedAt time.Time) interface{} {
 	params := map[string]interface{}{
 		"task_id":     taskID,
 		"ping_type":   pingType,
@@ -155,6 +181,9 @@ func BuildPingResultPayloadWithRoleAndFamily(taskID uint, pingType, role, family
 	}
 	if family != "" {
 		params["family"] = family
+	}
+	if valueUS != nil {
+		params["value_us"] = *valueUS
 	}
 	return Request{
 		JSONRPC: Version,

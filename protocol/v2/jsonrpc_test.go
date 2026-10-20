@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -126,5 +127,50 @@ func TestRequestStillCarriesTypedParams(t *testing.T) {
 	}
 	if decoded.Params.TaskID != "task-1" || decoded.Params.Command != "uptime" {
 		t.Fatalf("decoded params = %+v", decoded.Params)
+	}
+}
+
+// PingResultParams 必须认得新 agent 的 value_us，同时旧 payload 仍然可用。
+//
+// 这个字段是 agent 与面板之间唯一的协议改动：旧 agent 不发它（值为 0），面板回退到
+// 整数毫秒的 value；新 agent 发它，面板写小数毫秒 —— 两种 payload 都必须能解码。
+func TestPingResultParamsCarriesMicroseconds(t *testing.T) {
+	decode := func(body string) PingResultParams {
+		t.Helper()
+		var req RawRequest
+		if err := json.Unmarshal([]byte(body), &req); err != nil {
+			t.Fatalf("unmarshal raw request: %v", err)
+		}
+		var params PingResultParams
+		if err := req.DecodeParams(&params); err != nil {
+			t.Fatalf("decode params: %v", err)
+		}
+		return params
+	}
+
+	modern := decode(`{"jsonrpc":"2.0","method":"agent.pingResult","params":{"task_id":7,"ping_type":"icmp","value":0,"value_us":420}}`)
+	if modern.TaskID != 7 || modern.PingType != "icmp" || modern.Value != 0 || modern.ValueUS != 420 {
+		t.Fatalf("decoded microsecond params = %+v", modern)
+	}
+
+	legacy := decode(`{"jsonrpc":"2.0","method":"agent.pingResult","params":{"task_id":7,"ping_type":"icmp","value":5}}`)
+	if legacy.Value != 5 || legacy.ValueUS != 0 {
+		t.Fatalf("legacy params = %+v, want value 5 and no value_us", legacy)
+	}
+
+	// 0 在 JSON 里省略（omitempty）：旧 agent 的响应形状因此完全不变。
+	encodedLegacy, err := json.Marshal(legacy)
+	if err != nil {
+		t.Fatalf("marshal legacy params: %v", err)
+	}
+	if strings.Contains(string(encodedLegacy), "value_us") {
+		t.Errorf("a zero value_us was encoded: %s", encodedLegacy)
+	}
+	encodedModern, err := json.Marshal(modern)
+	if err != nil {
+		t.Fatalf("marshal modern params: %v", err)
+	}
+	if !strings.Contains(string(encodedModern), `"value_us":420`) {
+		t.Errorf("the microsecond value is missing from %s", encodedModern)
 	}
 }

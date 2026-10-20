@@ -49,9 +49,10 @@ Agent diagnostics release; panel stays on v1.6.21.
 | Release | tag `v1.6.23` on `cccfd4b`; release run `39389812698`; 10 assets including agent binaries |
 | Change | `komari-agent --version` prints the version and exits; `--disable-auto-update` help/log now says it only stops the periodic self-check (panel `agent.update` events still work) |
 | OC424 test | panel `admin:rollAgentUpdate` targeted `v1.6.23`; the v1.6.22 agent accepted the event, updated, and `--version` reports `v1.6.23` |
-| Fleet | **11/12 on v1.6.23**; SB01 is offline at v1.6.22 with `target_version=v1.6.23` saved and will update when it reconnects |
-| Method | panel roll for the 11 online nodes; PZYC was updated from a locally downloaded asset because GitHub is unreachable from that host |
-| Verification | `--version` checked on OC424/BERO/OVH/MAC/HK04/NOSLA/MegaBox (`v1.6.23`); DB counts after the rollout show 11 nodes on v1.6.23; targets cleared for the updated nodes |
+| Fleet | **12/12 on v1.6.23**. SB01 had updated itself but its OpenRC service was left crashed; it was restarted and verified through the MAC-WAN jump host |
+| Method | panel roll for the online nodes; PZYC updated from a locally downloaded asset (GitHub unreachable there); SB01 fixed over `MAC-WAN → 45.192.241.60:58364` |
+| Verification | `--version` checked on OC424/BERO/OVH/MAC/HK04/NOSLA/MegaBox and SB01 (`v1.6.23`); SB01 is online in the panel with `target_version` cleared |
+| OpenRC caveat | SB01 is Alpine/openrc: an in-place agent update replaces the binary and exits, and the current init script does not respawn. After **every** agent update on Alpine, run `rc-service nekomari-agent zap && rc-service nekomari-agent start` (or switch the unit to `supervise-daemon`) |
 | Rollback | agent binaries were replaced in place; each host keeps `*.pre-v1.6.22` (and PZYC `*.pre-v1.6.23`) |
 
 This rollout also validates H6 end to end: the panel-directed update works even with

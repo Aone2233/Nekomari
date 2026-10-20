@@ -43,5 +43,5 @@ func TestICMPWithoutCapabilitiesLive(t *testing.T) {
 	if latency < 0 {
 		t.Fatalf("latency = %d, want >= 0", latency)
 	}
-	t.Logf("非特权回退生效：ICMP 往返 %d ms（%s）", latency, family)
+	t.Logf("非特权回退生效：ICMP 往返 %d µs（%s）", latency, family)
 }

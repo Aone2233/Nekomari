@@ -3,6 +3,7 @@ package metricstore
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -58,16 +59,25 @@ func writePingRecords(ctx context.Context, records []models.PingRecord) error {
 		if rec.Family != "" {
 			tags["family"] = rec.Family
 		}
+		// 延迟值：新 agent 的 value_us 是同一个测量的更高精度表示，有效时以它为准
+		// （420 µs → 0.42 ms，而不是被整数毫秒截成 0）。失败仍然按旧判定 —— 负值表示
+		// 丢包，负的 value_us 不是有效延迟，不参与换算；loss 与延迟是两条不同的序列。
+		//
+		// 写入的指标/标签/序列完全不变（ping.latency_ms、ping.success_latency_ms、
+		// ping.loss），变化的只是延迟点的数值从整数毫秒变成小数毫秒。
+		latency := float64(rec.Value)
 		loss := 0.0
 		if rec.Value < 0 {
 			loss = 1
+		} else if rec.ValueUS > 0 {
+			latency = float64(rec.ValueUS) / 1000
 		}
 		points = append(points,
 			metric.Point{
 				MetricName: MetricPingLatency,
 				EntityID:   rec.Client,
 				Timestamp:  rec.Time,
-				Value:      float64(rec.Value),
+				Value:      latency,
 				Tags:       tags,
 			},
 			metric.Point{
@@ -79,7 +89,7 @@ func writePingRecords(ctx context.Context, records []models.PingRecord) error {
 			},
 		)
 		if rec.Value >= 0 {
-			points = append(points, metric.Point{MetricName: MetricPingSuccessLatency, EntityID: rec.Client, Timestamp: rec.Time, Value: float64(rec.Value), Tags: tags})
+			points = append(points, metric.Point{MetricName: MetricPingSuccessLatency, EntityID: rec.Client, Timestamp: rec.Time, Value: latency, Tags: tags})
 		}
 	}
 	return s.WriteBatch(ctx, points)
@@ -194,6 +204,13 @@ func pingRecordFromPoint(p metric.AggregatePoint) models.PingRecord {
 		fmt.Sscanf(tid, "%d", &t)
 		taskIDVal = uint(t)
 	}
+	// rollup 里存的是小数毫秒（0.42），整数 Value 字段会把它截成 0。把同一数值还原成
+	// 微秒放进 ValueUS，前端就不会因为一次亚毫秒探测而看到「0 ms」。丢包（负值）没有
+	// 微秒表示，保持 0 —— 响应里该字段随之省略。
+	valueUS := int64(0)
+	if p.Value >= 0 {
+		valueUS = int64(math.Round(p.Value * 1000))
+	}
 	return models.PingRecord{
 		Client:   p.EntityID,
 		TaskId:   taskIDVal,
@@ -202,6 +219,7 @@ func pingRecordFromPoint(p metric.AggregatePoint) models.PingRecord {
 		Family:   p.Tags["family"],   // 双栈域名靠它区分实际走的是 v4 还是 v6
 		Time:     p.Bucket.UTC(),
 		Value:    int(p.Value),
+		ValueUS:  valueUS,
 	}
 }
 

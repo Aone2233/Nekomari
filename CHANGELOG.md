@@ -14,6 +14,20 @@ Nekomari's own.
   `komari-agent-*`, so credential backups are untouched. Measurements and long-term
   bounds are in `docs/AGENT-FOOTPRINT.md`.
 
+## [v1.6.24] — 2026-10-20
+
+Ping gets sub-millisecond precision without a new metric or series.
+
+- Agent measures ICMP/TCP/HTTP in microseconds, keeps the legacy `value` in whole milliseconds,
+  and adds `value_us`. Old panels ignore the new field; old agents keep working.
+- The panel stores the fractional millisecond value in the **same** `ping.latency_ms` and
+  `ping.success_latency_ms` points, with the same tags, so the number of points, series and
+  buckets does not change. The only storage change is the JSON field on the wire (about 20 bytes
+  per ping result; roughly 0.1–0.2 MB/day for a five-task node) — the metric store already stores
+  float64 values.
+- Reading a point back reconstructs `value_us`, so a 401 µs probe is no longer displayed as 0 ms.
+- Compatibility: a missing `value_us` falls back to the old integer milliseconds.
+
 ## [v1.6.23] — 2026-10-20
 
 Agent diagnostics and update semantics; panel unchanged.
