@@ -253,3 +253,129 @@ func TestUpgradeArchiveSkipsTemporaryDirectoriesAndPrunesOldArchives(t *testing.
 		}
 	}
 }
+
+// 每日清理：对默认目录 ./data/backup 应用同一个保留策略，并报告删了多少、剩多少。
+//
+// 与升级时的剪枝共用 pruneUpgradeArchives，所以这里钉的是导出入口本身：目录路径、
+// 保留数、结果计数，以及「只碰文件系统」这条 —— 长期不升级的面板不该因为一次清理
+// 去打开数据库。
+func TestRunUpgradeArchivePruneTrimsTheDefaultDirectory(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	backupDir := filepath.Join(".", "data", "backup")
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		t.Fatalf("create backup dir: %v", err)
+	}
+	archives := []string{
+		"upgrade-20260101-000000.zip",
+		"upgrade-20260102-000000.zip",
+		"upgrade-20260103-000000.zip",
+		"upgrade-20260104-000000.zip",
+		"upgrade-20260105-000000.zip",
+	}
+	bystanders := []string{
+		"pre-restore-20251231-235959.zip",
+		"upgrade-20260106-000000.zip.partial",
+	}
+	for _, name := range append(append([]string{}, archives...), bystanders...) {
+		if err := os.WriteFile(filepath.Join(backupDir, name), []byte("archive"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	result, err := RunUpgradeArchivePrune()
+	if err != nil {
+		t.Fatalf("RunUpgradeArchivePrune: %v", err)
+	}
+	if result.Dir != backupDir {
+		t.Errorf("result.Dir = %q, want %q (the directory backupOnVersionUpgrade uses)", result.Dir, backupDir)
+	}
+	if result.Keep != upgradeArchiveRetention {
+		t.Errorf("result.Keep = %d, want %d", result.Keep, upgradeArchiveRetention)
+	}
+	if result.Removed != 2 || result.Remaining != 3 {
+		t.Errorf("result = %+v, want 2 removed and 3 remaining", result)
+	}
+	for _, name := range archives[:2] {
+		if _, err := os.Stat(filepath.Join(backupDir, name)); !os.IsNotExist(err) {
+			t.Errorf("%s is older than the retention but was kept (stat error %v)", name, err)
+		}
+	}
+	for _, name := range append(append([]string{}, archives[2:]...), bystanders...) {
+		if _, err := os.Stat(filepath.Join(backupDir, name)); err != nil {
+			t.Errorf("%s was removed: only upgrade-*.zip beyond the retention may be deleted: %v", name, err)
+		}
+	}
+	// 这个入口只碰文件系统：数据库文件不该被它创建或打开。
+	if _, err := os.Stat(filepath.Join(".", "data", "komari.db")); !os.IsNotExist(err) {
+		t.Errorf("RunUpgradeArchivePrune touched the database file (stat error %v), it must not initialise the database", err)
+	}
+}
+
+// 从未升级过的面板没有 backup 目录：零结果、无错误、不创建目录 —— 这是正常状态，
+// 不是需要告警的失败。
+func TestRunUpgradeArchivePruneWithoutABackupDirectory(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	result, err := RunUpgradeArchivePrune()
+	if err != nil {
+		t.Fatalf("a missing backup directory must not be an error: %v", err)
+	}
+	if result.Removed != 0 || result.Remaining != 0 {
+		t.Errorf("result = %+v, want a zero sweep", result)
+	}
+	if result.Keep != upgradeArchiveRetention {
+		t.Errorf("result.Keep = %d, want %d", result.Keep, upgradeArchiveRetention)
+	}
+	if _, err := os.Stat(filepath.Join(".", "data", "backup")); !os.IsNotExist(err) {
+		t.Errorf("the sweep created ./data/backup (stat error %v): cleanup must not create state", err)
+	}
+}
+
+// 删不掉时如实返回错误与磁盘上的真实数量，而不是假装清理成功。
+//
+// 用「最旧的两个条目是非空目录」制造失败：os.Remove 删不掉非空目录，这在 Windows 与
+// Unix 上都成立，不依赖权限位（测试可能以 root 跑）。
+func TestRunUpgradeArchivePruneReportsRemovalFailures(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	backupDir := filepath.Join(".", "data", "backup")
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		t.Fatalf("create backup dir: %v", err)
+	}
+	stuck := []string{
+		"upgrade-20260101-000000.zip",
+		"upgrade-20260102-000000.zip",
+	}
+	for _, name := range stuck {
+		directory := filepath.Join(backupDir, name)
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatalf("create %s: %v", name, err)
+		}
+		if err := os.WriteFile(filepath.Join(directory, "still-here.txt"), []byte("x"), 0o600); err != nil {
+			t.Fatalf("write inside %s: %v", name, err)
+		}
+	}
+	for _, name := range []string{
+		"upgrade-20260103-000000.zip",
+		"upgrade-20260104-000000.zip",
+		"upgrade-20260105-000000.zip",
+	} {
+		if err := os.WriteFile(filepath.Join(backupDir, name), []byte("archive"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	result, err := RunUpgradeArchivePrune()
+	if err == nil {
+		t.Fatal("a removal failure was reported as a clean sweep")
+	}
+	if result.Removed != 0 || result.Remaining != 5 {
+		t.Errorf("result = %+v, want 0 removed and the 5 entries still counted", result)
+	}
+	for _, name := range stuck {
+		if _, statErr := os.Stat(filepath.Join(backupDir, name)); statErr != nil {
+			t.Errorf("%s was deleted although removing it should have failed: %v", name, statErr)
+		}
+	}
+}

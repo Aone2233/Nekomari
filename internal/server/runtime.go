@@ -269,6 +269,41 @@ func registerScheduledWork() {
 	if err := scheduler.AddFunc("db:integrity", scheduler.Every(mainDatabaseIntegrityInterval), mainDatabaseIntegrityCheck); err != nil {
 		logger.ErrorArgs("server", "Failed to add main database integrity scheduled task:", err)
 	}
+	// 升级归档的每日清理。v1.6.19 的保留策略只在「刚写完一份新归档」时生效，长期不升级的
+	// 面板永远走不到那条路径，data/backup 里的旧归档就会一直留着。与 db:integrity 并列：
+	// 同样每日一次、同样不立即执行（第一次在注册 24 小时后），也同样是纯文件操作、不碰库。
+	if err := scheduler.AddFunc("backup:pruneUpgradeArchives", scheduler.Every(upgradeArchivePruneInterval), pruneUpgradeArchivesCheck); err != nil {
+		logger.ErrorArgs("server", "Failed to add upgrade archive prune scheduled task:", err)
+	}
+}
+
+// upgradeArchivePruneInterval 是升级归档清理的周期。
+//
+// 24 小时：归档只在版本变化时新增，清理本身是幂等的文件删除（几毫秒），频率再高也只是
+// 重复扫同一个目录。每日一次既能让长期不升级的面板也把旧归档收敛到保留数，又不会给日志
+// 每天多加一行以上的东西。
+const upgradeArchivePruneInterval = 24 * time.Hour
+
+// pruneUpgradeArchivesCheck 是注册到调度器的清理入口。
+func pruneUpgradeArchivesCheck() {
+	reportUpgradeArchivePrune(dbcore.RunUpgradeArchivePrune)
+}
+
+// reportUpgradeArchivePrune 把一次清理结果写成日志：成功记 Info（删了多少、现在剩多少），
+// 失败记 Warn 并且什么都不做 —— 清理失败不该影响服务，下一个周期会再试。
+//
+// run 作为参数只为测试：这里要钉的是「结果怎么落到日志级别与数字上」，磁盘行为由
+// database/dbcore 的用例覆盖。注册那一行没有单测（调度器 job 表没有 introspection，而
+// registerScheduledWork 还注册了依赖数据库与配置的其它任务），覆盖边界是它注册的函数。
+func reportUpgradeArchivePrune(run func() (dbcore.UpgradeArchivePruneResult, error)) {
+	result, err := run()
+	if err != nil {
+		logger.Warnf("server", "Could not prune old upgrade archives: %v", err)
+		return
+	}
+	logger.Infof("server",
+		"Upgrade archive retention: removed %d old archive(s), %d kept in %s (keep %d)",
+		result.Removed, result.Remaining, result.Dir, result.Keep)
 }
 
 // mainDatabaseIntegrityInterval 是主库完整性检查的周期。

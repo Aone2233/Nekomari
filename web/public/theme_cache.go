@@ -13,8 +13,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/klauspost/compress/zstd"
 
@@ -234,17 +236,53 @@ func materializeDefaultThemeCache() (string, error) {
 
 	// Windows 上 os.Rename 覆盖不了一个已存在的目录，而 target 可能正是一份不完整的
 	// 缓存（比如上次在解压中途被杀）。先删再改名；删不掉就让错误如实上报。
-	if err := os.RemoveAll(target); err != nil {
+	if err := removeThemeCachePath(target); err != nil {
 		_ = os.RemoveAll(staging)
 		return "", fmt.Errorf("replace incomplete theme cache: %w", err)
 	}
-	if err := os.Rename(staging, target); err != nil {
+	if err := renameThemeCache(staging, target); err != nil {
 		_ = os.RemoveAll(staging)
 		return "", fmt.Errorf("publish theme cache: %w", err)
 	}
 
 	removeStaleThemeCaches(root, key)
 	return target, nil
+}
+
+// renameThemeCache publishes the staging directory, retrying briefly on Windows.
+//
+// Windows returns a sharing violation when another process (indexer, antivirus, an
+// open handle) has any file in the tree open, and that is transient. Production hit
+// this during a prewarm on CI: the rename failed, the cache fell back to the 33 MiB
+// in-memory map, and the next request paid the extraction again. A few hundred
+// milliseconds of retry keeps the disk path, which is the whole point of the cache.
+// Other platforms get the atomic rename with no retry.
+func renameThemeCache(staging, target string) error {
+	const attempts = 20
+	var err error
+	for attempt := 0; attempt < attempts; attempt++ {
+		err = os.Rename(staging, target)
+		if err == nil || runtime.GOOS != "windows" {
+			return err
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return err
+}
+
+// removeThemeCachePath clears a previous incomplete cache, with the same Windows
+// sharing-violation retry as renameThemeCache.
+func removeThemeCachePath(target string) error {
+	const attempts = 20
+	var err error
+	for attempt := 0; attempt < attempts; attempt++ {
+		err = os.RemoveAll(target)
+		if err == nil || runtime.GOOS != "windows" {
+			return err
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	return err
 }
 
 // themeCacheIsComplete 报告 dir 是不是一份完整、且大小与标记一致的缓存。

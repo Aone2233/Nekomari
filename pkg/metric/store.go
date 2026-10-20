@@ -256,6 +256,41 @@ func (s *Store) reader() *sql.DB {
 	return s.db
 }
 
+// PoolStats is a point-in-time snapshot of the Store's connection pools. It is a plain
+// copy of the counters database/sql maintains, so the caller never touches the pool.
+type PoolStats struct {
+	// Write is the primary pool: writes, and reads when there is no dedicated read pool.
+	Write sql.DBStats
+	// Read is the dedicated read-only pool (SQLite WAL read concurrency).
+	Read sql.DBStats
+	// HasRead reports whether Read is a real, separate pool. When false, reads go through
+	// Write and Read is the zero value rather than a second copy of the same counters.
+	HasRead bool
+}
+
+// PoolStats returns the connection-pool counters without touching the database: it calls
+// Stats() only — no Ping and no new connection — so a diagnostic page can read it while
+// every connection is busy. A nil Store, or one whose pool has been closed, reports zero
+// statistics instead of panicking; sql.DB.Stats is safe to call after Close.
+func (s *Store) PoolStats() PoolStats {
+	if s == nil {
+		return PoolStats{}
+	}
+	s.mu.RLock()
+	db, readDB := s.db, s.readDB
+	s.mu.RUnlock()
+
+	var stats PoolStats
+	if db != nil {
+		stats.Write = db.Stats()
+	}
+	if readDB != nil {
+		stats.Read = readDB.Stats()
+		stats.HasRead = true
+	}
+	return stats
+}
+
 // closeDBs closes database pools owned by the Store.
 //
 // closeDBs 关闭由 Store 自己创建并拥有的数据库连接池。

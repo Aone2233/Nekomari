@@ -7,6 +7,7 @@ import { useSettings } from "@/lib/api";
 import { NodeTable } from "./nodeTable/NodeTable";
 import { EmptyNodesGuide } from "./autoDiscovery/EmptyNodesGuide";
 import { Header } from "./autoDiscovery/Header";
+import { BulkEntry } from "@/components/bulk/BulkEntry";
 
 /**
  * The admin node list.
@@ -78,6 +79,11 @@ export const Layout = () => {
         settings={settings}
         settingsLoading={settingsLoading}
       />
+
+      {/* 勾选后出现的入口。选择是 uuid 列表而不是行号，所以 5 秒轮询换掉整个列表、搜索过滤
+          或重新排序都不会把勾选移到别的节点上；已经不在列表里的 uuid 由批量页自己的
+          present-node 过滤丢掉（BulkEditPage 的 effectiveSelection），不会被应用到别的节点。 */}
+      <BulkEntry selectedNodes={selectedNodes} />
 
       {isEmpty ? (
         <EmptyNodesGuide />

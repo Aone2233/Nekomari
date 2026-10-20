@@ -138,6 +138,8 @@ jobs:
         # The real script needs a running panel and an API key; the harness pins
         # its decision table (skip, success, JSON-RPC error, bad theme asset).
         run: bash deploy/panel-auth-smoke.test.sh
+      - name: Test the post-upgrade check (offline harness)
+        run: bash deploy/panel-upgrade-check.test.sh
       - name: Test that the agent upgrade scripts preserve file capabilities
         # A binary replacement drops them (`cp`/`install` copy content and mode, never xattrs), and a node whose
         # agent runs as a non-root user unit needs `cap_net_raw` to probe ICMP at all — otherwise the panel

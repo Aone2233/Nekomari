@@ -22,6 +22,7 @@ import {
   type BulkForm,
   type BulkReport,
 } from "@/types/Bulk";
+import { selectionFromSearch } from "./bulkSelection";
 
 /**
  * Bulk edit (roadmap H2).
@@ -47,6 +48,15 @@ export interface BulkEditPageProps {
   /** apply runs the edit. Supplied by the page shell, stubbed by the fixture. */
   apply?: (uuids: string[], update: Record<string, unknown>) => Promise<BulkReport>;
   loading?: boolean;
+  /**
+   * The selection to open with, e.g. the rows the operator checked in the admin node list.
+   *
+   * Optional — the standalone route opens with nothing selected, as before — and an explicit
+   * value wins over the URL. That is what lets the fixture pin a selection without a query
+   * string, while the standalone page (which receives the admin list's checkboxes through the
+   * URL, because it is a separate document) still gets them by default.
+   */
+  initialSelection?: string[];
 }
 
 /** A field row: a switch that decides whether this field is part of the update, and its input. */
@@ -73,10 +83,22 @@ const Field: React.FC<{
   </Flex>
 );
 
-export const BulkEditPage: React.FC<BulkEditPageProps> = ({ nodes, apply, loading = false }) => {
+export const BulkEditPage: React.FC<BulkEditPageProps> = ({
+  nodes,
+  apply,
+  loading = false,
+  initialSelection,
+}) => {
   const { t } = useTranslation();
   const [form, setForm] = useState<BulkForm>(emptyForm);
-  const [selected, setSelected] = useState<string[]>([]);
+  // Read once, at mount: the selection is the operator's to change afterwards, and re-syncing it
+  // from the URL or the prop on every render would fight the checkboxes.
+  const [selected, setSelected] = useState<string[]>(() =>
+    initialSelection ??
+    selectionFromSearch(
+      typeof globalThis.location === "undefined" ? "" : globalThis.location.search,
+    ),
+  );
   const [report, setReport] = useState<BulkReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
