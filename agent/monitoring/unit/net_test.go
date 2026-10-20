@@ -358,11 +358,80 @@ func TestShouldInclude(t *testing.T) {
 			},
 			expected: true,
 		},
+		// 显式 include 优先于"默认排除虚拟网卡"：lo/br/veth/tap 这类名字默认不统计，
+		// 但显式点名时必须能选中 —— 否则 --include-nics lo 这种写法永远无效。
 		{
-			name:    "loopback in include list should still be excluded",
+			name:    "loopback explicitly included",
 			nicName: "lo",
 			includeNics: map[string]struct{}{
 				"lo": {},
+			},
+			excludeNics: nil,
+			expected:    true,
+		},
+		{
+			name:    "bridge explicitly included",
+			nicName: "br0",
+			includeNics: map[string]struct{}{
+				"br0": {},
+			},
+			excludeNics: nil,
+			expected:    true,
+		},
+		{
+			name:    "virtual interface selected by pattern",
+			nicName: "veth1a2b3c",
+			includeNics: map[string]struct{}{
+				"veth*": {},
+			},
+			excludeNics: nil,
+			expected:    true,
+		},
+		{
+			name:    "container tap explicitly included",
+			nicName: "tap0",
+			includeNics: map[string]struct{}{
+				"tap*": {},
+			},
+			excludeNics: nil,
+			expected:    true,
+		},
+		// 显式 exclude 仍然优先于显式 include：两个都点名时，"不要"是更强的意图。
+		{
+			name:    "explicit exclude beats explicit include",
+			nicName: "br0",
+			includeNics: map[string]struct{}{
+				"br*": {},
+			},
+			excludeNics: map[string]struct{}{
+				"br0": {},
+			},
+			expected: false,
+		},
+		{
+			name:    "exclude pattern beats a broad include pattern",
+			nicName: "veth9",
+			includeNics: map[string]struct{}{
+				"veth*": {},
+			},
+			excludeNics: map[string]struct{}{
+				"veth9": {},
+			},
+			expected: false,
+		},
+		// 没有 include 时默认行为不变：虚拟网卡依旧被排除。
+		{
+			name:        "bridge excluded by default",
+			nicName:     "br0",
+			includeNics: nil,
+			excludeNics: nil,
+			expected:    false,
+		},
+		{
+			name:    "include list still limits the set",
+			nicName: "docker0",
+			includeNics: map[string]struct{}{
+				"eth*": {},
 			},
 			excludeNics: nil,
 			expected:    false,

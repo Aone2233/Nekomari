@@ -506,23 +506,25 @@ func parseNics(nics string) map[string]struct{} {
 }
 
 func shouldInclude(nicName string, includeNics, excludeNics map[string]struct{}) bool {
-	// 默认排除回环接口
-	for loopbackName := range loopbackNames {
-		if strings.HasPrefix(nicName, loopbackName) {
+	// 显式 exclude 永远优先：操作员明确说"不要这张卡"时，别的规则都不该把它加回来。
+	for pattern := range excludeNics {
+		if matched, _ := filepath.Match(pattern, nicName); matched {
 			return false
 		}
 	}
 
-	// 如果定义了白名单，则只包括白名单中的接口
+	// 显式 include 优先于"默认排除虚拟网卡"。原先这里先按前缀排除再匹配 include，于是
+	// --include-nics lo / br0 / veth* 永远选不中——而显式点名正是"我要监控这张网桥/容器
+	// 网卡"的唯一表达方式。默认过滤只应约束没有被点名的网卡。
 	for pattern := range includeNics {
 		if matched, _ := filepath.Match(pattern, nicName); matched {
 			return true
 		}
 	}
 
-	// 如果定义了黑名单，则排除黑名单中的接口
-	for pattern := range excludeNics {
-		if matched, _ := filepath.Match(pattern, nicName); matched {
+	// 没有被显式点名时，维持原有默认：回环与常见虚拟网卡前缀一律不统计。
+	for loopbackName := range loopbackNames {
+		if strings.HasPrefix(nicName, loopbackName) {
 			return false
 		}
 	}

@@ -1,6 +1,7 @@
 package netstatic
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,6 +17,9 @@ import (
 //     cumulative counter was attributed to one sampling interval
 //  2. nothing checked whether a delta was physically possible for the elapsed time
 func TestPlausibleDeltaRejectsMoreThanTheLinkCouldCarry(t *testing.T) {
+	// Pin "the link speed is unreadable" so the expectations below describe the
+	// assumed 1 Gbps ceiling regardless of the machine running the test.
+	pinLinkSpeed(t, 0, errors.New("no sysfs on this host"))
 	// One sampling interval on a 1 Gbps link, with the configured headroom.
 	elapsed := time.Duration(DefaultDetectInterval) * time.Second
 	ceiling := ceilingBytes(elapsed)

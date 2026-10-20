@@ -8,6 +8,25 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.6.22] — 2026-10-20
+
+Agent-side fixes; the panel is unchanged.
+
+- **The traffic plausibility ceiling follows the real link speed.** It was hard-coded at 1 Gbps, so a
+  10G/25G node's busy intervals were silently discarded. It now reads
+  `/sys/class/net/<iface>/speed` (Mbps) and uses that rate with no burst headroom; an unknown speed
+  keeps the old 1 Gbps assumption and its 3x headroom, so the 59.5 GB restart phantom is still
+  rejected. Rejection logs name the measured/assumed rate and its source.
+- **The NIC whitelist is refreshed before every sample** instead of being a startup snapshot. A
+  bridge, container veth or hot-plugged NIC that appears later is now counted; a failed or empty
+  enumeration keeps the previous list, and stale counters for removed NICs are pruned.
+- **Explicit `--include-nics` can select `lo`, `br0`, `veth*` and `tap*`.** Order is now explicit
+  exclude > explicit include > default virtual/loopback exclusion > default include; without an
+  include list the default behaviour is unchanged.
+- Agent tests cover measured 10G/2.5G ceilings, unknown-speed fallback, provider refresh/failure,
+  include/exclude precedence and the existing delta-guard cases; `go build ./...` and `-race` pass
+  in the agent module.
+
 ## [v1.6.21] — 2026-10-20
 
 - **Audit logs can be filtered by message type and exported as CSV.** `/api/admin/logs` now forwards
