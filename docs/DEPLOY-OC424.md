@@ -3,6 +3,23 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.6.19 rollout (2026-10-20)
+
+H6 cleared-target delivery, release SBOM/provenance, pprof process and pool data,
+and reproducible Linux frontend builds. Panel-side only; no agent was restarted.
+
+| Item | Evidence |
+|---|---|
+| Remote build | BERO (Go 1.26.9, Node 22): `go test ./...`, `go vet ./...`, `go build ./...`, `npm ci/test/lint/build` all green; two builds of the same archive were byte-identical (`diff -rq` 0) |
+| Release | tag `v1.6.19` on `5f4d7fa`; release run `39359870000`, Docker run `39360507319` successful |
+| Release assets | 10 assets including `sbom.spdx.json` (235 packages); `gh attestation verify nekomari-linux-amd64` succeeded |
+| Pinned panel image | `ghcr.io/aone2233/nekomari:v1.6.19@sha256:ec838740154fddf871f4fc328767002bac476e54d52bc0f2e2ffc273a351ee05` (arm64) |
+| Backup | `/opt/nekomari/backups/pre-v1.6.19-20261020T022902Z` (WAL-safe backups, previous compose, `SHA256SUMS`); pre-deploy `quick_check` `ok` |
+| Startup | 21 s to `/api/public` 200; pre-upgrade archive 21 MB; archives pruned to 3 and `data/backup` now **62 MB** (the last 1.6 GB archive was removed) |
+| Verification | `/api/version` = `v1.6.19` hash `5f4d7fa`, healthy, 0 restarts; `quick_check` ok; `clients.target_version_pending_clear` column present; gzip `/app.js` 24,887 B; 12 connections; ~86 MB RSS; 0 errors in the first five minutes |
+| Auth deploy check | `deploy/panel-auth-smoke.py` against `http://127.0.0.1:25774` with a panel API key: 3/3 (admin RPC, HTML document, theme asset `/style.css`). The key was passed through the environment and is not stored in the repository or this file |
+| Rollback | compose back to `v1.6.18@sha256:ded94987…`; data untouched, backup above |
+
 ## v1.6.18 rollout (2026-10-20)
 
 Maintenance windows are excluded from SLA, the main database is checked daily, and

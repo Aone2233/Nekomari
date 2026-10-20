@@ -25,7 +25,8 @@ update). v1.6.16 then closed the operational follow-up (upgrade-archive exclusio
 startup integrity/index check, theme-cache warm-up, H6 target persistence, and maintenance in node
 status); v1.6.17 relaxed the startup integrity gate after it proved too strict on this database;
 v1.6.18 excluded maintenance windows from SLA, added the daily integrity check, and added an
-authenticated deploy verification script. The memory/performance table is empty as a result; the
+authenticated deploy verification script. v1.6.19 completed the H6 clear-delivery edge, added
+release SBOM/provenance, pprof process/pool data, and made Linux frontend builds reproducible. The memory/performance table is empty as a result; the
 review's remaining items are the feature gaps below, and the dated report holds their evidence.
 
 ## Decisions waiting on the owner
@@ -114,10 +115,10 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Item | Where | Why it is still here |
 |---|---|---|
 | Nine of ten nodes still run the agent as root | `docs/DEPLOY-OC424.md` | The NOSLA pattern (unprivileged user + `AmbientCapabilities=CAP_NET_RAW`) works; JPKD2 is Alpine, which has no `setcap`. Moving them is a fleet-wide change with its own risk |
-| The new SBOM/provenance steps have not produced a release yet | `.github/workflows/release.yml` | Added 2026-10-20 with the actions' own `action.yml` checked by `check-action-inputs.py`; the first tag after this change is what proves the permissions and attestation path |
-| The frontend build is reproducible on Linux, not necessarily on Windows | `frontend/vite.config.ts` | v1.6.19 removed the wall-clock `__BUILD_TIME__` (the cause of 143 changed chunk names) and a double build of the same archive is byte-identical on BERO; Windows `readdir` order can still change chunk assignment, and the committed theme archive is built on Linux |
+| The frontend build is reproducible on Linux, not necessarily on Windows | `frontend/vite.config.ts` | v1.6.19 removed the wall-clock `__BUILD_TIME__` (the cause of 143 changed chunk names); a double build of the same archive on BERO is byte-identical, and v1.6.19's release produced a verifiable attestation and a 235-package SBOM. Windows `readdir` order can still change chunk assignment; the committed archive is built on Linux |
+| The pprof page shows the main database pool but not the metric store's pool | `web/api/admin/pprof.go`, `pkg/metric` | The metric store owns its `*sql.DB` privately; adding its counters needs an accessor in `pkg/metric` (or the metricstore wrapper), not just a handler change |
 | The panel's own `data/backup/upgrade-*.zip` archives are still on the same disk as the databases | `database/dbcore/dbcore.go` | **Waiting on you**: it needs a destination and an authorisation. One off-host copy exists (MAC-WAN, verified) |
-| Archive pruning only happens after an upgrade | `deploy/prune-upgrade-backups.sh` | v1.6.17 keeps the three newest archives (data/backup went from 5.5 GB to 1.6 GB), but a panel that never upgrades never prunes; schedule the script or fold it into the hourly maintenance |
+| Archive pruning only happens after an upgrade | `deploy/prune-upgrade-backups.sh` | The v1.6.19 rollout pruned the last 1.6 GB archive and left 62 MB (three 21 MB archives); a panel that never upgrades never prunes, so schedule the script or fold it into the hourly maintenance |
 | OIDC + 2FA makes SSO login fail-closed with no way for the browser to answer the challenge | `docs/ROADMAP.md` §F12 | Deliberately shipped as a gate, not half a state machine. Needs a one-time pending token plus a code prompt; production impact is zero while OIDC is off |
 | `sso_id` survives a password change, and `DeleteAllSessions()` is global | `database/accounts/` | Policy questions now that the SSO path requires TOTP; recommendation was (b)+(c) in the audit report |
 | A committed admin password from the SECRETS incident still has to be changed | `docs/SECRETS.md` incident 4 | An ops action on the live panel, not a repository change |
