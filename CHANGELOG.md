@@ -8,6 +8,12 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **Agent disk-footprint pruning**: `deploy/prune-agent-backups.sh` keeps one rollback
+  binary per node and removes the rest; OC424's agent directory went from 231 MB to
+  39 MB, and the fleet-wide cleanup reclaimed ~300 MB. It only matches
+  `komari-agent-*`, so credential backups are untouched. Measurements and long-term
+  bounds are in `docs/AGENT-FOOTPRINT.md`.
+
 ## [v1.6.23] — 2026-10-20
 
 Agent diagnostics and update semantics; panel unchanged.

@@ -71,15 +71,17 @@ linearly, and costs chart resolution.
 |---|---|---|
 | CPU | < 0.2 % of one core | any 1 vCPU, any architecture (amd64/arm64) |
 | RAM | 16–25 MiB resident | **64 MiB floor**, 128 MiB comfortable — the OS needs the rest |
-| Disk | 9.6 MB binary (8.9 MB arm64) + 53 KB ledger | **~30 MB**, so 100 MB free is plenty² |
+| Disk | 9.4 MB binary + 27–431 KB ledger + one rollback copy (~9 MB) | **~40 MB**, so 100 MB free is plenty² |
 | Network | 4–7 MB/day up, ~0.5 MB/day down | any link; no burst behaviour observed |
 | Privileges | none for TCP/HTTP tasks | see below for ICMP |
 | Inbound | **nothing** | no public IP, no port forwarding |
 
-² Each upgrade keeps the previous binary as `<bin>.bak-pre-<version>`, ~8–9 MB
-each. On HK04 those rollback copies were 43 MB of the 52 MB the agent directory
-occupied — larger than everything else the agent uses put together. Prune them if
-space is tight.
+² Each upgrade historically kept every previous binary as `<bin>.bak-pre-<version>`
+or `<bin>.pre-v<version>`, ~8–9 MB each; on 2026-10-20 OC424's agent directory had
+grown to **231 MB** this way. `deploy/prune-agent-backups.sh` keeps the newest copy
+per directory and removes the rest (dry run by default, `--apply` to delete); it only
+matches `komari-agent-*`, so credential backups are untouched. After pruning OC424 was
+39 MB, PZYC/HK04/MegaBox 29 MB, BERO/NOSLA/MAC 19 MB, OVH 9.4 MB.
 
 The ledger now also carries the counter baseline (`last_counters`): one small object
 per monitored interface, ~120 bytes on a one-NIC node against a 53 KB ledger. It is
@@ -203,3 +205,34 @@ explicitly as `icmp` has no fallback and reports the failure as loss.
   reporting throughout, so this is a connectivity observation about those two
   paths (both go through Cloudflare), not a footprint figure. It is recorded here
   because a host that drops idle mappings will look like this.
+## 2026-10-20 re-measurement (v1.6.23 fleet)
+
+After the v1.6.22/v1.6.23 rollouts, the same six-host sample was re-measured. The
+resident cost is unchanged; the largest long-term growth was not the ledger but the
+rollback binaries that manual upgrades left behind.
+
+| Host | Agent binary | RSS | `net_static.json` | Agent dir after prune |
+|---|---:|---:|---:|---:|
+| OC424 (arm64) | 8.7 MB | 20.0 MiB | 36 KB | 39 MB (was 231 MB) |
+| BERO (amd64) | 9.4 MB | 22.7 MiB | 61 KB | 19 MB |
+| OVH (amd64) | 9.4 MB | 20.6 MiB | 27 KB | 9.4 MB |
+| MAC (amd64) | 9.4 MB | 22.4 MiB | 424 KB | 19 MB |
+| PZYC (amd64) | 9.4 MB | 17.0 MiB | 223 KB | 29 MB |
+| HK04 (amd64) | 9.4 MB | 15.8 MiB | 225 KB | 29 MB |
+| NOSLA (amd64) | 9.4 MB | 25.0 MiB | 109 KB | 19 MB |
+| MegaBox (amd64) | 9.4 MB | 24.1 MiB | 431 KB | 29 MB |
+
+Long-term behaviour:
+
+- **The ledger is bounded by retention**, not by uptime: 31 days at the 600 s bucket
+  is ~4 460 samples per interface, and the file is rewritten every 30 minutes. The
+  observed 27–431 KB range is the interface count, not age; it does not keep growing
+  after the retention window.
+- **Rollback binaries were the unbounded part.** Each manual upgrade copied the old
+  binary to `*.pre-v*`/`*.bak-*` and nothing removed them. OC424 alone had 23 copies
+  (231 MB). The new pruning script reclaimed ~300 MB across the fleet and keeps one
+  newest rollback per node.
+- **Migration backups** (`migration-backup-20260926/`, ~9.3 MB each) are one-time
+  token-file migration snapshots. They are deliberately not pruned automatically;
+  remove them after confirming the current `.agent-credentials` works.
+- **Network and CPU** remain as measured: ~4–7 MB/day up and <0.2 % of one core.
