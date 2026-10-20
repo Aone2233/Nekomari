@@ -6,27 +6,41 @@ type PingMetricStatContentProps = {
   t: TFunction;
 };
 
-const formatMilliseconds = (value: number) => `${Math.round(value)} ms`;
+/**
+ * formatMilliseconds renders one latency figure.
+ *
+ * 亚毫秒的测量报 "<1 ms" 而不是 "0 ms"：0 读起来像"没有延迟"，而它其实表示"低于 1 ms 这一档"——
+ * 后端改成小数毫秒之后，这两种情况必须能分开。其余保留 1 位小数，因为 10.4 与 10.9 的差别在
+ * ping 图上是可见的，取整会把它抹平。
+ *
+ * null/undefined（服务端没有这一项）返回 null 而不是占位符：那一行干脆不渲染，表格里不会出现
+ * 一个看起来像"测量到了 0"的破折号。
+ */
+const formatMilliseconds = (value: number | null | undefined): string | null => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  if (value < 1) return "<1 ms";
+  return `${value.toFixed(1)} ms`;
+};
 
 const PingMetricStatContent = ({ stat, t }: PingMetricStatContentProps) => {
-  const rows: Array<[string, string]> = [
-    [
-      t("chart.lossRate"),
-      typeof stat.loss === "number" ? `${stat.loss.toFixed(1)}%${
-        stat.loss_approximate ? ` ${t("chart.approximate")}` : ""
-      }` : "-",
-    ],
-  ];
+  const rows: Array<[string, string]> = [];
+  const push = (label: string, value: string | null) => {
+    if (value !== null) rows.push([label, value]);
+  };
 
-  if (typeof stat.min === "number") rows.push([t("chart.min"), formatMilliseconds(stat.min)]);
-  if (typeof stat.max === "number") rows.push([t("chart.max"), formatMilliseconds(stat.max)]);
-  if (typeof stat.avg === "number") rows.push([t("chart.avg"), formatMilliseconds(stat.avg)]);
-  if (typeof stat.latest === "number") rows.push([t("chart.latest"), formatMilliseconds(stat.latest)]);
-  if (typeof stat.p50 === "number") rows.push(["P50", formatMilliseconds(stat.p50)]);
-  if (typeof stat.p99 === "number") rows.push(["P99", formatMilliseconds(stat.p99)]);
-  if (typeof stat.stddev === "number") {
-    rows.push([t("chart.sampling.stddev"), formatMilliseconds(stat.stddev)]);
-  }
+  push(
+    t("chart.lossRate"),
+    typeof stat.loss === "number"
+      ? `${stat.loss.toFixed(1)}%${stat.loss_approximate ? ` ${t("chart.approximate")}` : ""}`
+      : "-",
+  );
+  push(t("chart.min"), formatMilliseconds(stat.min));
+  push(t("chart.max"), formatMilliseconds(stat.max));
+  push(t("chart.avg"), formatMilliseconds(stat.avg));
+  push(t("chart.latest"), formatMilliseconds(stat.latest));
+  push("P50", formatMilliseconds(stat.p50));
+  push("P99", formatMilliseconds(stat.p99));
+  push(t("chart.sampling.stddev"), formatMilliseconds(stat.stddev));
   if (typeof stat.p99_p50_ratio === "number" && (stat.valid ?? 0) > 0) {
     rows.push([t("chart.volatility"), stat.p99_p50_ratio.toFixed(2)]);
   }

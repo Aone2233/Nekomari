@@ -1,10 +1,12 @@
 #!/sbin/openrc-run
 # Nekomari agent as an OpenRC service (Alpine and other non-systemd hosts).
 #
-# The bundled installer is systemd-only, so this is the OpenRC equivalent: the
-# binary plus the flags from /etc/conf.d/nekomari-agent, supervised so it comes
-# back after a crash or a network blip. Host-specific settings live in that conf.d
-# file (mode 0600) rather than here.
+# deploy/install-node-agent.sh generates the equivalent of this file on OpenRC
+# hosts now (supervise-daemon with respawn_delay/respawn_max, enabled in the default
+# runlevel). This hand-written unit is kept for the nodes installed before that
+# branch existed and for the flags-from-conf.d layout: the binary plus the flags from
+# /etc/conf.d/nekomari-agent, supervised so it comes back after a crash or a network
+# blip. Host-specific settings live in that conf.d file (mode 0600) rather than here.
 #
 # The token is NOT one of them: it goes in a credential file and reaches the agent
 # as `--token-file`. Putting it in conf.d only protects it at rest, because this

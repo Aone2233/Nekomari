@@ -28,6 +28,13 @@
 #                                or touch the service; leaves the credential file
 #                                in place so the unit can be inspected
 #
+# Init system: systemd when it is actually running, otherwise OpenRC (Alpine/LXC),
+# written as an /etc/init.d script under supervise-daemon. Two overrides exist for
+# the offline test and for unusual layouts:
+#   NEKOMARI_INIT=systemd|openrc   skip detection
+#   NEKOMARI_INIT_DIR=DIR          where the OpenRC init script is written
+#                                  (default /etc/init.d)
+#
 # The token never ends up in the unit. `-t <token>` is accepted — the panel hands
 # out exactly that — but the installer moves it into a 0600 credential file and
 # starts the agent with `--token-file`, because `-t` puts the node's whole
@@ -172,23 +179,6 @@ elif [ -z "$AUTO_DISCOVERY" ]; then
   log "credential: reusing ${EXISTING_TOKEN_FILE}"
 fi
 
-if [ "$DRY_RUN" = "1" ]; then
-  # Still write the file the unit will point at, so a dry run can be checked with
-  # `cat` and `ls -l` rather than taken on trust. Nothing else is touched.
-  if [ -n "${TOKEN:-}" ] && [ -n "${TOKEN_FILE:-}" ]; then
-    mkdir -p "$(dirname "$TOKEN_FILE")"
-    # umask first: the file must never exist with wider permissions, even briefly.
-    (umask 077; printf 'AGENT_TOKEN=%s\n' "$TOKEN" > "$TOKEN_FILE")
-    chmod 600 "$TOKEN_FILE"
-    log "dry run: wrote ${TOKEN_FILE} (mode 0600, $(printf '%s' "$TOKEN" | wc -c | tr -d ' ') characters)"
-  fi
-  log "dry run: stopping before the download and the service. Planned:"
-  log "  unit:    /etc/systemd/system/${SERVICE_NAME}.service"
-  log "  command: ${INSTALL_DIR}/${SERVICE_NAME}$(for a in "${AGENT_ARGS[@]}"; do printf ' %s' "$a"; done)"
-  log "no binary was downloaded and no service was changed."
-  exit 0
-fi
-
 # --- platform ---------------------------------------------------------------
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 case "$OS" in
@@ -204,6 +194,57 @@ esac
 ASSET="komari-agent-${OS}-${ARCH}"
 log "platform ${OS}/${ARCH}"
 
+# --- init system ------------------------------------------------------------
+# The nodes are not uniform: systemd on the Debian/Ubuntu hosts, OpenRC on the
+# Alpine/LXC ones (deploy/hosts/nekomari-agent.openrc is the hand-written version
+# of what the branch below generates). A systemd-only installer left those nodes
+# with no service at all -- and the unit they were given by hand ran the agent
+# under start-stop-daemon in the background, so after an update OpenRC recorded
+# the service as "crashed" and the node silently went offline.
+#
+# /run/systemd/system is the honest test for "systemd is PID 1 here": the
+# systemctl binary can be installed on a machine whose init is something else, and
+# writing a unit that nothing reads looks exactly like a successful install.
+INIT_DIR="${NEKOMARI_INIT_DIR:-/etc/init.d}"
+detect_init() {
+  case "${NEKOMARI_INIT:-}" in
+    systemd) printf 'systemd'; return 0 ;;
+    openrc)  printf 'openrc';  return 0 ;;
+    "") ;;
+    *) die "NEKOMARI_INIT must be systemd or openrc (got '${NEKOMARI_INIT}')" ;;
+  esac
+  if [ "$OS" = "darwin" ]; then printf 'launchd'; return 0; fi
+  if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then printf 'systemd'; return 0; fi
+  if command -v rc-update >/dev/null 2>&1 && command -v rc-service >/dev/null 2>&1; then printf 'openrc'; return 0; fi
+  return 1
+}
+if ! INIT="$(detect_init)"; then
+  die "no supported init system found: systemd is not running and OpenRC (rc-update/rc-service) is not installed"
+fi
+case "$INIT" in
+  systemd) SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service" ;;
+  openrc)  SERVICE_PATH="${INIT_DIR}/${SERVICE_NAME}" ;;
+  launchd) SERVICE_PATH="$HOME/Library/LaunchAgents/com.nekomari.${SERVICE_NAME}.plist" ;;
+esac
+log "init ${INIT} (${SERVICE_PATH})"
+
+if [ "$DRY_RUN" = "1" ]; then
+  # Still write the file the service will point at, so a dry run can be checked
+  # with cat and ls -l rather than taken on trust. Nothing else is touched.
+  if [ -n "${TOKEN:-}" ] && [ -n "${TOKEN_FILE:-}" ]; then
+    mkdir -p "$(dirname "$TOKEN_FILE")"
+    # umask first: the file must never exist with wider permissions, even briefly.
+    (umask 077; printf 'AGENT_TOKEN=%s\n' "$TOKEN" > "$TOKEN_FILE")
+    chmod 600 "$TOKEN_FILE"
+    log "dry run: wrote ${TOKEN_FILE} (mode 0600, $(printf '%s' "$TOKEN" | wc -c | tr -d ' ') characters)"
+  fi
+  log "dry run: stopping before the download and the service. Planned:"
+  log "  init:    ${INIT} (${SERVICE_PATH})"
+  log "  command: ${INSTALL_DIR}/${SERVICE_NAME}$(for a in "${AGENT_ARGS[@]}"; do printf ' %s' "$a"; done)"
+  log "no binary was downloaded and no service was changed."
+  exit 0
+fi
+
 # --- privileges -------------------------------------------------------------
 # Nodes are not always root; several hand out a normal user with passwordless
 # sudo. Every privileged step goes through $SUDO, which is empty when already root.
@@ -215,10 +256,18 @@ else
 fi
 
 # --- already installed? -----------------------------------------------------
-# Two agents on one host means two nodes in the panel for one machine.
+# Two agents on one host means two nodes in the panel for one machine. The same
+# question is asked of whichever init system owns this host: a running OpenRC
+# service is just as much "already there" as a running systemd unit.
 if [ "$FORCE" -ne 1 ]; then
   for unit in "$SERVICE_NAME" komari-agent nekomari-agent; do
-    if $SUDO systemctl is-active "$unit" >/dev/null 2>&1; then
+    running=0
+    if [ "$INIT" = "systemd" ]; then
+      $SUDO systemctl is-active "$unit" >/dev/null 2>&1 && running=1
+    elif [ "$INIT" = "openrc" ]; then
+      [ -x "${INIT_DIR}/${unit}" ] && $SUDO rc-service "$unit" status >/dev/null 2>&1 && running=1
+    fi
+    if [ "$running" = "1" ]; then
       die "$unit is already running; pass --force to replace it"
     fi
   done
@@ -289,8 +338,8 @@ for a in "${AGENT_ARGS[@]}"; do
   esac
 done
 
-if [ "$OS" = "linux" ]; then
-  UNIT="/etc/systemd/system/${SERVICE_NAME}.service"
+if [ "$INIT" = "systemd" ]; then
+  UNIT="${SERVICE_PATH}"
   $SUDO tee "$UNIT" >/dev/null <<UNIT_EOF
 [Unit]
 Description=Nekomari monitoring agent
@@ -320,6 +369,74 @@ UNIT_EOF
   state="$($SUDO systemctl is-active "$SERVICE_NAME" || true)"
   log "service ${SERVICE_NAME}: ${state}"
   [ "$state" = "active" ] || { $SUDO journalctl -u "$SERVICE_NAME" --no-pager -n 15 || true; die "service failed to start"; }
+elif [ "$INIT" = "openrc" ]; then
+  # OpenRC branch (Alpine, LXC, anything where systemd is not PID 1).
+  #
+  # supervise-daemon is what keeps the service "started" instead of "crashed":
+  # with start-stop-daemon in the background a single unexpected exit leaves the
+  # agent down for good, and OpenRC remembers that as a crashed service. With
+  # respawn_max=0 it retries forever and respawn_delay=5 stops a broken binary
+  # from spinning hot.
+  #
+  # OpenRC older than 0.21 has no supervise-daemon. There the script falls back to
+  # command_background and says so, because without a supervisor a crash is final.
+  if command -v supervise-daemon >/dev/null 2>&1; then
+    OPENRC_SUPERVISE='supervisor="supervise-daemon"
+respawn_delay=5
+respawn_max=0'
+    OPENRC_SV_NOTE="supervise-daemon (respawn after 5 s, unlimited retries)"
+  else
+    OPENRC_SUPERVISE='# This OpenRC has no supervise-daemon (older than 0.21), so the agent runs in the
+# background under start-stop-daemon and will NOT be restarted after a crash.
+command_background="true"'
+    OPENRC_SV_NOTE="start-stop-daemon in the background (no supervise-daemon: a crash is final)"
+  fi
+  INIT_SCRIPT="$SERVICE_PATH"
+  # A normal OpenRC host already has /etc/init.d; a custom NEKOMARI_INIT_DIR may not.
+  $SUDO mkdir -p "$(dirname "$INIT_SCRIPT")"
+  $SUDO tee "$INIT_SCRIPT" >/dev/null <<OPENRC_EOF
+#!/sbin/openrc-run
+# Nekomari monitoring agent -- written by deploy/install-node-agent.sh.
+description="Nekomari monitoring agent"
+
+command="${BIN}"
+command_args="${ARGS_STR}"
+command_user="root"
+directory="${INSTALL_DIR}"
+pidfile="/run/\${RC_SVCNAME}.pid"
+
+${OPENRC_SUPERVISE}
+
+# The agent logs to stdout; supervise-daemon appends it here, so a failed start
+# has something to show.
+output_log="/var/log/${SERVICE_NAME}.log"
+error_log="/var/log/${SERVICE_NAME}.log"
+
+depend() {
+	need net
+	after firewall
+}
+OPENRC_EOF
+  $SUDO chmod 0755 "$INIT_SCRIPT"
+  log "init script: ${INIT_SCRIPT} (${OPENRC_SV_NOTE})"
+
+  # Enable it for boot and start it the way an operator would. `zap` clears a
+  # crashed state left by an earlier install (or by a previous binary): without it
+  # `start` refuses and the node stays offline.
+  $SUDO rc-update add "$SERVICE_NAME" default
+  if $SUDO rc-service "$SERVICE_NAME" status >/dev/null 2>&1; then
+    $SUDO rc-service "$SERVICE_NAME" restart
+  else
+    $SUDO rc-service "$SERVICE_NAME" zap >/dev/null 2>&1 || true
+    $SUDO rc-service "$SERVICE_NAME" start
+  fi
+  sleep 3
+  if $SUDO rc-service "$SERVICE_NAME" status >/dev/null 2>&1; then
+    log "service ${SERVICE_NAME}: started"
+  else
+    $SUDO tail -n 15 "/var/log/${SERVICE_NAME}.log" 2>/dev/null || true
+    die "service failed to start"
+  fi
 else
   PLIST="$HOME/Library/LaunchAgents/com.nekomari.${SERVICE_NAME}.plist"
   mkdir -p "$(dirname "$PLIST")"

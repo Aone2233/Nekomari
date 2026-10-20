@@ -5,8 +5,8 @@ import (
 
 	"github.com/Aone2233/nekomari/database/auditlog"
 	"github.com/Aone2233/nekomari/database/clients"
-	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/database/records"
+	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 	agent_runtime "github.com/Aone2233/nekomari/web/agent"
 )
@@ -61,6 +61,12 @@ func init() {
 		},
 		Returns: "{ token: string }",
 	})
+	// 读取 Agent 凭据属于敏感操作：token 是 agent 的长期 bearer 凭据，拿到它等于可以冒充
+	// 该节点上报数据。普通会话因此需要敏感 2FA；API key 仍按既有设计豁免（见
+	// dispatchWithSensitive → VerifySensitive2FACore(..., isAPIKey)），本轮不改变它的
+	// 权限/scope。标记在这里而不是 transport 里：名单属于方法自己的声明，敏感名单用例
+	// （sensitive_stepup_test.go）会把这个新增项一起审阅。
+	rpc.MarkSensitive("admin:getClientToken")
 	RegisterWithGroupAndMeta("clearRecords", rpc.RoleAdmin, adminClearRecords, &rpc.MethodMeta{
 		Name:    "admin:clearRecords",
 		Summary: "Delete all load records",
@@ -68,11 +74,34 @@ func init() {
 	})
 }
 
-// auditActor 从上下文提取审计用的 actor UUID 与来源 IP。
+// auditActorAPIKey 是审计日志里 API key 调用的 actor 标识。
+//
+// API key 没有用户身份：HTTP 兼容字段里是占位 UUID（全零），RPC meta 的 UserUUID 是空串。
+// 两者都不适合直接落进日志 —— 空串看起来像「漏记」，全零 UUID 看起来像某个具体账号
+// （实际只是占位），排查时会把人引向错误方向。统一记成 "api_key"，明确「这是凭据调用，
+// 不是某个用户操作」。
+const auditActorAPIKey = "api_key"
+
+// apiKeyPlaceholderUUID 是 IdentityMiddleware 为 API key 写进旧兼容字段的占位 UUID。
+const apiKeyPlaceholderUUID = "00000000-0000-0000-0000-000000000000"
+
+// auditActor 从上下文提取审计用的 actor 标识与来源 IP。
+//
+// 普通会话返回真实用户 UUID；API key 返回 "api_key"（见上面的注释）。没有 meta 时返回空值，
+// 与改动前一致。
 func auditActor(ctx context.Context) (uuid, ip string) {
-	if meta := rpc.MetaFromContext(ctx); meta != nil {
-		uuid = meta.UserUUID
-		ip = meta.RemoteIP
+	meta := rpc.MetaFromContext(ctx)
+	if meta == nil {
+		return "", ""
+	}
+	ip = meta.RemoteIP
+	if meta.Principal != nil && meta.Principal.IsAPIKey {
+		return auditActorAPIKey, ip
+	}
+	uuid = meta.UserUUID
+	if uuid == apiKeyPlaceholderUUID {
+		// 有的调用点仍从 HTTP 兼容字段取 UUID；占位值不是用户。
+		uuid = auditActorAPIKey
 	}
 	return uuid, ip
 }
@@ -161,7 +190,7 @@ func adminListClients(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonR
 	return cls, nil
 }
 
-func adminGetClientToken(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+func adminGetClientToken(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {
 		UUID string `json:"uuid"`
 	}
@@ -173,6 +202,10 @@ func adminGetClientToken(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
 	}
+	// 凭据读取得留痕：敏感门回答「谁有资格读」，审计回答「谁真的读过」。actor 对 API key
+	// 是 "api_key"（见 auditActor），不会伪装成某个用户。
+	actor, ip := auditActor(ctx)
+	auditlog.Log(ip, actor, "read client token:"+params.UUID, "warn")
 	return map[string]any{"token": token}, nil
 }
 

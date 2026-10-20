@@ -114,10 +114,13 @@ FAKE_SHA=$(printf '#!/bin/sh\nexit 0\n' | sha256sum | awk '{print $1}')
 
 cat > "$BASE/bin/tee" <<'SH'
 #!/usr/bin/env bash
+# The systemd unit is captured for inspection; anything else (the OpenRC init
+# script, which the installer writes into NEKOMARI_INIT_DIR under the temp
+# directory) is written for real, so the OpenRC cases can read it back.
 case "$1" in
   /etc/systemd/system/*) exec "$(dirname "$0")/write_unit" ;;
+  *) cat > "$1" ;;
 esac
-exit 0
 SH
 cat > "$BASE/bin/write_unit" <<'SH'
 #!/usr/bin/env bash
@@ -135,14 +138,62 @@ case "$1" in
   *) exec /usr/bin/uname "$@" ;;
 esac
 SH
+# OpenRC: rc-update / rc-service, and a supervise-daemon stub. They record their
+# calls so a case can assert *what* the installer did, not only what it wrote.
+#
+# rc-service keeps a state file: status succeeds only after start/restart, which
+# is what makes the installer's "is it already running?" branch observable. A
+# service that was never started reports a failure, exactly like a crashed one.
+cat > "$BASE/bin/rc-update" <<'SH'
+#!/usr/bin/env bash
+printf 'rc-update %s\n' "$*" >> "$RC_LOG"
+exit 0
+SH
+cat > "$BASE/bin/rc-service" <<'SH'
+#!/usr/bin/env bash
+printf 'rc-service %s\n' "$*" >> "$RC_LOG"
+action=""
+for a in "$@"; do action="$a"; done
+case "$action" in
+  status)
+    if [ -f "$RC_STATE" ]; then printf ' * status: started\n'; exit 0; fi
+    printf ' * status: crashed\n'
+    exit 3
+    ;;
+  start|restart) : > "$RC_STATE"; exit 0 ;;
+  stop)          rm -f "$RC_STATE"; exit 0 ;;
+  zap)           rm -f "$RC_STATE"; exit 0 ;;
+esac
+exit 0
+SH
+mkdir -p "$BASE/bin-supervise" "$BASE/bin-nosupervise"
+cat > "$BASE/bin-supervise/supervise-daemon" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+chmod +x "$BASE/bin/rc-update" "$BASE/bin/rc-service" "$BASE/bin-supervise/supervise-daemon"
+RC_LOG="$BASE/out/rc.log"
+RC_STATE="$BASE/out/rc.state"
+# Defaults for run_installer; an OpenRC case overrides them for its own call.
+EXTRA_PATH=""
+FORCE_INIT="systemd"
+INIT_DIR_UNDER_TEST="$BASE/init"
+
 chmod +x "$BASE/bin/tee" "$BASE/bin/write_unit" "$BASE/bin/uname"
 
 run_installer() { # args...
+  # NEKOMARI_INIT is pinned rather than detected: detection reads /run/systemd/system,
+  # which exists on a CI runner and not under Git Bash, so an unpinned run would
+  # exercise a different branch on each host. Pin it per case instead.
   env -i \
-    PATH="$BASE/bin:$PATH" \
+    PATH="${EXTRA_PATH:+$EXTRA_PATH:}$BASE/bin:$PATH" \
     HOME="$BASE/home" \
     UNIT_OUT="$BASE/out/last-unit" \
+    RC_LOG="$RC_LOG" \
+    RC_STATE="$RC_STATE" \
     FAKE_SHA="$FAKE_SHA" \
+    NEKOMARI_INIT="$FORCE_INIT" \
+    NEKOMARI_INIT_DIR="$INIT_DIR_UNDER_TEST" \
     NEKOMARI_INSTALLER_DRY_RUN="${DRY:-0}" \
     "$BASH_BIN" "$INSTALLER" "$@" 2>&1
 }
@@ -206,6 +257,70 @@ else
   bad "unit written" "installer did not write a unit: $out"
 fi
 check_mode "installed credential mode is 600" "$BASE/install/.agent-credentials" 600
+
+# ---------------------------------------------------------------------------
+# 7. OpenRC: the installer writes an /etc/init.d script that runs the agent under
+#    supervise-daemon, adds it to the boot runlevel, and starts it.
+#
+#    Why this case exists: on Alpine/LXC nodes the systemd-only installer produced
+#    no service at all, and the hand-written workaround ran the agent under
+#    start-stop-daemon in the background -- so after an agent update OpenRC
+#    recorded the service as "crashed" and the node stayed offline. The assertions
+#    below pin the two pieces that prevent that: a supervisor with a respawn
+#    policy, and zap-then-start instead of a bare start.
+rm -rf "$BASE/init" "$RC_LOG" "$RC_STATE"
+EXTRA_PATH="$BASE/bin-supervise"; FORCE_INIT=openrc
+DRY=0 out=$(run_installer -e http://panel.test -t "$TOKEN" \
+  --install-dir "$BASE/install" --version v9.9.9 --force)
+EXTRA_PATH=""; FORCE_INIT=systemd
+INIT_SCRIPT="$BASE/init/nekomari-agent"
+init_script=""
+if [ -f "$INIT_SCRIPT" ]; then
+  init_script=$(cat "$INIT_SCRIPT")
+  check        "openrc: shebang is openrc-run"            "$init_script" "#!/sbin/openrc-run"
+  check        "openrc: command is the installed binary"  "$init_script" "command=\"$BASE/install/komari-agent-linux-amd64\""
+  check        "openrc: pidfile is per-service"           "$init_script" 'pidfile="/run/${RC_SVCNAME}.pid"'
+  check        "openrc: supervises the agent"             "$init_script" 'supervisor="supervise-daemon"'
+  check        "openrc: respawn delay"                    "$init_script" "respawn_delay=5"
+  check        "openrc: unlimited respawn attempts"       "$init_script" "respawn_max=0"
+  check        "openrc: working directory is the bin dir" "$init_script" "directory=\"$BASE/install\""
+  check        "openrc: needs the network"                "$init_script" "need net"
+  check        "openrc: passes --token-file"              "$init_script" "--token-file $BASE/install/.agent-credentials"
+  check_absent "openrc: script holds no token"            "$init_script" "$TOKEN"
+else
+  bad "openrc init script written" "not found at $INIT_SCRIPT: $out"
+fi
+rc_calls=$(cat "$RC_LOG" 2>/dev/null || true)
+check "openrc: enabled in the default runlevel" "$rc_calls" "rc-update add nekomari-agent default"
+check "openrc: a stopped service is zapped"     "$rc_calls" "rc-service nekomari-agent zap"
+check "openrc: then started"                    "$rc_calls" "rc-service nekomari-agent start"
+check "openrc: the start is verified"           "$out" "service nekomari-agent: started"
+
+# 8. OpenRC with a service that is already running: restart, not zap+start.
+: > "$RC_STATE"; : > "$RC_LOG"
+EXTRA_PATH="$BASE/bin-supervise"; FORCE_INIT=openrc
+DRY=0 out=$(run_installer -e http://panel.test \
+  --install-dir "$BASE/install" --version v9.9.9 --force)
+EXTRA_PATH=""; FORCE_INIT=systemd
+check "openrc: a running service is restarted" "$(cat "$RC_LOG")" "rc-service nekomari-agent restart"
+
+# 9. An OpenRC older than 0.21 has no supervise-daemon: the script falls back to
+#    command_background and says that a crash will not be recovered -- silently
+#    installing a service without a supervisor is the shape that leaves a node
+#    offline after the next bad update.
+rm -rf "$BASE/init"
+EXTRA_PATH="$BASE/bin-nosupervise"; FORCE_INIT=openrc
+DRY=0 out=$(run_installer -e http://panel.test -t "$TOKEN" \
+  --install-dir "$BASE/install" --version v9.9.9 --force)
+EXTRA_PATH=""; FORCE_INIT=systemd
+if [ -f "$INIT_SCRIPT" ]; then
+  init_script=$(cat "$INIT_SCRIPT")
+  check        "openrc fallback: runs in the background" "$init_script" 'command_background="true"'
+  check_absent "openrc fallback: no supervisor line"     "$init_script" 'supervisor="supervise-daemon"'
+  check        "openrc fallback: says a crash is final"  "$out" "no supervise-daemon"
+else
+  bad "openrc fallback init script written" "not found at $INIT_SCRIPT: $out"
+fi
 
 # ---------------------------------------------------------------------------
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
