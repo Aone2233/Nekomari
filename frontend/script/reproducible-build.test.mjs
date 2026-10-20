@@ -25,7 +25,14 @@ test("__BUILD_TIME__ is resolved deterministically, not read from the wall clock
 });
 
 test("a source tarball carries its commit time through export-subst", () => {
-  assert.equal(stamp, "$Format:%cI$", "build-time.txt is the export-subst placeholder");
+  // In a checkout the file is still the literal placeholder; git archive substitutes
+  // it with the commit time. Both are valid states of the same source, and a test
+  // that only accepts one of them fails on the other (caught by the BERO tarball run).
+  assert.match(
+    stamp,
+    /^(\$Format:%cI\$|\d{4}-\d{2}-\d{2}T\S+)$/,
+    "build-time.txt is the export-subst placeholder or its substituted commit time",
+  );
   assert.match(
     attributes,
     /^frontend\/build-time\.txt export-subst$/m,
