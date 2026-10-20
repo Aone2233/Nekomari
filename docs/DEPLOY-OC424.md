@@ -40,6 +40,22 @@ is the offline test for the script (fake panel + `docker`/`sqlite3` stubs; no ho
 The rollout sections below predate the script; their **Verification** rows are what it prints,
 so from the next rollout on that row can be filled in from its output.
 
+## v1.6.22 agent rollout (2026-10-20)
+
+Agent-only release: the panel stayed on v1.6.21. The release fixes the three netstatic
+counter bugs (speed-aware delta ceiling, per-sample NIC whitelist, explicit include
+precedence).
+
+| Item | Evidence |
+|---|---|
+| Release | tag `v1.6.22` on `4645624`; release run `39383574954`; assets include `komari-agent-linux-{amd64,arm64}`, darwin, windows, SBOM and `SHA256SUMS.txt` |
+| OC424 test | binary `/home/ubuntu/nekomari-agent/komari-agent-linux-arm64` replaced after SHA-256 check; service active; log `Nekomari Agent v1.6.22`; WebSocket v2 connected |
+| Fleet | **11/12 on v1.6.22**: OC424, BERO, OVH, MAC, PZYC, HK04, NOSLA, MegaBox, ATT, ShunDun, VT01 |
+| Remaining | SB01 is offline at v1.6.11; the panel persisted `target_version=v1.6.22` for its next connection. It needs an exec/SSH update once it is reachable |
+| Method | OC424/BERO/OVH/MAC/PZYC/HK04/NOSLA/MegaBox updated over SSH (SHA-256 verified, old binary kept as `*.pre-v1.6.22`); ATT/ShunDun/VT01 updated through the panel `admin:exec` task API |
+| Verification | `admin:agentVersions` counts: `v1.6.22: 11, v1.6.11: 1`; 11 online; targets cleared for the updated nodes (so they track future releases again) |
+| Operational finding | **Every agent unit runs `--disable-auto-update`**, so `admin:rollAgentUpdate` events are ignored. The panel's rollout is a no-op for this fleet; updates are an SSH/exec operation until the flag is removed. Removing it is a per-host policy change and was not done here |
+
 ## Off-host backup (OVH, 2026-10-20)
 
 The panel's databases existed only on OC424 (plus its own `data/backup` archives on the
