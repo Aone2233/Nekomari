@@ -273,9 +273,15 @@ type BasicInfoParams struct {
 }
 
 type PingResultParams struct {
-	TaskID     uint      `json:"task_id"`
-	PingType   string    `json:"ping_type"`
-	Value      int       `json:"value"`
+	TaskID   uint   `json:"task_id"`
+	PingType string `json:"ping_type"`
+	Value    int    `json:"value"`
+	// ValueUS 是同一测量结果的微秒精度值（新 agent 上报的 value_us）。
+	//
+	// 旧 agent 不发这个字段，此时为 0，面板回退到 Value（整数毫秒）。落库形态不变：
+	// 仍然写 ping.latency_ms 这一条序列，只是值从整数毫秒变成小数毫秒
+	// （420 µs → 0.42 ms）—— 不新增指标、不新增标签、不新增序列。
+	ValueUS    int64     `json:"value_us,omitempty"`
 	FinishedAt time.Time `json:"finished_at"`
 	// Role 为空表示主目标；"reference" 表示这是参考点的结果。
 	Role string `json:"role,omitempty"`

@@ -9,6 +9,12 @@ type PingRecord struct {
 	Task       PingTask  `json:"task" gorm:"foreignKey:TaskId;references:Id;constraint:OnDelete:CASCADE,OnUpdate:CASCADE;"`
 	Time       time.Time `json:"time" gorm:"index;not null"`
 	Value      int       `json:"value" gorm:"type:int;not null"` // Ping 值，单位毫秒
+	// ValueUS 是同一测量结果的微秒精度值（新 agent 上报的 value_us）。
+	//
+	// 它不是数据库列（gorm:"-"）：落库形态仍然是 ping.latency_ms 那一条序列，只是值
+	// 从整数毫秒换成小数毫秒。这个字段只负责把精度从上报入口带到 metric store，并在
+	// 读回时把小数毫秒还原成微秒交给前端。0 表示「旧 agent 没有上报」，JSON 里省略。
+	ValueUS int64 `json:"value_us,omitempty" gorm:"-"`
 	// PingType 记录本条结果是用哪种协议测出来的（icmp/tcp/http）。
 	// 双协议并列探测（dual）会让同一个任务在同一周期产出多条结果，
 	// 靠这个字段区分，避免两条序列互相覆盖。

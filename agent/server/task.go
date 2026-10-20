@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -165,6 +166,10 @@ func addressFamilyOf(ip string) string {
 
 // 三个 ping 实现都返回实际使用的地址族：族取自它们【真正拨向】的那个 IP，
 // 而不是事后再解析一次 —— 双栈域名两次解析可能给出不同的结果。
+//
+// 延迟单位统一为**微秒**（见 highLatencyThreshold 的说明）：毫秒精度会把同机房/loopback
+// 的往返压成 0 或 1，模型上就是一条阶梯；而内核与 go-ping 本来就提供微秒分辨率。
+// 上报时再折算成旧字段的毫秒值，面板侧不需要任何改变。
 func icmpPing(target string, timeout time.Duration) (int64, string, error) {
 	host, _, err := net.SplitHostPort(target)
 	if err != nil {
@@ -206,7 +211,7 @@ func icmpPing(target string, timeout time.Duration) (int64, string, error) {
 	return latency, family, nil
 }
 
-// runICMP 发一次回显并返回平均 RTT（毫秒）。
+// runICMP 发一次回显并返回平均 RTT（微秒）。
 //
 // 返回值区分两种失败：err 非空表示 socket 根本没建起来；err 为空而 replied 为 false
 // 表示 socket 正常、目标没回包。上层要靠这个区别决定要不要换一种 socket 再试一次 ——
@@ -226,7 +231,7 @@ func runICMP(ip string, timeout time.Duration, privileged bool) (latency int64, 
 	if stats.PacketsRecv == 0 {
 		return -1, false, nil
 	}
-	return stats.AvgRtt.Milliseconds(), true, nil
+	return stats.AvgRtt.Microseconds(), true, nil
 }
 
 func tcpPing(target string, timeout time.Duration) (int64, string, error) {
@@ -259,7 +264,7 @@ func tcpPing(target string, timeout time.Duration) (int64, string, error) {
 			family = actual
 		}
 	}
-	return time.Since(start).Milliseconds(), family, nil
+	return time.Since(start).Microseconds(), family, nil
 }
 
 func httpPing(target string, timeout time.Duration) (int64, string, error) {
@@ -302,7 +307,7 @@ func httpPing(target string, timeout time.Duration) (int64, string, error) {
 	}
 	start := time.Now()
 	resp, err := client.Get(target)
-	latency := time.Since(start).Milliseconds()
+	latency := time.Since(start).Microseconds()
 	if err != nil {
 		return -1, dialedFamily, err
 	}
@@ -459,24 +464,23 @@ func runReferenceProbe(conn *ws.SafeConn, taskID uint, pingType, reference strin
 		kind = "icmp"
 	}
 
-	value := -1
-	var latency int64
+	var latencyUS int64 = -1
 	var family string
 	var err error
 	switch kind {
 	case "tcp":
-		latency, family, err = tcpPing(reference, timeout)
+		latencyUS, family, err = tcpPing(reference, timeout)
 	case "http":
-		latency, family, err = httpPing(reference, timeout)
+		latencyUS, family, err = httpPing(reference, timeout)
 	default:
-		latency, family, err = icmpPing(reference, timeout)
+		latencyUS, family, err = icmpPing(reference, timeout)
 	}
-	if err == nil {
-		value = int(latency)
-	} else {
+	if err != nil {
 		log.Printf("reference probe task %d [%s] target=%s failed: %v", taskID, kind, reference, err)
 	}
-	uploadPingResult(conn, kind, v2.BuildPingResultPayloadWithRoleAndFamily(taskID, kind, "reference", family, value, time.Now()))
+	value, valueUS := pingResultValues(latencyUS, err == nil)
+	uploadPingResult(conn, kind, v2.BuildPingResultPayloadWithRoleFamilyAndMicros(
+		taskID, kind, "reference", family, value, valueUS, time.Now()))
 }
 
 // runPingTask 是单个目标的实际测量逻辑（原 NewPingTask 主体）。
@@ -525,12 +529,12 @@ func runPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget string) {
 		}
 	}
 
-	pingResult := -1
-	if latency, ok := measureWithRetries(taskID, pingType, measure); ok {
-		pingResult = int(latency)
-	}
+	// 内部延迟是微秒；上报时同时给出旧面板要的毫秒与新的微秒字段（见 pingResultValues）。
+	latencyUS, ok := measureWithRetries(taskID, pingType, measure)
+	pingResult, pingResultUS := pingResultValues(latencyUS, ok)
 	finishedAt := time.Now()
-	wsPayload := v2.BuildPingResultPayloadWithRoleAndFamily(taskID, pingType, "", family, pingResult, finishedAt)
+	wsPayload := v2.BuildPingResultPayloadWithRoleFamilyAndMicros(
+		taskID, pingType, "", family, pingResult, pingResultUS, finishedAt)
 	// https://github.com/komari-monitor/komari/commit/eb87a4fc330b7d1c407fa4ff70177615a4f50a1f
 	// -1 代表丢包，服务端计算
 	//if pingResult == -1 {
@@ -541,11 +545,13 @@ func runPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget string) {
 
 // 首次测量超过这个延迟就重试：Linux 的初始 RTO 是 1s，一次 SYN 重传会把
 // 握手时间推到 1s 以上，这个值正好把「被重传撑大的测量」和「真的慢」分开。
-const highLatencyThreshold = 1000
+//
+// 单位是**微秒**，与 measure() 的返回值一致（1_000_000µs = 1000ms）。
+const highLatencyThreshold = 1_000_000
 
 // 重试比首次快这么多，基本可以认定首次被 SYN 重传撑大了。
-// 800ms = SYN/SYN-ACK 首次超时重传 1000ms - 防误判容许 200ms 延迟抖动。
-const retryDropThresholdTcping = 800
+// 800_000µs = SYN/SYN-ACK 首次超时重传 1000ms - 防误判容许 200ms 延迟抖动。
+const retryDropThresholdTcping = 800_000
 
 // pingHighLatencyRetries 首次偏慢时的重试次数。
 const pingHighLatencyRetries = 3
@@ -556,8 +562,37 @@ func tcpRetransmitSuspected(pingType string, firstLatency, second int64) bool {
 	return pingType == "tcp" && firstLatency-second > retryDropThresholdTcping
 }
 
+// formatLatency 把微秒延迟渲染成日志里好读的形式（"1247.0ms"）。
+//
+// 内部一律用微秒，但运维读日志时想看到的是毫秒 —— 直接把 1247000 写进日志，量级判断
+// 反而要靠数位数。失败哨兵值 -1 原样输出，不要伪装成 "0.0ms"。
+func formatLatency(micros int64) string {
+	if micros < 0 {
+		return fmt.Sprintf("%d", micros)
+	}
+	return fmt.Sprintf("%.1fms", float64(micros)/1000)
+}
+
+// pingResultValues 把一次微秒测量折算成上报字段。
+//
+// 线缆上仍然是两个值，这是刻意的过渡形态：
+//   - value 是毫秒（微秒 / 1000，截断），旧面板只认识它，也只用它存 ping 记录；
+//   - value_us 是测量到的微秒值，新面板可以用它画真实分辨率。
+//
+// 失败（真的没连上）时两者都是 -1：这是面板的丢包哨兵（Value<0 → ping.loss=1），
+// 微秒字段用同一个值可以让"失败"在两侧都只有一种表示，而不是"缺字段"和"未知"并存。
+func pingResultValues(latencyUS int64, ok bool) (valueMillis int, valueUS int64) {
+	if !ok {
+		return -1, -1
+	}
+	if latencyUS < 0 {
+		return -1, -1
+	}
+	return int(latencyUS / 1000), latencyUS
+}
+
 // measureWithRetries 执行一次测量，首次偏慢时按 highLatencyThreshold 重试，
-// 返回最终应当上报的延迟以及本次是否成功。
+// 返回最终应当上报的延迟（单位与 measure() 相同：微秒）以及本次是否成功。
 //
 // 返回值语义（这是与面板的契约，不要靠魔法值推断）：
 //   - ok == false **只**表示探测真的失败/超时（measure 返回了 error），此时返回 -1，
@@ -593,8 +628,8 @@ func measureWithRetries(taskID uint, pingType string, measure func() (int64, err
 		if retryLatency <= highLatencyThreshold {
 			if tcpRetransmitSuspected(pingType, firstLatency, retryLatency) {
 				// 第一次的延迟被重传撑大了，不能采信；重试这次是真实的。
-				log.Printf("Ping task %d: tcp handshake retransmitted (first=%dms retry=%dms), reporting the retry",
-					taskID, firstLatency, retryLatency)
+				log.Printf("Ping task %d: tcp handshake retransmitted (first=%s retry=%s), reporting the retry",
+					taskID, formatLatency(firstLatency), formatLatency(retryLatency))
 			}
 			return retryLatency, true
 		}
@@ -602,8 +637,9 @@ func measureWithRetries(taskID uint, pingType string, measure func() (int64, err
 
 	// 重试次数用尽且每一次 measure 都成功了（有 error 的分支都已提前返回）：这是一个
 	// 慢但通畅的目标，不是丢包。上报最后一次实测延迟，面板据此记 latency 而不是 loss。
-	log.Printf("Ping task %d: latency stayed above %dms for %d attempts (first=%dms last=%dms); reporting the measured latency, not packet loss",
-		taskID, highLatencyThreshold, pingHighLatencyRetries+1, firstLatency, lastLatency)
+	log.Printf("Ping task %d: latency stayed above %s for %d attempts (first=%s last=%s); reporting the measured latency, not packet loss",
+		taskID, formatLatency(highLatencyThreshold), pingHighLatencyRetries+1,
+		formatLatency(firstLatency), formatLatency(lastLatency))
 	return lastLatency, true
 }
 
@@ -658,23 +694,22 @@ func runDualPing(conn *ws.SafeConn, taskID uint, pingTarget string, timeout time
 	}
 
 	for _, leg := range legs {
-		value := -1
-		var latency int64
+		var latencyUS int64 = -1
 		var family string
 		var err error
 		switch leg.kind {
 		case "icmp":
-			latency, family, err = icmpPing(leg.target, timeout)
+			latencyUS, family, err = icmpPing(leg.target, timeout)
 		case "tcp":
-			latency, family, err = tcpPing(leg.target, timeout)
+			latencyUS, family, err = tcpPing(leg.target, timeout)
 		}
-		if err == nil {
-			value = int(latency)
-		} else {
+		if err != nil {
 			log.Printf("dual ping task %d [%s] target=%s failed: %v", taskID, leg.kind, leg.target, err)
 		}
-		// -1 表示丢包，由服务端统一换算丢包率
-		uploadPingResult(conn, leg.kind, v2.BuildPingResultPayloadWithRoleAndFamily(taskID, leg.kind, "", family, value, time.Now()))
+		value, valueUS := pingResultValues(latencyUS, err == nil)
+		// -1 表示丢包，由服务端统一换算丢包率；微秒字段与毫秒字段用同一个哨兵。
+		uploadPingResult(conn, leg.kind, v2.BuildPingResultPayloadWithRoleFamilyAndMicros(
+			taskID, leg.kind, "", family, value, valueUS, time.Now()))
 	}
 }
 

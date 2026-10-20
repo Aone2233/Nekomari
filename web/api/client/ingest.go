@@ -70,14 +70,23 @@ func ingestBasicInfo(uuid string, info map[string]interface{}, fallbackIP string
 // 同一任务会先后上报多条不同协议的结果，必须保留该字段以示区分。
 // family 是本次测量实际使用的地址族（"ipv4"/"ipv6"），空值表示 agent 未上报
 // 或无法判断 —— 此时保持改动前的行为，不额外区分。
-func ingestPingResult(uuid string, taskID uint, pingType, role, family string, value int) error {
-	return tasks.SavePingRecord(models.PingRecord{
+func ingestPingResult(uuid string, taskID uint, pingType, role, family string, value int, valueUS int64) error {
+	return tasks.SavePingRecord(newPingRecord(uuid, taskID, pingType, role, family, value, valueUS, time.Now().UTC()))
+}
+
+// newPingRecord 把一条上报结果组装成 PingRecord。
+//
+// 单独成函数是为了可测：ValueUS 与 Value 的共存关系（微秒精度优先、0 表示旧 agent）
+// 是这次改动的契约，而落库与聚合那一侧由 metricstore 的用例覆盖。
+func newPingRecord(uuid string, taskID uint, pingType, role, family string, value int, valueUS int64, at time.Time) models.PingRecord {
+	return models.PingRecord{
 		Client:   uuid,
 		TaskId:   taskID,
 		PingType: pingType,
 		Role:     role,
 		Family:   family,
 		Value:    value,
-		Time:     time.Now().UTC(),
-	})
+		ValueUS:  valueUS,
+		Time:     at,
+	}
 }
