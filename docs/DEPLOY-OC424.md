@@ -40,6 +40,29 @@ is the offline test for the script (fake panel + `docker`/`sqlite3` stubs; no ho
 The rollout sections below predate the script; their **Verification** rows are what it prints,
 so from the next rollout on that row can be filled in from its output.
 
+## Off-host backup (OVH, 2026-10-20)
+
+The panel's databases existed only on OC424 (plus its own `data/backup` archives on the
+same disk). A copy is now pulled nightly by the OVH KS-LE-B host.
+
+| Item | Value |
+|---|---|
+| Destination host | OVH KS-LE-B `jkr-node-01`, Beauharnois (BHS), Ubuntu 24.04 |
+| Destination path | `/srv/backups/oc424` (0700, files 0600) |
+| Storage | `/dev/md3` 410 G RAID1; **366 G available, 6% used** at setup |
+| Archive size | ~98 MB (102,186,879 B for the first one; `metrics.db` dominates) |
+| Retention | 14 newest `oc424-*.tar.zst`; worst case ~1.4 GB, under 0.4% of the volume |
+| Schedule | daily 03:30 UTC via `/home/ubuntu/oc424-backup.sh`, log `/home/ubuntu/oc424-backup.log` |
+| First copy | `oc424-20261020T053721Z.tar.zst`, sha256 `3c9fd370…` |
+| Contents | SQLite `.backup` of `komari.db` and `metrics.db`, `docker-compose.yml`, `INFO` (host/time/panel version); zstd level 3 |
+| Pull authority | OVH holds a dedicated ed25519 key; OC424's `authorized_keys` entry is `restrict,command="/usr/local/bin/oc424-backup-stream.sh"`, so the key can only stream a backup, not open a shell. OC424 holds no key to OVH |
+| Integrity | `zstd -t` before publishing + `.sha256` sidecar; failed pulls leave only a `.tmp` that the trap removes |
+| Restore | download, `zstd -d | tar x`, stop the panel, put the two DBs back (keep the originals), start, then run `deploy/panel-upgrade-check.sh` |
+
+Caveat: the archive is **not encrypted at rest**; access is limited to `ubuntu`/`root` on
+OVH. If that disk is not in the trust boundary, add `age`/`gpg` before upload. The
+archive contains panel secrets (agent tokens, notification credentials).
+
 ## v1.6.20 rollout (2026-10-20)
 
 Panel-upgrade hardening: daily archive pruning, the read-only post-upgrade check, the

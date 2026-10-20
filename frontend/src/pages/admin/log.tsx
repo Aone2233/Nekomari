@@ -7,12 +7,20 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
-import { Button, Dialog, Flex } from "@radix-ui/themes";
-import { Activity } from "lucide-react";
+import { Button, Dialog, Flex, Select } from "@radix-ui/themes";
+import { Activity, Download } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import NumberPicker from "@/components/ui/number-picker";
 import Loading from "@/components/loading";
+import {
+  ALL_LOG_TYPES,
+  LOG_EXPORT_MAX_ROWS,
+  LOG_EXPORT_PAGE_SIZE,
+  LOG_MSG_TYPES,
+  logsQuery,
+  logsToCsv,
+} from "./logCsv";
 
 interface Log {
   id: number;
@@ -29,6 +37,10 @@ const LogPage = () => {
   const [page, setPage] = React.useState<number>(1);
   const [total, setTotal] = React.useState<number>(1);
   const [limit, setLimit] = React.useState<number>(10);
+  const [selectedType, setSelectedType] = React.useState<string>(ALL_LOG_TYPES);
+  const [exporting, setExporting] = React.useState<boolean>(false);
+  const [exportError, setExportError] = React.useState<string | null>(null);
+  const [exportNotice, setExportNotice] = React.useState<string | null>(null);
   const [t] = useTranslation();
   const navigate = useNavigate();
   // Stable identity, so the picker sees one callback for the life of the page.
@@ -36,13 +48,17 @@ const LogPage = () => {
     setLimit(value);
     setPage(1);
   }, []);
+  const handleTypeChange = React.useCallback((value: string) => {
+    setSelectedType(value);
+    // 换类型后旧页码可能已越过新结果的最后一页，表格会请求一个不存在的页并显示空表。
+    setPage(1);
+  }, []);
   React.useEffect(() => {
     const fetchLogs = async () => {
       setLoading(true);
       try {
-        const response = await fetch(
-          `/api/admin/logs?limit=${limit}&page=${page}`
-        );
+        // 查询串和导出共用一个构造函数（见 logCsv.ts），筛选条件不会只对其中一边生效。
+        const response = await fetch(logsQuery(limit, page, selectedType));
         if (!response.ok) {
           throw new Error("Failed to fetch logs");
         }
@@ -62,7 +78,71 @@ const LogPage = () => {
     // onChange，输入 "50" 会发 2 次请求；点 +/- 按钮发 1 次；失焦时值没变则
     // setState 同值 bail-out，不额外发请求）。挂载时不再多发一次请求：
     // picker 的 defaultValue 同步已不再回吐 onChange。
-  }, [page, limit]);
+  }, [page, limit, selectedType]);
+
+  // 导出走另一条取数路径：按当前筛选逐页拉到大表之外再落盘，不动表格里的 page/limit。
+  // 上限 10000 行是页面上真正会打开的日志行数，不是数据库容量 —— 一次点击拉整张表会让
+  // 面板在最忙的时候替一个人做一次全表扫描。
+  const exportCsv = React.useCallback(async () => {
+    setExporting(true);
+    setExportError(null);
+    setExportNotice(null);
+    try {
+      const rows: Log[] = [];
+      let totalRows: number | null = null;
+      let lastPageFull = false;
+      const maxPages = Math.ceil(LOG_EXPORT_MAX_ROWS / LOG_EXPORT_PAGE_SIZE);
+      for (let exportPage = 1; exportPage <= maxPages; exportPage++) {
+        const response = await fetch(
+          logsQuery(LOG_EXPORT_PAGE_SIZE, exportPage, selectedType),
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        const pageLogs: Log[] = Array.isArray(payload?.data?.logs)
+          ? payload.data.logs
+          : [];
+        totalRows =
+          typeof payload?.data?.total === "number" ? payload.data.total : null;
+        rows.push(...pageLogs);
+        lastPageFull = pageLogs.length === LOG_EXPORT_PAGE_SIZE;
+        if (!lastPageFull) break; // 最后一页
+        if (totalRows !== null && rows.length >= totalRows) break;
+      }
+
+      const exported = rows.slice(0, LOG_EXPORT_MAX_ROWS);
+      // 截断提示只在“确实还有没导出的行”时出现：拿到了上限但 total 恰好等于上限，不算截断。
+      const truncated =
+        exported.length === LOG_EXPORT_MAX_ROWS &&
+        (totalRows === null ? lastPageFull : totalRows > LOG_EXPORT_MAX_ROWS);
+
+      const blob = new Blob([logsToCsv(exported)], {
+        type: "text/csv;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `logs-${selectedType === ALL_LOG_TYPES ? "all" : selectedType}.csv`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+
+      if (truncated) {
+        setExportNotice(
+          t("logs.export.truncated", {
+            rows: LOG_EXPORT_MAX_ROWS,
+            defaultValue: "Only the first {{rows}} rows were exported",
+          }),
+        );
+      }
+    } catch (cause) {
+      setExportError(
+        `${t("logs.export.failed", "Export failed")}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      );
+    } finally {
+      setExporting(false);
+    }
+  }, [selectedType, t]);
 
   const totalPages = Math.ceil(total / limit);
   // 计算分页页码，显示当前页及前后1页，两端省略号
@@ -104,7 +184,24 @@ const LogPage = () => {
     <div className="km-page-admin-log flex flex-col gap-2 p-4">
       <div className="km-log-toolbar flex justify-between items-center">
         <h1 className="text-2xl font-bold">{t("logs.title")}</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* 类型筛选的值与后端写入的 msg_type 完全一致（见 logCsv.ts），"all" 不发给服务端。 */}
+          <Select.Root value={selectedType} onValueChange={handleTypeChange}>
+            <Select.Trigger
+              aria-label={t("logs.filter.type", "Type")}
+              data-testid="log-type-filter"
+            />
+            <Select.Content>
+              <Select.Item value={ALL_LOG_TYPES}>
+                {t("logs.filter.allTypes", "All types")}
+              </Select.Item>
+              {LOG_MSG_TYPES.map((type) => (
+                <Select.Item key={type} value={type}>
+                  {type}
+                </Select.Item>
+              ))}
+            </Select.Content>
+          </Select.Root>
           <Button variant="soft" onClick={() => navigate("/admin/pprof")}>
             <Activity size={16} />
             {t("pprof.title")}
@@ -125,8 +222,27 @@ const LogPage = () => {
             min={1}
             max={100}
           />
+          <Button
+            variant="soft"
+            onClick={() => void exportCsv()}
+            disabled={exporting}
+            loading={exporting}
+            data-testid="log-export-csv"
+          >
+            <Download size={16} />
+            {t("logs.export.csv", "Export CSV")}
+          </Button>
         </div>
       </div>
+      {(exportError || exportNotice) && (
+        <div
+          className="text-sm"
+          role={exportError ? "alert" : "status"}
+          data-testid="log-export-status"
+        >
+          {exportError ?? exportNotice}
+        </div>
+      )}
       <div className="km-log-output rounded-lg overflow-hidden">
         <Table>
           <TableHeader>

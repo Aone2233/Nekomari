@@ -110,15 +110,15 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Item | Where | Why it is still here |
 |---|---|---|
 | `admin:getClientToken` returns an agent credential without the second factor | `web/rpc/jsonrpc/admin.client.go` | The same class as the credential export fixed on 2026-10-19; whether a token read belongs behind step-up is a policy call, and the API-key exemption would still apply |
-| Feedback from the `2026-10-18` feature audit not yet scheduled | `docs/audits/2026-10-18/feature-gaps.md` §FG-10…FG-20 | Per-item evidence and effort: audit-log filters/export, metric/record CSV export, exec result history, forecast cost column, CPU temperature and disk I/O (agent release), HTTP status/TLS expiry (agent release), single-account/roles decision, English server errors in the UI |
+| Feedback from the `2026-10-18` feature audit not yet scheduled | `docs/audits/2026-10-18/feature-gaps.md` §FG-10…FG-20 | Audit-log filtering and CSV export shipped in v1.6.21. Still open: metric/record CSV export, exec result history, forecast cost column, CPU temperature and disk I/O (agent release), HTTP status/TLS expiry (agent release), single-account/roles decision, English server errors in the UI |
 
 ## Release, deployment and operations
 
 | Item | Where | Why it is still here |
 |---|---|---|
 | Nine of ten nodes still run the agent as root | `docs/DEPLOY-OC424.md` | The NOSLA pattern (unprivileged user + `AmbientCapabilities=CAP_NET_RAW`) works; JPKD2 is Alpine, which has no `setcap`. Moving them is a fleet-wide change with its own risk |
-| The frontend build is reproducible on Linux, not necessarily on Windows | `frontend/vite.config.ts` | v1.6.19 removed the wall-clock `__BUILD_TIME__` (the cause of 143 changed chunk names); a double build of the same archive on BERO is byte-identical, and v1.6.19's release produced a verifiable attestation and a 235-package SBOM. Windows `readdir` order can still change chunk assignment; the committed archive is built on Linux |
-| The panel's own `data/backup/upgrade-*.zip` archives are still on the same disk as the databases | `database/dbcore/dbcore.go` | **Waiting on you**: it needs a destination and an authorisation. One off-host copy exists (MAC-WAN, verified) |
+| Windows local builds can fail on a locked esbuild temp file | Windows dev environment | The build itself is deterministic on Windows: two builds with a project-local `TEMP`/`TMP` were byte-identical (819 files, diff 0). With the system `%TEMP%`, esbuild sometimes cannot delete its temp file ("Access is denied"); CI's Windows runner is unaffected. Not a source change — a dev-environment workaround until the temp cleaner/AV exclusion is settled |
+| The off-host copy has not been restore-drilled | `docs/DEPLOY-OC424.md` Off-host backup | A nightly 98 MB copy of `komari.db`, `metrics.db` and the compose file now sits on OVH (14 retained, 366 GB free); the local upgrade archives are still on the same disk as the databases, and the OVH copy has not yet been restored into a scratch panel to prove it |
 | OIDC + 2FA makes SSO login fail-closed with no way for the browser to answer the challenge | `docs/ROADMAP.md` §F12 | Deliberately shipped as a gate, not half a state machine. Needs a one-time pending token plus a code prompt; production impact is zero while OIDC is off |
 | `sso_id` survives a password change, and `DeleteAllSessions()` is global | `database/accounts/` | Policy questions now that the SSO path requires TOTP; recommendation was (b)+(c) in the audit report |
 | A committed admin password from the SECRETS incident still has to be changed | `docs/SECRETS.md` incident 4 | An ops action on the live panel, not a repository change |
