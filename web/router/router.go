@@ -215,7 +215,10 @@ func registerAdminRoutes(r *gin.Engine) {
 		session.POST("/remove/all", jsonRpc.Bind("admin:deleteAllSessions"))
 	}
 
-	g.GET("/logs", jsonRpc.Bind("admin:getLogs", jsonRpc.WithQuery("limit", "page")))
+	// msg_type 是 admin:getLogs 早已支持的过滤参数（admin.system.go 的 BindParams 里有
+	// MsgType 字段）；这里漏掉它时接口照常 200，只是筛选被静默忽略 —— 前端按类型筛日志
+	// 看起来「没生效」，而服务端与网络面板都没有任何异常可看。
+	g.GET("/logs", jsonRpc.Bind("admin:getLogs", jsonRpc.WithQuery("limit", "page", "msg_type")))
 
 	// clipboard
 	clipboardGroup := g.Group("/clipboard")

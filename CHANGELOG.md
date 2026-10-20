@@ -8,6 +8,22 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.6.21] — 2026-10-20
+
+- **Audit logs can be filtered by message type and exported as CSV.** `/api/admin/logs` now forwards
+  `msg_type` (the RPC already supported it), the page has a type selector that resets paging, and
+  the export follows the active filter: 1000 rows per request, capped at 10,000, UTF-8 BOM and
+  CRLF for Excel, with quotes/commas/newlines escaped. A truncated export says so; the existing
+  table, paging and detail dialog are unchanged.
+- **Windows frontend builds are reproducible too.** Two builds with a project-local
+  `TEMP`/`TMP` produced the same 819 files (hash diff 0). The system temp directory can make
+  esbuild fail to delete its temp file ("Access is denied"); that is a local environment issue,
+  documented in `OPEN-WORK.md`, not a source change.
+- **Nightly off-host backup to OVH.** The OVH KS-LE-B pulls ~98 MB/day (SQLite backups of
+  `komari.db` and `metrics.db`, compose file, metadata) over a restricted forced-command key and
+  keeps 14 archives; 366 GB of the 410 GB RAID1 was available at setup. See
+  `docs/DEPLOY-OC424.md` for the storage table, restore steps and the at-rest encryption caveat.
+
 ## [v1.6.20] — 2026-10-20
 
 The panel-upgrade hardening batch, plus the last two visibility gaps.
