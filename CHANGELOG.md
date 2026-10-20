@@ -8,6 +8,28 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.6.19] — 2026-10-20
+
+The last follow-up batch from the 2026-10-18 review. Panel-side only: `agent/**/*.go`
+and `protocol/` are untouched.
+
+- **A cleared H6 rollout target is now delivered to a node that was offline.** The panel stores a
+  pending-clear marker, re-sends an empty target once when the node connects, and clears the marker
+  only after the write succeeds. `agentVersions` exposes `pending_clear` when set.
+- **Releases carry an SBOM and build provenance.** The release job now emits `sbom.spdx.json`
+  (included in SHA256SUMS and the Release assets) and attests the built binaries with
+  `actions/attest-build-provenance`; attestation runs before the Release is created, so a failure
+  blocks publication. See `docs/RELEASING.md`.
+- **The pprof page reports process and database-pool data**: RSS (Linux), uptime, and the main
+  database pool's open/in-use/idle/wait counters. A non-zero wait count is highlighted.
+- **Frontend builds are reproducible.** `__BUILD_TIME__` used to be the wall clock and was inlined
+  into the bundle, so every build produced different chunk hashes. It now comes from
+  `VITE_BUILD_TIME`, `SOURCE_DATE_EPOCH`, a stamped git-archive commit time, or the checkout's
+  commit time; two builds of the same archive are byte-identical on Linux.
+- **The authenticated deploy check handles root-served themes.** It judges an asset by being a
+  same-origin JavaScript or stylesheet rather than requiring `/assets/` or `/themes/`; the CRT theme
+  serves `/app.js` and `/style.css`. A production run against OC424 now passes 3/3.
+
 ## [v1.6.18] — 2026-10-20
 
 The maintenance and verification follow-up. Panel-side only: `agent/**/*.go` and

@@ -9,6 +9,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import type { Plugin, UserConfig } from "vite";
 import * as fs from "fs";
 import * as path from "path";
+import { execFileSync } from "child_process";
 import dotenv from "dotenv";
 
 function localKomariThemePlugin(): Plugin {
@@ -65,8 +66,40 @@ const monacoLanguageChunkGlobs = fs.existsSync(monacoDefinitionsDir)
       .map((entry) => `**/chunk-${entry.name}-*.js`)
   : [];
 
+// __BUILD_TIME__ is embedded into the bundle, so it is part of every chunk's content hash.
+// Reading the wall clock here made two builds of the same commit produce different asset
+// names (and therefore different archives), which is what blocked comparing a rebuild with
+// the release. Resolve it deterministically: an explicit override, then SOURCE_DATE_EPOCH,
+// then the checkout's commit time, and only fall back to "now" when there is no git metadata.
+function resolveBuildTime(): string {
+  const override = process.env.VITE_BUILD_TIME;
+  if (override) return override;
+  const epoch = process.env.SOURCE_DATE_EPOCH;
+  if (epoch && /^\d+$/.test(epoch)) {
+    return new Date(Number(epoch) * 1000).toISOString();
+  }
+  // A source tarball has no .git; git archive substitutes this file via export-subst
+  // (see .gitattributes). In a checkout the literal "$Format:%cI$" is not a date and is skipped.
+  try {
+    const stamped = fs.readFileSync(path.resolve(__dirname, "build-time.txt"), "utf8").trim();
+    if (/^\d{4}-\d{2}-\d{2}T/.test(stamped)) return new Date(stamped).toISOString();
+  } catch {
+    // No stamped file (older tree or a checkout): fall through to git.
+  }
+  try {
+    const committed = execFileSync("git", ["log", "-1", "--format=%cI"], {
+      cwd: __dirname,
+      encoding: "utf8",
+    }).trim();
+    if (committed) return new Date(committed).toISOString();
+  } catch {
+    // Tarball without .git: fall through to the wall clock rather than failing the build.
+  }
+  return new Date().toISOString();
+}
+
 export default defineConfig(({ mode }) => {
-  const buildTime = new Date().toISOString();
+  const buildTime = resolveBuildTime();
 
   // Supports configuring BASE_URL via environment variables, defaulting to the root path.
   const base: string = process.env.VITE_BASE_URL ? process.env.VITE_BASE_URL : '/';

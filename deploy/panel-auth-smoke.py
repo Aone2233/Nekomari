@@ -35,9 +35,10 @@ What a FAIL means, by check name:
       a status-code-only check would report a healthy panel while every admin call failed.
 
   GET / serves an HTML document that references the theme's build
-      The panel did not return an HTML document, or the document references no build asset
-      under /assets/ or /themes/. A shell that renders but names nothing is either not the
-      panel's document at all or a theme that failed to be served.
+      The panel did not return an HTML document, or the document references no same-origin
+      JavaScript or stylesheet. A shell that renders but names nothing is either not the
+      panel's document at all or a theme that failed to be served. (The asset may live under
+      /assets/, /themes/<short>/, or the site root: installed themes differ.)
 
   the theme's build asset loads (path)
       The document named an asset that does not load, or that came back as a document. In a
@@ -58,11 +59,23 @@ RPC_PATH = "/api/rpc2"
 RPC_METHOD = "admin:getDatabaseSize"
 HTML_TYPE = "text/html"
 
-# The reference shapes a theme's build uses. The embedded default theme is served at the site
-# root (so /assets/...), while an installed theme's document usually also resolves through
-# /assets/ and its own files live under /themes/<short>/... . A document that references
-# neither is not loading a theme at all.
-THEME_ASSET_PREFIXES = ("/assets/", "/themes/", "assets/", "themes/")
+# What counts as a theme build asset: a same-origin JavaScript or stylesheet the document names.
+#
+# This used to require an /assets/ or /themes/ prefix, which is true for the embedded default
+# panel but false for installed themes that ship their own layout at the site root -- the CRT
+# theme referenced /app.js and /style.css, so a production run of this check failed while the
+# theme was loading perfectly. The extension is the property that matters (a browser fetches it
+# as code or a stylesheet); the directory is a convention one theme may not follow.
+THEME_ASSET_SUFFIXES = (".js", ".css")
+
+
+def is_theme_build_asset(url):
+    """Whether a document reference is a same-origin script or stylesheet."""
+    cleaned = (url or "").strip()
+    if not cleaned or cleaned.startswith(("http://", "https://", "//", "data:")):
+        return False
+    path = cleaned.split("?", 1)[0].split("#", 1)[0]
+    return path.lower().endswith(THEME_ASSET_SUFFIXES)
 
 
 class CheckFailure(Exception):
@@ -193,7 +206,7 @@ class _ThemeAssetParser(HTMLParser):
         cleaned = url.strip()
         if cleaned.startswith("./"):
             cleaned = cleaned[2:]
-        if cleaned.startswith(THEME_ASSET_PREFIXES):
+        if is_theme_build_asset(cleaned):
             self.assets.append(cleaned)
 
 
@@ -226,7 +239,7 @@ def check_theme_document(status, content_type, document):
         return False, "GET / served Content-Type %r, not text/html" % (content_type or "",)
     asset = theme_asset_path(document)
     if not asset:
-        return False, "the document references no build under /assets/ or /themes/"
+        return False, "the document references no same-origin JavaScript or stylesheet"
     return True, asset
 
 

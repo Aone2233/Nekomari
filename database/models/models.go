@@ -34,6 +34,15 @@ type Client struct {
 	// only in the agent's memory, so a rollout survives a panel restart: the panel
 	// re-sends it whenever the node connects (see web/api/client/report_v2.go).
 	TargetVersion string `json:"target_version,omitempty" gorm:"type:varchar(100)"`
+	// TargetVersionPendingClear records that a cleared rollout target has not
+	// reached the node yet, because the node was offline when the operator cleared
+	// it. The agent only keeps its target in memory, so nothing else would tell
+	// that node to stop tracking the old pin: it is re-sent an explicit empty
+	// target when it connects (see web/api/client/report_v2.go).
+	//
+	// Not part of the client JSON: it is panel bookkeeping, not a property of the
+	// node, and the admin agentVersions row exposes it explicitly instead.
+	TargetVersionPendingClear bool `json:"-" gorm:"default:false"`
 	// What the agent reported about this host's ICMP sockets: "raw", "ping",
 	// "none", or "" when an older agent has not said. The empty value means
 	// *unknown*, and the UI must render it as unknown rather than as a denial --

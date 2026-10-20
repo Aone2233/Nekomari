@@ -1,1 +1,3 @@
 *.sh text eol=lf
+# git archive substitutes the commit time, so a tarball build has a deterministic __BUILD_TIME__.
+frontend/build-time.txt export-subst

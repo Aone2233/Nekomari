@@ -8,8 +8,9 @@ git push origin v0.1.0
 ```
 
 Pushing a `v*` tag triggers `.github/workflows/release.yml`, which builds every
-platform, creates the GitHub Release and attaches the artifacts plus
-`SHA256SUMS.txt`.
+platform, creates the GitHub Release and attaches the artifacts, `SHA256SUMS.txt`,
+`sbom.spdx.json` and a build provenance attestation for each binary (see
+[Check the SBOM and the provenance attestation](#3-check-the-sbom-and-the-provenance-attestation)).
 
 > **Wait for CI green on the exact commit before tagging.** The tag starts the
 > release pipeline immediately. v0.1.10 was tagged while the `ci` run for that commit
@@ -303,6 +304,56 @@ while all three pipelines were green.
 
 Because it uses its own port and data directory, it is safe to run on a host that
 is already serving a panel.
+
+### 3. Check the SBOM and the provenance attestation
+
+Two supply-chain artefacts are attached to every release (they were added in the
+batch that introduced this section, so **the first tag after that change is the
+first release that carries them**):
+
+| Asset | What it is |
+|---|---|
+| `sbom.spdx.json` | An SPDX 2.3 JSON SBOM of the files in `dist`, produced by [syft](https://github.com/anchore/syft) through `anchore/sbom-action`. |
+| (attestation) | A GitHub **build provenance** attestation per attached binary, signed through Sigstore using the release workflow's OIDC identity. Not a file in the Release listing — it lives in the repository's attestation store and is looked up by the artefact's digest. |
+
+The SBOM is generated **before** `SHA256SUMS.txt` is computed, so the checksum
+manifest covers it too — `sha256sum -c` validates every file the release
+offers, not just the binaries.
+
+The SBOM and `SHA256SUMS.txt` are deliberately *not* attestation subjects:
+provenance is a statement about what the workflow **built**, and naming
+generated files as subjects muddies that claim. The binaries
+(`nekomari-*` and `komari-agent-*`) are the subjects.
+
+Verify a downloaded binary against the workflow run that produced it:
+
+```bash
+gh attestation verify ./nekomari-linux-amd64 -R Aone2233/Nekomari
+gh attestation verify ./komari-agent-linux-amd64 -R Aone2233/Nekomari
+```
+
+That needs a `gh` new enough to have `attestation` support (2.49+), and it proves
+the bytes you hold came from `release.yml` on this repository — not from a
+rebuilt or modified file. Inspect the SBOM with `grype sbom:./sbom.spdx.json` (or
+`syft` / `jq`) if you want the package list.
+
+Two things this cannot do, on purpose:
+
+- **A pull request cannot prove it works.** The attestation only exists once the
+  release workflow has run, so the first verification is the first tagged
+  release. What the workflow does guarantee is ordering: the attestation step
+  runs **before** `softprops/action-gh-release`, so a broken attestation fails
+  the job instead of quietly shipping a release without one.
+- **This file does not tell you the provenance is good** — only where it comes
+  from. `gh attestation verify` checks the bundle's signature and the workflow
+  identity; whether that workflow is the one you trust is the question it answers,
+  not a judgement it makes.
+
+The action versions are pinned as major tags (`anchore/sbom-action@v0`,
+`actions/attest-build-provenance@v4`). `deploy/check-action-inputs.py` checks
+every `with:` input against the action's own `action.yml` at the pinned tag in
+CI, which is how an input rename here fails on the pull request instead of at
+release time; `deploy/check-action-versions.py` prints when a newer major exists.
 
 ## A note on which workflow files exist
 

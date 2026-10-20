@@ -2,6 +2,7 @@ package jsonrpc
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,6 +15,8 @@ import (
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/pkg/rpc"
+	v2 "github.com/Aone2233/nekomari/protocol/v2"
+	agentrt "github.com/Aone2233/nekomari/web/agent"
 )
 
 // The two copies of the v2 protocol must agree on the method names.
@@ -330,5 +333,174 @@ func TestAgentVersionsExposesThePersistedTarget(t *testing.T) {
 	}
 	if row := seen[free]; row.TargetVersion != "" {
 		t.Fatalf("unpinned row target = %q, want empty", row.TargetVersion)
+	}
+}
+
+// seedPendingClear records a clear that the node has not received yet.
+func seedPendingClear(t *testing.T, uuid string) {
+	t.Helper()
+	if err := clients.SetAgentUpdateState(uuid, "", true); err != nil {
+		t.Fatalf("seed pending clear for %s: %v", uuid, err)
+	}
+}
+
+// requireRolloutState fails unless the persisted rollout state matches.
+func requireRolloutState(t *testing.T, uuid, wantTarget string, wantPending bool) {
+	t.Helper()
+	target, pending, err := clients.AgentUpdateState(uuid)
+	if err != nil {
+		t.Fatalf("read rollout state: %v", err)
+	}
+	if target != wantTarget || pending != wantPending {
+		t.Fatalf("rollout state = (%q, %v), want (%q, %v)", target, pending, wantTarget, wantPending)
+	}
+}
+
+// Clearing the pin while the node is offline must leave a debt the reconnect can
+// pay: an empty target alone is indistinguishable from "never pinned", so without
+// the marker that node would keep running the old pin until it restarted.
+func TestRollAgentUpdateMarksAPendingClearForAnOfflineNode(t *testing.T) {
+	const uuid = "client-roll-pending-offline"
+	createRolloutClient(t, uuid, "0.1.40")
+	if err := clients.SetAgentUpdateState(uuid, "v0.1.40", false); err != nil {
+		t.Fatalf("seed pin: %v", err)
+	}
+
+	result, jerr := adminRollAgentUpdate(context.Background(), rpc.NewRequest(1, "admin:rollAgentUpdate", map[string]any{
+		"uuids":  []string{uuid},
+		"target": "",
+	}))
+	if jerr != nil {
+		t.Fatalf("roll: %v", jerr)
+	}
+	if outcome := rolloutOutcomesOf(t, result, uuid); outcome.Status != updateSaved {
+		t.Fatalf("offline clear outcome = %q (%s), want %q", outcome.Status, outcome.Detail, updateSaved)
+	}
+	requireRolloutState(t, uuid, "", true)
+}
+
+// A clear delivered to a connected node settles the debt immediately: nothing is
+// left to re-send when that node next connects.
+func TestRollAgentUpdateClearsThePendingMarkerForAnOnlineNode(t *testing.T) {
+	const uuid = "client-roll-pending-online"
+	createRolloutClient(t, uuid, "0.1.40")
+	if err := clients.SetAgentUpdateState(uuid, "v0.1.40", false); err != nil {
+		t.Fatalf("seed pin: %v", err)
+	}
+	agentrt.MarkV2Client(uuid)
+	t.Cleanup(func() {
+		agentrt.DeleteConnectedClients(uuid)
+		agentrt.TakeV2Events(uuid, nil, 0)
+	})
+
+	result, jerr := adminRollAgentUpdate(context.Background(), rpc.NewRequest(1, "admin:rollAgentUpdate", map[string]any{
+		"uuids":  []string{uuid},
+		"target": "",
+	}))
+	if jerr != nil {
+		t.Fatalf("roll: %v", jerr)
+	}
+	if outcome := rolloutOutcomesOf(t, result, uuid); outcome.Status != updateDispatched {
+		t.Fatalf("online clear outcome = %q (%s), want %q", outcome.Status, outcome.Detail, updateDispatched)
+	}
+	requireRolloutState(t, uuid, "", false)
+
+	// The node really was told: the clear is on its event queue, with an empty
+	// target, which is what makes the agent forget the pin.
+	events := agentrt.TakeV2Events(uuid, nil, 0)
+	if len(events) != 1 {
+		t.Fatalf("queued %d events for the node, want 1", len(events))
+	}
+	if events[0].Method != v2.MethodAgentUpdate {
+		t.Fatalf("queued event method = %q, want %q", events[0].Method, v2.MethodAgentUpdate)
+	}
+	params, ok := events[0].Params.(v2.UpdateParams)
+	if !ok {
+		t.Fatalf("queued params = %T, want v2.UpdateParams", events[0].Params)
+	}
+	if params.Target != "" {
+		t.Fatalf("queued target = %q, want empty", params.Target)
+	}
+}
+
+// Pinning a node again settles any pending clear: the operator has just said what
+// the node should run, so there is no reset left to deliver.
+func TestRollAgentUpdatePinSettlesAPendingClear(t *testing.T) {
+	const uuid = "client-roll-pending-superseded"
+	createRolloutClient(t, uuid, "")
+	seedPendingClear(t, uuid)
+
+	result, jerr := adminRollAgentUpdate(context.Background(), rpc.NewRequest(1, "admin:rollAgentUpdate", map[string]any{
+		"uuids":  []string{uuid},
+		"target": "v0.1.41",
+	}))
+	if jerr != nil {
+		t.Fatalf("roll: %v", jerr)
+	}
+	if outcome := rolloutOutcomesOf(t, result, uuid); outcome.Status != updateSaved {
+		t.Fatalf("offline pin outcome = %q (%s), want %q", outcome.Status, outcome.Detail, updateSaved)
+	}
+	requireRolloutState(t, uuid, "v0.1.41", false)
+}
+
+// A dry run must not touch the debt either: rehearsing a clear cannot retire a
+// retry that has not happened.
+func TestRollAgentUpdateDryRunKeepsAPendingClear(t *testing.T) {
+	const uuid = "client-roll-pending-dry-run"
+	createRolloutClient(t, uuid, "")
+	seedPendingClear(t, uuid)
+
+	result, jerr := adminRollAgentUpdate(context.Background(), rpc.NewRequest(1, "admin:rollAgentUpdate", map[string]any{
+		"uuids":   []string{uuid},
+		"target":  "",
+		"dry_run": true,
+	}))
+	if jerr != nil {
+		t.Fatalf("dry run: %v", jerr)
+	}
+	if outcome := rolloutOutcomesOf(t, result, uuid); outcome.Status != updateDispatched {
+		t.Fatalf("dry-run outcome = %q (%s)", outcome.Status, outcome.Detail)
+	}
+	requireRolloutState(t, uuid, "", true)
+}
+
+// agentVersions exposes the pending debt next to the target, but only when it is
+// set: the existing row shape must not change for a fleet with nothing pending.
+func TestAgentVersionsExposesAPendingClear(t *testing.T) {
+	const pending = "client-versions-pending-clear"
+	const settled = "client-versions-settled"
+	createRolloutClient(t, pending, "0.1.40")
+	createRolloutClient(t, settled, "0.1.41")
+	seedPendingClear(t, pending)
+
+	result, jerr := adminAgentVersions(context.Background(), nil)
+	if jerr != nil {
+		t.Fatalf("agent versions: %v", jerr)
+	}
+	payload, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("versions result = %T", result)
+	}
+	rows, ok := payload["rows"].([]agentVersionRow)
+	if !ok {
+		t.Fatalf("rows = %T", payload["rows"])
+	}
+	seen := map[string]agentVersionRow{}
+	for _, row := range rows {
+		seen[row.UUID] = row
+	}
+	if row := seen[pending]; !row.PendingClear {
+		t.Fatalf("pending row = %+v, want PendingClear", row)
+	}
+	if row := seen[settled]; row.PendingClear {
+		t.Fatalf("settled row = %+v, want no pending clear", row)
+	}
+
+	settledRow, err := json.Marshal(seen[settled])
+	if err != nil {
+		t.Fatalf("marshal settled row: %v", err)
+	}
+	if strings.Contains(string(settledRow), "pending_clear") {
+		t.Fatalf("settled row exposes pending_clear: %s", settledRow)
 	}
 }
