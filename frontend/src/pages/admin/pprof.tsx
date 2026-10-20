@@ -45,6 +45,13 @@ const pprofDbPoolSchema = z.object({
   wait_count: z.number().int().nonnegative(),
   wait_duration_ms: z.number().finite().nonnegative(),
 });
+// The metric store reports its write pool with those same five fields — one renderer for both
+// rows — and nests a dedicated read pool under "read" when it has one. The nesting is
+// meaningful: no read pool means reads go through the write pool, which is a different fact
+// from a read pool that happens to have no connections open.
+const pprofMetricsDbSchema = pprofDbPoolSchema.extend({
+  read: pprofDbPoolSchema.optional(),
+});
 const pprofSummarySchema = z.object({
   profiles: z.array(pprofProfileSchema),
   runtime: z.object({
@@ -62,7 +69,7 @@ const pprofSummarySchema = z.object({
     rss_bytes: z.number().finite().nonnegative().optional(),
     uptime_seconds: z.number().finite().nonnegative().optional(),
     db_pool: pprofDbPoolSchema.optional(),
-    metrics_db: pprofDbPoolSchema.optional(),
+    metrics_db: pprofMetricsDbSchema.optional(),
   }),
   duration: z.object({
     default_seconds: z.number().int().min(1).max(30),
@@ -161,6 +168,19 @@ function OverviewMetric({
         {value}
       </Text>
     </div>
+  );
+}
+
+/** One connection pool row: same renderer for the main database and every metric-store pool. */
+function PoolMetric({ label, pool, testId }: { label: string; pool: PprofDbPool; testId: string }) {
+  return (
+    <OverviewMetric
+      label={label}
+      value={poolText(pool)}
+      testId={testId}
+      // 有连接真的等过（wait_count>0）才标黄：空闲池是常态，标黄会把常态噪声化。
+      tone={pool.wait_count > 0 ? "amber" : undefined}
+    />
   );
 }
 
@@ -420,6 +440,9 @@ export default function PprofPage() {
 
   const busy = activeAction !== null;
   const durationOptions = summary ? captureDurations(summary) : [];
+  // 指标库把写池的五个字段平铺，独立读池嵌在 read 下（契约见后端 pprofMetricDatabasePool）。
+  // read 存在时两行都要有后缀：只标 read 会让另一行看起来是"全部"，而它只是写池。
+  const metricsDb = summary?.runtime.metrics_db;
 
   return (
     <Flex direction="column" gap="3" className="km-page-admin-pprof">
@@ -504,23 +527,31 @@ export default function PprofPage() {
                 />
               ) : null}
             </div>
-            {summary.runtime.db_pool || summary.runtime.metrics_db ? (
-              <div className="grid w-full grid-cols-1 gap-x-6 sm:grid-cols-2">
+            {summary.runtime.db_pool || metricsDb ? (
+              <div className="grid w-full grid-cols-1 gap-x-6 sm:grid-cols-2 lg:grid-cols-3">
                 {summary.runtime.db_pool ? (
-                  <OverviewMetric
+                  <PoolMetric
                     label={t("settings.database.main")}
-                    value={poolText(summary.runtime.db_pool)}
+                    pool={summary.runtime.db_pool}
                     testId="pprof-db-pool"
-                    // 有连接真的等过（wait_count>0）才标黄：空闲池是常态，标黄会把常态噪声化。
-                    tone={summary.runtime.db_pool.wait_count > 0 ? "amber" : undefined}
                   />
                 ) : null}
-                {summary.runtime.metrics_db ? (
-                  <OverviewMetric
-                    label={t("settings.database.monitoring")}
-                    value={poolText(summary.runtime.metrics_db)}
+                {metricsDb ? (
+                  <PoolMetric
+                    label={
+                      metricsDb.read
+                        ? `${t("settings.database.monitoring")} (write)`
+                        : t("settings.database.monitoring")
+                    }
+                    pool={metricsDb}
                     testId="pprof-metrics-db-pool"
-                    tone={summary.runtime.metrics_db.wait_count > 0 ? "amber" : undefined}
+                  />
+                ) : null}
+                {metricsDb?.read ? (
+                  <PoolMetric
+                    label={`${t("settings.database.monitoring")} (read)`}
+                    pool={metricsDb.read}
+                    testId="pprof-metrics-db-read-pool"
                   />
                 ) : null}
               </div>

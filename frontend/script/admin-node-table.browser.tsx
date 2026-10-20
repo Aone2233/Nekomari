@@ -44,6 +44,9 @@ await i18n.init({
         "common.confirm_delete": "Confirm",
         "copy_success": "Copied",
         "terminal.title": "Terminal",
+        // The page now renders the bulk edit entry as soon as rows are checked.
+        "bulk.title": "Bulk edit",
+        "bulk.selectionCount": "{{count}} selected",
       },
     },
   },

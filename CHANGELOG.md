@@ -8,6 +8,28 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.6.20] — 2026-10-20
+
+The panel-upgrade hardening batch, plus the last two visibility gaps.
+
+- **Upgrade backups are pruned daily**, not only when the next upgrade happens. A scheduled job keeps
+  the three newest `upgrade-*.zip` files and logs what it removed; it never deletes `pre-restore-*`
+  snapshots or `.partial` files.
+- **Every upgrade now has one read-only check.** `deploy/panel-upgrade-check.sh` verifies the
+  expected version and commit hash, container health and restart count, `/api/public` and the home
+  document, `PRAGMA quick_check` (read-only), the upgrade archives, and recent ERROR lines. It has
+  explicit SKIPs for a host without docker/sqlite3, exits 2 on bad configuration, and never writes.
+  Its offline harness (69 assertions, including a byte-for-byte check that `DATA_DIR` is unchanged)
+  runs in CI. `docs/DEPLOY-OC424.md` now starts with this command for every rollout.
+- **pprof shows the metric store's connection pools**: `runtime.metrics_db` has the write pool and,
+  when a dedicated read pool exists, a `read` sub-object; the page renders both and highlights
+  waits. Old responses still parse.
+- **Selecting nodes in the admin table opens the bulk editor with that selection** instead of only
+  changing a count. The page is the existing `/standalone/bulk/bulk.html`; the selection is kept
+  across polling and filtering.
+- A source-level regression test pins the reproducible-build contract (`__BUILD_TIME__` resolution
+  and the `export-subst` stamp) so the wall-clock build time cannot return unnoticed.
+
 ## [v1.6.19] — 2026-10-20
 
 The last follow-up batch from the 2026-10-18 review. Panel-side only: `agent/**/*.go`

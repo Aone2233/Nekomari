@@ -16,8 +16,10 @@ import ts from 'typescript';
  *
  * What is asserted is the compatibility the field addition depends on: **a response without
  * `rss_bytes`, `uptime_seconds`, `db_pool` or `metrics_db` still parses** (that is what an older
- * server sends), the same response with them parses too, and a malformed pool is rejected rather
- * than rendered as undefined numbers.
+ * server sends), the same response with them parses too, a metric store with a dedicated read pool
+ * parses both with and without it (absent means reads share the write pool, which is a different
+ * fact from a read pool with nothing open), and a malformed pool is rejected rather than rendered
+ * as undefined numbers.
  *
  * The declarations are read out of `pprof.tsx` and executed rather than exported from it: the page
  * is a component module, and exporting plain values from it would break fast refresh (the
@@ -89,6 +91,19 @@ const withMetrics = () => {
   return summary;
 };
 
+/** The same response, plus the metric store's dedicated read pool nested under metrics_db. */
+const withReadPool = () => {
+  const summary = withMetrics();
+  summary.data.runtime.metrics_db.read = {
+    open: 4,
+    in_use: 2,
+    idle: 2,
+    wait_count: 1,
+    wait_duration_ms: 7,
+  };
+  return summary;
+};
+
 test('a response from a server without the new runtime fields still parses', () => {
   const parsed = pprofSummaryResponseSchema.safeParse(legacySummary);
   assert.ok(parsed.success, 'an older server must not turn the page into "invalid summary"');
@@ -105,8 +120,35 @@ test('the new process and pool fields parse and keep their values', () => {
   assert.equal(parsed.data.data.runtime.metrics_db.idle, 2);
 });
 
+test('a metric store without a read pool parses and reports no read pool', () => {
+  const parsed = pprofSummaryResponseSchema.safeParse(withMetrics());
+  assert.ok(parsed.success);
+  // Absent, not an object of zeroes: the page must be able to tell "reads share the write pool"
+  // from "a read pool that happens to be idle".
+  assert.equal(parsed.data.data.runtime.metrics_db.read, undefined);
+});
+
+test('a dedicated read pool parses beside the flat write pool', () => {
+  const parsed = pprofSummaryResponseSchema.safeParse(withReadPool());
+  assert.ok(parsed.success);
+  assert.equal(
+    parsed.data.data.runtime.metrics_db.wait_count,
+    0,
+    'the write pool keeps the five flat fields it always had',
+  );
+  assert.equal(parsed.data.data.runtime.metrics_db.read.open, 4);
+  assert.equal(parsed.data.data.runtime.metrics_db.read.wait_count, 1);
+  assert.equal(parsed.data.data.runtime.metrics_db.read.wait_duration_ms, 7);
+});
+
 test('a malformed pool is rejected rather than rendered with undefined numbers', () => {
   const broken = withMetrics();
   broken.data.runtime.db_pool = { open: 'many' };
+  assert.equal(pprofSummaryResponseSchema.safeParse(broken).success, false);
+});
+
+test('a malformed read pool is rejected too', () => {
+  const broken = withReadPool();
+  broken.data.runtime.metrics_db.read = { open: 'many' };
   assert.equal(pprofSummaryResponseSchema.safeParse(broken).success, false);
 });

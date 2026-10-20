@@ -3,6 +3,43 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## After every panel upgrade
+
+The hand-run checks from the rollouts below are one command now. Run it within five
+minutes of the upgrade — the log window is the last `LOG_WINDOW` measured from *now*, not
+from the moment the container started:
+
+```bash
+EXPECTED_VERSION=v1.6.19 EXPECTED_HASH=5f4d7fa sudo -E bash deploy/panel-upgrade-check.sh
+```
+
+It prints one `PASS` / `FAIL` / `SKIP` line per check and exits `0` (all passed, SKIP is not a
+failure), `1` (a check failed) or `2` (misconfigured — nothing was checked). The
+checks are exactly the ones the **Verification** row of each rollout records:
+
+| Check | What a failure means |
+|---|---|
+| container health + restart count | `unhealthy`/`starting`, or a restart loop — the v1.6.16 shape, where `docker ps` said "Up" the whole time |
+| `/api/version` version | the running binary is not the tag that was supposed to ship (the image line alone does not prove this) |
+| `/api/version` hash (`EXPECTED_HASH`) | the binary was not built by the release workflow (`hash: unknown`) or is a different commit |
+| `/api/public` and `/` | the panel is not answering, or a proxy/edge error page is answering in its place |
+| `PRAGMA quick_check` | the database is not `ok` — the freelist mismatch that blocked the v1.6.16 start looked exactly like this |
+| `data/backup/upgrade-*.zip` | zero archives = no rollback point for this upgrade |
+| ERROR lines in the log window | something is already failing at boot; the first three lines are printed |
+
+Nothing is written, restarted or deleted: GET requests, `docker inspect` / `docker logs`,
+and `quick_check` on a read-only connection. In particular the upgrade archives are only
+counted — they are the rollback path. If `docker` or `sqlite3` is missing, the
+corresponding checks are `SKIP`ped and named rather than reported as failures.
+
+A `FAIL` is a reason to roll back rather than to keep going: the previous compose line is
+in that rollout's **Rollback** row below, an image rollback does not touch the data
+directory, and the archive this check just counted is the backup. `deploy/panel-upgrade-check.test.sh`
+is the offline test for the script (fake panel + `docker`/`sqlite3` stubs; no host involved).
+
+The rollout sections below predate the script; their **Verification** rows are what it prints,
+so from the next rollout on that row can be filled in from its output.
+
 ## v1.6.19 rollout (2026-10-20)
 
 H6 cleared-target delivery, release SBOM/provenance, pprof process and pool data,

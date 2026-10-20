@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/web/api"
 	"github.com/gin-gonic/gin"
 )
@@ -151,6 +152,20 @@ type pprofDatabasePool struct {
 	WaitDurationMS int64 `json:"wait_duration_ms"`
 }
 
+// pprofMetricDatabasePool is the metric store's connection-pool snapshot. The write pool
+// keeps the same five field names as db_pool — the frontend renders both rows with one
+// renderer — and a dedicated read pool, when the store has one, is nested under "read".
+//
+// Nested rather than duplicated at the top for two reasons: the write pool must stay a
+// complete, correctly-labelled reading for a reader that does not know about the read
+// pool, and "no read pool" (the single-connection default) must be distinguishable from
+// "a read pool with zero connections" rather than an object of zeroes.
+type pprofMetricDatabasePool struct {
+	pprofDatabasePool
+	// Read is the dedicated read-only pool. Omitted when reads go through the write pool.
+	Read *pprofDatabasePool `json:"read,omitempty"`
+}
+
 type pprofSummary struct {
 	Profiles []pprofProfileInfo `json:"profiles"`
 	Runtime  struct {
@@ -164,6 +179,11 @@ type pprofSummary struct {
 		// DBPool 是主库的连接池；主库尚未初始化（启动早期）时为 nil，字段整个省略 ——
 		// 省略比给一组假的 0 更诚实，前端按「字段不存在」处理即可。
 		DBPool *pprofDatabasePool `json:"db_pool,omitempty"`
+		// MetricsDB is the metric store's connection pools: the serialized write pool plus,
+		// when configured, the dedicated read pool under "read". Omitted when the store is
+		// not initialized (or is closed), because a field of zeroes would read as "the pool
+		// is empty" instead of "there is no pool".
+		MetricsDB *pprofMetricDatabasePool `json:"metrics_db,omitempty"`
 	} `json:"runtime"`
 	Duration struct {
 		DefaultSeconds int `json:"default_seconds"`
@@ -233,8 +253,18 @@ func databasePoolSnapshot(db *sql.DB) *pprofDatabasePool {
 	if db == nil {
 		return nil
 	}
-	stats := db.Stats()
-	return &pprofDatabasePool{
+	snapshot := databasePoolStatsSnapshot(db.Stats())
+	return &snapshot
+}
+
+// databasePoolStatsSnapshot maps an already-read sql.DBStats onto the response shape.
+//
+// Split from databasePoolSnapshot so the metric store's pools can be rendered from
+// metric.Store.PoolStats(), which has already copied the counters out and must not be
+// asked for a *sql.DB: exposing one would let a diagnostic handler open connections on
+// a store that deliberately keeps its pools private.
+func databasePoolStatsSnapshot(stats sql.DBStats) pprofDatabasePool {
+	return pprofDatabasePool{
 		Open:           stats.OpenConnections,
 		InUse:          stats.InUse,
 		Idle:           stats.Idle,
@@ -243,15 +273,40 @@ func databasePoolSnapshot(db *sql.DB) *pprofDatabasePool {
 	}
 }
 
+// metricStoreForPprof is a seam for tests. Production reads the process-wide store, which
+// is nil until the metric store is initialized and nil again after shutdown.
+var metricStoreForPprof = metricstore.GetStore
+
+// metricDatabasePools returns the metric store's connection-pool snapshot, or nil when no
+// store is initialized.
+//
+// It reports both pools because the metric store's write pool is deliberately serialized
+// (SQLite has one writer) while reads may fan out over a dedicated WAL pool: an operator
+// diagnosing a slow chart needs to see whether the query is waiting on the writer or on
+// the readers. metric.Store.PoolStats() only copies sql.DBStats — no Ping, no connection —
+// so reading this cannot make the page wait for the thing it is measuring.
+func metricDatabasePools() *pprofMetricDatabasePool {
+	store := metricStoreForPprof()
+	if store == nil {
+		return nil
+	}
+	stats := store.PoolStats()
+	snapshot := &pprofMetricDatabasePool{pprofDatabasePool: databasePoolStatsSnapshot(stats.Write)}
+	if stats.HasRead {
+		read := databasePoolStatsSnapshot(stats.Read)
+		snapshot.Read = &read
+	}
+	return snapshot
+}
+
 // mainDatabasePool returns the main database's connection pool, or nil before it is initialised.
 //
 // ReadyDBInstance deliberately does not trigger initialisation (and never calls Fatalf), so an
 // early diagnostic request omits the field instead of opening the database.
 //
-// The metric store's pool is not reported: it lives inside pkg/metric's Store, which exports no
-// *sql.DB or pool-stat accessor. Adding metrics_db therefore needs a new accessor in pkg/metric
-// (or internal/metricstore) first — out of scope for this change, and a nil placeholder here
-// would be a field that never carries data.
+// The metric store's pools are reported separately as metrics_db (see metricDatabasePools):
+// they live inside pkg/metric's Store, which exposes a stats-only accessor rather than its
+// *sql.DB, so the diagnostic page cannot open a connection on a pool it is inspecting.
 func mainDatabasePool() *pprofDatabasePool {
 	db := dbcore.ReadyDBInstance()
 	if db == nil {
@@ -302,6 +357,7 @@ func pprofSummaryHandler(c *gin.Context) {
 	response.Runtime.RSSBytes = processRSSBytes()
 	response.Runtime.UptimeSeconds = int64(time.Since(processStartTime) / time.Second)
 	response.Runtime.DBPool = mainDatabasePool()
+	response.Runtime.MetricsDB = metricDatabasePools()
 	response.Runtime.Memory = pprofMemorySummary{
 		HeapAlloc:   mem.HeapAlloc,
 		HeapInuse:   mem.HeapInuse,

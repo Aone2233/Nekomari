@@ -26,8 +26,11 @@ startup integrity/index check, theme-cache warm-up, H6 target persistence, and m
 status); v1.6.17 relaxed the startup integrity gate after it proved too strict on this database;
 v1.6.18 excluded maintenance windows from SLA, added the daily integrity check, and added an
 authenticated deploy verification script. v1.6.19 completed the H6 clear-delivery edge, added
-release SBOM/provenance, pprof process/pool data, and made Linux frontend builds reproducible. The memory/performance table is empty as a result; the
-review's remaining items are the feature gaps below, and the dated report holds their evidence.
+release SBOM/provenance, pprof process/pool data, and made Linux frontend builds reproducible.
+v1.6.20 hardened the upgrade path (daily archive pruning and a read-only post-upgrade check),
+added the metric store's pool counters, and wired the admin table's selection to the bulk editor.
+The memory/performance table is empty as a result; the review's remaining items are the feature
+gaps below, and the dated report holds their evidence.
 
 ## Decisions waiting on the owner
 
@@ -107,7 +110,6 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Item | Where | Why it is still here |
 |---|---|---|
 | `admin:getClientToken` returns an agent credential without the second factor | `web/rpc/jsonrpc/admin.client.go` | The same class as the credential export fixed on 2026-10-19; whether a token read belongs behind step-up is a policy call, and the API-key exemption would still apply |
-| Selected nodes in the admin table have no bulk action | `frontend/src/pages/admin/index.tsx` | The checkboxes only change a count; the bulk page is reachable from the new menu but not from a selection. Wire the selection to it or remove the checkboxes |
 | Feedback from the `2026-10-18` feature audit not yet scheduled | `docs/audits/2026-10-18/feature-gaps.md` §FG-10…FG-20 | Per-item evidence and effort: audit-log filters/export, metric/record CSV export, exec result history, forecast cost column, CPU temperature and disk I/O (agent release), HTTP status/TLS expiry (agent release), single-account/roles decision, English server errors in the UI |
 
 ## Release, deployment and operations
@@ -116,9 +118,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | Nine of ten nodes still run the agent as root | `docs/DEPLOY-OC424.md` | The NOSLA pattern (unprivileged user + `AmbientCapabilities=CAP_NET_RAW`) works; JPKD2 is Alpine, which has no `setcap`. Moving them is a fleet-wide change with its own risk |
 | The frontend build is reproducible on Linux, not necessarily on Windows | `frontend/vite.config.ts` | v1.6.19 removed the wall-clock `__BUILD_TIME__` (the cause of 143 changed chunk names); a double build of the same archive on BERO is byte-identical, and v1.6.19's release produced a verifiable attestation and a 235-package SBOM. Windows `readdir` order can still change chunk assignment; the committed archive is built on Linux |
-| The pprof page shows the main database pool but not the metric store's pool | `web/api/admin/pprof.go`, `pkg/metric` | The metric store owns its `*sql.DB` privately; adding its counters needs an accessor in `pkg/metric` (or the metricstore wrapper), not just a handler change |
 | The panel's own `data/backup/upgrade-*.zip` archives are still on the same disk as the databases | `database/dbcore/dbcore.go` | **Waiting on you**: it needs a destination and an authorisation. One off-host copy exists (MAC-WAN, verified) |
-| Archive pruning only happens after an upgrade | `deploy/prune-upgrade-backups.sh` | The v1.6.19 rollout pruned the last 1.6 GB archive and left 62 MB (three 21 MB archives); a panel that never upgrades never prunes, so schedule the script or fold it into the hourly maintenance |
 | OIDC + 2FA makes SSO login fail-closed with no way for the browser to answer the challenge | `docs/ROADMAP.md` §F12 | Deliberately shipped as a gate, not half a state machine. Needs a one-time pending token plus a code prompt; production impact is zero while OIDC is off |
 | `sso_id` survives a password change, and `DeleteAllSessions()` is global | `database/accounts/` | Policy questions now that the SSO path requires TOTP; recommendation was (b)+(c) in the audit report |
 | A committed admin password from the SECRETS incident still has to be changed | `docs/SECRETS.md` incident 4 | An ops action on the live panel, not a repository change |

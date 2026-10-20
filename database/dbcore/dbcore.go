@@ -371,6 +371,73 @@ func pruneUpgradeArchives(dir string, keep int) error {
 	return errors.Join(failures...)
 }
 
+// upgradeArchiveDir is the directory that holds the upgrade archives (and the pre-restore
+// snapshots next to them).
+//
+// One function instead of two filepath.Join calls: the backup-time prune and the daily sweep must
+// look at the same directory, and having each spell the path itself means a change to one is a
+// silent "the daily job cleans a different directory".
+func upgradeArchiveDir() string {
+	return filepath.Join(".", "data", "backup")
+}
+
+// upgradeArchiveCount counts the upgrade-*.zip files in dir; a missing directory counts as zero.
+func upgradeArchiveCount(dir string) (int, error) {
+	archives, err := filepath.Glob(filepath.Join(dir, "upgrade-*.zip"))
+	if err != nil {
+		return 0, fmt.Errorf("list upgrade archives in %s: %w", dir, err)
+	}
+	return len(archives), nil
+}
+
+// UpgradeArchivePruneResult is the outcome of one upgrade-archive sweep, for the caller's log line.
+type UpgradeArchivePruneResult struct {
+	// Dir is the directory that was swept.
+	Dir string
+	// Removed is how many old archives were deleted.
+	Removed int
+	// Remaining is how many upgrade-*.zip files are in the directory afterwards.
+	Remaining int
+	// Keep is the retention that was applied.
+	Keep int
+}
+
+// RunUpgradeArchivePrune applies the retention policy to the default archive directory
+// (./data/backup) once and reports what it did.
+//
+// Why it exists: the prune in backupOnVersionUpgrade only runs in the moment a new archive has
+// been written. A panel that does not upgrade for months never takes that path, so its old
+// archives stay forever — that is how 5.5 GB accumulated before v1.6.19, and v1.6.19 only
+// guarantees the directory is trimmed at upgrade time. This entry point is for the daily
+// scheduled task in internal/server.
+//
+// It does not initialise the database, touch any database file, or keep global state: a missing
+// directory simply has nothing to prune, which returns a zero result rather than an error (a
+// panel that has never upgraded legitimately has no archives). Failures are returned for the
+// caller to log as a warning — a failed cleanup must not affect the service.
+func RunUpgradeArchivePrune() (UpgradeArchivePruneResult, error) {
+	dir := upgradeArchiveDir()
+	result := UpgradeArchivePruneResult{Dir: dir, Keep: upgradeArchiveRetention}
+
+	before, err := upgradeArchiveCount(dir)
+	if err != nil {
+		return result, err
+	}
+	pruneErr := pruneUpgradeArchives(dir, upgradeArchiveRetention)
+	// Count again even after a failure: some files may already be gone, and the numbers in the
+	// caller's log line have to match what is actually on disk.
+	after, countErr := upgradeArchiveCount(dir)
+	if countErr != nil {
+		if pruneErr != nil {
+			return result, errors.Join(pruneErr, countErr)
+		}
+		return result, countErr
+	}
+	result.Removed = before - after
+	result.Remaining = after
+	return result, pruneErr
+}
+
 // backupOnVersionUpgrade 在检测到版本升级时，把当前 ./data 打包到
 // ./data/backup/upgrade-{time}.zip，便于升级异常时回滚。
 //
@@ -422,7 +489,7 @@ func backupOnVersionUpgrade() bool {
 		instance.Exec("PRAGMA wal_checkpoint(TRUNCATE);")
 	}
 
-	backupDir := filepath.Join(".", "data", "backup")
+	backupDir := upgradeArchiveDir()
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
 		logger.Errorf("dbcore", "[upgrade-backup] failed to create backup dir: %v", err)
 		return false
