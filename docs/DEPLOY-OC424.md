@@ -40,6 +40,24 @@ is the offline test for the script (fake panel + `docker`/`sqlite3` stubs; no ho
 The rollout sections below predate the script; their **Verification** rows are what it prints,
 so from the next rollout on that row can be filled in from its output.
 
+## v1.6.23 agent rollout (2026-10-20)
+
+Agent diagnostics release; panel stays on v1.6.21.
+
+| Item | Evidence |
+|---|---|
+| Release | tag `v1.6.23` on `cccfd4b`; release run `39389812698`; 10 assets including agent binaries |
+| Change | `komari-agent --version` prints the version and exits; `--disable-auto-update` help/log now says it only stops the periodic self-check (panel `agent.update` events still work) |
+| OC424 test | panel `admin:rollAgentUpdate` targeted `v1.6.23`; the v1.6.22 agent accepted the event, updated, and `--version` reports `v1.6.23` |
+| Fleet | **11/12 on v1.6.23**; SB01 is offline at v1.6.22 with `target_version=v1.6.23` saved and will update when it reconnects |
+| Method | panel roll for the 11 online nodes; PZYC was updated from a locally downloaded asset because GitHub is unreachable from that host |
+| Verification | `--version` checked on OC424/BERO/OVH/MAC/HK04/NOSLA/MegaBox (`v1.6.23`); DB counts after the rollout show 11 nodes on v1.6.23; targets cleared for the updated nodes |
+| Rollback | agent binaries were replaced in place; each host keeps `*.pre-v1.6.22` (and PZYC `*.pre-v1.6.23`) |
+
+This rollout also validates H6 end to end: the panel-directed update works even with
+`--disable-auto-update` on v1.6.22+. The v1.6.22 rollout had to be manual only because
+the fleet was on pre-H6 binaries that did not understand `agent.update`.
+
 ## v1.6.22 agent rollout (2026-10-20)
 
 Agent-only release: the panel stayed on v1.6.21. The release fixes the three netstatic
