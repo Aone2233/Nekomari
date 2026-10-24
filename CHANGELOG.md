@@ -8,6 +8,13 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **Build with the patched Go 1.27.3 compiler.** CI and release builds use the
+  fix for GO-2026-6809 in `crypto/x509`. Module minimums, dependencies, application
+  source, credential/database formats and frontend source are unchanged. Existing
+  binaries remain unchanged until rebuilt and deployed; a compiler refresh alone
+  does not authorize or require a fleet-wide Agent update. See
+  `docs/COMPILER-SECURITY-1273.md` for scope and release gates.
+
 - **Agent disk-footprint pruning**: `deploy/prune-agent-backups.sh` keeps one rollback
   binary per node and removes the rest; OC424's agent directory went from 231 MB to
   39 MB, and the fleet-wide cleanup reclaimed ~300 MB. It only matches

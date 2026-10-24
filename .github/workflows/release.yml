@@ -170,7 +170,7 @@ jobs:
         uses: actions/setup-go@v7
         with:
           # Module minimums do not select a security-patched release compiler.
-          go-version: '1.27.2'
+          go-version: '1.27.3'
           cache: true
           cache-dependency-path: |
             go.sum
@@ -323,7 +323,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: '1.27.2'
+          go-version: '1.27.3'
           cache: true
           cache-dependency-path: agent/go.sum
 
