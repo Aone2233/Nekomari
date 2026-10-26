@@ -39,6 +39,23 @@ its exit criteria are met, not when the calendar says so.
 
 ## Current Delivery Checkpoint (2026-10-26)
 
+**Adjusted active objective (owner-authorized):** incrementally finish v1.7
+security hardening in independently verified/releasable batches. Do not treat all
+v1.8-v2.1 plans as the current implementation target. All200-node work remains
+deferred with its original criteria and26 failed reports preserved. This narrows
+the work target; it does not declare the long-term roadmap or v1.7 exit criteria
+complete, and does not decide key custody or account/privilege/SLO policies.
+
+Query-hardening PR78/502a269 is merged and exact merge CI40275930537 passes7/7;
+no release tag or production delivery has occurred. The scoped-key batch now
+starts from this clean main, not the accumulated development tree. Its isolated
+scope is documented in [`API-KEYS.md`](./API-KEYS.md). Repository script inventory
+does not establish all live callers: arrange explicit minimal-scope replacements
+and accept the intentional legacy-key compatibility change before tag/cutover.
+Retain paired pre-upgrade DB snapshots and old binary/image; image-only rollback
+is insufficient after authentication migration. D12 encrypted-backup custody and
+the rest of the v1.7 deliverables remain separate open gates.
+
 The production panel on OC424 is v1.6.27/12ad73a, following the compiler-only
 v1.6.26 patch. v1.6.27 changes only the five admin tools' in-panel navigation.
 The owner reports no remaining issue and explicitly resumes next-stage version

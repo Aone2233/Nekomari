@@ -12,7 +12,6 @@ type Settings struct {
 	WsAllowedOrigins       string `json:"ws_allowed_origins" default:""`                       // WebSocket Origin 允许列表
 	Theme                  string `json:"theme" default:"default"`                             // 主题名称，默认 'default'
 	PrivateSite            bool   `json:"private_site" default:"false"`                        // 是否为私有站点，默认 false
-	ApiKey                 string `json:"api_key" default:""`                                  // API 密钥，默认空字符串
 	AutoDiscoveryKey       string `json:"auto_discovery_key" default:""`                       // 自动发现密钥
 	ScriptDomain           string `json:"script_domain" default:""`                            // 自定义脚本域名
 	SendIpAddrToGuest      bool   `json:"send_ip_addr_to_guest" default:"false"`               // 是否向访客页面发送 IP 地址，默认 false

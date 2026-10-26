@@ -6,8 +6,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/database/accounts"
+	"github.com/Aone2233/nekomari/pkg/rpc"
+	"github.com/gin-gonic/gin"
 )
 
 func RequireSensitive2FA() gin.HandlerFunc {
@@ -24,12 +25,8 @@ func RequireSensitive2FA() gin.HandlerFunc {
 }
 
 // VerifySensitive2FACore 传输无关的 2FA 校验核心。
-// 输入原始值:userUUID、2FA code、是否为 API Key。
-// API Key 豁免;未启用 2FA 的用户放行;其余需要有效 code。
-func VerifySensitive2FACore(userUUID, code string, isAPIKey bool) error {
-	if isAPIKey {
-		return nil
-	}
+// Session-only core. A key must instead hold the exact sensitive method's grant.
+func VerifySensitive2FACore(userUUID, code string) error {
 	if userUUID == "" {
 		return err2FARequired()
 	}
@@ -55,10 +52,15 @@ func VerifySensitive2FACore(userUUID, code string, isAPIKey bool) error {
 
 // VerifySensitive2FA gin 适配层:从 gin.Context 提取参数后委托核心校验。
 func VerifySensitive2FA(c *gin.Context) error {
-	_, isAPIKey := c.Get("api_key")
+	if p := GetPrincipal(c); p != nil && p.Type == rpc.PrincipalAPIKey {
+		if rpc.APIKeySensitiveGrant(p, rpc.APIKeyRouteMethod(c.Request.Method, c.FullPath())) {
+			return nil
+		}
+		return err2FARequired()
+	}
 	uuidRaw, _ := c.Get("uuid")
 	uuid, _ := uuidRaw.(string)
-	return VerifySensitive2FACore(uuid, get2FACode(c), isAPIKey)
+	return VerifySensitive2FACore(uuid, get2FACode(c))
 }
 
 func get2FACode(c *gin.Context) string {

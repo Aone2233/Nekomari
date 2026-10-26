@@ -60,7 +60,7 @@ func TestExtractClientTokenQueryWinsOverHeader(t *testing.T) {
 
 // 非 Bearer 的 Authorization 头不能被当成 client token。
 //
-// 同一个头也被 API Key 认证使用（principal.go 的 isApiKeyValid），
+// 同一个头也被 API Key 认证使用（principal.go 的 IdentifyPrincipal），
 // 所以只认 "Bearer " 前缀、且前缀后必须有内容。
 func TestExtractClientTokenIgnoresNonBearerHeader(t *testing.T) {
 	cases := map[string]string{

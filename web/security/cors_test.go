@@ -1,13 +1,16 @@
 package security
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/Aone2233/nekomari/internal/apikeys"
 	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/pkg/rpc"
+	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -75,6 +78,43 @@ func TestCorsMiddlewareAllowsAPIKeyRequestsFromAnyOrigin(t *testing.T) {
 	}
 	if got := response.Header().Get("Access-Control-Allow-Origin"); got != "https://evil.example" {
 		t.Fatalf("Access-Control-Allow-Origin = %q, want %q", got, "https://evil.example")
+	}
+}
+
+func TestCorsMiddlewareRejectsRotatedAndRevokedKeys(t *testing.T) {
+	setupCORSConfigDB(t, "")
+	db := config.Database()
+	if err := apikeys.MigrateLegacy(db); err != nil {
+		t.Fatal(err)
+	}
+	key, token, err := apikeys.Create(context.Background(), db, "CORS test", []string{rpc.ScopeNodesRead}, 1, "issuer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := setupCORSRouter(true, "")
+	status := func(token string) int {
+		request := httptest.NewRequest(http.MethodGet, "/api/ping", nil)
+		request.Header.Set("Origin", "https://unlisted.example")
+		request.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		return response.Code
+	}
+	if got := status(token); got != http.StatusOK {
+		t.Fatalf("valid scoped key refused by CORS: %d", got)
+	}
+	_, replacement, err := apikeys.Rotate(context.Background(), db, key.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status(token) != http.StatusForbidden || status(replacement) != http.StatusOK {
+		t.Fatal("CORS does not use current scoped-key authentication")
+	}
+	if err := apikeys.Revoke(context.Background(), db, key.ID); err != nil {
+		t.Fatal(err)
+	}
+	if status(replacement) != http.StatusForbidden {
+		t.Fatal("revoked key still bypasses CORS")
 	}
 }
 
@@ -178,6 +218,9 @@ func setupCORSConfigDB(t *testing.T, apiKey string) {
 	if apiKey != "" {
 		if err := config.Set(config.ApiKeyKey, apiKey); err != nil {
 			t.Fatalf("set api key: %v", err)
+		}
+		if err := apikeys.MigrateLegacy(db); err != nil {
+			t.Fatal(err)
 		}
 	}
 }

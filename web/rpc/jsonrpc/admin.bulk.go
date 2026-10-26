@@ -5,10 +5,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Aone2233/nekomari/database/auditlog"
 	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/internal/bulk"
 	"github.com/Aone2233/nekomari/pkg/rpc"
-	"github.com/Aone2233/nekomari/database/auditlog"
 )
 
 // admin.bulk.go
@@ -50,6 +50,9 @@ func adminBulkEditClients(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 	}
 	if len(params.UUIDs) > maxBulkClients {
 		return nil, rpc.MakeError(rpc.InvalidParams, "too many clients in one bulk edit", nil)
+	}
+	if jerr := validateAPIKeyClientUpdate(ctx, params.Update); jerr != nil {
+		return nil, jerr
 	}
 
 	report, err := bulk.Apply(clients.ClientInfoApplier{}, params.UUIDs, params.Update)

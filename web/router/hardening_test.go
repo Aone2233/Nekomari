@@ -21,6 +21,7 @@ import (
 	"github.com/Aone2233/nekomari/database/accounts"
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/internal/apikeys"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
@@ -72,20 +73,14 @@ func TestSecurityAndResourceRegressions(t *testing.T) {
 	defer srv.Close()
 
 	t.Run("UploadStatsHTTPRequiresAdmin", func(t *testing.T) {
-		const apiKey = "test-only-upload-stats-key"
 		agentID := uuid.NewString()
 		agentToken := "test-only-upload-stats-agent-token-" + agentID
-		previousKey, err := config.GetAs[string](config.ApiKeyKey, "")
+		key, apiKey, err := apikeys.Create(t.Context(), db, "upload diagnostics", []string{rpc.ScopeDiagnostics}, 1, user.UUID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := config.Set(config.ApiKeyKey, apiKey); err != nil {
-			t.Fatal(err)
-		}
 		t.Cleanup(func() {
-			if err := config.Set(config.ApiKeyKey, previousKey); err != nil {
-				t.Error(err)
-			}
+			db.Delete(&models.APIKey{}, "id = ?", key.ID)
 		})
 		if err := db.Create(&models.Client{UUID: agentID, Name: "test agent", Token: agentToken}).Error; err != nil {
 			t.Fatal(err)

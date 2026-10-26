@@ -34,6 +34,9 @@ func OnRpcRequest(c *gin.Context) {
 // CallFromGin 供传统 gin handler / 路由桥转调 RPC 方法。
 // 复用 IdentityMiddleware 已识别的 principal；未识别时兜底调用 IdentifyPrincipal。
 func CallFromGin(c *gin.Context, method string, params any) *rpc.JsonRpcResponse {
+	if rpc.IsSensitive(method) {
+		c.Header("Cache-Control", "no-store")
+	}
 	meta := buildContextMeta(c)
 	req := &rpc.JsonRpcRequest{Version: rpc.RPC_VERSION, Method: method, Params: params}
 	return dispatchWithSensitive(c.Request.Context(), c, meta, req)
@@ -41,7 +44,7 @@ func CallFromGin(c *gin.Context, method string, params any) *rpc.JsonRpcResponse
 
 // dispatchWithSensitive 在统一分发前对敏感方法补充二次验证，使各调用入口行为一致。
 // 对已通过命名空间权限校验的敏感方法，要求调用方满足敏感操作 2FA。
-// 校验基于 Principal(API Key 放行、未配置 2FA 的账号放行),Dispatch 仍为权威鉴权点。
+// Keys need the exact sensitive grant; sessions retain their existing 2FA policy.
 //
 // 2FA code 按"每请求"提取:优先取自本条 RPC 请求的 params(2fa_code/two_factor_code/otp),
 // 这对 WebSocket 长连接尤其重要——每条敏感消息携带新鲜的 TOTP 码,避免连接级握手码过期或被复用;
@@ -55,7 +58,11 @@ func dispatchWithSensitive(ctx context.Context, c *gin.Context, meta *rpc.Contex
 		if code == "" && c != nil {
 			code = headerOrQueryTwoFACode(c)
 		}
-		if err := api.VerifySensitive2FACore(meta.Principal.UserUUID, code, meta.Principal.IsAPIKey); err != nil {
+		if meta.Principal.Type == rpc.PrincipalAPIKey {
+			if !rpc.APIKeySensitiveGrant(meta.Principal, req.Method) {
+				return rpc.ErrorResponse(req.ID, rpc.PermissionDenied, "API key has no sensitive-operation grant", nil)
+			}
+		} else if err := api.VerifySensitive2FACore(meta.Principal.UserUUID, code); err != nil {
 			return rpc.ErrorResponse(req.ID, rpc.PermissionDenied, err.Error(), nil)
 		}
 	}
@@ -127,9 +134,11 @@ func serveWebSocket(c *gin.Context) {
 			continue
 		}
 		principal := api.IdentifyPrincipal(c)
-		if principal.Type != meta.Principal.Type || principal.UserUUID != meta.Principal.UserUUID || principal.ClientUUID != meta.Principal.ClientUUID {
+		if principal.Type != meta.Principal.Type || principal.UserUUID != meta.Principal.UserUUID || principal.ClientUUID != meta.Principal.ClientUUID || principal.APIKeyID != meta.Principal.APIKeyID {
 			return
 		}
+		// Re-query grants for every frame, not just the handshake.
+		meta.Principal = principal
 		meta.TempShareValid = hasTempShareAccess(c)
 		if revision := dbcache.Revision("users"); revision != userRevision {
 			if meta.Principal.Type == rpc.PrincipalUser {
@@ -153,6 +162,7 @@ func serveWebSocket(c *gin.Context) {
 }
 
 func servePost(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, api.MaxControlBody)
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -212,8 +222,10 @@ func buildContextMeta(c *gin.Context) *rpc.ContextMeta {
 	case rpc.PrincipalAgent:
 		meta.ClientUUID = p.ClientUUID
 		// 尝试提取 client token(用于某些 handler 需要原始 token 的场景)。
-		// 优先查询参数 ?Authorization=<token>，再尝试 Bearer header。
-		if token := c.Query("Authorization"); token != "" {
+		// Match identity's legacy query precedence before the bearer header.
+		if token := c.Query("token"); token != "" {
+			meta.ClientToken = token
+		} else if token := c.Query("Authorization"); token != "" {
 			meta.ClientToken = token
 		} else if auth := c.GetHeader("Authorization"); auth != "" && len(auth) > len("Bearer ") {
 			meta.ClientToken = auth[len("Bearer "):]

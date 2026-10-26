@@ -124,6 +124,9 @@ func bindDocument(req *rpc.JsonRpcRequest) (configxport.Document, *rpc.JsonRpcEr
 	if err != nil {
 		return configxport.Document{}, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
 	}
+	if _, exists := document.Settings[config.ApiKeyKey]; exists {
+		return configxport.Document{}, rpc.MakeError(rpc.InvalidParams, "api_key is retired; remove it from the import and create scoped keys instead", nil)
+	}
 	return document, nil
 }
 
@@ -185,6 +188,9 @@ func applyRecord(entity, identity string, record map[string]any, create bool) er
 	}
 	switch entity {
 	case "settings":
+		if identity == config.ApiKeyKey || payload["key"] == config.ApiKeyKey {
+			return fmt.Errorf("api_key is retired; create scoped keys instead")
+		}
 		return config.SetMany(map[string]any{identity: payload["value"]})
 	case "clients":
 		if create {

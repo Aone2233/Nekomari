@@ -28,11 +28,13 @@ type Principal struct {
 	ClientUUID string
 	// IsAPIKey 是否为 API Key 调用(快速判定,等价于 Type==PrincipalAPIKey)
 	IsAPIKey bool
+	APIKeyID string
+	Scopes   []string
 	// Roles 角色/能力集。默认由 Type 推导:
 	//   - PrincipalAnonymous → [RoleGuest]
 	//   - PrincipalAgent → [RoleClient]
 	//   - PrincipalUser / PrincipalAPIKey → [RoleAdmin]
-	// 未来可扩展为多角色(只读 admin / API Key scope 等)。
+	// API-key grants are checked separately; RoleAdmin is only a routing label.
 	Roles []string
 }
 
@@ -62,13 +64,38 @@ func NewUserPrincipal(userUUID string) *Principal {
 	}
 }
 
-// NewAPIKeyPrincipal 创建 API Key 调用主体
+// NewAPIKeyPrincipal constructs an ungranted key; it has no admin capabilities.
 func NewAPIKeyPrincipal() *Principal {
 	return &Principal{
 		Type:     PrincipalAPIKey,
 		IsAPIKey: true,
 		Roles:    []string{RoleAdmin},
 	}
+}
+
+// NewScopedAPIKeyPrincipal never infers grants from the admin routing role.
+func NewScopedAPIKeyPrincipal(id string, scopes []string) *Principal {
+	p := NewAPIKeyPrincipal()
+	p.APIKeyID = id
+	p.Scopes = append([]string(nil), scopes...)
+	return p
+}
+
+func (p *Principal) HasScope(scope string) bool {
+	if p == nil || p.Type != PrincipalAPIKey {
+		return false
+	}
+	for _, grant := range p.Scopes {
+		if grant == scope {
+			return true
+		}
+	}
+	return false
+}
+
+// CanReadPrivateNodes is separate from the role used to enter admin routes.
+func (p *Principal) CanReadPrivateNodes() bool {
+	return p.HasRole(RoleAdmin) && (p.Type != PrincipalAPIKey || p.HasScope(ScopeNodesRead))
 }
 
 // PrimaryRole 返回主体的主要角色(兼容现有单角色模型)。
@@ -103,7 +130,9 @@ func (p *Principal) HasRole(role string) bool {
 
 // PrincipalFromRole 按角色构造一个最小主体,用于内部调用(OnInternalRequest)等
 // 仅知道角色、无具体身份信息的场景。Type 按角色合理推断:
-//   guest → Anonymous, client → Agent, admin → User。
+//
+//	guest → Anonymous, client → Agent, admin → User。
+//
 // 注意:此构造不携带 UUID/token,仅用于权限判定与兜底,不应据此做审计 actor 归属。
 func PrincipalFromRole(role string) *Principal {
 	switch role {
@@ -115,4 +144,3 @@ func PrincipalFromRole(role string) *Principal {
 		return NewAnonymousPrincipal()
 	}
 }
-

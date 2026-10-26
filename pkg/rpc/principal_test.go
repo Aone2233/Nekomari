@@ -85,8 +85,9 @@ func TestCheckPrincipal(t *testing.T) {
 		{"user->admin", NewUserPrincipal("u1"), "admin:addClient", true},
 		{"user->common", NewUserPrincipal("u1"), "common:getNodes", true},
 		{"user->client", NewUserPrincipal("u1"), "client:report", false},
-		// api key 主体:等同 admin 能力
-		{"apikey->admin", NewAPIKeyPrincipal(), "admin:addClient", true},
+		// An unscoped key has no implicit administrator capability.
+		{"apikey->admin", NewAPIKeyPrincipal(), "admin:addClient", false},
+		{"scoped apikey->admin", NewScopedAPIKeyPrincipal("key-id", []string{ScopeNodesWrite}), "admin:addClient", true},
 		{"apikey->client", NewAPIKeyPrincipal(), "client:report", false},
 		// 匿名主体:仅公共方法
 		{"anon->common", NewAnonymousPrincipal(), "common:getNodes", true},
@@ -104,4 +105,3 @@ func TestCheckPrincipal(t *testing.T) {
 		})
 	}
 }
-

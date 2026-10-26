@@ -91,6 +91,14 @@ func registerAgentRoutes(r *gin.Engine) {
 func registerAdminRoutes(r *gin.Engine) {
 	g := r.Group("/api/admin", api.RequireRole(api.RoleAdmin))
 	admin.RegisterPprofRoutes(g)
+	keys := g.Group("/api-keys", func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		c.Next()
+	})
+	keys.GET("", jsonRpc.Bind("admin:listAPIKeys"))
+	keys.POST("", jsonRpc.Bind("admin:createAPIKey"))
+	keys.POST("/:id/rotate", jsonRpc.Bind("admin:rotateAPIKey", jsonRpc.WithPath("id")))
+	keys.POST("/:id/revoke", jsonRpc.Bind("admin:revokeAPIKey", jsonRpc.WithPath("id")))
 
 	// --- 二进制/流/重定向类，保留 REST handler ---
 	g.GET("/download/backup", admin.DownloadBackup)

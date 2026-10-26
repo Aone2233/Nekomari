@@ -6,9 +6,12 @@ package api
 // 三处的重复逻辑。识别优先级:API Key > Session(用户) > Client Token(agent) > 匿名。
 
 import (
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/database/accounts"
+	"github.com/Aone2233/nekomari/internal/apikeys"
+	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/pkg/rpc"
+	"github.com/gin-gonic/gin"
+	"strings"
 )
 
 // principalContextKey 是 principal 在 gin.Context 中的存储键。
@@ -18,12 +21,22 @@ const principalContextKey = "principal"
 // 识别优先级与历史 IdentityMiddleware 一致:API Key > Session > Client Token > 匿名。
 func IdentifyPrincipal(c *gin.Context) *rpc.Principal {
 	// 1. API Key(Authorization: Bearer <key>)
-	if isApiKeyValid(c.GetHeader("Authorization")) {
-		return rpc.NewAPIKeyPrincipal()
+	authorization := c.GetHeader("Authorization")
+	if authorization != "" {
+		if p, err := apikeys.Authenticate(c.Request.Context(), config.Database(), authorization); err == nil {
+			return p
+		}
+		// New API keys have a reserved prefix. Never reinterpret a revoked key
+		// as an agent credential (or put its plaintext in a client-token query).
+		if strings.HasPrefix(authorization, "Bearer nk_") {
+			return rpc.NewAnonymousPrincipal()
+		}
 	}
 
+	// An explicit bearer must not fall back to a stronger browser cookie when
+	// invalid, revoked or less privileged. Agent bearer compatibility stays below.
 	// 2. Session(管理员用户)
-	if session, err := c.Cookie("session_token"); err == nil && session != "" {
+	if session, err := c.Cookie("session_token"); authorization == "" && err == nil && session != "" {
 		if uuid, err := accounts.GetSession(session); err == nil && uuid != "" {
 			return rpc.NewUserPrincipal(uuid)
 		}

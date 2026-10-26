@@ -2,8 +2,8 @@ package jsonrpc
 
 import (
 	"fmt"
-	"strings"
 	"sort"
+	"strings"
 
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
@@ -39,7 +39,7 @@ var (
 	exportPingTaskFields = []string{
 		"id", "name", "clients", "default_on", "type", "target", "reference", "interval", "weight",
 	}
-	exportWindowFields = []string{"id", "name", "start", "end", "clients", "reason"}
+	exportWindowFields       = []string{"id", "name", "start", "end", "clients", "reason"}
 	exportNotificationFields = []string{"client", "enable", "grace_period"}
 )
 
@@ -119,6 +119,7 @@ func (exportStore) ExportSettings(includeSecrets bool) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	delete(all, config.ApiKeyKey)
 	if includeSecrets {
 		return all, nil
 	}

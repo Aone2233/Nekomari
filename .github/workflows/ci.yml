@@ -61,6 +61,7 @@ jobs:
           python script/config-export.browser.spec.py
           python script/forecast.browser.spec.py
           python script/account-sso-2fa.browser.spec.py
+          python script/api-keys.browser.spec.py
 
   # The fixtures above mount one component against stubs. This job boots the
   # built server and walks the real panel instead, which is the only check that
@@ -145,6 +146,8 @@ jobs:
         # The real script needs a running panel and an API key; the harness pins
         # its decision table (skip, success, JSON-RPC error, bad theme asset).
         run: bash deploy/panel-auth-smoke.test.sh
+      - name: Test explicit scoped-key provisioning (offline)
+        run: python3 deploy/nekomari_auth_test.py
       - name: Test the post-upgrade check (offline harness)
         run: bash deploy/panel-upgrade-check.test.sh
       - name: Test that the agent upgrade scripts preserve file capabilities
@@ -337,6 +340,7 @@ jobs:
         run: |
           go test -race ./database/accounts ./web/api/public -count=10 -shuffle=on
           go test -race ./web/oauth/... ./web/security ./web/upload
+          go test -race ./internal/apikeys ./pkg/rpc ./web/api ./web/router ./web/rpc/jsonrpc
 
       - name: Build server
         run: go build -o /dev/null .

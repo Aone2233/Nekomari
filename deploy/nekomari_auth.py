@@ -19,23 +19,17 @@ message that says so, rather than a bare 401.
 Telegram message for **every** one of those. A script that polls or iterates therefore
 spams the operator, who has no way to tell those apart from a real sign-in.
 
-The panel's API key does not go through that endpoint at all, so it produces no
-notification. Use it for anything programmatic:
+Scoped API keys do not go through that endpoint, so they produce no login
+notification. Grant only the scopes a script needs (nodes:read for monitoring):
 
-    export NEKOMARI_API_KEY='<from the panel: Settings -> API key>'
+    export NEKOMARI_API_KEY='<one-time token from Settings -> Sign-on -> API>'
     auth = api_key_header()          # {'Authorization': 'Bearer <key>'}
     status, data = panel_call('/api/rpc2', 'POST', {...}, headers=auth)
 
-If the variable is unset, `api_key_header()` reads the key from the panel's own
-database, which is what the operational scripts on this host can do because they already
-run there.
-
-## Why the panel's own config needs unquoting
-
-The `configs` table stores values **JSON-encoded**, so `api_key` is `"abc…"` with the
-quotes included -- 42 bytes for a 40-byte key. Passing the stored value straight into the
-header produces a 401 that looks like a wrong key rather than a quoting mistake, which is
-exactly how it was found. Everything read from `configs` goes through `json.loads` here.
+The database stores hashes, not recoverable keys. There is deliberately no database
+fallback: provision NEKOMARI_API_KEY from your secret manager. Old global keys migrate
+to nodes:read for 30 days and cannot perform mutations. SQL, settings, backups and
+account/key management require a session, never an all-powerful automation key.
 
 Usage from another script in this directory:
 
@@ -49,9 +43,7 @@ import hashlib
 import hmac
 import json
 import os
-import shutil
 import struct
-import subprocess
 import time
 import urllib.error
 import urllib.request
@@ -60,10 +52,6 @@ BASE = os.environ.get("NEKOMARI_PANEL", "http://127.0.0.1:25774")
 USER = os.environ.get("NEKOMARI_USER", "AONE2233")
 PASSWORD = os.environ.get("NEKOMARI_PASSWORD", "")
 UA = "Mozilla/5.0 (nekomari-op)"
-
-# Where the panel keeps its database on the host these scripts run on.
-DATA_DIR = os.environ.get("NEKOMARI_DATA_DIR", "/opt/nekomari/data")
-
 
 def totp(secret, at=None, digits=6, period=30):
     """RFC 6238 TOTP. The server uses pquerna/otp defaults: SHA-1, 6 digits, 30s."""
@@ -99,54 +87,13 @@ def panel_call(path, method="GET", body=None, cookie=None, base=None, timeout=60
         return status, raw
 
 
-def read_api_key_from_database(data_dir=None):
-    """Read the panel's API key from its own config table.
-
-    `configs.value` is JSON-encoded, so the stored text includes the surrounding quotes.
-    Returning it verbatim would send `Bearer "abc…"`, which the panel rejects as an
-    invalid key -- a 401 that reads like a wrong key rather than a quoting mistake.
-    """
-    database = os.path.join(data_dir or DATA_DIR, "komari.db")
-    if not os.path.exists(database):
-        return None
-    # `sqlite3` on the host may not be able to open the file without elevation, and the
-    # scripts this serves run as the user that owns it; fall back to the CLI when the
-    # module is unavailable rather than failing the whole call.
-    try:
-        import sqlite3
-
-        connection = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
-        row = connection.execute("select value from configs where key='api_key'").fetchone()
-        connection.close()
-        raw = row[0] if row else None
-    except Exception:
-        if not shutil.which("sqlite3"):
-            return None
-        try:
-            raw = subprocess.run(
-                ["sqlite3", f"file:{database}?mode=ro", "select value from configs where key='api_key'"],
-                capture_output=True, text=True, timeout=20, check=True,
-            ).stdout.strip() or None
-        except Exception:
-            return None
-    if not raw:
-        return None
-    try:
-        value = json.loads(raw)
-    except Exception:
-        value = raw
-    if isinstance(value, str):
-        value = value.strip()
-    return value or None
-
-
 def api_key_header(key=None, data_dir=None):
     """Headers that authenticate without producing a login notification.
 
-    Returns an empty dict when no key can be found, so callers can fall back to
-    `login()` explicitly instead of sending a request that 401s.
+    Returns an empty dict without an explicit key/environment value. data_dir is
+    accepted only for source compatibility; credentials cannot be read from SQLite.
     """
-    key = key or os.environ.get("NEKOMARI_API_KEY", "").strip() or read_api_key_from_database(data_dir)
+    key = key or os.environ.get("NEKOMARI_API_KEY", "").strip()
     if not key:
         return {}
     return {"Authorization": "Bearer " + key}

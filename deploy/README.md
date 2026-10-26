@@ -210,13 +210,13 @@ secret is the only way back in short of the `disable-2fa` CLI.
 ### Verifying a deployment with the API key instead
 
 `panel-auth-smoke.py` does not log in at all: it authenticates with the panel's API key
-(`Settings -> API key`), which needs no password, no session cookie and no 2FA code, and which
+(`Settings -> Sign-on -> API`, grant only `nodes:read`), which needs no password, no session cookie and no 2FA code, and which
 does not send a login notification the way `/api/login` does. That is what makes it safe to
 run after every upgrade, and from a CI variable.
 
 ```bash
 export KOMARI_BASE_URL='https://panel.example.com'   # the deployed panel, not 127.0.0.1
-export KOMARI_API_KEY='<panel: Settings -> API key>'
+export KOMARI_API_KEY='<one-time nodes:read token; provision explicitly>'
 python3 deploy/panel-auth-smoke.py                  # exit 0 = passed, 1 = a named check failed
 ```
 
@@ -226,6 +226,12 @@ HTTP 200 with an `error` member), and that `GET /` returns an HTML document nami
 build under `/assets/` or `/themes/` whose asset really loads. Missing either variable prints
 `SKIP` and exits 0, so `deploy-verify.sh` and CI can call it unconditionally;
 `deploy/panel-auth-smoke.test.sh` pins both directions.
+
+Scoped keys are not recoverable from SQLite. `nekomari_auth.api_key_header()`
+accepts an explicit token or `NEKOMARI_API_KEY` only; the smoke deliberately keeps
+its existing `KOMARI_API_KEY` variable. Old global keys migrate to read-only for
+30 days, so inventory write/exec/backup consumers before deployment. See
+[`API-KEYS.md`](../docs/API-KEYS.md) for the compatibility and paired-DB rollback gate.
 
 ## hosts/
 

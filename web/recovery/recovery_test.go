@@ -6,9 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
+	"github.com/Aone2233/nekomari/internal/apikeys"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/web/api"
+	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -85,13 +86,18 @@ func TestStatusRequiresAdministrator(t *testing.T) {
 	}
 }
 
-func TestStatusAllowsAdminAPIKey(t *testing.T) {
+func TestStatusRefusesAPIKeys(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open config db: %v", err)
 	}
 	config.SetDb(db)
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
 	if err := config.Set(config.ApiKeyKey, "recovery-api-key"); err != nil {
 		t.Fatalf("set API key: %v", err)
 	}
@@ -106,8 +112,18 @@ func TestStatusAllowsAdminAPIKey(t *testing.T) {
 	request.Header.Set("Authorization", "Bearer recovery-api-key")
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
-	if recorder.Code != 200 {
-		t.Fatalf("API key status code = %d, want 200", recorder.Code)
+	if recorder.Code != 401 {
+		t.Fatalf("unmigrated global key status code = %d, want 401", recorder.Code)
+	}
+	if err := apikeys.MigrateLegacy(db); err != nil {
+		t.Fatal(err)
+	}
+	request = httptest.NewRequest("GET", APIPath+"/status", nil)
+	request.Header.Set("Authorization", "Bearer recovery-api-key")
+	recorder = httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != 403 {
+		t.Fatalf("scoped key reached credential-bearing recovery status: %d", recorder.Code)
 	}
 }
 
