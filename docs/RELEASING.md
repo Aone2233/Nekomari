@@ -66,7 +66,7 @@ Two consequences worth remembering when the fleet does move:
 
 ## Container images
 
-CI and release builds pin Go 1.27.1 independently of the `go.mod` minimum.
+CI and release builds pin Go 1.27.3 independently of the `go.mod` minimum.
 Update both workflows together when applying compiler security patches. Every
 server/agent executable must pass `govulncheck -mode=binary` (tool v1.8.0) before
 artifact upload. Local source scanning alone does not verify the compiler used
@@ -92,6 +92,26 @@ images under the version tag — the version is always pullable, and the tag is 
 honest record of what shipped — but `latest` stays on the last release that actually
 passed, so nobody pulling `latest` is handed a broken panel. The rule applies to both
 images.
+
+**Source identity is the resolved release checkout, not the Docker run's event
+SHA.** `workflow_run` executes on the default branch, so its `github.sha` can
+name newer, unreleased work even when the checkout and assets are from an older
+release. After checking out only the resolved tag, `Verify release source`
+compares HEAD with `refs/tags/<tag>^{commit}` (including annotated tags), refuses
+missing/mismatched commits before downloading assets, and emits the full commit
+used by `org.opencontainers.image.revision` for both images. Keep the supplied
+labels in `Build and push`; metadata-action's event-derived default is not source
+proof. The offline contract executes the real step in a disposable Git repo,
+including a distinct default-branch/event SHA and negative mismatch/ref cases.
+
+This closes the source-label gap observed in v1.6.28: that immutable image still
+names `fc84915` in its OCI label, while its packaged/attested executable is
+`502a269`. Do not republish it to repair metadata. Its release attestation,
+extracted executable checksum and `/api/version` remain the source evidence.
+The workflow fix does not authenticate a rewritten tag or replaced release asset
+by itself, nor change tag selection/`latest` policy. Continue verifying release
+checksums/provenance and record actual image labels/digests on the next eligible
+release; offline fixtures are not a completed registry publication.
 
 **A cancelled release run is the one case that publishes nothing at all** — no
 version tag, no `latest`: `docker.yml`'s job is skipped outright by its job-level

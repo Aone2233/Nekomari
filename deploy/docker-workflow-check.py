@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Contract check for the docker workflow.
 
-Three promises about `.github/workflows/docker.yml` are invisible in a green CI
+Four promises about `.github/workflows/docker.yml` are invisible in a green CI
 run until they are broken, so they are asserted here:
 
 1. **`latest` means "this version passed the full release verification".** The
@@ -19,6 +19,9 @@ run until they are broken, so they are asserted here:
    in the workflow's *matrix*, not from `agent/Dockerfile`, so this check reads
    the matrix instead of naming a file -- otherwise moving the marker into the
    wrong Dockerfile looks fine to every reader and every green run.
+4. **The OCI revision names the checked-out release commit**, not the default
+   branch where a `workflow_run` executes. Verify HEAD against the resolved tag
+   before downloading assets, then use that verified output in image labels.
 
 Usage:
     python3 deploy/docker-workflow-check.py [--workflow PATH] [--quiet]
@@ -28,8 +31,8 @@ A missing dependency is a hard failure on purpose: a check that skips itself is
 indistinguishable from a check that passed, which is exactly how this class of bug
 survives.
 
-No docker and no network. Everything is static except the truth table, which runs
-the workflow's own `Resolve tag` script in bash.
+No docker and no network. The truth table runs the workflow's `Resolve tag`
+script in bash; source checks run its verification script in a private Git repo.
 """
 
 from __future__ import annotations
@@ -512,6 +515,100 @@ def check_container_marker(root: Path, docker_yml: Path, workflow: dict, problem
 
 # --------------------------------------------------------------------------- #
 
+def check_source_identity(docker_yml: Path, workflow: dict, bash: str, problems: list) -> int:
+    """Exercise the real source-verification step, including a misleading event SHA."""
+    job = workflow["jobs"]["build-and-push"]
+    steps = steps_by_name(job)
+    source = steps.get("Verify release source")
+    if source is None:
+        problems.append(f"{docker_yml}: no `Verify release source` step; event SHA is not release identity")
+        return 0
+    if source.get("id") != "source" or not isinstance(source.get("run"), str):
+        problems.append(f"{docker_yml}: source verification needs id 'source' and an executable run script")
+        return 0
+    if (source.get("env") or {}).get("TAG") != "${{ steps.tag.outputs.tag }}":
+        problems.append(f"{docker_yml}: source verification must receive the resolved tag through env.TAG")
+
+    names = [s.get("name") for s in job["steps"]]
+    order = ("Checkout", "Verify release source", "Assemble the build context", "Derive image metadata", "Build and push")
+    if any(name not in names for name in order) or [names.index(name) for name in order] != sorted(names.index(name) for name in order):
+        problems.append(f"{docker_yml}: verify source after checkout and before asset download, metadata and publishing")
+    checkout_ref = ((steps.get("Checkout") or {}).get("with") or {}).get("ref")
+    if checkout_ref != "${{ steps.tag.outputs.tag }}":
+        problems.append(f"{docker_yml}: Checkout must use the resolved release tag without an event-ref fallback")
+    metadata = ((steps.get("Derive image metadata") or {}).get("with") or {})
+    revision_lines = [line.strip() for line in str(metadata.get("labels", "")).splitlines()
+                      if line.strip().startswith("org.opencontainers.image.revision=")]
+    if revision_lines != ["org.opencontainers.image.revision=${{ steps.source.outputs.revision }}"]:
+        problems.append(f"{docker_yml}: OCI revision label must use steps.source.outputs.revision exactly once")
+    build_labels = ((steps.get("Build and push") or {}).get("with") or {}).get("labels")
+    if build_labels != "${{ steps.meta.outputs.labels }}":
+        problems.append(f"{docker_yml}: Build and push must retain the verified metadata labels")
+
+    git = shutil.which("git")
+    if git is None:
+        raise DependencyError("git is required for the offline release-source identity fixtures")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        repo = root / "repo"
+        repo.mkdir()
+        config = root / "gitconfig"
+        config.write_text("", encoding="utf-8")
+        env = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": str(config),
+               "GIT_TERMINAL_PROMPT": "0"}
+
+        def run_git(*args: str) -> str:
+            return subprocess.check_output(
+                [git, "-c", "user.name=Source Contract", "-c", "user.email=contract@example.invalid",
+                 "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", *args],
+                cwd=repo, env=env, text=True, encoding="utf-8", stderr=subprocess.PIPE,
+            ).strip()
+
+        run_git("init", "--quiet")
+        (repo / "source.txt").write_text("release\n", encoding="utf-8")
+        run_git("add", "source.txt")
+        run_git("commit", "--quiet", "-m", "release source")
+        release_sha = run_git("rev-parse", "HEAD")
+        run_git("tag", "v1.6.29")
+        run_git("tag", "-a", "v1.7.0", "-m", "annotated release")
+        (repo / "source.txt").write_text("unreleased main\n", encoding="utf-8")
+        run_git("commit", "--quiet", "-am", "unreleased main")
+        event_sha = run_git("rev-parse", "HEAD")
+        run_git("tag", "v1.7.1")
+        script = root / "source-step.sh"
+        script.write_text(source["run"], encoding="utf-8", newline="\n")
+
+        cases = [
+            ("workflow_run default-branch SHA differs", "v1.6.29", release_sha, "workflow_run", True),
+            ("dispatched older release", "v1.6.29", release_sha, "workflow_dispatch", True),
+            ("annotated release tag", "v1.7.0", release_sha, "release", True),
+            ("wrong checkout", "v1.6.29", event_sha, "workflow_run", False),
+            ("tag moved away from checkout", "v1.7.1", release_sha, "workflow_run", False),
+            ("missing tag", "v9.9.9", release_sha, "workflow_dispatch", False),
+            ("empty tag", "", release_sha, "workflow_dispatch", False),
+            ("tag is not shell code", "v$(touch SOURCE_INJECTION)", release_sha, "workflow_dispatch", False),
+        ]
+        for name, tag, checkout, event, succeeds in cases:
+            run_git("checkout", "--quiet", "--detach", checkout)
+            output = root / "github_output"
+            output.write_text("", encoding="utf-8")
+            proc = subprocess.run(
+                [bash, str(script)], cwd=repo,
+                env={**env, "TAG": tag, "GITHUB_OUTPUT": str(output), "GITHUB_SHA": event_sha,
+                     "GITHUB_REF": "refs/heads/main", "GITHUB_EVENT_NAME": event},
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
+            pairs = [line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines() if "=" in line]
+            revisions = [value for key, value in pairs if key == "revision"]
+            if succeeds and (proc.returncode != 0 or revisions != [release_sha]):
+                problems.append(f"{docker_yml}: source identity failed for {name}: exit{proc.returncode}, revision={revisions!r}")
+            if not succeeds and (proc.returncode == 0 or revisions):
+                problems.append(f"{docker_yml}: source identity accepted {name}: exit{proc.returncode}, revision={revisions!r}")
+            if (repo / "SOURCE_INJECTION").exists():
+                problems.append(f"{docker_yml}: source verification executed ref data as shell code")
+        return len(cases)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--workflow", type=Path, default=None, help="path to docker.yml (default: <repo>/.github/workflows/docker.yml)")
@@ -540,11 +637,17 @@ def main() -> int:
     check_no_shell_interpolation(docker_yml, workflow, problems, notes)
     rows = check_truth_table(docker_yml, workflow, bash, args.quiet, problems)
     check_container_marker(root, docker_yml, workflow, problems)
+    try:
+        source_cases = check_source_identity(docker_yml, workflow, bash, problems)
+    except DependencyError as exc:
+        print(f"FAIL: {exc}", file=sys.stderr)
+        return 2
 
     if not args.quiet:
         print(f"workflow: {docker_yml.relative_to(root) if root in docker_yml.parents else docker_yml}")
         print(f"latest policy: enable={EXPECTED_LATEST_ENABLE}")
         print(f"truth table rows checked: {len(rows)}")
+        print(f"real-Git source identity cases checked: {source_cases}")
         if notes:
             print()
             print("interpolations left in `run:` scripts (workflow constants, not ref data):")
