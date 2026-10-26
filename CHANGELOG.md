@@ -34,30 +34,32 @@ Nekomari's own.
   See `docs/API-KEYS.md`. No Agent/protocol/dependency or later roadmap feature
   is bundled in this batch.
 
-- **Bound legacy history and audit-log queries (v1.7 preparation).**
-  `common:getRecords` now validates its 366-day window before duration conversion
-  and shares the existing historical admission, deadline and row/byte budgets
-  without losing cancellation in load/ping adapters. Guests cannot read deleted
-  nodes' retained history or distinguish hidden/deleted UUIDs from unknown ones;
-  administrators retain their historical access. Audit logs reject pages above
-  1000 rows, malformed fields and overflowing offsets, skip fetches past the
-  filtered total and honor cancellation. Defaults, response shapes, message-type
-  filters and 1000-row CSV export stay compatible. Real HTTP/WebSocket and REST
-  regressions accompany the bounded candidate; no API-key migration, Agent,
-  schema, dependency or frontend change is included. Not yet released/deployed.
-
-- **Build with the patched Go 1.27.3 compiler.** CI and release builds use the
-  fix for GO-2026-6809 in `crypto/x509`. Module minimums, dependencies, application
-  source, credential/database formats and frontend source are unchanged. Existing
-  binaries remain unchanged until rebuilt and deployed; a compiler refresh alone
-  does not authorize or require a fleet-wide Agent update. See
-  `docs/COMPILER-SECURITY-1273.md` for scope and release gates.
-
 - **Agent disk-footprint pruning**: `deploy/prune-agent-backups.sh` keeps one rollback
   binary per node and removes the rest; OC424's agent directory went from 231 MB to
   39 MB, and the fleet-wide cleanup reclaimed ~300 MB. It only matches
   `komari-agent-*`, so credential backups are untouched. Measurements and long-term
   bounds are in `docs/AGENT-FOOTPRINT.md`.
+
+## [v1.6.28] - 2026-10-26
+
+- **Bound legacy history and audit-log queries.** The first bounded v1.7 source
+  batch ships early as a compatible 1.6 patch on exact commit `502a269` (PR78).
+  `common:getRecords` validates its 366-day window before duration conversion
+  and shares historical admission, deadlines, row/byte budgets and cancellation
+  across load/ping adapters. Guests cannot read hidden/deleted nodes' retained
+  history; administrators retain historical access. Audit pages are limited to
+  1-1000 rows with strict binding, checked offsets, no fetch beyond total and
+  SQL cancellation. Defaults, response shapes, filters and CSV remain compatible.
+- **Panel-only release and OC424 delivery.** Exact-source CI7/7, release10/10
+  (native amd64/arm64 deploy verification), both Docker jobs and OC424 upgrade
+  check9/9 pass. A verified paired backup is retained on OVH after an isolated
+  old-image restore drill. Public assets/private-site denial and both DB
+  integrity/schema checks pass; authenticated live history/audit owner acceptance
+  remains pending. See `docs/DEPLOY-OC424.md` for immutable digests and rollback.
+- No Agent/protocol, frontend source, dependency, schema or credential behavior
+  change from v1.6.27. In-panel navigation is retained. Scoped API keys,
+  report/queue changes, client-token rotation, backup encryption and 200-node
+  work are **not** included; full v1.7 exit criteria remain open.
 
 ## [v1.6.27] — 2026-10-26
 
@@ -69,6 +71,14 @@ Nekomari's own.
   parameters and hashes. Existing standalone links remain available. This is
   a frontend-only patch on v1.6.26; backend, schemas and Agents are unchanged.
   See `docs/ADMIN-TOOLS-NAVIGATION.md`.
+
+## [v1.6.26] - 2026-10-24
+
+- **Build with the patched Go 1.27.3 compiler.** CI and release builds use the
+  fix for GO-2026-6809 in `crypto/x509`. Module minimums, dependencies, application
+  source, credential/database formats and frontend source are unchanged. This
+  compiler-only patch does not require a fleet-wide Agent update. See
+  `docs/COMPILER-SECURITY-1273.md` for the retained candidate evidence.
 
 ## [v1.6.25] — 2026-10-20
 
