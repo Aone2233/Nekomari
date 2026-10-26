@@ -13,12 +13,13 @@ other needs the assets a browser would fetch:
 Usage:
 
     export KOMARI_BASE_URL='https://panel.example.com'
-    export KOMARI_API_KEY='<panel: Settings -> API key>'
+    export KOMARI_API_KEY='<one-time nodes:read token from Settings -> Sign-on -> API>'
     python3 deploy/panel-auth-smoke.py
 
 Why the API key and not a password: the key needs no login, no session cookie and no 2FA code,
 and it does not send a login notification on every run (deploy/nekomari_auth.py documents that
-in detail). It is also the only credential that fits a CI variable.
+in detail). Use nodes:read only; no write/exec/token-read grant is needed. Provision
+the token explicitly through a secret manager, never by recovering it from SQLite.
 
 Missing either variable prints SKIP and exits 0, so this can be called unconditionally from
 deploy-verify.sh or a CI step: a deployment check that was never asked to authenticate must not

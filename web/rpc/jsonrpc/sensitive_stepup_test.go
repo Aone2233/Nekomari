@@ -18,12 +18,29 @@ import (
 // 这些方法除了 admin 角色，还要求敏感操作二次验证（敏感 2FA）。名单是安全边界，
 // 所以它的增删都必须被人看见：本用例断言它恰好等于这份名单，任何一方变化都会失败。
 var sensitiveMethodsAllowlist = []string{
+	"admin:createAPIKey",
 	"admin:dbExec",
 	"admin:dbQuery",
 	"admin:exec",
 	"admin:exportConfigSecrets",
 	"admin:getClientToken",
+	"admin:revokeAPIKey",
 	"admin:rollAgentUpdate",
+	"admin:rotateAPIKey",
+}
+
+func createStepUpAccount(t *testing.T, username, password string) models.User {
+	t.Helper()
+	account, err := accounts.CreateAccount(username, password)
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := accounts.DeleteAccountByUsername(account.Username); err != nil {
+			t.Errorf("delete test account: %v", err)
+		}
+	})
+	return account
 }
 
 func TestSensitiveMethodsAreAnExplicitList(t *testing.T) {
@@ -45,10 +62,7 @@ func TestSensitiveMethodsAreAnExplicitList(t *testing.T) {
 // 否则「一律拒绝」也能让上面的断言通过，而那会是一个坏掉的接口而不是一道门。
 func TestDatabaseRPCsRequireASecondFactor(t *testing.T) {
 	// 账号 A：开启 2FA —— 不带 code 调用必须被拒。
-	withTwoFactor, err := accounts.CreateAccount("stepup-2fa-user", "StepUp-2fa-Passw0rd")
-	if err != nil {
-		t.Fatalf("create account: %v", err)
-	}
+	withTwoFactor := createStepUpAccount(t, "stepup-2fa-user", "StepUp-2fa-Passw0rd")
 	secret, _, err := accounts.Generate2Fa()
 	if err != nil {
 		t.Fatalf("generate 2fa secret: %v", err)
@@ -58,10 +72,7 @@ func TestDatabaseRPCsRequireASecondFactor(t *testing.T) {
 	}
 
 	// 账号 B：未开启 2FA —— 同一道门必须放行。
-	withoutTwoFactor, err := accounts.CreateAccount("stepup-plain-user", "StepUp-plain-Passw0rd")
-	if err != nil {
-		t.Fatalf("create account: %v", err)
-	}
+	withoutTwoFactor := createStepUpAccount(t, "stepup-plain-user", "StepUp-plain-Passw0rd")
 
 	call := func(method, userUUID string) *rpc.JsonRpcResponse {
 		t.Helper()
@@ -106,10 +117,7 @@ func TestDatabaseRPCsRequireASecondFactor(t *testing.T) {
 // sensitive but never exercised is a gate that could be broken by a typo in its name, and this
 // catches that without reaching any handler (the gate runs before Dispatch).
 func TestEverySensitiveMethodRefusesASessionWithoutASecondFactor(t *testing.T) {
-	account, err := accounts.CreateAccount("stepup-gate-user", "StepUp-gate-Passw0rd")
-	if err != nil {
-		t.Fatalf("create account: %v", err)
-	}
+	account := createStepUpAccount(t, "stepup-gate-user", "StepUp-gate-Passw0rd")
 	secret, _, err := accounts.Generate2Fa()
 	if err != nil {
 		t.Fatalf("generate 2fa secret: %v", err)
@@ -140,12 +148,9 @@ func TestEverySensitiveMethodRefusesASessionWithoutASecondFactor(t *testing.T) {
 	}
 }
 
-// admin:getClientToken 返回的是 Agent 的长期 bearer 凭据：普通会话读取它必须过敏感 2FA，
-// 而 API key 仍按既有设计豁免 —— 门开了，但豁免范围没有扩大。
-//
-// 三条正向对照都必须存在，否则「一律拒绝」也能让拒绝断言通过：带正确 TOTP 的会话能读到
-// token、API key 不提供 code 也能读、未开启 2FA 的账号按既有设计不需要 step-up。
-func TestGetClientTokenRequiresASecondFactorButAPIKeysStayExempt(t *testing.T) {
+// A key can read agent credentials only with agents:token:read. Sessions keep
+// the existing step-up policy; positive controls rule out a blanket refusal.
+func TestGetClientTokenRequiresASecondFactorOrExplicitKeyScope(t *testing.T) {
 	if !rpc.IsSensitive("admin:getClientToken") {
 		t.Fatal("admin:getClientToken is not marked sensitive: reading an agent credential must require the step-up")
 	}
@@ -188,10 +193,7 @@ func TestGetClientTokenRequiresASecondFactorButAPIKeysStayExempt(t *testing.T) {
 	}
 
 	// 账号 A：开启 2FA。不带第二因子必须被拒 —— 这是这次改动新增的行为。
-	withTwoFactor, err := accounts.CreateAccount("stepup-token-user", "StepUp-Token-Passw0rd")
-	if err != nil {
-		t.Fatalf("create account: %v", err)
-	}
+	withTwoFactor := createStepUpAccount(t, "stepup-token-user", "StepUp-Token-Passw0rd")
 	secret, _, err := accounts.Generate2Fa()
 	if err != nil {
 		t.Fatalf("generate 2fa secret: %v", err)
@@ -215,19 +217,20 @@ func TestGetClientTokenRequiresASecondFactorButAPIKeysStayExempt(t *testing.T) {
 	}
 	requireToken(call(rpc.NewUserPrincipal(withTwoFactor.UUID), code), "a session with a valid TOTP")
 
-	// API key：既有豁免不变，不需要第二因子。
-	requireToken(call(rpc.NewAPIKeyPrincipal(), ""), "an API key")
+	// No implicit exemption: an unscoped/monitoring key must be refused.
+	for _, principal := range []*rpc.Principal{rpc.NewAPIKeyPrincipal(), rpc.NewScopedAPIKeyPrincipal(uuid.NewString(), []string{rpc.ScopeNodesRead})} {
+		if response := call(principal, ""); response.Error == nil || response.Error.Code != rpc.PermissionDenied {
+			t.Fatalf("a key without the token grant passed: %#v", response)
+		}
+	}
+	requireToken(call(rpc.NewScopedAPIKeyPrincipal(uuid.NewString(), []string{rpc.ScopeAgentTokenRead}), ""), "an explicitly scoped API key")
 
 	// 未开启 2FA 的普通账号：既有设计里也不需要 step-up。
-	plain, err := accounts.CreateAccount("stepup-token-plain", "StepUp-Token-Plain1")
-	if err != nil {
-		t.Fatalf("create account: %v", err)
-	}
+	plain := createStepUpAccount(t, "stepup-token-plain", "StepUp-Token-Plain1")
 	requireToken(call(rpc.NewUserPrincipal(plain.UUID), ""), "a session without 2FA")
 }
 
-// API key 的审计归属：日志必须写 "api_key"，而不是空串或全零占位 UUID；
-// 普通会话仍然记录真实用户，不能一并变成 api_key。
+// Per-key audit attribution must not be blank or a placeholder user identity.
 func TestAPIKeyAuditActorIsNamedExplicitly(t *testing.T) {
 	db := dbcore.GetDBInstance()
 	clientUUID := uuid.NewString()
@@ -239,7 +242,7 @@ func TestAPIKeyAuditActorIsNamedExplicitly(t *testing.T) {
 
 	// meta 里刻意放旧中间件的全零占位 UUID：API key 的审计不能被它伪装成用户。
 	meta := &rpc.ContextMeta{
-		Principal:  rpc.NewAPIKeyPrincipal(),
+		Principal:  rpc.NewScopedAPIKeyPrincipal(uuid.NewString(), []string{rpc.ScopeAgentTokenRead}),
 		Permission: rpc.RoleAdmin,
 		UserUUID:   "00000000-0000-0000-0000-000000000000",
 		RemoteIP:   "203.0.113.9",
@@ -257,8 +260,8 @@ func TestAPIKeyAuditActorIsNamedExplicitly(t *testing.T) {
 	if err := db.Where("message = ?", "read client token:"+clientUUID).First(&entry).Error; err != nil {
 		t.Fatalf("the token read was not audited: %v", err)
 	}
-	if entry.UUID != "api_key" {
-		t.Errorf("audit actor = %q, want %q: an API key must not look like a user", entry.UUID, "api_key")
+	if entry.UUID != meta.Principal.APIKeyID {
+		t.Errorf("audit actor = %q, want key ID %q", entry.UUID, meta.Principal.APIKeyID)
 	}
 	if entry.IP != "203.0.113.9" {
 		t.Errorf("audit ip = %q, want the request source IP", entry.IP)

@@ -280,7 +280,7 @@ func getNodes(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcEr
 	meta := rpc.MetaFromContext(ctx)
 
 	SendIpAddrToGuest, _ := config.GetAs[bool](config.SendIpAddrToGuestKey)
-	if meta.Principal == nil || !meta.Principal.HasRole(rpc.RoleAdmin) {
+	if meta.Principal == nil || !meta.Principal.CanReadPrivateNodes() {
 		// 过滤 Hidden 节点并隐藏敏感字段
 		filtered := make([]models.Client, 0, len(cinfo))
 		for _, node := range cinfo {
@@ -305,6 +305,11 @@ func getNodes(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcEr
 			filtered = append(filtered, node)
 		}
 		cinfo = filtered
+	}
+	if meta.Principal != nil && meta.Principal.Type == rpc.PrincipalAPIKey {
+		for i := range cinfo {
+			cinfo[i].Token = ""
+		}
 	}
 	if params.UUID != "" {
 		for _, node := range cinfo {
@@ -365,7 +370,7 @@ func getNodesLatestStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 	}
 
 	// Hidden 过滤
-	if meta.Principal == nil || !meta.Principal.HasRole(rpc.RoleAdmin) {
+	if meta.Principal == nil || !meta.Principal.CanReadPrivateNodes() {
 		hidden, err := clients.HiddenClients()
 		if err != nil {
 			return nil, rpc.MakeError(rpc.InternalError, "Failed to get client info", err.Error())
@@ -480,9 +485,7 @@ func getMe(ctx context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) 
 		resp.SSOId = "client"
 		resp.SSOType = "client"
 		resp.Username = "client"
-		// 只回显解析出的 uuid。ClientToken 是 agent 的裸凭据：把它当 uuid 返回，等于
-		// 让任何持有凭据的调用方从 /api/me 拿回凭据本身（也会被前端与日志留存）。查询
-		// 失败时保持为空，不回退到 token。
+		// Only echo the resolved UUID, never the bearer when lookup fails.
 		client, err := clients.GetClientUUIDByToken(meta.ClientToken)
 		if err == nil {
 			resp.UUID = client
@@ -515,7 +518,7 @@ func getNodeRecentStatus(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rp
 	meta := rpc.MetaFromContext(ctx)
 	// 登录状态检查
 	isLogin := false
-	if meta.Principal != nil && meta.Principal.HasRole(rpc.RoleAdmin) {
+	if meta.Principal != nil && meta.Principal.CanReadPrivateNodes() {
 		isLogin = true
 	}
 

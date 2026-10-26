@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/Aone2233/nekomari/database/accounts"
-	"github.com/Aone2233/nekomari/database/clients"
+	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 	"github.com/Aone2233/nekomari/pkg/secretcmp"
@@ -37,10 +37,9 @@ func IdentityMiddleware() gin.HandlerFunc {
 		c.Set("role", p.PrimaryRole())
 		switch p.Type {
 		case rpc.PrincipalAPIKey:
-			// 旧逻辑:API Key 时记录裸 key 与固定占位 uuid。
-			apiKey := c.GetHeader("Authorization")
-			c.Set("api_key", apiKey[len("Bearer "):])
-			c.Set("uuid", "00000000-0000-0000-0000-000000000000")
+			// Compatibility marker only; never retain the credential in context.
+			c.Set("api_key", p.APIKeyID)
+			c.Set("uuid", p.APIKeyID)
 		case rpc.PrincipalUser:
 			if session, err := c.Cookie("session_token"); err == nil && session != "" {
 				c.Set("session", session)
@@ -49,6 +48,11 @@ func IdentityMiddleware() gin.HandlerFunc {
 			c.Set("uuid", p.UserUUID)
 		case rpc.PrincipalAgent:
 			c.Set("client_uuid", p.ClientUUID)
+		}
+		if p.Type == rpc.PrincipalAPIKey && !rpc.APIKeyHTTPAllowed(p, c.Request.Method, c.FullPath()) {
+			RespondError(c, http.StatusForbidden, "API key scope does not allow this route; use an administrator session")
+			c.Abort()
+			return
 		}
 
 		c.Next()
@@ -61,6 +65,14 @@ func RequireRole(allowedRoles ...string) gin.HandlerFunc {
 		current := GetRole(c)
 		for _, role := range allowedRoles {
 			if current == role {
+				if p := GetPrincipal(c); p != nil && p.Type == rpc.PrincipalAPIKey {
+					method := rpc.APIKeyRouteMethod(c.Request.Method, c.FullPath())
+					if method == "" || !rpc.CheckPrincipal(p, method) {
+						RespondError(c, http.StatusForbidden, "API key scope does not allow this route; use an administrator session")
+						c.Abort()
+						return
+					}
+				}
 				c.Next()
 				return
 			}
@@ -221,7 +233,13 @@ func extractClientToken(c *gin.Context) string {
 }
 
 func checkTokenAndGetUUID(token string) (string, error) {
-	uuid, err := clients.GetClientUUIDByToken(token)
+	// Identity checks must not initialize or rebind the database during recovery.
+	db := config.Database()
+	if db == nil || token == "" || len(token) > 512 {
+		return "", nil
+	}
+	var client models.Client
+	err := db.Select("uuid").Where("token = ?", token).Take(&client).Error
 
 	if err == sql.ErrNoRows {
 		return "", nil
@@ -232,20 +250,5 @@ func checkTokenAndGetUUID(token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return uuid, nil
-}
-
-func isApiKeyValid(apiKey string) bool {
-	if !strings.HasPrefix(apiKey, "Bearer ") {
-		return false
-	}
-	apiKeyConfig, err := config.GetAs[string](config.ApiKeyKey, "")
-	if err != nil {
-		return false
-	}
-
-	if apiKeyConfig == "" || len(apiKeyConfig) < 12 {
-		return false
-	}
-	return secretcmp.Equal(apiKey, "Bearer "+apiKeyConfig)
+	return client.UUID, nil
 }

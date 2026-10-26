@@ -191,10 +191,12 @@ func CheckPrincipal(p *Principal, method string) bool {
 	if p == nil {
 		p = NewAnonymousPrincipal()
 	}
+	if p.Type == PrincipalAPIKey {
+		return apiKeyAllows(p, method)
+	}
 	min := resolveMinRole(method)
 	if min == RoleGuest {
 		return true // 公共基线,所有主体可访问
 	}
 	return p.HasRole(min)
 }
-

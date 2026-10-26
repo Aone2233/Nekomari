@@ -27,6 +27,10 @@ func GetClients(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "error": "Require WebSocket upgrade"})
 		return
 	}
+	initial := GetPrincipal(c)
+	if initial == nil {
+		initial = IdentifyPrincipal(c)
+	}
 	// Upgrade the HTTP connection to a WebSocket connection
 	conn, err := UpgradeSafeConn(c)
 	if err != nil {
@@ -52,7 +56,11 @@ func GetClients(c *gin.Context) {
 			return
 		}
 		message := string(data)
-		isLogin := IdentifyPrincipal(c).HasRole(RoleAdmin)
+		principal := IdentifyPrincipal(c)
+		if principal.Type != initial.Type || principal.APIKeyID != initial.APIKeyID || principal.UserUUID != initial.UserUUID || principal.ClientUUID != initial.ClientUUID {
+			return
+		}
+		isLogin := principal.CanReadPrivateNodes()
 		private, configErr := config.GetAs[bool](config.PrivateSiteKey, false)
 		if configErr != nil || (!isLogin && private && !hasTempAccess(c)) {
 			return

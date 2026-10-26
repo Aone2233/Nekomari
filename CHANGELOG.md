@@ -8,6 +8,20 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **Scoped, expiring API keys (bounded v1.7 preparation).** Eight exact grants
+  replace implicit administrator access. The server generates one-time tokens,
+  stores only digests, supports immediate rotation/revocation, requires sessions
+  and existing TOTP step-up for management, and records non-secret key UUIDs in
+  audits. Both REST and RPC/WebSocket enforce grants; node reads strip agent
+  credentials and node writes cannot change tokens/version/report fields. The
+  sign-on card uses the existing panel theme and supports five languages.
+  Legacy keys migrate once to 30-day read-only monitoring; settings/import cannot
+  revive them. Operational helpers require explicit secret provisioning, never
+  SQLite recovery. This intentional compatibility change is **not deployed**:
+  live consumer inventory/replacements and paired-DB rollback are release gates.
+  See `docs/API-KEYS.md`. No Agent/protocol/dependency or later roadmap feature
+  is bundled in this batch.
+
 - **Bound legacy history and audit-log queries (v1.7 preparation).**
   `common:getRecords` now validates its 366-day window before duration conversion
   and shares the existing historical admission, deadline and row/byte budgets

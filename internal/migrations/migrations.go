@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/internal/apikeys"
 	appconfig "github.com/Aone2233/nekomari/internal/config"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -128,6 +129,9 @@ func Run(ctx Context) error {
 	}
 	if err := migrateRemovedCompatibilityConfig(db); err != nil {
 		return err
+	}
+	if err := apikeys.MigrateLegacy(db); err != nil {
+		return fmt.Errorf("migrate scoped API keys: %w", err)
 	}
 	if err := markTimestampMigrationDone(db); err != nil {
 		return fmt.Errorf("mark UTC timestamp migration done: %w", err)

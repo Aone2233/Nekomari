@@ -33,6 +33,9 @@ var (
 	}
 )
 
+// Database returns the configured connection without triggering initialization.
+func Database() *gorm.DB { return db }
+
 // GetAs 获取并转换为指定类型 (泛型)，支持数值类型自动转换
 func GetAs[T any](key string, defaul ...any) (T, error) {
 	var t T

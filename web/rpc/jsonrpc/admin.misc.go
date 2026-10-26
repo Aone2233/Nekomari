@@ -109,6 +109,7 @@ func adminGetSettings(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonR
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to get settings: "+err.Error(), nil)
 	}
+	delete(cst, config.ApiKeyKey)
 	return cst, nil
 }
 
@@ -141,6 +142,9 @@ func adminEditSettings(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.
 	cfg := make(map[string]interface{})
 	if err := req.BindParams(&cfg); err != nil {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid or missing request body: "+err.Error(), nil)
+	}
+	if _, exists := cfg[config.ApiKeyKey]; exists {
+		return nil, rpc.MakeError(rpc.InvalidParams, "api_key is retired; create a scoped key in API key management", nil)
 	}
 	removeRetiredLowResourceMode(cfg)
 	if err := validateMetricRollupSettingChanges(cfg); err != nil {

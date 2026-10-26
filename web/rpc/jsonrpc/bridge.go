@@ -5,8 +5,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/pkg/rpc"
+	"github.com/gin-gonic/gin"
 )
 
 // bridge.go
@@ -65,7 +65,7 @@ func Bind(method string, opts ...BindOption) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		params, ok := assembleParams(c, cfg)
 		if !ok {
-			c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Invalid or missing request body"})
+			c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Invalid or missing request body", "error_key": "invalid_params"})
 			return
 		}
 		resp := CallFromGin(c, method, params)
@@ -136,8 +136,11 @@ func rpcErrorHTTPStatus(code int) int {
 
 func renderResponse(c *gin.Context, cfg *bindConfig, resp *rpc.JsonRpcResponse) {
 	if resp.Error != nil {
-		// 统一错误形状：{ status:"error", message } —— 与 api.RespondError 一致。
-		c.JSON(rpcErrorHTTPStatus(resp.Error.Code), gin.H{"status": "error", "message": resp.Error.Message})
+		out := gin.H{"status": "error", "message": resp.Error.Message}
+		if key := resp.Error.LocalizationKey(); key != "" {
+			out["error_key"] = key
+		}
+		c.JSON(rpcErrorHTTPStatus(resp.Error.Code), out)
 		return
 	}
 	switch cfg.render {

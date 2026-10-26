@@ -1,16 +1,15 @@
 import {
   SettingCardLabel,
   SettingCardSelect,
-  SettingCardShortTextInput,
   SettingCardSwitch,
 } from "@/components/admin/SettingCard";
 import { updateSettingsWithToast, useSettings } from "@/lib/api";
-import { Button, Text } from "@radix-ui/themes";
+import { Text } from "@radix-ui/themes";
 import { useTranslation } from "react-i18next";
 import Loading from "@/components/loading";
 import React from "react";
 import { renderProviderInputs } from "@/utils/renderProviders";
-import { toast } from "sonner";
+import APIKeysCard from "@/components/admin/APIKeysCard";
 
 export default function SignOnSettings() {
   const { t } = useTranslation();
@@ -190,65 +189,7 @@ export default function SignOnSettings() {
         t,
       })}
       <SettingCardLabel>API</SettingCardLabel>
-      <ApiCard />
+      <APIKeysCard />
     </>
   );
-}
-
-const ApiCard = () => {
-  const { settings } = useSettings();
-  const { t } = useTranslation();
-  const apiKey = settings?.api_key;
-  const [apiValues, setApiValues] = React.useState<string>(apiKey || "");
-  const [previousApiKey, setPreviousApiKey] = React.useState(apiKey);
-
-  // 服务端的 key 变化时把新值写回本地草稿。原来是 useEffect + setState，
-  // 现在用 React 的 “adjusting state when a value changes” 模式：守卫条件
-  // （同一个依赖 + 同样的 truthy 判断）与原来的 effect 完全一致。
-  if (apiKey !== previousApiKey) {
-    setPreviousApiKey(apiKey);
-    if (apiKey) {
-      setApiValues(apiKey);
-    }
-  }
-
-  // 生成32位随机字符串
-  const generateRandomString = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let result = 'komari-';
-    for (let i = 0; i < 32; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-  };
-
-  // 处理生成按钮点击
-  const handleGenerateApiKey = () => {
-    const newApiKey = generateRandomString();
-    setApiValues(newApiKey);
-  };
-
-  return (
-    <SettingCardShortTextInput
-        title={t("settings.api.title")}
-        description={t("settings.api.description")}
-        value={apiValues}
-        onChange={(e) => setApiValues(e.target.value)}
-        OnSave={async (values) => {
-          if (!values) {
-            await updateSettingsWithToast({ api_key: "" }, t);
-            return;
-          }
-          if (values.length < 12) {
-            toast.error(t("settings.api.key_length_error"));
-            return;
-          }
-          await updateSettingsWithToast({ api_key: values }, t);
-        }}
-      >
-        <div className="flex flex-row gap-2 justify-start items-center">
-          <Button variant="soft" color="green" onClick={handleGenerateApiKey}>{t('common.generate')}</Button>
-        </div>
-      </SettingCardShortTextInput>
-  )
 }

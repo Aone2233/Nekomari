@@ -22,7 +22,7 @@ func init() {
 		Params: []rpc.ParamMeta{
 			{Name: "name", Type: "string", Required: false, Description: "Optional client name"},
 		},
-		Returns: "{ uuid: string, token: string }",
+		Returns: "{ uuid: string, token?: string }; API keys read credentials separately with admin:getClientToken",
 	})
 	RegisterWithGroupAndMeta("editClient", rpc.RoleAdmin, adminEditClient, &rpc.MethodMeta{
 		Name:    "admin:editClient",
@@ -61,11 +61,7 @@ func init() {
 		},
 		Returns: "{ token: string }",
 	})
-	// 读取 Agent 凭据属于敏感操作：token 是 agent 的长期 bearer 凭据，拿到它等于可以冒充
-	// 该节点上报数据。普通会话因此需要敏感 2FA；API key 仍按既有设计豁免（见
-	// dispatchWithSensitive → VerifySensitive2FACore(..., isAPIKey)），本轮不改变它的
-	// 权限/scope。标记在这里而不是 transport 里：名单属于方法自己的声明，敏感名单用例
-	// （sensitive_stepup_test.go）会把这个新增项一起审阅。
+	// Sessions require step-up; keys need the explicit agents:token:read grant.
 	rpc.MarkSensitive("admin:getClientToken")
 	RegisterWithGroupAndMeta("clearRecords", rpc.RoleAdmin, adminClearRecords, &rpc.MethodMeta{
 		Name:    "admin:clearRecords",
@@ -74,12 +70,7 @@ func init() {
 	})
 }
 
-// auditActorAPIKey 是审计日志里 API key 调用的 actor 标识。
-//
-// API key 没有用户身份：HTTP 兼容字段里是占位 UUID（全零），RPC meta 的 UserUUID 是空串。
-// 两者都不适合直接落进日志 —— 空串看起来像「漏记」，全零 UUID 看起来像某个具体账号
-// （实际只是占位），排查时会把人引向错误方向。统一记成 "api_key"，明确「这是凭据调用，
-// 不是某个用户操作」。
+// auditActorAPIKey is the fallback label for old internal unscoped callers.
 const auditActorAPIKey = "api_key"
 
 // apiKeyPlaceholderUUID 是 IdentityMiddleware 为 API key 写进旧兼容字段的占位 UUID。
@@ -87,8 +78,7 @@ const apiKeyPlaceholderUUID = "00000000-0000-0000-0000-000000000000"
 
 // auditActor 从上下文提取审计用的 actor 标识与来源 IP。
 //
-// 普通会话返回真实用户 UUID；API key 返回 "api_key"（见上面的注释）。没有 meta 时返回空值，
-// 与改动前一致。
+// Sessions use their user UUID; keys use their non-secret key UUID.
 func auditActor(ctx context.Context) (uuid, ip string) {
 	meta := rpc.MetaFromContext(ctx)
 	if meta == nil {
@@ -96,6 +86,9 @@ func auditActor(ctx context.Context) (uuid, ip string) {
 	}
 	ip = meta.RemoteIP
 	if meta.Principal != nil && meta.Principal.IsAPIKey {
+		if meta.Principal.APIKeyID != "" {
+			return meta.Principal.APIKeyID, ip
+		}
 		return auditActorAPIKey, ip
 	}
 	uuid = meta.UserUUID
@@ -124,11 +117,13 @@ func adminAddClient(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.Jso
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
 	}
-	if params.Name != "" {
-		actor, ip := auditActor(ctx)
-		auditlog.Log(ip, actor, "create client:"+uuid, "info")
+	actor, ip := auditActor(ctx)
+	auditlog.Log(ip, actor, "create client:"+uuid, "info")
+	result := map[string]any{"uuid": uuid}
+	if meta := rpc.MetaFromContext(ctx); meta == nil || meta.Principal == nil || meta.Principal.Type != rpc.PrincipalAPIKey {
+		result["token"] = token
 	}
-	return map[string]any{"uuid": uuid, "token": token}, nil
+	return result, nil
 }
 
 func adminEditClient(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
@@ -139,6 +134,9 @@ func adminEditClient(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.Js
 	uuid, _ := update["uuid"].(string)
 	if uuid == "" {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid or missing UUID", nil)
+	}
+	if jerr := validateAPIKeyClientUpdate(ctx, update); jerr != nil {
+		return nil, jerr
 	}
 	if err := clients.SaveClient(update); err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
@@ -167,7 +165,7 @@ func adminRemoveClient(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.
 	return nil, nil
 }
 
-func adminGetClient(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+func adminGetClient(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {
 		UUID string `json:"uuid"`
 	}
@@ -179,15 +177,39 @@ func adminGetClient(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonR
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
 	}
+	if meta := rpc.MetaFromContext(ctx); meta != nil && meta.Principal != nil && meta.Principal.Type == rpc.PrincipalAPIKey {
+		result.Token = ""
+	}
 	return result, nil
 }
 
-func adminListClients(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+func adminListClients(ctx context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	cls, err := clients.GetAllClientBasicInfo()
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
 	}
+	if meta := rpc.MetaFromContext(ctx); meta != nil && meta.Principal != nil && meta.Principal.Type == rpc.PrincipalAPIKey {
+		for i := range cls {
+			cls[i].Token = ""
+		}
+	}
 	return cls, nil
+}
+
+func validateAPIKeyClientUpdate(ctx context.Context, update map[string]any) *rpc.JsonRpcError {
+	meta := rpc.MetaFromContext(ctx)
+	if meta == nil || meta.Principal == nil || meta.Principal.Type != rpc.PrincipalAPIKey {
+		return nil
+	}
+	for key := range update {
+		switch key {
+		case "uuid", "name", "group", "tags", "weight", "price", "billing_cycle", "currency", "expired_at",
+			"hidden", "traffic_limit", "traffic_limit_type", "auto_renewal", "public_remark", "remark", "region":
+		default:
+			return rpc.MakeLocalizedError(rpc.PermissionDenied, "nodes:write cannot change credentials, agent versions or report fields", "nodes_write_restricted")
+		}
+	}
+	return nil
 }
 
 func adminGetClientToken(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
@@ -202,8 +224,7 @@ func adminGetClientToken(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rp
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
 	}
-	// 凭据读取得留痕：敏感门回答「谁有资格读」，审计回答「谁真的读过」。actor 对 API key
-	// 是 "api_key"（见 auditActor），不会伪装成某个用户。
+	// Audit the key UUID (or user UUID), never the credential.
 	actor, ip := auditActor(ctx)
 	auditlog.Log(ip, actor, "read client token:"+params.UUID, "warn")
 	return map[string]any{"token": token}, nil

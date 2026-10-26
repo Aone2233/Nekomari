@@ -21,6 +21,24 @@ The first v1.7 candidate is isolated from the exact live source and contains onl
 history/log query hardening. It does not deploy the separate accumulated v1.7+
 workspace. Production remains v1.6.27 until a version passes its release gates.
 
+**Adjusted active target (owner authorization, 2026-10-26):** complete bounded
+v1.7 security batches with explicit verification and release gates, rather than
+trying to finish every long-term version in one continuous run. Query hardening
+PR78 is merged as502a269 and its merge CI40275930537 is now7/7 successful;
+it remains unreleased. The next independent `codex/v1.7-scoped-api-keys` batch
+implements exact fleet-wide grants, digest-only expiring keys, rotation/revocation,
+session/TOTP management, per-key audit attribution and the existing-shell UI.
+See [`API-KEYS.md`](./API-KEYS.md). Client-token rotation, queue/report invariants,
+later metrics/history features and encrypted-backup deployment are not included.
+
+The repository's key-consuming scripts are inventoried; no helper reads a key
+from SQLite. Out-of-repository live consumers and secure replacement provisioning
+remain a **release/cutover gate**, not proof supplied by source tests. Legacy keys
+become30-day `nodes:read` credentials; this intentional security compatibility
+change needs an explicit migration arrangement under the v1.x policy. No tag or
+OC424 credential/schema update occurs in this preparation batch. A downgrade needs
+the old binary **and pre-upgrade DB**, not the existing image-only rollback.
+
 **Current priorities:** 200-node work remains deferred, with its original limits
 and all26 failed reports preserved. Use OC424 for bounded real-environment
 acceptance and OVH for suitable isolated tests/off-host backups. Existing general
@@ -71,7 +89,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | D4 | **Push straight to `main`, or branch + PR?** | General suitable push/OC424 update permission is granted; use branch + PR as the conservative default. | Exact-candidate CI, compatibility, backup/rollback and release acceptance remain required |
 | D7 | **`topology/` — commit or delete?** and **`docs/OC424-MTPROTO.md` — commit with the next batch?** | The MTProto doc is finished and its secret scan passes: commit. `topology/` is a static page whose own README says it is not wired into anything and was withdrawn the day it went live: decide before it rots. | Two untracked trees sit outside both README indexes |
 | D8 | **Two operational facts I cannot check from here** | (a) the admin password from `SECRETS.md` incident 4 — has it been changed? (b) the `AAAA 100::` record and Worker for `monitor.orderly2233.org` — removed? | Both are recorded as open in `RETIRE-CF-PROBE.md` / `SECRETS.md` and neither can be verified from a checkout |
-| D9 | **Authentication policy, as a group** | (a) `sso_id` after a password change — recommendation was clear it on `ForceResetPassword` plus add an explicit "unbind SSO"; (b) an API key currently skips the sensitive 2FA step-up; (c) OIDC + 2FA makes SSO login fail-closed with no way to answer the challenge; (d) `DeleteAllSessions()` is global, so one account changing its password logs out every account | Four separate behaviours, all deliberate today, none wrong enough to fix without a policy call |
+| D9 | **Authentication policy, as a group** | (a) `sso_id` after a password change; (b) the scoped-key candidate replaces blanket exemption with exact grants, but live consumer migration/compatibility acceptance is still required; (c) OIDC + 2FA challenge flow; (d) globally invalidated sessions | Scoped-key source work does not silently decide the other account policies or authorize the compatibility cutover |
 | D10 | **How much of the remaining frontend polish to do at once** | Three known batches: ~33 unconverted `toLocaleString*` sites (the helper now exists), ~24 re-implementations of the mutation-envelope check, and 8 `dangerouslySetInnerHTML` sites fed by locale strings | Each is mechanical but wide; they are the kind of change that is safe alone and risky mixed with a release |
 | D11 | **Agent privilege and platform footprint** | Non-root agents are still the exception (MAC-WAN); ICMP tasks force root on hosts without `setcap`. Windows/macOS agent footprint and peak memory are unmeasured. Ping precision shipped in v1.6.24, so it is no longer part of this decision | Moving agents between users/init systems is a fleet-wide change; the footprint gaps are measurements, not code |
 | D12 | **Encrypted-backup key custody and restore authorization** | Recommend source-side age public recipients, ciphertext-only OVH storage, independent recovery escrow and a separately approved restore runner. Decide custodians/unlock and old plaintext-copy retention before cutover. | Source tooling in the separate development workspace does not establish production encryption or a custody/restore drill; this query-only candidate changes no backup policy |
@@ -95,7 +113,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | History query hardening release/acceptance | `web/rpc/jsonrpc/common.record.go`; `web/rpc/jsonrpc/budget.go` | Implemented in the bounded v1.7 candidate: 366-day ceiling, shared historical pool/budgets/cancellation and guest hidden/deleted-history filtering. Not released/deployed; API-key migration and unrelated roadmap work are excluded |
 | No supported way to rotate a client token | `web/rpc/jsonrpc/` (only `admin:getClientToken` exists) | The only path is writing the live SQLite directly, which is what caused the 2026-08 rotation incident. Needs an API + a UI action, not a patch |
-| API keys are still a single global admin credential with no scopes | `web/api/AuthSensitive.go` | v1.6.25 gated `admin:getClientToken` for sessions and attributes API-key actions to `api_key`, but the key still bypasses the sensitive step-up and can `exec`/`roll`/`dbQuery`. Needs scoped keys or a per-key step-up policy, a rotation path and tests |
+| Scoped API-key release and consumer migration | `internal/apikeys/`, `pkg/rpc/apikey_scopes.go`, `docs/API-KEYS.md` | Bounded implementation/verification in progress, not released: eight exact scopes, digest-only lifecycle, session/TOTP management, per-key auditing and UI. OC424 still has the old global credential policy. Inventory/provision actual legacy consumers before the intentional read-only migration |
 | Audit-log pagination hardening release/acceptance | `web/rpc/jsonrpc/admin.system.go` | Implemented in the bounded v1.7 candidate: 1-1000 rows, checked offset, strict field binding, no fetch beyond total and SQL cancellation. REST filtering/CSV compatibility retained; not released/deployed |
 | `/plugin/*` is still owned by the installed theme | `web/public/public.go` | **Accepted**: the panel took back only its own pages. Tightening it would break installed themes |
 | An installed theme that renders "no data" as 0 | outside this repository (SAO) | **Accepted**: the default document is the panel's own now; the remaining risk is a third-party bundle |
