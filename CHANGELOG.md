@@ -8,6 +8,18 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **Report and event-queue invariants (bounded v1.7 preparation).** The shared
+  HTTP/WebSocket ingest path validates every input before clamping only RAM,
+  Swap and disk usage above total, so a transient resource mismatch no longer
+  freezes all node data. Other invalid values remain rejected; accepted anomaly
+  episodes warn without logging report payloads. Successful node removal and an
+  existing-scheduler idle sweep retire event queues, wake blocked polls without
+  reviving or crossing queue generations, and release discarded payloads.
+  Newest-128 retention, command TTLs, acknowledgement, coalescing and ordinary
+  reconnect delivery remain compatible. Includes real transport, removal and
+  concurrency regressions. No Agent/protocol, dependency, frontend, credential
+  revocation-fence or capacity change; not released/deployed.
+
 - **Scoped, expiring API keys (bounded v1.7 preparation).** Eight exact grants
   replace implicit administrator access. The server generates one-time tokens,
   stores only digests, supports immediate rotation/revocation, requires sessions

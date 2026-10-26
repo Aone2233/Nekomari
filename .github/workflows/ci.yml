@@ -335,12 +335,13 @@ jobs:
         working-directory: agent
         run: go vet ./...
 
-      - name: Race-check authentication
+      - name: Race-check authentication and report queues
         if: runner.os == 'Linux'
         run: |
           go test -race ./database/accounts ./web/api/public -count=10 -shuffle=on
           go test -race ./web/oauth/... ./web/security ./web/upload
           go test -race ./internal/apikeys ./pkg/rpc ./web/api ./web/router ./web/rpc/jsonrpc
+          go test -race ./database/clients ./web/agent ./web/api/client ./internal/server
 
       - name: Build server
         run: go build -o /dev/null .
