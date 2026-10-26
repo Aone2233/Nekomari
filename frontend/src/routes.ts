@@ -24,11 +24,8 @@ export const routes: RouteObject[] = [
         path: "plugin/:short/*",
         element: React.createElement(lazy(() => import("./pages/plugin_page"))),
       },
-      // The SLA report is deliberately *not* here. It is a standalone entry at
-      // /sla.html (see src/entries/sla.tsx): an installed theme replaces this router
-      // entirely, so a route added here does not exist in a themed deployment. Roadmap
-      // H0 records the finding; v0.1.31 shipped this route and the production panel
-      // answered its own 404.
+      // Public sharing keeps its standalone entry: an installed theme replaces
+      // this public layout. The panel-owned /admin routes below remain available.
     ],
   },
   {
@@ -59,6 +56,26 @@ export const routes: RouteObject[] = [
       {
         path: "servers",
         element: React.createElement(Admin),
+      },
+      {
+        path: "sla",
+        element: React.createElement(lazy(() => import("./pages/admin/sla"))),
+      },
+      {
+        path: "bulk",
+        element: React.createElement(lazy(() => import("./pages/bulk"))),
+      },
+      {
+        path: "maintenance",
+        element: React.createElement(lazy(() => import("./pages/maintenance"))),
+      },
+      {
+        path: "config",
+        element: React.createElement(lazy(() => import("./pages/config"))),
+      },
+      {
+        path: "forecast",
+        element: React.createElement(lazy(() => import("./pages/forecast"))),
       },
       {
         path: "theme_managed",

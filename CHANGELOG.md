@@ -21,6 +21,17 @@ Nekomari's own.
   `komari-agent-*`, so credential backups are untouched. Measurements and long-term
   bounds are in `docs/AGENT-FOOTPRINT.md`.
 
+## [v1.6.27] — 2026-10-26
+
+- **Keep operations tools inside the admin panel.** Status/SLA, bulk edit,
+  maintenance windows, configuration export/import and traffic forecast now use
+  admin child routes instead of opening new tabs. They share the panel's active
+  light/dark appearance, accent, sidebar and topbar. The node-list bulk action
+  retains selected UUIDs, and SLA window links preserve browser history, query
+  parameters and hashes. Existing standalone links remain available. This is
+  a frontend-only patch on v1.6.26; backend, schemas and Agents are unchanged.
+  See `docs/ADMIN-TOOLS-NAVIGATION.md`.
+
 ## [v1.6.25] — 2026-10-20
 
 - **Ping summaries show fractions.** The public ping records, the node-card `pingStat` and the

@@ -12,10 +12,9 @@ import { ForecastShell } from "../pages/forecast";
 /**
  * The standalone traffic forecast page, served at /standalone/forecast/forecast.html.
  *
- * Why this is not a route in `routes.ts`: the panel's UI can be replaced wholesale by an installed theme,
- * and web/public/public.go prefers the theme directory over the embedded bundle — so a route added to the
- * built-in router does not exist in a themed deployment. Roadmap H0 records the finding; v0.1.31 shipped
- * that way and answered its own 404.
+ * The admin menu mounts the same page at /admin/forecast in the panel shell.
+ * Keep this independent entry for old links: themes can replace the public
+ * router, but not the panel-owned /admin shell.
  */
 const root = document.getElementById("root");
 if (!root) {

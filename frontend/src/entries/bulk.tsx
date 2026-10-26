@@ -13,10 +13,9 @@ import { BulkPage } from "../pages/bulk";
 /**
  * The standalone bulk edit page, served at `/standalone/bulk/bulk.html`.
  *
- * Why this is not a route in `routes.ts`: the panel's UI can be replaced wholesale by an
- * installed theme, and `web/public/public.go` prefers the theme directory over the embedded
- * bundle — so a route added to the built-in router does not exist in a themed deployment.
- * Roadmap H0 records the finding; v0.1.31 shipped that way and answered its own 404.
+ * The admin menu mounts the same page at /admin/bulk in the panel shell.
+ * This independent entry preserves old links even when a theme replaces the
+ * public router; /admin itself is panel-owned and cannot be shadowed.
  *
  * It bundles its own React rather than sharing the main app's chunks, for the reason in
  * vite.standalone.shared.ts: a shared chunk would land in the `/assets/` namespace the theme

@@ -13,8 +13,7 @@ import ts from 'typescript';
 /**
  * The admin node list's selection has to reach the existing bulk edit page.
  *
- * The bulk page is a separate document (`/standalone/bulk/bulk.html`) rather than a route of the
- * admin router, so the wiring is a link with the checked uuids in the query, and the page opens
+ * The bulk page is an admin route, with checked uuids in the query, and the page opens
  * with them selected. Three things can silently break that chain, and each is asserted here:
  *
  *   - **an empty selection must not produce an entry.** A button that opens an empty bulk page
@@ -37,6 +36,7 @@ const { I18nextProvider } = requireHere('react-i18next');
 // Same registry for the Theme: Radix Themes' Select reads its context during SSR, and an ESM
 // Theme wrapping a CJS Select is a different context object.
 const { Theme } = requireHere('@radix-ui/themes');
+const { MemoryRouter } = requireHere('react-router-dom');
 const srcRoot = fileURLToPath(new URL('../src/', import.meta.url));
 const modules = new Map();
 
@@ -137,7 +137,7 @@ const renderBulkEntry = (selectedNodes) => {
     React.createElement(
       I18nextProvider,
       { i18n },
-      React.createElement(BulkEntry, { selectedNodes }),
+      React.createElement(MemoryRouter, null, React.createElement(BulkEntry, { selectedNodes })),
     ),
   );
 };
@@ -164,6 +164,7 @@ test('the link and the parser agree on the selection', () => {
   const { BULK_EDIT_PATH, bulkEditHref, selectionFromSearch } = load(
     path.join(srcRoot, 'components/bulk/bulkSelection.ts'),
   );
+  assert.equal(BULK_EDIT_PATH, '/admin/bulk');
   assert.equal(bulkEditHref([]), BULK_EDIT_PATH, 'no selection, no query string');
   assert.equal(bulkEditHref(['uuid-a', ' uuid-b ', 'uuid-a']), `${BULK_EDIT_PATH}?uuids=uuid-a,uuid-b`, 'trimmed and de-duplicated');
   // Spread into this realm: the module is evaluated in a vm context, so its arrays carry another
@@ -192,10 +193,10 @@ test('the entry appears only with a selection and links to the checked nodes', (
   assert.match(html, /data-testid="bulk-entry"/);
   assert.match(
     html,
-    /href="\/standalone\/bulk\/bulk\.html\?uuids=uuid-a,uuid-b"/,
-    'the checked uuids travel in the link, because the bulk page is a separate document',
+    /href="\/admin\/bulk\?uuids=uuid-a,uuid-b"/,
+    'the checked uuids travel in the in-panel link',
   );
-  assert.match(html, /target="_blank"/, 'the admin list stays open behind the bulk page');
+  assert.doesNotMatch(html, /target="_blank"/, 'bulk edit must keep the admin document and its theme');
   assert.match(html, /2 selected/);
 });
 

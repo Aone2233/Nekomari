@@ -4,9 +4,11 @@
  * **Why these pages are built separately from the main app.** The panel's UI can be replaced
  * wholesale by an installed theme: LuminaPlus ships its own compiled `index.html` and
  * `assets`, and `web/public/public.go` prefers the theme directory over the embedded bundle.
- * A route added to the built-in router therefore does not exist in a themed deployment —
+ * A route added only to the public router therefore does not exist in a themed deployment —
  * v0.1.31 shipped exactly that way and the production panel answered its own 404 for a
  * feature whose server half was live and tested.
+ * The menu now uses panel-owned /admin routes sharing these page components;
+ * independent standalone builds remain for public SLA sharing and old links.
  *
  * **Why each page gets its own build rather than an entry in the main one.** A shared build
  * splits the page's dependencies into `chunk-*.js` files inside the `/assets/` namespace the

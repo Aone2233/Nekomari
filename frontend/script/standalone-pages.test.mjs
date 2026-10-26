@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import test from 'node:test';
+import ts from 'typescript';
 
 /**
  * The rules every standalone page shares, checked at the source level.
@@ -9,9 +10,9 @@ import test from 'node:test';
  * break, because breaking them produces a page that works in development and is wrong in
  * production:
  *
- *   - **not a route in the built-in router** — an installed theme replaces that router, so a
- *     route added there exists in the image and in no browser. v0.1.31 shipped that way and
- *     the production panel answered its own 404 for a live, tested feature.
+ *   - **panel-owned admin routes, not public routes** — a theme replaces the public
+ *     router, not /admin. The sidebar now reuses the pages inside the admin shell;
+ *     standalone entries still support public SLA sharing and old bookmarks.
  *   - **its own build, its own output directory, one file** — a shared build puts the page's
  *     chunks in the `/assets/` namespace the theme owns, where a name collision resolves to
  *     the theme's file and the theme's `index.html` starts preloading chunks built for the UI
@@ -44,6 +45,16 @@ const PAGES = [
 
 const read = (relative) => readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8');
 const routes = read('src/routes.ts');
+const syntax = ts.createSourceFile('routes.ts', routes, ts.ScriptTarget.Latest, true);
+const routeTable = syntax.statements.flatMap((statement) =>
+  ts.isVariableStatement(statement) ? [...statement.declarationList.declarations] : [],
+).find((declaration) => declaration.name.getText(syntax) === 'routes')?.initializer;
+assert.ok(routeTable && ts.isArrayLiteralExpression(routeTable), 'routes must export the route table');
+const property = (object, key) => object.properties.find((item) => item.name?.getText(syntax) === key)?.initializer;
+const pathOf = (object) => property(object, 'path')?.text;
+const children = (object) => property(object, 'children')?.elements ?? [];
+const admin = routeTable.elements.find((route) => pathOf(route) === '/admin');
+assert.ok(admin, 'operator pages must be children of the panel-owned admin shell');
 
 for (const { page, entry, tsx, component, ownsItsOwnRouter } of PAGES) {
   test(`${page}: the entry and its html agree`, () => {
@@ -70,7 +81,7 @@ for (const { page, entry, tsx, component, ownsItsOwnRouter } of PAGES) {
     assert.doesNotMatch(source, /useRoutes/, 'must not resolve routes');
   });
 
-  test(`${page}: it is not a route in the built-in router`, () => {
+  test(`${page}: its in-panel route belongs to the admin shell, not the public theme`, () => {
     if (ownsItsOwnRouter) {
       // The admin *is* the `/admin` route: it holds the whole router, which is why it is served from that
       // prefix and why the server answers every path under it with its document. The rule being checked
@@ -78,13 +89,14 @@ for (const { page, entry, tsx, component, ownsItsOwnRouter } of PAGES) {
       assert.match(routes, /path: "\/admin"/, 'the admin holds the /admin route itself');
       return;
     }
-    // If someone adds it back, this says why not, next to the reason.
-    assert.doesNotMatch(
-      routes,
-      new RegExp(`pages/${page}`),
-      `the ${page} page must not be a router entry: an installed theme replaces that router`,
-    );
-    assert.match(routes, /standalone entry/i, 'the reason must stay recorded in routes.ts');
+    const child = children(admin).find((route) => pathOf(route) === page);
+    assert.ok(child, `${page} must be reachable inside /admin`);
+    const module = page === 'sla' ? './pages/admin/sla' : `./pages/${page}`;
+    assert.ok(property(child, 'element').getText(syntax).includes(`import("${module}")`),
+      `${page} must lazy-load the real page, not an iframe or redirect`);
+    const publicLayout = routeTable.elements.find((route) => pathOf(route) === '/');
+    assert.ok(!children(publicLayout).some((route) => pathOf(route) === page),
+      `${page} must not rely on the public router that a theme replaces`);
   });
 
   test(`${page}: its build is isolated from the main one`, () => {

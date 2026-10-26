@@ -21,14 +21,18 @@ import { windowFromLocation } from "@/components/status/slaFormat";
  * window rather than only its host.
  */
 
-/** windowFromLocation reads the window out of the URL, falling back to the default. */
-export const SlaReportPage: React.FC = () => {
+interface SlaReportPageProps {
+  initialWindow?: SlaWindow;
+  onWindowChange?: (window: SlaWindow) => void;
+}
+
+export const SlaReportPage: React.FC<SlaReportPageProps> = ({ initialWindow, onWindowChange: updateLocation }) => {
   const { t } = useTranslation();
   const { call } = useRPC2Call();
   const { nodeList } = useNodeList();
 
   const [selectedWindow, setSelectedWindow] = useState<SlaWindow>(() =>
-    windowFromLocation(typeof globalThis.location === "undefined" ? "" : globalThis.location.search),
+    initialWindow ?? windowFromLocation(typeof globalThis.location === "undefined" ? "" : globalThis.location.search),
   );
   const [report, setReport] = useState<SlaReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -79,11 +83,15 @@ export const SlaReportPage: React.FC = () => {
     setLoading(true);
     setError(null);
     setSelectedWindow(nextWindow);
+    if (updateLocation) {
+      updateLocation(nextWindow);
+      return;
+    }
     if (typeof globalThis === "undefined" || typeof globalThis.location === "undefined") return;
     const url = new URL(globalThis.location.href);
     url.searchParams.set("window", nextWindow);
     globalThis.history.replaceState(null, "", url.toString());
-  }, []);
+  }, [updateLocation]);
 
   return (
     <Flex direction="column" gap="4" p="4" data-testid="status-page">
