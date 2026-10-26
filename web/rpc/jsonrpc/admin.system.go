@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/Aone2233/nekomari/database/auditlog"
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/database/tasks"
+	"github.com/gorilla/websocket"
 
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/pkg/rpc"
@@ -27,12 +27,14 @@ import (
 // admin.system.go
 // 系统/运维类 RPC2 方法（admin 命名空间）：日志、远程执行、测试。
 
+const maxAdminLogLimit = 1000
+
 func init() {
 	RegisterWithGroupAndMeta("getLogs", rpc.RoleAdmin, adminGetLogs, &rpc.MethodMeta{
 		Name:    "admin:getLogs",
 		Summary: "Get audit logs (paged, optionally filtered by message type)",
 		Params: []rpc.ParamMeta{
-			{Name: "limit", Type: "string", Description: "Page size (default 100)"},
+			{Name: "limit", Type: "string", Description: "Page size (default 100, max 1000)"},
 			{Name: "page", Type: "string", Description: "One-based page number (default 1)"},
 			{Name: "msg_type", Type: "string", Description: "Optional exact message type filter"},
 		},
@@ -46,13 +48,15 @@ func init() {
 	rpc.MarkSensitive("admin:exec")
 }
 
-func adminGetLogs(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+func adminGetLogs(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {
 		Limit   string `json:"limit"`
 		Page    string `json:"page"`
 		MsgType string `json:"msg_type"`
 	}
-	req.BindParams(&params)
+	if err := req.BindParams(&params); err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request body: "+err.Error(), nil)
+	}
 	if params.Limit == "" {
 		params.Limit = "100"
 	}
@@ -63,26 +67,35 @@ func adminGetLogs(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpc
 	if err != nil || limitInt <= 0 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid limit: "+params.Limit, nil)
 	}
+	if limitInt > maxAdminLogLimit {
+		return nil, rpc.MakeError(rpc.InvalidParams, "limit must not exceed 1000", nil)
+	}
 	pageInt, err := strconv.Atoi(params.Page)
 	if err != nil || pageInt <= 0 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid page: "+params.Page, nil)
 	}
-	db := dbcore.GetDBInstance()
-	logs, total, err := queryAdminLogs(db, limitInt, pageInt, params.MsgType)
+	if pageInt-1 > int(^uint(0)>>1)/limitInt {
+		return nil, rpc.MakeError(rpc.InvalidParams, "page and limit produce an offset that is too large", nil)
+	}
+	offset := (pageInt - 1) * limitInt
+	db := dbcore.GetDBInstance().WithContext(ctx)
+	logs, total, err := queryAdminLogs(db, limitInt, offset, params.MsgType)
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to retrieve logs: "+err.Error(), nil)
 	}
 	return map[string]any{"logs": logs, "total": total}, nil
 }
 
-func queryAdminLogs(db *gorm.DB, limit, page int, msgType string) ([]models.Log, int64, error) {
-	var logs []models.Log
+func queryAdminLogs(db *gorm.DB, limit, offset int, msgType string) ([]models.Log, int64, error) {
+	logs := make([]models.Log, 0)
 	var total int64
-	offset := (page - 1) * limit
 	countQuery := filterAdminLogsByMessageType(db.Model(&models.Log{}), msgType)
 	logsQuery := filterAdminLogsByMessageType(db.Model(&models.Log{}), msgType)
 	if err := countQuery.Count(&total).Error; err != nil {
 		return nil, 0, err
+	}
+	if int64(offset) >= total {
+		return logs, total, nil
 	}
 	if err := logsQuery.Order("time desc").Limit(limit).Offset(offset).Find(&logs).Error; err != nil {
 		return nil, 0, err

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -158,6 +159,32 @@ func TestAdminLogsBindingForwardsMessageType(t *testing.T) {
 		for _, message := range []string{firstMessage, secondMessage} {
 			if !seededMessages[message] || !strings.HasPrefix(message, "router-logs-warn-") {
 				t.Errorf("page returned %q, which is not one of the seeded warn logs", message)
+			}
+		}
+	})
+
+	t.Run("unsafe pagination fails through the REST bridge", func(t *testing.T) {
+		for _, query := range []string{
+			"?limit=1001",
+			"?limit=0",
+			"?limit=1000&page=" + strconv.Itoa(int(^uint(0)>>1)),
+		} {
+			request, err := http.NewRequest(http.MethodGet, server.URL+"/api/admin/logs"+query, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.AddCookie(&http.Cookie{Name: "session_token", Value: session})
+			response, err := http.DefaultClient.Do(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, readErr := io.ReadAll(response.Body)
+			response.Body.Close()
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if response.StatusCode != http.StatusBadRequest || !strings.Contains(string(body), `"status":"error"`) {
+				t.Errorf("GET /api/admin/logs%s = %d: %s, want a 400 error envelope", query, response.StatusCode, body)
 			}
 		}
 	})

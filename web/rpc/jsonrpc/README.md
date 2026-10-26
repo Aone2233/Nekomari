@@ -1,5 +1,32 @@
 # RPC2 内部架构
 
+## v1.7 查询加固候选（尚未发布）
+
+- `common:getRecords` 的 `hours` 上限为 8784（366 天），在转换为
+  `time.Duration` 前拒绝超限值。未提供显式时间时仍默认 1 小时，非正数保留原默认行为。
+- 显式 `start`/`end` 使用带时区的 RFC3339；缺 `end` 时取当前时间，缺 `start`
+  时取结束前 1 小时。窗口必须为正且不超过 366 天，显式窗口优先于 `hours`。
+- `maxCount` 默认 4000，`-1` 只关闭输出降采样，不关闭读取预算；其他负值无效。
+- 此方法复用现有历史查询池：4 个并发槽、最多排队 10 秒、执行 15 秒，以及每请求
+  250,000 行/估算 96 MiB 的共享读取预算。load/ping 两条路径均保留请求上下文，
+  取消或预算耗尽返回错误，不悄悄截断为成功。
+- 访客只能读取现存且未隐藏节点；隐藏、删除、未知 UUID 得到相同形状的空结果，
+  不回显其 ping 任务。全机群结果及任务的 `clients` 列表同样过滤。管理员仍可读取
+  隐藏节点和删除节点的留存历史；私有站点与登录规则不变。
+- `admin:getLogs` 和 `/api/admin/logs` 的 `limit`/`page` 仍为字符串，默认
+  `"100"`/`"1"`。每页 1 至 1000 条，页码为正整数，并在相乘前检查 offset 溢出；
+  无效输入返回 `InvalidParams`（REST 为 HTTP 400）。保留 `msg_type` 与
+  `{logs, total}`，越过末页返回 `logs: []` 且不执行记录扫描，请求取消传入 SQL。
+  前端每页 1000 条的 CSV 导出保持兼容。
+
+本批不迁移 API key、不修改 Agent、协议、schema、依赖或前端。实际 HTTP/WebSocket
+回归使用临时节点与管理员会话，不读取生产凭据。
+
+```bash
+go test ./web/rpc/jsonrpc ./web/router
+go test -race ./web/rpc/jsonrpc ./web/router
+```
+
 本目录是 komari 前端面 RPC（JSON-RPC 2.0）的服务端实现。所有对外接口最终都收敛为一条统一管道：
 
 ```

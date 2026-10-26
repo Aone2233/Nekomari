@@ -37,6 +37,49 @@ its exit criteria are met, not when the calendar says so.
 | `v2.0.0` | 2027-Q2 | Agent and platform v2 | non-root agent default with capability/ICMP strategy; Windows/macOS agent support and footprint measurement; single protocol source (remove root/agent duplication); agent updater/rollback hardening; secrets at rest (session/2FA) with key management; optional DB encryption; 200-node capacity | Migration guide; protocol compatibility policy (two-minor deprecation); 200-node benchmark; no plaintext session/2FA secrets on new installs |
 | `v2.1.0` | 2027-Q3 | Scale and ecosystem | HA/read-replica evaluation, plugin/theme marketplace signing, multi-region backup, optional external metrics export | Scale/HA runbook; marketplace signature verification; backup across two providers |
 
+## Current Delivery Checkpoint (2026-10-26)
+
+The production panel on OC424 is v1.6.27/12ad73a, following the compiler-only
+v1.6.26 patch. v1.6.27 changes only the five admin tools' in-panel navigation.
+The owner reports no remaining issue and explicitly resumes next-stage version
+development. This is owner acceptance, not a newly performed authenticated
+browser/fleet check. The public hostname is `nekomari.orderly2233.org`.
+
+Continue with bounded v1.7 security candidates, starting from the exact clean
+v1.6.27 tree rather than the accumulated unreleased development workspace.
+The first candidate covers only `getRecords` window/read budgets, retained-history
+visibility and `getLogs` pagination/cancellation. Query-limit code is implemented;
+release CI, publication and OC424 delivery remain separate steps. API-key scopes,
+token rotation, report/queue invariants and encrypted-backup tooling in the
+separate development workspace are not shipped by this candidate.
+
+200-node optimization, experiments, benchmarks and soak runs remain explicitly
+deferred by the owner; preserve the original thresholds and all26 failed reports.
+OC424 real-environment acceptance and suitable isolated OVH tests/backups are
+authorized. Use branch + PR and reuse unchanged evidence; do not repeat unrelated
+frontend, full-suite or capacity runs. Exact-candidate CI and safe rollout,
+backup/rollback and post-upgrade checks still apply when publishing a version.
+
+Both affected Go packages pass151 top-level tests (379 including subtests)
+ordinarily and with the race detector; vet, module verification, the complete
+Panel build with Go1.27.3 and reachable binary vulnerability scanning pass.
+The new real HTTP/WebSocket matrix covers guests/sessions, load/ping bounds,
+visible/hidden/deleted/unknown UUIDs and audit-log permission/limit controls;
+the real REST bridge still rejects unsafe pagination. OVH runs the exact
+prebuilt race executable against private fixtures (12 focused top-level groups)
+with its existing Agent PID/restart count unchanged. This is not a native OVH
+build, arm64/Windows CI or production acceptance. Original baseline refusals and
+two fixture defects (independent comparison clocks and a missing same-origin
+handshake header) remain recorded; neither production policy nor assertions
+are weakened. No full-suite, frontend rebuild or capacity run is performed.
+
+Before the scoped-key batch, inventory legacy API consumers and arrange scoped
+replacements for intentional compatibility changes. Production backup encryption
+still needs approved age key custody/escrow/unlock, an actual restore drill and
+legacy-copy retention. General development/deployment permission does not decide
+these policies or complete the v1.7 exit criteria. Native-platform, SLO and
+secrets-at-rest gates likewise remain open.
+
 ## Stability and quality targets
 
 | Area | Metric | Current baseline | Target | When / how measured |

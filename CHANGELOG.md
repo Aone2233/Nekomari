@@ -8,6 +8,18 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **Bound legacy history and audit-log queries (v1.7 preparation).**
+  `common:getRecords` now validates its 366-day window before duration conversion
+  and shares the existing historical admission, deadline and row/byte budgets
+  without losing cancellation in load/ping adapters. Guests cannot read deleted
+  nodes' retained history or distinguish hidden/deleted UUIDs from unknown ones;
+  administrators retain their historical access. Audit logs reject pages above
+  1000 rows, malformed fields and overflowing offsets, skip fetches past the
+  filtered total and honor cancellation. Defaults, response shapes, message-type
+  filters and 1000-row CSV export stay compatible. Real HTTP/WebSocket and REST
+  regressions accompany the bounded candidate; no API-key migration, Agent,
+  schema, dependency or frontend change is included. Not yet released/deployed.
+
 - **Build with the patched Go 1.27.3 compiler.** CI and release builds use the
   fix for GO-2026-6809 in `crypto/x509`. Module minimums, dependencies, application
   source, credential/database formats and frontend source are unchanged. Existing
