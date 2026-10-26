@@ -14,6 +14,28 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
+**Current checkpoint (2026-10-26):** OC424 serves v1.6.27/12ad73a at
+`nekomari.orderly2233.org`; the five tools now open inside the admin shell.
+The owner confirms the current result is fine and requests next-stage development.
+The first v1.7 candidate is isolated from the exact live source and contains only
+history/log query hardening. It does not deploy the separate accumulated v1.7+
+workspace. Production remains v1.6.27 until a version passes its release gates.
+
+**Current priorities:** 200-node work remains deferred, with its original limits
+and all26 failed reports preserved. Use OC424 for bounded real-environment
+acceptance and OVH for suitable isolated tests/off-host backups. Existing general
+push/update authorization remains valid; prefer branch + PR and candidate-relevant
+checks, not redundant broad test cycles. Scoped API-key consumer compatibility,
+backup key custody and other account/privilege/SLO policies are separate gates.
+
+**First-batch verification:** both affected packages pass151 top-level checks
+ordinarily/race (379 including subtests); real HTTP/WebSocket and REST controls,
+vet, module verification, Panel build and reachable binary scan pass. OVH's exact
+prebuilt race executable passes12 focused groups in private fixtures without
+Agent restart. This is not remote-native/arm64/Windows CI or a production update.
+Initial baseline and fixture failures are retained; no full-suite/frontend/
+capacity rerun or legacy-credential/configuration change occurs.
+
 **Updated 2026-10-19, after the `2026-10-18` review** (`docs/audits/2026-10-18/SUMMARY.md`). Three
 batches shipped: the low-risk one (sensitive-operation gate on credential export and fleet rollout,
 menu entries for the five standalone pages, maintenance suppression for load/ping alerts, gzip for
@@ -46,12 +68,13 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|---|
 | D2 | **Turn `ssrf_protection_enabled` on in the panel** | On, **if** every market source you use is a public host. A changed default does not rewrite a stored value, so this is a switch, not a redeploy. | Market downloads stay unfiltered, and the target is chosen by remote catalog content |
 | D3 | **What the release-cadence check should compare** | Compare `agent/**/*.go` and `protocol/`, not all of `agent/ protocol/ pkg/`. The agent has its own `go.mod` and imports none of the server's packages, so `pkg/rpc` and `pkg/secretcmp` changing says nothing about the fleet — and the current rule reads the deleted `agent/.github/workflows/*` as a fleet change. | Every panel-only release is mislabelled "the fleet moves", which costs a needless rollout or trains people to ignore the check |
-| D4 | **Push straight to `main`, or branch + PR?** | Branch + PR for anything not released on its own; `v1.6.11` went straight to `main` because it was released immediately. | Nothing yet — but the answer sets what the next batch does |
+| D4 | **Push straight to `main`, or branch + PR?** | General suitable push/OC424 update permission is granted; use branch + PR as the conservative default. | Exact-candidate CI, compatibility, backup/rollback and release acceptance remain required |
 | D7 | **`topology/` — commit or delete?** and **`docs/OC424-MTPROTO.md` — commit with the next batch?** | The MTProto doc is finished and its secret scan passes: commit. `topology/` is a static page whose own README says it is not wired into anything and was withdrawn the day it went live: decide before it rots. | Two untracked trees sit outside both README indexes |
 | D8 | **Two operational facts I cannot check from here** | (a) the admin password from `SECRETS.md` incident 4 — has it been changed? (b) the `AAAA 100::` record and Worker for `monitor.orderly2233.org` — removed? | Both are recorded as open in `RETIRE-CF-PROBE.md` / `SECRETS.md` and neither can be verified from a checkout |
 | D9 | **Authentication policy, as a group** | (a) `sso_id` after a password change — recommendation was clear it on `ForceResetPassword` plus add an explicit "unbind SSO"; (b) an API key currently skips the sensitive 2FA step-up; (c) OIDC + 2FA makes SSO login fail-closed with no way to answer the challenge; (d) `DeleteAllSessions()` is global, so one account changing its password logs out every account | Four separate behaviours, all deliberate today, none wrong enough to fix without a policy call |
 | D10 | **How much of the remaining frontend polish to do at once** | Three known batches: ~33 unconverted `toLocaleString*` sites (the helper now exists), ~24 re-implementations of the mutation-envelope check, and 8 `dangerouslySetInnerHTML` sites fed by locale strings | Each is mechanical but wide; they are the kind of change that is safe alone and risky mixed with a release |
 | D11 | **Agent privilege and platform footprint** | Non-root agents are still the exception (MAC-WAN); ICMP tasks force root on hosts without `setcap`. Windows/macOS agent footprint and peak memory are unmeasured. Ping precision shipped in v1.6.24, so it is no longer part of this decision | Moving agents between users/init systems is a fleet-wide change; the footprint gaps are measurements, not code |
+| D12 | **Encrypted-backup key custody and restore authorization** | Recommend source-side age public recipients, ciphertext-only OVH storage, independent recovery escrow and a separately approved restore runner. Decide custodians/unlock and old plaintext-copy retention before cutover. | Source tooling in the separate development workspace does not establish production encryption or a custody/restore drill; this query-only candidate changes no backup policy |
 
 ## How to read this
 
@@ -70,10 +93,10 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 
 | Item | Where | Why it is still here |
 |---|---|---|
-| `common:getRecords` accepts an unbounded `hours`; a deleted node's retained history stays readable to a guest | `web/rpc/jsonrpc/common.record.go` | The hidden/unknown oracle in the same function is fixed (2026-10-13); the missing window ceiling is a separate, smaller change and was left out of a security batch that already touched the same file |
+| History query hardening release/acceptance | `web/rpc/jsonrpc/common.record.go`; `web/rpc/jsonrpc/budget.go` | Implemented in the bounded v1.7 candidate: 366-day ceiling, shared historical pool/budgets/cancellation and guest hidden/deleted-history filtering. Not released/deployed; API-key migration and unrelated roadmap work are excluded |
 | No supported way to rotate a client token | `web/rpc/jsonrpc/` (only `admin:getClientToken` exists) | The only path is writing the live SQLite directly, which is what caused the 2026-08 rotation incident. Needs an API + a UI action, not a patch |
 | API keys are still a single global admin credential with no scopes | `web/api/AuthSensitive.go` | v1.6.25 gated `admin:getClientToken` for sessions and attributes API-key actions to `api_key`, but the key still bypasses the sensitive step-up and can `exec`/`roll`/`dbQuery`. Needs scoped keys or a per-key step-up policy, a rotation path and tests |
-| `admin:getLogs` accepts an unbounded `limit` and can overflow its offset | `web/rpc/jsonrpc/admin.system.go` | Admin-only self-DoS; `admin:dbQuery` already enforces a ceiling, so this is a one-line clamp nobody has needed yet |
+| Audit-log pagination hardening release/acceptance | `web/rpc/jsonrpc/admin.system.go` | Implemented in the bounded v1.7 candidate: 1-1000 rows, checked offset, strict field binding, no fetch beyond total and SQL cancellation. REST filtering/CSV compatibility retained; not released/deployed |
 | `/plugin/*` is still owned by the installed theme | `web/public/public.go` | **Accepted**: the panel took back only its own pages. Tightening it would break installed themes |
 | An installed theme that renders "no data" as 0 | outside this repository (SAO) | **Accepted**: the default document is the panel's own now; the remaining risk is a third-party bundle |
 

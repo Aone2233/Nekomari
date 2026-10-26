@@ -131,21 +131,23 @@ func TestHiddenNodeRecentStatusIsIndistinguishableFromUnknown(t *testing.T) {
 
 // TestHiddenNodeRecordsAreIndistinguishableFromUnknown 是链路的第三环。
 //
-// 这条用例只断言「两个回答相同」，不断言它们具体是什么：本测试二进制里 metric
-// store 没有启用，所以两条路径都会得到同一个 "metric store not enabled" 错误；
-// 换成启用 store 的环境，两条路径都会得到同一个空结果。两种情况都满足断言，而
-// 改动前的代码对 hidden 提前返回 InvalidParams("UUID not found")、对不存在的
-// uuid 走另一条路 —— 两者不同，用例会失败。
+// Hidden and unknown UUIDs must answer identically even without a metric store.
+// Fix the window so independent request timestamps do not obscure that contract.
 func TestHiddenNodeRecordsAreIndistinguishableFromUnknown(t *testing.T) {
 	const visibleUUID = "vis-records-node"
 	const hiddenUUID = "hid-records-node"
 	seedVisibilityClients(t, visibleUUID, hiddenUUID)
+	t.Cleanup(func() {
+		_ = dbcore.GetDBInstance().Where("uuid IN ?", []string{visibleUUID, hiddenUUID}).Delete(&models.Client{}).Error
+		dbcache.InvalidateAll()
+	})
+	end := time.Now().UTC()
 
 	request := func(uuid string) *rpc.JsonRpcRequest {
 		return &rpc.JsonRpcRequest{
 			Version: rpc.RPC_VERSION,
 			Method:  "common:getRecords",
-			Params:  map[string]any{"type": "load", "uuid": uuid, "hours": 1},
+			Params:  map[string]any{"type": "load", "uuid": uuid, "start": end.Add(-time.Hour), "end": end},
 		}
 	}
 

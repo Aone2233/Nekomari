@@ -25,6 +25,29 @@ func TestMetricQueryBudgets(t *testing.T) {
 	}
 }
 
+func TestCommonRecordsSharesHistoricalQueryBudget(t *testing.T) {
+	ctx, done, rpcErr := queryBudget(context.Background(), "common:getRecords")
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	_, hasDeadline := ctx.Deadline()
+	usedChartSlot := len(querySlots) == 1
+	done()
+	if !hasDeadline || !usedChartSlot {
+		t.Fatal("common:getRecords did not acquire the historical query slot and deadline")
+	}
+
+	releases := holdChartSlots(t)
+	defer releaseAll(releases)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, done, rpcErr = queryBudget(ctx, "common:getRecords")
+	done()
+	if rpcErr == nil || rpcErr.Code != rpc.Unavailable {
+		t.Fatalf("common:getRecords bypassed the saturated chart pool: %v", rpcErr)
+	}
+}
+
 // holdChartSlots takes every public chart slot and returns one release per slot.
 func holdChartSlots(t *testing.T) []func() {
 	t.Helper()

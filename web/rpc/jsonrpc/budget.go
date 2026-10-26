@@ -11,6 +11,7 @@ import (
 const maxMetricPoints = 4096
 const maxMetricEntities = 256
 const maxMetricKeys = 32
+const maxMetricQueryHours = 366 * 24
 
 // maxMetricTotalPoints caps the rows one historical metric request may scan.
 const maxMetricTotalPoints = 250000
@@ -61,7 +62,7 @@ const (
 
 func classifyQuery(method string) queryClass {
 	switch method {
-	case "public:queryMetrics", "public:getPingMetricStats", "public:getRecordsByUUID", "public:getPingRecords":
+	case "common:getRecords", "public:queryMetrics", "public:getPingMetricStats", "public:getRecordsByUUID", "public:getPingRecords":
 		return queryMetricHistory
 	case "admin:dbQuery":
 		return queryAdminConsole
@@ -116,7 +117,7 @@ func acquireQuerySlot(ctx context.Context, slots chan struct{}, wait time.Durati
 }
 
 func validateMetricWindow(start, end time.Time) error {
-	if !end.After(start) || end.Sub(start) > 366*24*time.Hour {
+	if !end.After(start) || end.Sub(start) > maxMetricQueryHours*time.Hour {
 		return fmt.Errorf("query window must be positive and at most 366 days")
 	}
 	return nil

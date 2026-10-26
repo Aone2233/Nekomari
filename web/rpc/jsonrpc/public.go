@@ -212,7 +212,7 @@ func publicGetRecordsByUUID(ctx context.Context, req *rpc.JsonRpcRequest) (any, 
 		hours = "4"
 	}
 	hoursInt, err := strconv.Atoi(hours)
-	if err != nil || hoursInt <= 0 || hoursInt > 366*24 {
+	if err != nil || hoursInt <= 0 || hoursInt > maxMetricQueryHours {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid hours parameter", nil)
 	}
 	validLoadTypes := map[string]bool{
@@ -412,7 +412,7 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		hours = "4"
 	}
 	hoursInt, err := strconv.Atoi(hours)
-	if err != nil || hoursInt <= 0 || hoursInt > 366*24 {
+	if err != nil || hoursInt <= 0 || hoursInt > maxMetricQueryHours {
 		return nil, rpc.MakeError(rpc.InvalidParams, "hours must be between 1 and 8784", nil)
 	}
 	endTime := time.Now().UTC()

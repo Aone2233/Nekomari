@@ -7,17 +7,29 @@ import (
 	"time"
 
 	"github.com/Aone2233/nekomari/database/models"
-	recordsdb "github.com/Aone2233/nekomari/database/records"
 	"github.com/Aone2233/nekomari/database/tasks"
+	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
 func init() {
-	Register("getRecords", getRecords)
+	RegisterWithGroupAndMeta("getRecords", "common", getRecords, &rpc.MethodMeta{
+		Name:    "common:getRecords",
+		Summary: "Get load or ping history within a bounded time window",
+		Params: []rpc.ParamMeta{
+			{Name: "type", Type: "string", Description: "load (default) or ping"},
+			{Name: "uuid", Type: "string", Description: "Client UUID; omitted means all readable clients"},
+			{Name: "hours", Type: "number", Description: "Window in hours, at most 8784; non-positive or omitted defaults to 1"},
+			{Name: "start", Type: "string", Description: "RFC3339 start; explicit windows must be positive and at most 366 days"},
+			{Name: "end", Type: "string", Description: "RFC3339 end; defaults to now, or start defaults to one hour before end"},
+			{Name: "load_type", Type: "string", Description: "Optional load metric filter"},
+			{Name: "task_id", Type: "number", Description: "Optional ping task ID; omitted, 0 or -1 means all tasks"},
+			{Name: "maxCount", Type: "number", Description: "Response point target (default 4000); -1 disables downsampling, not the read budget"},
+		},
+	})
 }
 
 func getRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
-	meta := rpc.MetaFromContext(ctx)
 	var params struct {
 		Type     string     `json:"type"`      // "load" | "ping"; default "load"
 		UUID     string     `json:"uuid"`      // client uuid; empty = all clients
@@ -30,6 +42,9 @@ func getRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpc
 	}
 	if err := req.BindParams(&params); err != nil {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request body: "+err.Error(), nil)
+	}
+	if params.MaxCount < -1 {
+		return nil, rpc.MakeError(rpc.InvalidParams, "maxCount must be -1 or non-negative", nil)
 	}
 
 	// defaults
@@ -56,20 +71,19 @@ func getRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpc
 		if hours <= 0 {
 			hours = 1 // default 1 hour
 		}
+		if hours > maxMetricQueryHours {
+			return nil, rpc.MakeError(rpc.InvalidParams, "hours must not exceed 8784", nil)
+		}
 		endTime = time.Now().UTC()
 		startTime = endTime.Add(-time.Duration(hours) * time.Hour)
 	}
+	if err := validateMetricWindow(startTime, endTime); err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
+	}
 
-	// Hidden filtering for non-admin
-	//
-	// 这里刻意【不】对 hidden 的 uuid 提前报错。以前它返回 InvalidParams
-	// "UUID not found"，而不存在的 uuid 会走到下面正常返回空结果 —— 两个回答可区分，
-	// 于是这个接口成了「这个 uuid 是不是隐藏节点」的判定器。现在 hidden 与不存在
-	// 走同一条路：记录照常取出，再被下面的 hidden 过滤掉，结果与不存在的 uuid 逐字相同。
-	//
-	// 用 clientVisibility()（uuid -> hidden 的完整映射）而不是自己拼一份「只有 hidden」
-	// 的表：完整映射同时带着存在性，下面过滤任务回显的 clients 列表时要用到它。
-	isAdmin := meta.Principal != nil && meta.Principal.HasRole(rpc.RoleAdmin)
+	// Hidden, deleted and unknown UUIDs return the same empty history to guests.
+	// Administrators retain access to deleted nodes' retained history.
+	isAdmin := isLoginFromCtx(ctx)
 	hidden := map[string]bool{}
 	if !isAdmin {
 		visibleMap, err := clientVisibility()
@@ -78,19 +92,23 @@ func getRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpc
 		}
 		hidden = visibleMap
 	}
+	readable := isAdmin || params.UUID == "" || clientHistoryReadable(hidden, false, params.UUID)
 
 	switch params.Type {
 	case "load":
-		// fetch load records
-		recs, err := getLoadRecordsCombined(params.UUID, startTime, endTime)
-		if err != nil {
-			return nil, rpc.MakeError(rpc.InternalError, "Failed to fetch records", err.Error())
+		var recs []models.Record
+		if readable {
+			var err error
+			recs, err = getLoadRecordsCombined(ctx, params.UUID, startTime, endTime)
+			if err != nil {
+				return nil, rpc.MakeError(rpc.InternalError, "Failed to fetch records", err.Error())
+			}
 		}
 		// hidden filter on non-admin
 		if !isAdmin {
 			filtered := recs[:0]
 			for _, r := range recs {
-				if hidden[r.Client] {
+				if !clientHistoryReadable(hidden, false, r.Client) {
 					continue
 				}
 				filtered = append(filtered, r)
@@ -174,15 +192,19 @@ func getRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpc
 		if taskId == 0 {
 			taskId = -1
 		}
-		recs, err := tasks.GetPingRecords(params.UUID, taskId, startTime, endTime)
-		if err != nil {
-			return nil, rpc.MakeError(rpc.InternalError, "Failed to fetch ping records", err.Error())
+		var recs []models.PingRecord
+		if readable {
+			var err error
+			recs, err = metricstore.GetPingRecords(ctx, params.UUID, taskId, startTime, endTime)
+			if err != nil {
+				return nil, rpc.MakeError(rpc.InternalError, "Failed to fetch ping records", err.Error())
+			}
 		}
 		// hidden filter
 		if !isAdmin {
 			filtered := recs[:0]
 			for _, r := range recs {
-				if r.Client != "" && hidden[r.Client] {
+				if !clientHistoryReadable(hidden, false, r.Client) {
 					continue
 				}
 				filtered = append(filtered, r)
@@ -247,9 +269,6 @@ func getRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpc
 		if len(clientStats) > 0 {
 			response.BasicInfo = make([]ClientBasicInfo, 0, len(clientStats))
 			for client, st := range clientStats {
-				if client != "" && !isAdmin && hidden[client] {
-					continue
-				}
 				loss := float64(0)
 				if st.total > 0 {
 					loss = float64(st.loss) / float64(st.total) * 100
@@ -270,6 +289,9 @@ func getRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpc
 		}
 		toList := make([]map[string]any, 0, len(pingTasks))
 		for _, t := range pingTasks {
+			if !readable {
+				continue
+			}
 			if taskId != -1 && t.Id != uint(taskId) {
 				continue
 			}
@@ -435,15 +457,12 @@ func getRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpc
 
 // ---------- helpers for load records ----------
 
-// getLoadRecordsCombined fetches records for a client or all clients within a time range,
-// combining recent short-term table and long-term table with 15-min grouping for recent part.
-func getLoadRecordsCombined(uuid string, start, end time.Time) ([]models.Record, error) {
-	// prefer the existing function when uuid provided
+// getLoadRecordsCombined preserves cancellation and the shared metric read budget.
+func getLoadRecordsCombined(ctx context.Context, uuid string, start, end time.Time) ([]models.Record, error) {
 	if uuid != "" {
-		return recordsdb.GetRecordsByClientAndTime(uuid, start, end)
+		return metricstore.GetRecordsByClientAndTime(ctx, uuid, start, end)
 	}
-	// 所有客户端：统一通过 records 包查询，启用 metric store 时自动走 metric store
-	return recordsdb.GetRecordsByTime(start, end)
+	return metricstore.GetRecordsByTime(ctx, start, end)
 }
 
 // ---------- downsampling helpers ----------

@@ -1220,7 +1220,7 @@ func metricQueryHours(hours float64) time.Duration {
 	if hours <= 0 {
 		return 4 * time.Hour
 	}
-	if math.IsNaN(hours) || math.IsInf(hours, 0) || hours > 366*24 {
+	if math.IsNaN(hours) || math.IsInf(hours, 0) || hours > maxMetricQueryHours {
 		return 367 * 24 * time.Hour
 	}
 	return time.Duration(hours * float64(time.Hour))
