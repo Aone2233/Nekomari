@@ -46,18 +46,30 @@ deferred with its original criteria and26 failed reports preserved. This narrows
 the work target; it does not declare the long-term roadmap or v1.7 exit criteria
 complete, and does not decide key custody or account/privilege/SLO policies.
 
-Query-hardening PR78/502a269 is merged and exact merge CI40275930537 passes7/7;
-scoped-key PR79/5b005d5 is merged as 3dd20fb with an identical tree and its merge
-CI40280921167 passes 7/7. No release tag or production delivery has occurred.
-Its isolated scope is documented in [`API-KEYS.md`](./API-KEYS.md). Repository script inventory
+Query-hardening PR78/502a269 is released early as the compatible **v1.6.28**
+patch and deployed on OC424. Exact-source CI40275930537 passes7/7; release
+40318142810 passes10/10, including native amd64/arm64 deployment verification;
+Docker40319017219 passes both jobs. The arm64 image's extracted executable
+matches the verified release checksum/provenance; OC424 reports v1.6.28/502a269,
+healthy/restart0, upgrade check9/9. Public route/assets and private-site denial
+checks pass, both DB schemas/integrity remain unchanged, and 14 registered/12
+fresh CPU-reporting nodes match the pre-upgrade baseline. OVH retains the fresh
+paired backup after a successful isolated old-image restore drill. Authenticated
+live history/audit owner acceptance is still pending, not replaced by a 401 or
+synthetic release test. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+Scoped-key PR79/5b005d5 is merged as 3dd20fb with an identical tree and its merge
+CI40280921167 passes 7/7; it is **not released/deployed**. Its isolated scope is
+documented in [`API-KEYS.md`](./API-KEYS.md). Repository script inventory
 does not establish all live callers: arrange explicit minimal-scope replacements
 and accept the intentional legacy-key compatibility change before tag/cutover.
 Retain paired pre-upgrade DB snapshots and old binary/image; image-only rollback
 is insufficient after authentication migration. D12 encrypted-backup custody and
 the rest of the v1.7 deliverables remain separate open gates.
 
-The third bounded source batch starts from exact 3dd20fb on
-`codex/v1.7-report-queue-invariants`, not the accumulated development tree.
+The third bounded source batch starts from exact 3dd20fb and is merged as
+fc84915 (PR80, exact merge CI40298579581 passes7/7), not the accumulated
+development tree. It remains unreleased and outside v1.6.28.
 It validates all report fields before clamping RAM/Swap/disk usage to total,
 retains every other invalid-input guard, and warns once per accepted anomaly
 episode. It removes queues after successful node deletion and sweeps empty
@@ -67,8 +79,8 @@ discarded payload references are cleared. Limits, TTLs, acknowledgement,
 coalescing and reconnect delivery remain compatible. This does not add an
 in-flight credential-admission/revocation fence. Targeted ordinary/race and real
 HTTP/WebSocket/REST regressions verify this closure; no capacity, frontend or
-Agent/protocol/dependency change is included. Client-token rotation is the next
-independent engineering batch; encrypted-backup custody remains D12.
+Agent/protocol/dependency change is included. Client-token rotation is the
+fourth independent engineering candidate; encrypted-backup custody remains D12.
 Final affected ordinary/race evidence covers 211 top-level tests (524 including
 subtests), six packages in retained per-package runs. Linux CI adds race checks
 for the four report/queue/runtime packages. OVH's exact prebuilt race checks pass
@@ -76,22 +88,32 @@ nine top-level groups (13 with visible subtests), Agent495903/restart0 unchanged
 that is not a native-platform or production acceptance claim. Go1.27.3 build,
 affected vet, module verification, documentation check and the reachable binary
 scan pass; one required-module advisory is non-reachable. No frontend rebuild
-or capacity run occurs locally.
+or capacity run occurs locally for that source batch.
+
+Client-token rotation PR81 is open at 13cdcc5 with exact CI7/7. It adds the
+session/step-up-only API and in-panel recovery-consent UI with old-credential
+runtime retirement, without automatic fleet rotation. Its source, race and
+synthetic browser evidence remains on `codex/v1.7-client-token-rotation`; that
+branch's `docs/CLIENT-TOKEN-ROTATION.md` records recovery and intentional
+edit/import restrictions. It is not part of v1.6.28 and does not authorize a
+live token change. Independent SSH/console recovery and compatibility acceptance
+remain deployment gates.
 
 The older application-level goal remains observed paused because no available
 tool can edit its objective or resume it. This document updates repository work
 scope under owner authorization, not the application's stored goal state, and
 does not claim v1.7 or the long-term roadmap complete.
 
-The production panel on OC424 is v1.6.27/12ad73a, following the compiler-only
-v1.6.26 patch. v1.6.27 changes only the five admin tools' in-panel navigation.
-The owner reports no remaining issue and explicitly resumes next-stage version
-development. This is owner acceptance, not a newly performed authenticated
-browser/fleet check. The public hostname is `nekomari.orderly2233.org`.
+The production panel on OC424 is v1.6.28/502a269, retaining the compiler-only
+v1.6.26 patch and v1.6.27's five admin tools' in-panel navigation. The owner's
+earlier acceptance of v1.6.27 is not authenticated acceptance of the new patch.
+The public hostname is `nekomari.orderly2233.org`. No Agent, credential or
+backup-encryption cutover occurs during this panel-only update.
 
 Continue with bounded v1.7 security candidates on clean main rather than the
 accumulated unreleased development workspace. The first two batches implement
-query hardening and scoped API keys; the third implements report/queue invariants.
+query hardening and scoped API keys; the third implements report/queue invariants,
+and the fourth candidate implements client-token rotation.
 Source verification/merge, release artifacts and OC424 delivery are distinct
 steps. Token rotation and encrypted-backup cutover are not bundled here.
 
@@ -110,17 +132,19 @@ visible/hidden/deleted/unknown UUIDs and audit-log permission/limit controls;
 the real REST bridge still rejects unsafe pagination. OVH runs the exact
 prebuilt race executable against private fixtures (12 focused top-level groups)
 with its existing Agent PID/restart count unchanged. This is not a native OVH
-build, arm64/Windows CI or production acceptance. Original baseline refusals and
+build or production acceptance; later release-platform and OC424 evidence is
+recorded separately above. Original baseline refusals and
 two fixture defects (independent comparison clocks and a missing same-origin
 handshake header) remain recorded; neither production policy nor assertions
-are weakened. No full-suite, frontend rebuild or capacity run is performed.
+are weakened. No redundant local full-suite, frontend rebuild or capacity run
+is performed for the query-only deployment.
 
-Before the scoped-key batch, inventory legacy API consumers and arrange scoped
+Before the scoped-key cutover, inventory legacy API consumers and arrange scoped
 replacements for intentional compatibility changes. Production backup encryption
 still needs approved age key custody/escrow/unlock, an actual restore drill and
 legacy-copy retention. General development/deployment permission does not decide
-these policies or complete the v1.7 exit criteria. Native-platform, SLO and
-secrets-at-rest gates likewise remain open.
+these policies or complete the v1.7 exit criteria. Unreleased-candidate platform,
+SLO and secrets-at-rest gates likewise remain open.
 
 ## Stability and quality targets
 
