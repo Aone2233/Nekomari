@@ -22,8 +22,9 @@ const (
 )
 
 type v2EventQueue struct {
-	events []v2.Event
-	signal chan struct{}
+	events   []v2.Event
+	signal   chan struct{}
+	lastUsed time.Time
 }
 
 var (
@@ -37,7 +38,41 @@ func getV2EventQueueLocked(uuid string) *v2EventQueue {
 		q = &v2EventQueue{signal: make(chan struct{})}
 		v2EventQueues[uuid] = q
 	}
+	q.lastUsed = time.Now()
 	return q
+}
+
+// DeleteV2EventQueue retires this generation and wakes its long polls. Ordinary
+// disconnects must keep pending, unexpired commands for reconnect delivery.
+func DeleteV2EventQueue(uuid string) {
+	v2EventMu.Lock()
+	defer v2EventMu.Unlock()
+	if q := v2EventQueues[uuid]; q != nil {
+		deleteV2EventQueueLocked(uuid, q)
+	}
+}
+
+func deleteV2EventQueueLocked(uuid string, q *v2EventQueue) {
+	clear(q.events)
+	q.events = nil
+	delete(v2EventQueues, uuid)
+	close(q.signal)
+}
+
+// SweepV2EventQueues runs on the panel's existing scheduler, not a new worker.
+func SweepV2EventQueues() {
+	sweepV2EventQueues(time.Now())
+}
+
+func sweepV2EventQueues(now time.Time) {
+	v2EventMu.Lock()
+	defer v2EventMu.Unlock()
+	for uuid, q := range v2EventQueues {
+		pruneExpiredV2EventsLocked(q, now)
+		if len(q.events) == 0 && now.Sub(q.lastUsed) >= v2EventTTL {
+			deleteV2EventQueueLocked(uuid, q)
+		}
+	}
 }
 
 func DispatchV2Event(uuid, method string, params any) bool {
@@ -93,11 +128,13 @@ func EnqueueV2Event(uuid, method string, params any) v2.Event {
 
 	v2EventMu.Lock()
 	q := getV2EventQueueLocked(uuid)
-	pruneExpiredV2EventsLocked(q)
+	pruneExpiredV2EventsLocked(q, q.lastUsed)
 	coalesceV2EventLocked(q, event)
 	q.events = append(q.events, event)
 	if len(q.events) > v2EventQueueLimit {
-		q.events = q.events[len(q.events)-v2EventQueueLimit:]
+		remaining := copy(q.events, q.events[len(q.events)-v2EventQueueLimit:])
+		clear(q.events[remaining:])
+		q.events = q.events[:remaining]
 	}
 	close(q.signal)
 	q.signal = make(chan struct{})
@@ -125,6 +162,7 @@ func coalesceV2EventLocked(q *v2EventQueue, event v2.Event) {
 			filtered = append(filtered, existing)
 		}
 	}
+	clear(q.events[len(filtered):])
 	q.events = filtered
 }
 
@@ -168,14 +206,14 @@ func ackV2EventsLocked(q *v2EventQueue, ackIDs []string) {
 			filtered = append(filtered, event)
 		}
 	}
+	clear(q.events[len(filtered):])
 	q.events = filtered
 }
 
-func pruneExpiredV2EventsLocked(q *v2EventQueue) {
+func pruneExpiredV2EventsLocked(q *v2EventQueue, now time.Time) {
 	if len(q.events) == 0 {
 		return
 	}
-	now := time.Now().UTC()
 	filtered := q.events[:0]
 	for _, event := range q.events {
 		if event.ExpiresAt.IsZero() {
@@ -186,6 +224,7 @@ func pruneExpiredV2EventsLocked(q *v2EventQueue) {
 			filtered = append(filtered, event)
 		}
 	}
+	clear(q.events[len(filtered):])
 	q.events = filtered
 }
 
@@ -193,9 +232,13 @@ func TakeV2Events(uuid string, ackIDs []string, limit int) []v2.Event {
 	v2EventMu.Lock()
 	defer v2EventMu.Unlock()
 
-	q := getV2EventQueueLocked(uuid)
+	q := v2EventQueues[uuid]
+	if q == nil {
+		return []v2.Event{}
+	}
+	q.lastUsed = time.Now()
 	ackV2EventsLocked(q, ackIDs)
-	pruneExpiredV2EventsLocked(q)
+	pruneExpiredV2EventsLocked(q, q.lastUsed)
 	return takeV2EventsLocked(q, limit)
 }
 
@@ -210,6 +253,7 @@ func AckV2Events(uuid string, ackIDs []string) {
 	if q == nil {
 		return
 	}
+	q.lastUsed = time.Now()
 	ackV2EventsLocked(q, ackIDs)
 }
 
@@ -223,12 +267,15 @@ func takeV2EventsLocked(q *v2EventQueue, limit int) []v2.Event {
 }
 
 func WaitV2Events(uuid string, ackIDs []string, timeout time.Duration) []v2.Event {
+	if timeout <= 0 {
+		return TakeV2Events(uuid, ackIDs, v2EventQueueLimit)
+	}
 	v2EventMu.Lock()
 	q := getV2EventQueueLocked(uuid)
 	ackV2EventsLocked(q, ackIDs)
-	pruneExpiredV2EventsLocked(q)
+	pruneExpiredV2EventsLocked(q, q.lastUsed)
 	events := takeV2EventsLocked(q, v2EventQueueLimit)
-	if len(events) > 0 || timeout <= 0 {
+	if len(events) > 0 {
 		v2EventMu.Unlock()
 		return events
 	}
@@ -241,5 +288,14 @@ func WaitV2Events(uuid string, ackIDs []string, timeout time.Duration) []v2.Even
 	case <-signal:
 	case <-timer.C:
 	}
-	return TakeV2Events(uuid, nil, v2EventQueueLimit)
+	v2EventMu.Lock()
+	defer v2EventMu.Unlock()
+	// A delete followed by UUID reuse must not let an old poll read or revive
+	// a new generation's commands, on either the signal or timeout path.
+	if v2EventQueues[uuid] != q {
+		return []v2.Event{}
+	}
+	q.lastUsed = time.Now()
+	pruneExpiredV2EventsLocked(q, q.lastUsed)
+	return takeV2EventsLocked(q, v2EventQueueLimit)
 }

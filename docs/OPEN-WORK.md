@@ -24,12 +24,41 @@ workspace. Production remains v1.6.27 until a version passes its release gates.
 **Adjusted active target (owner authorization, 2026-10-26):** complete bounded
 v1.7 security batches with explicit verification and release gates, rather than
 trying to finish every long-term version in one continuous run. Query hardening
-PR78 is merged as502a269 and its merge CI40275930537 is now7/7 successful;
-it remains unreleased. The next independent `codex/v1.7-scoped-api-keys` batch
-implements exact fleet-wide grants, digest-only expiring keys, rotation/revocation,
-session/TOTP management, per-key audit attribution and the existing-shell UI.
-See [`API-KEYS.md`](./API-KEYS.md). Client-token rotation, queue/report invariants,
-later metrics/history features and encrypted-backup deployment are not included.
+PR78 is merged as 502a269 with merge CI40275930537 successful (7/7).
+Scoped-key PR79/5b005d5 is merged as 3dd20fb with an identical tree and merge
+CI40280921167 successful (7/7). Both remain unreleased. The scoped-key contract
+is in [`API-KEYS.md`](./API-KEYS.md); its local/UI/migration evidence is retained,
+not rerun in every backend-only batch.
+
+The next isolated batch, `codex/v1.7-report-queue-invariants`, starts from
+3dd20fb. It clamps only non-negative, in-range RAM/Swap/disk `used > total`
+snapshots after all other validation succeeds. Accepted uploads record a
+resource-set warning once per anomaly episode; healthy samples reset it.
+Invalid uploads and failed persistence do not update runtime/anomaly state.
+Queue entries are retired after successful node removal, or by the existing
+minute scheduler once empty and idle for five minutes. Deleted-queue polls wake
+without recreating state or reading a replacement generation. Acknowledgement,
+expiry, coalescing, overflow and removal clear discarded payload references;
+the newest-128 limit, command TTLs and ordinary reconnect behavior stay intact.
+This is not a transport credential-revocation fence: authenticated in-flight
+requests/connections are not redesigned here. Client-token rotation is next.
+
+The two former data-safety findings are implemented in this bounded source
+candidate and remain unreleased. Targeted ordinary/race checks cover the
+affected packages, real HTTP/WebSocket ingest and REST removal, queue lifecycle
+and scheduler wiring. Final affected checks pass 211 top-level tests (524 with
+subtests) across six packages ordinarily/race, using retained final runs per
+package rather than claiming one run. The Linux CI race gate now includes the
+four report/queue/runtime packages. OVH's exact prebuilt race executables pass
+nine top-level groups (13 with visible subtests) in private fixtures, with
+Agent495903/restart0 unchanged. This is not a remote-native build or production
+acceptance. No Agent/protocol, dependency,
+frontend, later metrics/history or backup-policy change is part of this batch.
+
+The application-level all-roadmap goal was still observed paused, and this
+session exposes no objective/resume control. The repository target is updated
+and development continues under owner authorization; this is not a claim that
+the application's stored goal has been edited, resumed or completed.
 
 The repository's key-consuming scripts are inventoried; no helper reads a key
 from SQLite. Out-of-repository live consumers and secure replacement provisioning
@@ -113,7 +142,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | History query hardening release/acceptance | `web/rpc/jsonrpc/common.record.go`; `web/rpc/jsonrpc/budget.go` | Implemented in the bounded v1.7 candidate: 366-day ceiling, shared historical pool/budgets/cancellation and guest hidden/deleted-history filtering. Not released/deployed; API-key migration and unrelated roadmap work are excluded |
 | No supported way to rotate a client token | `web/rpc/jsonrpc/` (only `admin:getClientToken` exists) | The only path is writing the live SQLite directly, which is what caused the 2026-08 rotation incident. Needs an API + a UI action, not a patch |
-| Scoped API-key release and consumer migration | `internal/apikeys/`, `pkg/rpc/apikey_scopes.go`, `docs/API-KEYS.md` | Bounded implementation/verification in progress, not released: eight exact scopes, digest-only lifecycle, session/TOTP management, per-key auditing and UI. OC424 still has the old global credential policy. Inventory/provision actual legacy consumers before the intentional read-only migration |
+| Scoped API-key release and consumer migration | `internal/apikeys/`, `pkg/rpc/apikey_scopes.go`, `docs/API-KEYS.md` | PR79 merged as 3dd20fb; exact PR and merge CI each pass 7/7. Not released: OC424 still has the old global credential policy. Inventory/provision actual legacy consumers before the intentional read-only migration |
 | Audit-log pagination hardening release/acceptance | `web/rpc/jsonrpc/admin.system.go` | Implemented in the bounded v1.7 candidate: 1-1000 rows, checked offset, strict field binding, no fetch beyond total and SQL cancellation. REST filtering/CSV compatibility retained; not released/deployed |
 | `/plugin/*` is still owned by the installed theme | `web/public/public.go` | **Accepted**: the panel took back only its own pages. Tightening it would break installed themes |
 | An installed theme that renders "no data" as 0 | outside this repository (SAO) | **Accepted**: the default document is the panel's own now; the remaining risk is a third-party bundle |
@@ -126,8 +155,8 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | The auto-upgrade archive excludes `metrics.db` by design | `database/dbcore/dbcore.go` | **Accepted** — but it should be stated in the upgrade log, so an operator does not read the archive as a full backup |
 | ipinfo caches an empty country for 48 h; an empty provider logs nothing | `utils/geoip/ipinfo.go`, `utils/geoip/geoip.go` | Cosmetic-to-misleading; no incident has been traced to it |
 | The "persistent data" warning is inverted under a custom docker data-root | `database/dbcore/dbcore.go` | The regex only matches the default volume path, so a custom root prints "persists" for something that does not |
-| `v2EventQueues` entries are created per client uuid and never deleted | `web/agent/v2_events.go` | Bounded per client but not per fleet-lifetime; needs a delete on client removal or a TTL sweep |
-| A report with `used > total` is rejected whole, freezing the node | `database/clients/report.go` | Should clamp and log once instead of refusing the upload |
+| Event-queue lifecycle release/acceptance | `web/agent/v2_events.go`, `web/rpc/jsonrpc/admin.client.go`, `internal/server/runtime.go` | Implemented in the bounded report/queue candidate: successful-removal cleanup, idle sweep, generation-isolated blocked polls and payload release. Not released/deployed; ordinary disconnects preserve valid commands |
+| Report resource-clamp release/acceptance | `database/clients/report.go`, `web/api/client/ingest.go` | Implemented in the bounded report/queue candidate: validate first, then clamp only RAM/Swap/disk used to total; accepted-sample warning episodes. Invalid inputs still reject; not released/deployed |
 | Session tokens and the 2FA secret are stored unencrypted at rest | `docs/AUTH-HARDENING.md` §3 | Proposal only; needs a key-management decision before code |
 
 ## Numbers and correctness

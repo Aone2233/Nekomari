@@ -14,6 +14,7 @@ var (
 	v2Clients        = make(map[string]struct{})
 	latestReport     = make(map[string]*v2.Report)
 	recentReports    = make(map[string][]v2.Report)
+	reportClamps     = make(map[string]string)
 	// presenceOnly stores online state for non-WebSocket agents.
 	// value keeps connectionID and a soft expiration to avoid flicker
 	presenceOnly = make(map[string]struct {
@@ -219,4 +220,19 @@ func DeleteLatestReport(uuid string) {
 	defer mu.Unlock()
 	delete(latestReport, uuid)
 	delete(recentReports, uuid)
+	delete(reportClamps, uuid)
+}
+
+// NoteReportClamp emits one warning per resource set until a valid sample
+// recovers or the node is removed. Call only after the report is accepted.
+func NoteReportClamp(uuid, fields string) bool {
+	mu.Lock()
+	defer mu.Unlock()
+	if fields == "" {
+		delete(reportClamps, uuid)
+		return false
+	}
+	warn := reportClamps[uuid] != fields
+	reportClamps[uuid] = fields
+	return warn
 }
