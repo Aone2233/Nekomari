@@ -8,6 +8,20 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **Session-only Agent-token rotation (bounded v1.7 preparation).** A dedicated
+  REST/RPC/WebSocket operation and in-panel node dialog replace credentials with
+  256-bit random tokens after session/optional existing TOTP authorization. Old
+  HTTP/WebSocket admissions, queued work, presence, terminals and file operations
+  are retired without deleting measurements; long polls do not block retirement.
+  Generic edits and existing-node imports can no longer replace credentials
+  outside this boundary, and Agent basic-info maps are limited to host facts.
+  The UI requires independent SSH/console recovery consent, clears transient
+  secrets on dismissal and never automatically replays uncertain writes. Includes
+  transport/race/browser regressions and a refreshed embedded theme. Legacy
+  plaintext Agent-token storage/read behavior remains; already running remote
+  jobs are not undone. No automatic rotation, Agent/protocol/schema/dependency
+  change, release or OC424 app update. See `docs/CLIENT-TOKEN-ROTATION.md`.
+
 - **Report and event-queue invariants (bounded v1.7 preparation).** The shared
   HTTP/WebSocket ingest path validates every input before clamping only RAM,
   Swap and disk usage above total, so a transient resource mismatch no longer

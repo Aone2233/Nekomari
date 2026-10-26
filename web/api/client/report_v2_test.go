@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -9,8 +10,57 @@ import (
 	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/internal/config"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
+	"github.com/Aone2233/nekomari/web/api"
 )
+
+func TestRetiredHandshakeCannotSettlePendingRolloutClear(t *testing.T) {
+	retired := false
+	operation := func(_ context.Context, fn func() error) error {
+		if retired {
+			return api.ErrClientCredentialRetired
+		}
+		return fn()
+	}
+	writer := retireOnWrite{retire: func() { retired = true }}
+	cleared := false
+	err := resendPersistedAgentUpdateTargetOperation(t.Context(), operation, writer, "retired-handshake",
+		func(string) (string, bool, error) { return "", true, nil },
+		func(string, bool) error { cleared = true; return nil })
+	if !errors.Is(err, api.ErrClientCredentialRetired) || cleared {
+		t.Fatal("retired handshake settled new-generation rollout state")
+	}
+}
+
+type retireOnWrite struct{ retire func() }
+
+func (w retireOnWrite) WriteJSON(any) error { w.retire(); return nil }
+
+func TestAllAgentMutationsUseCredentialAdmission(t *testing.T) {
+	flags.DatabaseType = flags.DatabaseTypeSQLite
+	flags.DatabaseFile = "file:admission-methods?mode=memory&cache=shared"
+	config.SetDb(dbcore.GetDBInstance())
+	for method, params := range map[string]string{
+		v2.MethodAgentReport:     `{"report":{"cpu":{"usage":1}}}`,
+		v2.MethodAgentBasicInfo:  `{"info":{"cpu_name":"stale"}}`,
+		v2.MethodAgentUnlock:     `{}`,
+		v2.MethodAgentPingResult: `{"task_id":1,"value":1}`,
+		v2.MethodAgentTaskResult: `{"task_id":"fixture","result":"stale"}`,
+		v2.MethodAgentPull:       `{}`,
+		v2.MethodAgentFileResult: `{"request_id":"fixture","ok":true}`,
+	} {
+		t.Run(method, func(t *testing.T) {
+			admissions := 0
+			response := handleV2RPCOperation(t.Context(), "retired-mutations", v2.RawRequest{JSONRPC: v2.Version,
+				Method: method, Params: json.RawMessage(params), ID: 1}, false,
+				func(context.Context, func() error) error { admissions++; return api.ErrClientCredentialRetired })
+			if admissions != 1 || response.Error == nil || response.Error.Code != -32001 {
+				t.Fatal("agent method bypassed credential retirement")
+			}
+		})
+	}
+}
 
 // reportBody is one agent.report request roughly the size the fleet sends:
 // every metric section, a message and an ack list.

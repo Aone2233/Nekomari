@@ -22,6 +22,10 @@ import (
 // ingestReport 保存一次负载上报并刷新运行时状态。
 // markPresence 为 true 时按 POST 上报会话刷新在线状态（WS 连接自行管理在线状态，应传 false）。
 func ingestReport(uuid string, report v2.Report, markPresence bool) error {
+	return ingestReportContext(context.Background(), uuid, report, markPresence)
+}
+
+func ingestReportContext(ctx context.Context, uuid string, report v2.Report, markPresence bool) error {
 	report.UUID = uuid
 	if err := normalizeReportTimestamp(&report, time.Now()); err != nil {
 		return err
@@ -30,7 +34,7 @@ func ingestReport(uuid string, report v2.Report, markPresence bool) error {
 	if err != nil {
 		return err
 	}
-	savedReport, err := metricstore.WriteReport(context.Background(), report)
+	savedReport, err := metricstore.WriteReport(ctx, report)
 	if err != nil {
 		return err
 	}

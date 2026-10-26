@@ -5,6 +5,7 @@
 package unlock
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"time"
@@ -22,6 +23,10 @@ var ErrNotVisible = errors.New("unlock report is not readable for this caller")
 
 // Save 覆盖写入一个节点的最近一次探测结果。
 func Save(uuid string, params v2.UnlockParams) error {
+	return SaveContext(context.Background(), uuid, params)
+}
+
+func SaveContext(ctx context.Context, uuid string, params v2.UnlockParams) error {
 	db := dbcore.ReadyDBInstance()
 	if db == nil {
 		// 数据库还没起来。解锁是附加信息，不值得让上报流程炸掉。
@@ -56,7 +61,7 @@ func Save(uuid string, params v2.UnlockParams) error {
 		report.RoutesProbedAt = &routeTime
 	}
 	// 一次探测就是一份完整快照，直接整体替换，不需要合并。
-	return db.Save(&report).Error
+	return db.WithContext(ctx).Save(&report).Error
 }
 
 // ClientHistoryReadable 判断某个 uuid 的节点数据是否可以返回给这个调用者。

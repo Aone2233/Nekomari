@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 	"github.com/Aone2233/nekomari/database/auditlog"
 	"github.com/Aone2233/nekomari/web/connection"
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
 func ForwardTerminal(id string, browser, agent *connection.SafeConn) {
@@ -27,7 +27,7 @@ func ForwardTerminal(id string, browser, agent *connection.SafeConn) {
 
 	auditlog.Log(requesterIp, userUUID, "established, terminal id:"+id, "terminal")
 	established_time := time.Now()
-	errChan := make(chan error, 1)
+	errChan := make(chan error, 2)
 
 	go func() {
 		for {

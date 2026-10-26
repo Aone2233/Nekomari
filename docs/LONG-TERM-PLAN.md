@@ -48,7 +48,9 @@ complete, and does not decide key custody or account/privilege/SLO policies.
 
 Query-hardening PR78/502a269 is merged and exact merge CI40275930537 passes7/7;
 scoped-key PR79/5b005d5 is merged as 3dd20fb with an identical tree and its merge
-CI40280921167 passes 7/7. No release tag or production delivery has occurred.
+CI40280921167 passes 7/7. Report/queue PR80/41dda98 is merged as fc84915,
+with exact merge CI40298579581 successful (7/7).
+No release tag or production delivery has occurred.
 Its isolated scope is documented in [`API-KEYS.md`](./API-KEYS.md). Repository script inventory
 does not establish all live callers: arrange explicit minimal-scope replacements
 and accept the intentional legacy-key compatibility change before tag/cutover.
@@ -56,10 +58,9 @@ Retain paired pre-upgrade DB snapshots and old binary/image; image-only rollback
 is insufficient after authentication migration. D12 encrypted-backup custody and
 the rest of the v1.7 deliverables remain separate open gates.
 
-The third bounded source batch starts from exact 3dd20fb on
-`codex/v1.7-report-queue-invariants`, not the accumulated development tree.
-It validates all report fields before clamping RAM/Swap/disk usage to total,
-retains every other invalid-input guard, and warns once per accepted anomaly
+The third bounded source batch, now merged, validates all report fields before
+clamping RAM/Swap/disk usage to total, retains every other invalid-input guard,
+and warns once per accepted anomaly
 episode. It removes queues after successful node deletion and sweeps empty
 five-minute-idle queues on the existing scheduler. Blocked old-generation polls
 wake without resurrecting state or reading a new generation's commands;
@@ -67,16 +68,41 @@ discarded payload references are cleared. Limits, TTLs, acknowledgement,
 coalescing and reconnect delivery remain compatible. This does not add an
 in-flight credential-admission/revocation fence. Targeted ordinary/race and real
 HTTP/WebSocket/REST regressions verify this closure; no capacity, frontend or
-Agent/protocol/dependency change is included. Client-token rotation is the next
-independent engineering batch; encrypted-backup custody remains D12.
+Agent/protocol/dependency change was included. Client-token rotation is the
+fourth independent engineering batch; encrypted-backup custody remains D12.
 Final affected ordinary/race evidence covers 211 top-level tests (524 including
 subtests), six packages in retained per-package runs. Linux CI adds race checks
 for the four report/queue/runtime packages. OVH's exact prebuilt race checks pass
 nine top-level groups (13 with visible subtests), Agent495903/restart0 unchanged;
 that is not a native-platform or production acceptance claim. Go1.27.3 build,
 affected vet, module verification, documentation check and the reachable binary
-scan pass; one required-module advisory is non-reachable. No frontend rebuild
-or capacity run occurs locally.
+scan pass; one required-module advisory is non-reachable. That third batch
+required no local frontend rebuild or capacity run.
+
+The fourth candidate, `codex/v1.7-client-token-rotation`, starts from fc84915.
+It adds session-only Agent-token rotation with existing TOTP policy and an
+in-panel recovery-consent dialog. Short Agent mutations share per-node
+admission with commit/retirement; delayed requests/handshakes and old runtime
+generations cannot revive state. Connections, presence, queues, terminals and
+file operations are retired while measurements remain. Already-admitted work
+and remote jobs are not undone; legacy plaintext Agent-token storage/read
+behavior remains. Generic edits and existing-node imports can no longer replace
+credentials outside this boundary. No automatic fleet rotation, Agent/protocol,
+schema/dependency change, release tag or production app update is included.
+See [`CLIENT-TOKEN-ROTATION.md`](./CLIENT-TOKEN-ROTATION.md).
+
+Final per-package retained evidence covers twelve affected packages, 247
+top-level/580 including subtests, ordinarily/race; public/embed regressions add
+71/111 ordinarily. Frontend 194/194, lint/compiler audit/build/repack, four
+rotation and eight node-table mounted groups pass. A compiled embedded Panel
+passes real synthetic REST rotations from desktop-dark/mobile-light UI with no
+new tabs/errors/document overflow. OVH's checksum-matched prebuilt race binaries
+pass six groups/13 including visible subtests, Agent495903/restart0 unchanged.
+Affected vet, module verification, Go1.27.3 build and reachable/imported-package
+binary scan pass (one required-module-only advisory remains). These are bounded
+source/synthetic checks, not native-platform CI, production acceptance or
+capacity/SLO evidence. Accept edit/import restrictions and independent recovery
+before deployment; API-consumer migration and D12 are still separate gates.
 
 The older application-level goal remains observed paused because no available
 tool can edit its objective or resume it. This document updates repository work
@@ -91,9 +117,10 @@ browser/fleet check. The public hostname is `nekomari.orderly2233.org`.
 
 Continue with bounded v1.7 security candidates on clean main rather than the
 accumulated unreleased development workspace. The first two batches implement
-query hardening and scoped API keys; the third implements report/queue invariants.
+query hardening and scoped API keys; the third implements report/queue invariants,
+and the fourth candidate implements client-token rotation.
 Source verification/merge, release artifacts and OC424 delivery are distinct
-steps. Token rotation and encrypted-backup cutover are not bundled here.
+steps. Encrypted-backup cutover is not bundled in those source batches.
 
 200-node optimization, experiments, benchmarks and soak runs remain explicitly
 deferred by the owner; preserve the original thresholds and all26 failed reports.
@@ -102,7 +129,7 @@ authorized. Use branch + PR and reuse unchanged evidence; do not repeat unrelate
 frontend, full-suite or capacity runs. Exact-candidate CI and safe rollout,
 backup/rollback and post-upgrade checks still apply when publishing a version.
 
-Both affected Go packages pass151 top-level tests (379 including subtests)
+In the first query-hardening batch, both affected Go packages pass151 top-level tests (379 including subtests)
 ordinarily and with the race detector; vet, module verification, the complete
 Panel build with Go1.27.3 and reachable binary vulnerability scanning pass.
 The new real HTTP/WebSocket matrix covers guests/sessions, load/ping bounds,
@@ -113,9 +140,10 @@ with its existing Agent PID/restart count unchanged. This is not a native OVH
 build, arm64/Windows CI or production acceptance. Original baseline refusals and
 two fixture defects (independent comparison clocks and a missing same-origin
 handshake header) remain recorded; neither production policy nor assertions
-are weakened. No full-suite, frontend rebuild or capacity run is performed.
+are weakened. No local full-suite, frontend rebuild or capacity run was needed
+for that first batch.
 
-Before the scoped-key batch, inventory legacy API consumers and arrange scoped
+Before scoped-key production cutover, inventory legacy API consumers and arrange scoped
 replacements for intentional compatibility changes. Production backup encryption
 still needs approved age key custody/escrow/unlock, an actual restore drill and
 legacy-copy retention. General development/deployment permission does not decide

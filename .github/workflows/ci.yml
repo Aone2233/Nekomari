@@ -62,6 +62,7 @@ jobs:
           python script/forecast.browser.spec.py
           python script/account-sso-2fa.browser.spec.py
           python script/api-keys.browser.spec.py
+          python script/client-token.browser.spec.py
 
   # The fixtures above mount one component against stubs. This job boots the
   # built server and walks the real panel instead, which is the only check that
@@ -342,6 +343,7 @@ jobs:
           go test -race ./web/oauth/... ./web/security ./web/upload
           go test -race ./internal/apikeys ./pkg/rpc ./web/api ./web/router ./web/rpc/jsonrpc
           go test -race ./database/clients ./web/agent ./web/api/client ./internal/server
+          go test -race ./internal/clientguard ./web/api/terminal ./web/filemanager ./web/connection
 
       - name: Build server
         run: go build -o /dev/null .

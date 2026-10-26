@@ -45,6 +45,7 @@ func IdentifyPrincipal(c *gin.Context) *rpc.Principal {
 	// 3. Client Token(agent 客户端)
 	if token := extractClientToken(c); token != "" {
 		if uuid, err := checkTokenAndGetUUID(token); err == nil && uuid != "" {
+			c.Set("authenticated_agent_token", token)
 			return rpc.NewAgentPrincipal(uuid)
 		}
 	}

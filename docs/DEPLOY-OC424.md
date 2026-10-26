@@ -1,7 +1,43 @@
-# Public deployment (OC424 / komari.orderly2233.org)
+# Public deployment (OC424 / nekomari.orderly2233.org)
 
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
+
+## Current process and hostname checkpoint (2026-10-26)
+
+OC424 still serves **v1.6.27 / 12ad73a** at
+`https://nekomari.orderly2233.org`. The v1.7 source batches are not deployed.
+Older rollout sections below are dated evidence, not the current host/version.
+
+| Item | Observed evidence |
+|---|---|
+| Panel | Docker `nekomari`, running/healthy, restart0; public endpoint HTTP200 |
+| Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2; unchanged during this work |
+| Unused unit | Generic `nekomari-agent` is inactive; that is not the reporting Agent or evidence of an outage |
+| OC424 disk | Root filesystem 42% used |
+| OVH isolated checks | SSH alias `KSLE`; root filesystem 7% used, about 365 G free; existing Agent PID495903/restart0 unchanged |
+
+The failed process was **`panel-probe.service`**, which was still using the old
+`https://komari.orderly2233.org` default and repeatedly reporting curl DNS errors.
+Only this previously absent systemd drop-in was added:
+
+```ini
+# /etc/systemd/system/panel-probe.service.d/10-public-url.conf
+[Service]
+Environment=PANEL_URL=https://nekomari.orderly2233.org
+```
+
+After `systemctl daemon-reload` and a single start of the oneshot probe, the
+2026-10-26T10:51:13Z check reports `Result=success`, `ExecMainStatus=0`,
+`origin=0.002s public_max=0.267s pop=HKG cache=DYNAMIC samples=5/5`.
+No Panel/Agent restart, token rotation, DB write or application update occurred.
+`deploy/panel-probe.sh` retains its historical fallback URL; deployed units must
+set `PANEL_URL` explicitly. Preserve this override on future script updates.
+
+The fourth v1.7 candidate's OVH race tests use private synthetic fixtures, not
+`/srv/backups/oc424` or production credentials. Logs/checksums are retained before
+removing this batch's disposable test executables/fixtures. This is not an
+encrypted-backup restore drill or OC424 v1.7 acceptance.
 
 ## After every panel upgrade
 
@@ -32,9 +68,12 @@ and `quick_check` on a read-only connection. In particular the upgrade archives 
 counted — they are the rollback path. If `docker` or `sqlite3` is missing, the
 corresponding checks are `SKIP`ped and named rather than reported as failures.
 
-A `FAIL` is a reason to roll back rather than to keep going: the previous compose line is
-in that rollout's **Rollback** row below, an image rollback does not touch the data
-directory, and the archive this check just counted is the backup. `deploy/panel-upgrade-check.test.sh`
+A `FAIL` is a reason to stop and assess rollback rather than to keep going: the
+previous compose line is in that rollout's **Rollback** row below. An image-only
+rollback does not restore authentication state after the v1.7 scoped-key migration;
+use the old binary/image **and paired pre-upgrade DB snapshots**, accounting for
+credential resurrection and newer data. The counted upgrade archive deliberately
+excludes `metrics.db` and is not a full paired backup. `deploy/panel-upgrade-check.test.sh`
 is the offline test for the script (fake panel + `docker`/`sqlite3` stubs; no host involved).
 
 The rollout sections below predate the script; their **Verification** rows are what it prints,

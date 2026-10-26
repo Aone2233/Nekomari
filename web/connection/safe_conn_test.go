@@ -7,9 +7,34 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
+
+func TestSafeConnAbortDoesNotWaitForWriterMutex(t *testing.T) {
+	server := wsEchoServer(t)
+	defer server.Close()
+	conn := dialEcho(t, server)
+	rec := &recordingInterceptor{}
+	conn.SetInterceptor(&ConnInfo{ID: conn.ID}, rec)
+	defer conn.Close()
+	conn.mu.Lock()
+	done := make(chan struct{})
+	go func() { conn.Abort(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		conn.mu.Unlock()
+		t.Fatal("abort waited for writer mutex")
+	}
+	conn.mu.Unlock()
+	_ = conn.Close()
+	_, _, _, closes := rec.calls()
+	if closes != 1 {
+		t.Fatalf("normal close hooks after abort = %d", closes)
+	}
+}
 
 // recordingInterceptor captures calls and applies simple rewrites.
 type recordingInterceptor struct {

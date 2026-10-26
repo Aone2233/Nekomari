@@ -157,6 +157,14 @@ func (sc *SafeConn) Close() error {
 	return err
 }
 
+// Abort interrupts blocked I/O without waiting for the writer/interceptor
+// mutex. The owning handler still calls Close for normal lifecycle cleanup.
+func (sc *SafeConn) Abort() {
+	if sc.conn != nil {
+		_ = sc.conn.Close()
+	}
+}
+
 func (sc *SafeConn) ReadMessage() (int, []byte, error) {
 	return sc.readFrame()
 }

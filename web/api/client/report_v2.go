@@ -3,7 +3,9 @@ package client
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	logger "github.com/Aone2233/nekomari/utils/log"
 	"io"
@@ -14,6 +16,7 @@ import (
 	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/database/tasks"
 	"github.com/Aone2233/nekomari/database/unlock"
+	"github.com/Aone2233/nekomari/internal/metricstore"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 	"github.com/Aone2233/nekomari/utils/notifier"
 	agent_runtime "github.com/Aone2233/nekomari/web/agent"
@@ -64,6 +67,19 @@ func agentMessageWithinControlLimit(method string, size int64) bool {
 // typed struct: two extra passes over every report, on the hottest ingest path
 // the panel has.
 func handleV2RPC(uuid string, req v2.RawRequest, allowWait bool) v2.Response {
+	return handleV2RPCOperation(context.Background(), uuid, req, allowWait, func(_ context.Context, fn func() error) error { return fn() })
+}
+
+type clientOperation func(context.Context, func() error) error
+
+func handleV2RPCOperation(ctx context.Context, uuid string, req v2.RawRequest, allowWait bool, operation clientOperation) v2.Response {
+	admit := func(fn func() error) error { return operation(ctx, fn) }
+	failure := func(message string, err error) v2.Response {
+		if errors.Is(err, api.ErrClientCredentialRetired) {
+			return v2.Error(req.ID, -32001, "invalid token", nil)
+		}
+		return v2.Error(req.ID, -32000, message, err.Error())
+	}
 	if req.JSONRPC != v2.Version {
 		return v2.Error(req.ID, -32600, "invalid jsonrpc version", nil)
 	}
@@ -73,20 +89,32 @@ func handleV2RPC(uuid string, req v2.RawRequest, allowWait bool) v2.Response {
 		if err := req.DecodeParams(&params); err != nil {
 			return v2.Error(req.ID, -32602, "invalid report params", err.Error())
 		}
-		if err := ingestReport(uuid, params.Report, true); err != nil {
-			return v2.Error(req.ID, -32000, "failed to save report", err.Error())
+		var events []v2.Event
+		if err := admit(func() error {
+			if err := ingestReportContext(ctx, uuid, params.Report, allowWait); err != nil {
+				return err
+			}
+			events = agent_runtime.TakeV2Events(uuid, params.AckEventIDs, 8)
+			return nil
+		}); err != nil {
+			return failure("failed to save report", err)
 		}
 		return v2.Success(req.ID, gin.H{
 			"status": "success",
-			"events": agent_runtime.TakeV2Events(uuid, params.AckEventIDs, 8),
+			"events": events,
 		})
 	case v2.MethodAgentBasicInfo:
 		var params v2.BasicInfoParams
 		if err := req.DecodeParams(&params); err != nil {
 			return v2.Error(req.ID, -32602, "invalid basic info params", err.Error())
 		}
-		if err := ingestBasicInfo(uuid, params.Info, ""); err != nil {
-			return v2.Error(req.ID, -32000, "failed to save basic info", err.Error())
+		if params.Info == nil {
+			params.Info = map[string]any{}
+		}
+		params.Info["uuid"] = uuid
+		appendClientRegionFromGeoIP(params.Info)
+		if err := admit(func() error { return clients.SaveClientInfoContext(ctx, params.Info) }); err != nil {
+			return failure("failed to save basic info", err)
 		}
 		return v2.Success(req.ID, gin.H{"status": "success"})
 	case v2.MethodAgentUnlock:
@@ -94,8 +122,8 @@ func handleV2RPC(uuid string, req v2.RawRequest, allowWait bool) v2.Response {
 		if err := req.DecodeParams(&params); err != nil {
 			return v2.Error(req.ID, -32602, "invalid unlock params", err.Error())
 		}
-		if err := unlock.Save(uuid, params); err != nil {
-			return v2.Error(req.ID, -32000, "failed to save unlock report", err.Error())
+		if err := admit(func() error { return unlock.SaveContext(ctx, uuid, params) }); err != nil {
+			return failure("failed to save unlock report", err)
 		}
 		return v2.Success(req.ID, gin.H{"status": "success"})
 	case v2.MethodAgentPingResult:
@@ -103,8 +131,10 @@ func handleV2RPC(uuid string, req v2.RawRequest, allowWait bool) v2.Response {
 		if err := req.DecodeParams(&params); err != nil {
 			return v2.Error(req.ID, -32602, "invalid ping result params", err.Error())
 		}
-		if err := ingestPingResult(uuid, params.TaskID, params.PingType, params.Role, params.Family, params.Value, params.ValueUS); err != nil {
-			return v2.Error(req.ID, -32000, "failed to save ping result", err.Error())
+		if err := admit(func() error {
+			return metricstore.WritePingRecord(ctx, newPingRecord(uuid, params.TaskID, params.PingType, params.Role, params.Family, params.Value, params.ValueUS, time.Now().UTC()))
+		}); err != nil {
+			return failure("failed to save ping result", err)
 		}
 		return v2.Success(req.ID, gin.H{"status": "success"})
 	case v2.MethodAgentTaskResult:
@@ -116,8 +146,10 @@ func handleV2RPC(uuid string, req v2.RawRequest, allowWait bool) v2.Response {
 		if finishedAt.IsZero() {
 			finishedAt = time.Now().UTC()
 		}
-		if err := tasks.SaveTaskResult(params.TaskID, uuid, params.Result, params.ExitCode, finishedAt); err != nil {
-			return v2.Error(req.ID, -32000, "failed to save task result", err.Error())
+		if err := admit(func() error {
+			return tasks.SaveTaskResultContext(ctx, params.TaskID, uuid, params.Result, params.ExitCode, finishedAt)
+		}); err != nil {
+			return failure("failed to save task result", err)
 		}
 		return v2.Success(req.ID, gin.H{"status": "success"})
 	case v2.MethodAgentPull:
@@ -125,22 +157,37 @@ func handleV2RPC(uuid string, req v2.RawRequest, allowWait bool) v2.Response {
 		if err := req.DecodeParams(&params); err != nil {
 			return v2.Error(req.ID, -32602, "invalid pull params", err.Error())
 		}
-		refreshPostPresence(uuid)
-		agent_runtime.MarkV2Client(uuid)
+		var wait agent_runtime.V2EventWait
+		if err := admit(func() error {
+			if allowWait {
+				refreshPostPresence(uuid)
+			}
+			agent_runtime.MarkV2Client(uuid)
+			wait = agent_runtime.PrepareV2EventWait(uuid, params.AckEventIDs)
+			return nil
+		}); err != nil {
+			return failure("failed to pull events", err)
+		}
 		timeout := 0 * time.Second
 		if allowWait {
 			timeout = 25 * time.Second
 		}
-		return v2.Success(req.ID, gin.H{
-			"events": agent_runtime.WaitV2Events(uuid, params.AckEventIDs, timeout),
-		})
+		events := wait.Wait(ctx, timeout)
+		if err := admit(func() error { return nil }); err != nil {
+			return failure("failed to pull events", err)
+		}
+		return v2.Success(req.ID, gin.H{"events": events})
 	case v2.MethodAgentFileResult:
 		var params v2.FileResult
 		if err := req.DecodeParams(&params); err != nil {
 			return v2.Error(req.ID, -32602, "invalid file result params", err.Error())
 		}
 		params.UUID = uuid
-		if !filemanager.Resolve(params) {
+		resolved := false
+		if err := admit(func() error { resolved = filemanager.Resolve(params); return nil }); err != nil {
+			return failure("failed to save file result", err)
+		}
+		if !resolved {
 			return v2.Error(req.ID, -32004, "unknown or expired file operation", nil)
 		}
 		return v2.Success(req.ID, gin.H{"status": "success"})
@@ -150,6 +197,12 @@ func handleV2RPC(uuid string, req v2.RawRequest, allowWait bool) v2.Response {
 }
 
 func UploadV2RPC(c *gin.Context) {
+	uuid, ok := clientUUIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, v2.Error(nil, -32001, "invalid token", nil))
+		return
+	}
+	operation := api.ClientOperation(c, uuid)
 	bytesBody, err := readMaybeCompressedBody(c.Request, api.MaxAgentControlBody)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, v2.Error(nil, -32700, "invalid compressed body", err.Error()))
@@ -167,20 +220,29 @@ func UploadV2RPC(c *gin.Context) {
 		c.JSON(http.StatusRequestEntityTooLarge, v2.Error(req.ID, -32600, "control message exceeds body limit", nil))
 		return
 	}
-	uuid, ok := clientUUIDFromContext(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, v2.Error(req.ID, -32001, "invalid token", nil))
-		return
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	defer cancel()
+	resp := handleV2RPCOperation(ctx, uuid, req, true, operation)
+	if err := operation(ctx, func() error { return nil }); err != nil {
+		resp = v2.Error(req.ID, -32001, "invalid token", nil)
 	}
-	resp := handleV2RPC(uuid, req, true)
 	status := http.StatusOK
 	if resp.Error != nil {
 		status = http.StatusBadRequest
+		if resp.Error.Code == -32001 {
+			status = http.StatusUnauthorized
+		}
 	}
 	c.JSON(status, resp)
 }
 
 func WebSocketV2RPC(c *gin.Context) {
+	uuid, ok := clientUUIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, v2.Error(nil, -32001, "invalid token", nil))
+		return
+	}
+	operation := api.ClientOperation(c, uuid)
 	if !api.IsWebSocketUpgrade(c) {
 		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "error": "Require WebSocket upgrade"})
 		return
@@ -195,23 +257,39 @@ func WebSocketV2RPC(c *gin.Context) {
 	// so it uses the Agent bound rather than the browser control-body limit.
 	conn.SetReadLimit(api.MaxAgentControlBody)
 
-	uuid, ok := clientUUIDFromContext(c)
-	if !ok {
-		conn.WriteJSON(v2.Error(nil, -32001, "invalid token", nil))
+	setupCtx, setupCancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	var oldConn *connection.SafeConn
+	err = operation(setupCtx, func() error {
+		oldConn = agent_runtime.GetConnectedClient(uuid)
+		agent_runtime.SetConnectedClients(uuid, conn)
+		agent_runtime.MarkV2Client(uuid)
+		return nil
+	})
+	setupCancel()
+	if err != nil {
 		return
 	}
-	if oldConn := agent_runtime.GetConnectedClient(uuid); oldConn != nil {
-		go oldConn.Close()
+	if oldConn != nil {
+		oldConn.Abort()
 	}
-	agent_runtime.SetConnectedClients(uuid, conn)
-	agent_runtime.MarkV2Client(uuid)
+	currentOperation := func(ctx context.Context, fn func() error) error {
+		return operation(ctx, func() error {
+			if agent_runtime.GetConnectedClient(uuid) != conn {
+				return api.ErrClientCredentialRetired
+			}
+			return fn()
+		})
+	}
 	// The agent only holds the rollout target in memory, so a node that restarted would otherwise resume
 	// tracking the newest release and silently undo its part of a rollout; symmetrically, a node that was
 	// offline when its pin was cleared has to be told the target is gone. The panel persists both facts per
 	// node, so this is where a connecting (or reconnecting) node re-learns them. A failure is logged and the
 	// connection continues: the next dispatch re-sends the target anyway, and refusing the connection would
 	// turn a display problem into a monitoring outage.
-	if err := resendPersistedAgentUpdateTarget(conn, uuid, clients.AgentUpdateState, clients.SetTargetVersionClearPending); err != nil {
+	if err := resendPersistedAgentUpdateTargetOperation(c.Request.Context(), currentOperation, conn, uuid, clients.AgentUpdateState, clients.SetTargetVersionClearPending); err != nil {
+		if errors.Is(err, api.ErrClientCredentialRetired) {
+			return
+		}
 		logger.Errorf("client-api", "failed to reconcile the persisted agent update state for client %s: %v", uuid, err)
 	}
 	go notifierOnline(uuid, conn.ID)
@@ -219,7 +297,7 @@ func WebSocketV2RPC(c *gin.Context) {
 		agent_runtime.DeleteClientConditionally(uuid, conn)
 		notifierOffline(uuid, conn.ID)
 	}()
-	if !pushQueuedV2Events(conn, uuid) {
+	if !pushQueuedV2Events(c.Request.Context(), currentOperation, conn, uuid) {
 		return
 	}
 
@@ -233,8 +311,14 @@ func WebSocketV2RPC(c *gin.Context) {
 			return
 		}
 		message = bytes.TrimSpace(message)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+		if err := currentOperation(ctx, func() error { return nil }); err != nil {
+			cancel()
+			return
+		}
 		var req v2.RawRequest
 		if err := json.Unmarshal(message, &req); err != nil {
+			cancel()
 			conn.WriteJSON(v2.Error(nil, -32700, "parse error", err.Error()))
 			continue
 		}
@@ -242,10 +326,16 @@ func WebSocketV2RPC(c *gin.Context) {
 		// Agent bound. The read limit above is per connection, so without this check
 		// the socket would accept an 8 MiB report that POST refuses.
 		if !agentMessageWithinControlLimit(req.Method, int64(len(message))) {
+			cancel()
 			conn.WriteJSON(v2.Error(req.ID, -32600, "control message exceeds body limit", nil))
 			continue
 		}
-		resp := handleV2RPC(uuid, req, false)
+		resp := handleV2RPCOperation(ctx, uuid, req, false, currentOperation)
+		err = currentOperation(ctx, func() error { return nil })
+		cancel()
+		if err != nil {
+			return
+		}
 		if req.ID != nil {
 			if err := conn.WriteJSON(resp); err != nil {
 				logger.Errorf("client-api", "failed to write v2 rpc response: %v", err)
@@ -292,7 +382,22 @@ func resendPersistedAgentUpdateTarget(
 	lookup func(string) (string, bool, error),
 	clearPending func(string, bool) error,
 ) error {
-	stored, pendingClear, err := lookup(uuid)
+	return resendPersistedAgentUpdateTargetOperation(context.Background(), unguardedClientOperation, conn, uuid, lookup, clearPending)
+}
+
+func unguardedClientOperation(_ context.Context, fn func() error) error { return fn() }
+
+func resendPersistedAgentUpdateTargetOperation(
+	ctx context.Context, operation clientOperation, conn agentUpdateTargetWriter, uuid string,
+	lookup func(string) (string, bool, error), clearPending func(string, bool) error,
+) error {
+	var stored string
+	var pendingClear bool
+	err := operation(ctx, func() error {
+		var err error
+		stored, pendingClear, err = lookup(uuid)
+		return err
+	})
 	if err != nil {
 		return fmt.Errorf("read the persisted rollout state: %w", err)
 	}
@@ -312,29 +417,37 @@ func resendPersistedAgentUpdateTarget(
 	}
 	// The node has now been told; the debt is paid. Failing to record that is
 	// reported but harmless: the next connect would send the clear again.
-	if err := clearPending(uuid, false); err != nil {
+	if err := operation(ctx, func() error { return clearPending(uuid, false) }); err != nil {
 		return fmt.Errorf("clear the pending rollout reset: %w", err)
 	}
 	return nil
 }
 
-func pushQueuedV2Events(conn *connection.SafeConn, uuid string) bool {
-	events := agent_runtime.TakeV2Events(uuid, nil, 0)
+func pushQueuedV2Events(ctx context.Context, operation clientOperation, conn *connection.SafeConn, uuid string) bool {
+	var events []v2.Event
+	if err := operation(ctx, func() error {
+		events = agent_runtime.TakeV2Events(uuid, nil, 0)
+		return nil
+	}); err != nil {
+		return false
+	}
 	if len(events) == 0 {
 		return true
 	}
 	ackIDs := make([]string, 0, len(events))
+	ack := func() error {
+		return operation(ctx, func() error { agent_runtime.AckV2Events(uuid, ackIDs); return nil })
+	}
 	for _, event := range events {
 		payload := v2.Request{JSONRPC: v2.Version, Method: event.Method, Params: event.Params}
 		if err := conn.WriteJSON(payload); err != nil {
-			agent_runtime.AckV2Events(uuid, ackIDs)
+			_ = ack()
 			logger.Errorf("client-api", "failed to push queued v2 event %s to client %s: %v", event.ID, uuid, err)
 			return false
 		}
 		ackIDs = append(ackIDs, event.ID)
 	}
-	agent_runtime.AckV2Events(uuid, ackIDs)
-	return true
+	return ack() == nil
 }
 
 func clientUUIDFromContext(c *gin.Context) (string, bool) {

@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Aone2233/nekomari/pkg/rpc"
+	"github.com/Aone2233/nekomari/web/api"
 	"github.com/gin-gonic/gin"
 )
 
@@ -21,6 +23,7 @@ func newAgentTransferTestContext(method, transferID, token, clientUUID string, b
 	context.Request = request
 	context.Params = gin.Params{{Key: "id", Value: transferID}}
 	context.Set("client_uuid", clientUUID)
+	api.SetPrincipal(context, rpc.NewUserPrincipal("fixture-admin"))
 	return context, recorder
 }
 
@@ -145,6 +148,7 @@ func testAgentTransferOverHTTP(t *testing.T, http2 bool) {
 	router := gin.New()
 	router.POST("/api/clients/transfer/:id", func(c *gin.Context) {
 		c.Set("client_uuid", transfer.clientUUID)
+		api.SetPrincipal(c, rpc.NewUserPrincipal("fixture-admin"))
 		AgentTransfer(c)
 	})
 	server := httptest.NewUnstartedServer(router)

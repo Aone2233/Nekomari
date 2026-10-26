@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -8,6 +9,49 @@ import (
 
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 )
+
+func TestPreparedEventWaitRejectsRetiredGenerationAndCancellation(t *testing.T) {
+	isolateEventQueues(t)
+	wait := PrepareV2EventWait("prepared", nil)
+	DeleteV2EventQueue("prepared")
+	event := EnqueueV2Event("prepared", "agent.exec", "new-generation")
+	if got := wait.Wait(t.Context(), time.Minute); len(got) != 0 {
+		t.Fatal("prepared old poll returned replacement work")
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	wait = PrepareV2EventWait("prepared", nil)
+	cancel()
+	if got := wait.Wait(ctx, time.Minute); len(got) != 0 {
+		t.Fatal("canceled poll returned events")
+	}
+	if got := TakeV2Events("prepared", nil, 0); len(got) != 1 || got[0].ID != event.ID {
+		t.Fatal("old/canceled poll discarded replacement work")
+	}
+}
+
+func TestOldDispatchCannotRecreateRetiredQueue(t *testing.T) {
+	isolateEventQueues(t)
+	const id = "retired-dispatch"
+	MarkV2Client(id)
+	mu.RLock()
+	generation := v2Clients[id]
+	mu.RUnlock()
+	ResetClient(id)
+	if enqueueCurrentV2Event(id, nil, generation, "agent.exec", "old") {
+		t.Fatal("old dispatch recreated retired queue")
+	}
+	MarkV2Client(id)
+	t.Cleanup(func() { ResetClient(id) })
+	if enqueueCurrentV2Event(id, nil, generation, "agent.exec", "old") {
+		t.Fatal("old dispatch injected command into new generation")
+	}
+	if !DispatchV2Event(id, "agent.exec", "fresh") {
+		t.Fatal("fresh dispatch was refused")
+	}
+	if events := TakeV2Events(id, nil, 0); len(events) != 1 || events[0].Params != "fresh" {
+		t.Fatal("new generation received stale work")
+	}
+}
 
 func isolateEventQueues(t *testing.T) {
 	t.Helper()

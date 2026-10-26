@@ -4,14 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Aone2233/nekomari/database/auditlog"
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/internal/clientguard"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/internal/configxport"
 	"github.com/Aone2233/nekomari/pkg/rpc"
+	"github.com/Aone2233/nekomari/pkg/secretcmp"
 	"github.com/Aone2233/nekomari/utils"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // admin.configxport.go
@@ -127,7 +132,42 @@ func bindDocument(req *rpc.JsonRpcRequest) (configxport.Document, *rpc.JsonRpcEr
 	if _, exists := document.Settings[config.ApiKeyKey]; exists {
 		return configxport.Document{}, rpc.MakeError(rpc.InvalidParams, "api_key is retired; remove it from the import and create scoped keys instead", nil)
 	}
+	for _, record := range document.Clients {
+		id, _ := record["uuid"].(string)
+		if _, err := importedClientMetadata(context.Background(), id, record); err != nil {
+			return configxport.Document{}, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
+		}
+	}
 	return document, nil
+}
+
+// Existing-node imports may carry an unchanged secret from a secrets export,
+// but cannot replace it outside the step-up and retirement boundary.
+func importedClientMetadata(ctx context.Context, id string, record map[string]any) (map[string]any, error) {
+	payload := make(map[string]any, len(record))
+	for key, value := range record {
+		if !strings.EqualFold(strings.Trim(key, "`\"[] "), "token") {
+			payload[key] = value
+			continue
+		}
+		if key != "token" {
+			return nil, fmt.Errorf("use rotateClientToken to change an existing agent credential")
+		}
+		var client models.Client
+		err := dbcore.GetDBInstance().WithContext(ctx).Session(&gorm.Session{Logger: logger.Discard}).Select("token").Where("uuid = ?", id).Take(&client).Error
+		if err == gorm.ErrRecordNotFound {
+			continue // New-node credential restoration is unchanged.
+		}
+		if err != nil {
+			return nil, fmt.Errorf("cannot validate imported client credential")
+		}
+		token, ok := value.(string)
+		if !ok || !secretcmp.Equal(client.Token, token) {
+			return nil, fmt.Errorf("use rotateClientToken to change an existing agent credential")
+		}
+	}
+	delete(payload, "uuid")
+	return payload, nil
 }
 
 func adminPlanConfigImport(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
@@ -201,8 +241,13 @@ func applyRecord(entity, identity string, record map[string]any, create bool) er
 			}
 			return db.Create(&client).Error
 		}
-		delete(payload, "uuid")
-		return db.Model(&models.Client{}).Where("uuid = ?", identity).Updates(payload).Error
+		return clientguard.With(context.Background(), identity, func() error {
+			metadata, err := importedClientMetadata(context.Background(), identity, payload)
+			if err != nil {
+				return err
+			}
+			return db.Model(&models.Client{}).Where("uuid = ?", identity).Updates(metadata).Error
+		})
 	case "ping_tasks":
 		if create {
 			delete(payload, "id")

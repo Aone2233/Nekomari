@@ -2,6 +2,8 @@ package jsonrpc
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	"github.com/Aone2233/nekomari/database/auditlog"
 	"github.com/Aone2233/nekomari/database/clients"
@@ -9,6 +11,11 @@ import (
 	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 	agent_runtime "github.com/Aone2233/nekomari/web/agent"
+	clientapi "github.com/Aone2233/nekomari/web/api/client"
+	"github.com/Aone2233/nekomari/web/api/terminal"
+	"github.com/Aone2233/nekomari/web/filemanager"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // admin.client.go
@@ -63,6 +70,12 @@ func init() {
 	})
 	// Sessions require step-up; keys need the explicit agents:token:read grant.
 	rpc.MarkSensitive("admin:getClientToken")
+	RegisterWithGroupAndMeta("rotateClientToken", rpc.RoleAdmin, adminRotateClientToken, &rpc.MethodMeta{
+		Name: "admin:rotateClientToken", Summary: "Replace an agent credential immediately (session + step-up only)",
+		Params:  []rpc.ParamMeta{{Name: "uuid", Type: "string", Required: true, Description: "Client UUID"}},
+		Returns: "{ token: string }; update the agent token file through an independent recovery channel",
+	})
+	rpc.MarkSensitive("admin:rotateClientToken")
 	RegisterWithGroupAndMeta("clearRecords", rpc.RoleAdmin, adminClearRecords, &rpc.MethodMeta{
 		Name:    "admin:clearRecords",
 		Summary: "Delete all load records",
@@ -154,16 +167,46 @@ func adminRemoveClient(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.
 	if params.UUID == "" {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid or missing UUID", nil)
 	}
-	if err := clients.DeleteClient(params.UUID); err != nil {
+	if err := clients.DeleteClientAndReset(ctx, params.UUID, func() {
+		resetClientCredential(params.UUID)
+		agent_runtime.DeleteLatestReport(params.UUID)
+	}); err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, "Failed to delete client"+err.Error(), nil)
 	}
 	metricstore.DeleteEntityAsync(params.UUID)
 	actor, ip := auditActor(ctx)
 	auditlog.Log(ip, actor, "delete client:"+params.UUID, "warn")
-	agent_runtime.DeleteConnectedClients(params.UUID)
-	agent_runtime.DeleteLatestReport(params.UUID)
-	agent_runtime.DeleteV2EventQueue(params.UUID)
 	return nil, nil
+}
+
+func adminRotateClientToken(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	if jerr := apiKeySession(ctx); jerr != nil {
+		return nil, rpc.MakeLocalizedError(rpc.PermissionDenied, "Client token rotation requires an administrator session", "session_required")
+	}
+	var params struct {
+		UUID string `json:"uuid"`
+	}
+	if err := req.BindParams(&params); err != nil || uuid.Validate(params.UUID) != nil {
+		return nil, rpc.MakeLocalizedError(rpc.InvalidParams, "uuid must be a client UUID", "client_uuid_invalid")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	token, err := clients.RotateClientTokenAndReset(ctx, params.UUID, func() { resetClientCredential(params.UUID) })
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, rpc.MakeLocalizedError(rpc.NotFound, "Client not found", "client_not_found")
+	}
+	if err != nil {
+		return nil, rpc.MakeError(rpc.InternalError, "Failed to rotate client token", nil)
+	}
+	actor, ip := auditActor(ctx)
+	auditlog.Log(ip, actor, "rotate client token:"+params.UUID, "warn")
+	return map[string]any{"token": token}, nil
+}
+
+func resetClientCredential(uuid string) {
+	clientapi.ResetClientState(uuid)
+	terminal.CloseClientSessions(uuid)
+	filemanager.ResetClientOperations(uuid)
 }
 
 func adminGetClient(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {

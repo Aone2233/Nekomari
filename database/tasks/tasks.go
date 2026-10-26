@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"context"
 	"time"
 
 	"github.com/Aone2233/nekomari/database/dbcore"
@@ -73,7 +74,11 @@ func GetTaskResultsByTaskId(taskId string) ([]models.TaskResult, error) {
 	return results, nil
 }
 func SaveTaskResult(taskId, clientId, result string, exitCode int, timestamp time.Time) error {
-	return dbcore.GetDBInstance().
+	return SaveTaskResultContext(context.Background(), taskId, clientId, result, exitCode, timestamp)
+}
+
+func SaveTaskResultContext(ctx context.Context, taskId, clientId, result string, exitCode int, timestamp time.Time) error {
+	return dbcore.GetDBInstance().WithContext(ctx).
 		Model(&models.TaskResult{}).
 		Where("task_id = ? AND client = ?", taskId, clientId).
 		Updates(map[string]interface{}{

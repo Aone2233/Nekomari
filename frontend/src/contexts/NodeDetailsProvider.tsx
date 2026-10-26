@@ -29,7 +29,7 @@ export const NodeDetailsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // rebuild them on every poll response.
   const refresh = React.useCallback(() => {
     const sequence = ++requestSequence.current;
-    fetch("/api/admin/client/list")
+    fetch("/api/admin/client/list", { cache: "no-store" })
       .then((response) => {
         if (!response.ok) throw new Error(`Failed to load nodes (${response.status})`);
         return response.json();

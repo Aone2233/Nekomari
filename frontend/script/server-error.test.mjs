@@ -44,7 +44,7 @@ test('every explicit handler key has distinct nonempty text in all five locales'
     const source = readFileSync(new URL(`../../web/rpc/jsonrpc/${file}`, import.meta.url), 'utf8');
     for (const match of source.matchAll(/rpc\.MakeLocalizedError\(rpc\.\w+,[^\n]*, "([a-z0-9_]+)"\)/g)) used.add(match[1]);
   }
-  assert.equal(used.size, 12);
+  assert.equal(used.size, 14);
   const english = resources.en.translation.server_errors;
   assert.deepEqual(Object.keys(english).sort(), [...used].sort());
   for (const [language, resource] of Object.entries(resources)) {

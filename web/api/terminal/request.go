@@ -4,13 +4,13 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/database/clients"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 	"github.com/Aone2233/nekomari/utils"
 	logger "github.com/Aone2233/nekomari/utils/log"
 	agent_runtime "github.com/Aone2233/nekomari/web/agent"
 	"github.com/Aone2233/nekomari/web/api"
+	"github.com/gin-gonic/gin"
 )
 
 func dispatchTerminalRequest(uuid, id string) bool {

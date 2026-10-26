@@ -5,6 +5,7 @@ import { I18nextProvider } from "react-i18next";
 import { Theme } from "@radix-ui/themes";
 import { Toaster } from "sonner";
 import { NodeDetailsProvider } from "../src/contexts/NodeDetailsProvider";
+import { AccountContext } from "../src/contexts/AccountContext";
 import { RPC2Provider } from "../src/contexts/RPC2Provider";
 import { Layout } from "../src/pages/admin/index";
 import "@radix-ui/themes/styles.css";
@@ -166,11 +167,13 @@ createRoot(document.getElementById("root")!).render(
           RPC2 client whether the backend is the snapshot build, so both
           providers have to be the real ones. */}
       <RPC2Provider>
+        <AccountContext.Provider value={{ account: { logged_in: true, username: "fixture", uuid: "fixture", sso_id: "", sso_type: "", "2fa_enabled": false }, loading: false, error: null, refresh: () => {} }}>
         <NodeDetailsProvider>
           <MemoryRouter>
             <Layout />
           </MemoryRouter>
         </NodeDetailsProvider>
+        </AccountContext.Provider>
       </RPC2Provider>
       <Toaster />
     </Theme>
