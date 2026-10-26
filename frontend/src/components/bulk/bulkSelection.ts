@@ -1,18 +1,14 @@
 /**
- * How a node selection travels from the admin list into the standalone bulk page.
+ * How a node selection travels from the admin list into the in-panel bulk page.
  *
- * The bulk page is not a route of the admin router: it is its own document
- * (`/standalone/bulk/bulk.html`, see `src/entries/bulk.tsx`), because an installed theme may
- * replace that router. That has two consequences this file exists to keep straight:
- *
- *   - the selection cannot ride on router state across documents, so it goes in the query string;
+ *   - the query string keeps selection usable after a reload or in a copied link;
  *   - the builder and the parser have to agree on the parameter, including how it is encoded. They
  *     live together so the two sides cannot drift into a link that opens a page with an empty
  *     selection — which looks like the wiring working and being ignored.
  */
 
-/** Where the standalone bulk page is served from. */
-export const BULK_EDIT_PATH = "/standalone/bulk/bulk.html";
+/** The panel-owned route; the old standalone document remains available. */
+export const BULK_EDIT_PATH = "/admin/bulk";
 
 /** The query parameter that carries the checked node uuids. */
 export const BULK_SELECTION_PARAM = "uuids";

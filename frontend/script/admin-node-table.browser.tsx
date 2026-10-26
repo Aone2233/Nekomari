@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { MemoryRouter } from "react-router-dom";
 import i18next from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { Theme } from "@radix-ui/themes";
@@ -166,7 +167,9 @@ createRoot(document.getElementById("root")!).render(
           providers have to be the real ones. */}
       <RPC2Provider>
         <NodeDetailsProvider>
-          <Layout />
+          <MemoryRouter>
+            <Layout />
+          </MemoryRouter>
         </NodeDetailsProvider>
       </RPC2Provider>
       <Toaster />

@@ -3,29 +3,9 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 /**
- * The five standalone pages are only usable if the panel's own menu reaches them.
- *
- * Nothing else links to them. They are deliberately *not* routes of the built-in router (see
- * `standalone-pages.test.mjs`: an installed theme replaces that router), a theme cannot be expected
- * to know they exist, and their URLs are fixed by the standalone build — `vite.standalone.shared.ts`
- * sets `base` to `/standalone/${page}/`, and `build-standalone.mjs` copies the document there as
- * `<page>.html`. The sidebar is therefore the only entrance: a page missing from it is a page that
- * shipped and that nobody can open, which is the state these five were in before this test existed.
- *
- * Three properties are pinned per page:
- *
- *   - **the path equals the build's output path**, `/standalone/<page>/<page>.html`. A mismatch is
- *     not a link the browser notices; it is a 404 the operator sees *after* clicking, because the
- *     file is copied verbatim and nothing rewrites the URL.
- *   - **it opens in a new tab.** Navigating the admin's own document to a standalone page would
- *     replace the SPA and leave the operator with no way back. `/terminal` is `newTab` for the same
- *     reason.
- *   - **the icon is a name `iconHelper.ts` maps.** An unknown name is not an error anywhere: the
- *     sidebar falls back to a grey dot, so a typo survives review and a peer review, and only the
- *     person looking at the menu sees it.
- *
- * The entries also have to sit under the "operations" group rather than at the top level: they are
- * operator tools, and the group is the menu an operator opens when looking for one.
+ * Operator tools stay inside the panel-owned /admin shell, not standalone documents.
+ * Public themes can replace / but cannot replace /admin; standalone builds remain
+ * available for old links. Keep normal router navigation and the mapped icons.
  */
 
 const menuConfig = JSON.parse(
@@ -48,7 +28,7 @@ function iconNames() {
   );
 }
 
-test('the operations group is where the standalone pages are listed', () => {
+test('the operations group is where the operator pages are listed', () => {
   assert.ok(operations, 'menuConfig.json must keep the operations.title group');
   assert.ok(
     Array.isArray(operations.children) && operations.children.length > 0,
@@ -56,24 +36,31 @@ test('the operations group is where the standalone pages are listed', () => {
   );
 });
 
-test('every standalone page has a menu entry that points at the built document', () => {
+test('every operator page uses same-shell navigation instead of a new document', () => {
   const icons = iconNames();
   const entries = operations.children;
   for (const page of PAGES) {
-    const expected = `/standalone/${page}/${page}.html`;
+    const expected = `/admin/${page}`;
     const entry = entries.find((child) => child.path === expected);
     assert.ok(
       entry,
-      `no menu entry points at ${expected}; the page builds, but the menu is the only way to open it`,
+      `no menu entry points at ${expected}`,
     );
     assert.equal(
-      entry.newTab,
-      true,
-      `${expected} must open in a new tab: the sidebar lives in the admin document, and replacing it would strand the operator`,
+      entry.newTab === true,
+      false,
+      `${expected} must keep the current tab and its theme provider`,
     );
+    assert.notEqual(entry.reloadDocument, true, `${expected} must use the SPA router`);
     assert.ok(
       icons.has(entry.icon),
       `${expected} uses icon "${entry.icon}", which iconHelper.ts does not map; the sidebar would silently fall back to a grey dot`,
     );
+  }
+});
+
+test('external documentation and the terminal keep their existing new-tab policy', () => {
+  for (const key of ['operations.workbench', 'common.documentation', 'common.home']) {
+    assert.equal(menuConfig.menu.find((item) => item.labelKey === key)?.newTab, true, key);
   }
 });

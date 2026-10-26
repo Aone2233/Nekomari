@@ -38,33 +38,28 @@
         },
         {
           "labelKey": "status.title",
-          "path": "/standalone/sla/sla.html",
-          "icon": "BarChart2",
-          "newTab": true
+          "path": "/admin/sla",
+          "icon": "BarChart2"
         },
         {
           "labelKey": "bulk.title",
-          "path": "/standalone/bulk/bulk.html",
-          "icon": "Settings2",
-          "newTab": true
+          "path": "/admin/bulk",
+          "icon": "Settings2"
         },
         {
           "labelKey": "maintenance.title",
-          "path": "/standalone/maintenance/maintenance.html",
-          "icon": "Bell",
-          "newTab": true
+          "path": "/admin/maintenance",
+          "icon": "Bell"
         },
         {
           "labelKey": "config.title",
-          "path": "/standalone/config/config.html",
-          "icon": "FileText",
-          "newTab": true
+          "path": "/admin/config",
+          "icon": "FileText"
         },
         {
           "labelKey": "forecast.title",
-          "path": "/standalone/forecast/forecast.html",
-          "icon": "TrendingUp",
-          "newTab": true
+          "path": "/admin/forecast",
+          "icon": "TrendingUp"
         }
       ]
     },

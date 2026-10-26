@@ -5,7 +5,7 @@ import test from 'node:test';
 /**
  * The SLA report's own source-level contract.
  *
- * The rules every standalone page shares — not a router route, its own isolated build, one
+ * The rules every standalone page shares — independent entry, isolated build, one
  * file, no service worker, nothing in `/assets/` — live in `standalone-pages.test.mjs`, which
  * covers each page in a table. What is here is what is specific to the report:
  *
@@ -29,12 +29,13 @@ test('the entry mounts the report, not the app', () => {
   );
 });
 
-test('the report is not reachable through the built-in router', () => {
-  // Belt and braces next to the shared test, because this path is the one that shipped
-  // broken: v0.1.31 registered `pages/status` as a route, an installed theme replaced the
-  // router, and the panel answered its own 404 for a live feature.
-  assert.doesNotMatch(routes, /pages\/sla|pages\/status/, 'the report must not be a route');
-  assert.match(routes, /standalone entry/i, 'the reason must stay recorded in routes.ts');
+test('the admin route reuses the report without removing its independent entry', () => {
+  assert.match(routes, /import\("\.\/pages\/admin\/sla"\)/);
+  assert.doesNotMatch(routes, /pages\/status/, 'the broken public route must not return');
+  const adapter = readFileSync(new URL('../src/pages/admin/sla.tsx', import.meta.url), 'utf8');
+  assert.match(adapter, /import .*SlaReportPage.*from "@\/pages\/sla"/);
+  assert.match(adapter, /navigate\([\s\S]*replace: true/);
+  assert.doesNotMatch(adapter, /history\.replaceState|iframe|window\.open/);
 });
 
 test('the report page module is the one the entry imports', () => {
