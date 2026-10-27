@@ -1,7 +1,7 @@
 # Hermes node metadata client (v1.7.0)
 
 `deploy/hermes_nodes.py` is the reviewed metadata-only consumer for the owner's
-Hermes on MAC-WAN. The Panel now serves v1.7.0/8eb711e, so its version gate is
+Hermes on MAC-WAN. The Panel now serves v1.7.1/3b7e300, so its version gate is
 satisfied. The owner has privately configured the dedicated key; metadata-only
 matching confirms exactly `nodes:read` + `nodes:write`, no extra grants, and
 0600/0700 storage. The owner selected 365 days, expiring **2027-10-27 13:38:02
