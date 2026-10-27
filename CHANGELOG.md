@@ -8,10 +8,25 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- No unreleased runtime change beyond v1.7.5; delivery records do not rebuild
-  immutable artifacts.
+- No unreleased runtime change beyond delivered v1.7.5; delivery records do
+  not rebuild immutable artifacts.
 
 ## [v1.7.5] - 2026-10-27
+
+- **Published and deployed on OC424.** Source `2d71cbe`; tag `v1.7.5` -> `c84c3cc`
+  (the same runtime source plus this changelog). Exact CI40497025299 7/7,
+  release40498907426 10/10 including both `verify the release deploys` jobs,
+  Docker40499760158 2/2. Linux assets pass SHA256SUMS and provenance attestation;
+  image labels report version 1.7.5 and revision `c84c3cc`. Post-switch:
+  healthy/restart0, upgrade9/9, 14 clients and 2 API keys unchanged, Agent PID
+  and restart count unchanged, task series resumed within two minutes. Released
+  binaries were measured against a production-shaped restored store with no
+  planner statistics: v1.7.5 opened it in 1,653 ms, v1.7.4 exceeded the 30s
+  deadline on the same data. MAC-WAN pinned v1.7.5 recovery passes on both the
+  fresh pre-upgrade and post-upgrade ciphertext; the pinned v1.7.4 image times
+  out on the same pre-upgrade archive, so an off-host restore of that period
+  needs the v1.7.5 image or the documented scratch `ANALYZE` workaround. See
+  `docs/DEPLOY-OC424.md`.
 
 ### Fixed
 
