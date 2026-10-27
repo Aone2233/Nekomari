@@ -5,7 +5,7 @@ restored, and the two hostname/TLS traps that cost the most time.
 
 ## Current checkpoint (2026-10-27, Asia/Shanghai)
 
-OC424 serves **v1.7.1 / 3b7e300** at
+OC424 serves **v1.7.2 / 832b528** at
 `https://nekomari.orderly2233.org`. Scoped-key migration and session-only token
 rotation are deployed; no existing Agent token is rotated. OVH now receives
 nightly ciphertext, with MAC-WAN as the online identity/recovery runner. The
@@ -15,12 +15,58 @@ Older rollout sections are dated evidence, not the current version/node count.
 
 | Item | Observed evidence |
 |---|---|
-| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.1/3b7e300; upgrade 9/9,public23/23,scoped-key forecast13/13 |
+| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.2/832b528; upgrade9/9,public23/23,scoped-key forecast14rows |
 | Nodes | Owner confirms Pi's later addition;current approved baseline14registered clients,13fresh CPU reporters. Preserve the new node; earlier13-client release snapshots are historical |
 | Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2, unchanged; generic `nekomari-agent` is not the reporter |
 | OVH | Alias `KSLE`, encrypted receiver + daily 03:30 UTC timer; AgentPID495903/restart0 unchanged |
 | MAC-WAN | Linux x86_64 user `macos`; online identity/isolated recovery, AgentPID976/restart0 unchanged; Hermes gateway briefly stopped/resumed, nowPID922780/restart0 |
 | Acceptance | Hermes private-key/disposable CLI writes pass; owner login/history/audit/API-key UI and complete caller inventory remain separate; public401 is not authenticated acceptance |
+
+## v1.7.2 rollout (2026-10-27 15:13:50 Asia/Shanghai)
+
+Panel-only GeoIP configuration-safety/hot-reload patch PR94. Wrong types/read
+failures fall back without a background panic; both enabled/provider settings
+reload, retired caches are cleared, and lookups/database updates/replacement/
+shutdown have a synchronized lifetime. Reload remains asynchronous and subject
+to existing provider timeouts. No Agent, protocol, frontend, dependency, auth,
+schema, scope or token change. See [`GEOIP-RELOAD.md`](./GEOIP-RELOAD.md).
+
+| Item | Evidence |
+|---|---|
+| Immutable source/publication | `v1.7.2` -> `832b52845d617fe4abba6f752dd82ddbae8a8234`; exactCI40464125160 7/7, release40464858298 10/10, Docker40465511917 2/2. Mergeba70933 has the identical tested tree; no tag/asset rebuild |
+| OC424 pinned image | `ghcr.io/aone2233/nekomari:v1.7.2@sha256:6fc7259929faf318b357937bb153301a158460ae4619a7bdfe0444db1d179c28`; Panel index `sha256:0570755d397f47d5aed145257fbf0c5c934bebeb8b00f0e5cf5cb80da08930ed` |
+| Source/binary identity | Anonymous Panel/Agent amd64/arm64 OCI metadata identify full `832b52845d617fe4abba6f752dd82ddbae8a8234`, version1.7.2. Native/live arm64 binary SHA256 `3e7fc1a652b98953e814d8cc059ac678e9ff369c8dfc36544c09b1d97c9a3132` matches checksums/source/tag/workflow attestation; native help passes without production mount. MAC-WAN amd64 recovery image `ghcr.io/aone2233/nekomari:v1.7.2@sha256:ff5127688104a6dbd14132e14a7ea7ca07daab768a325b173030da97e56c8103`, binary `c3596b03354bd3dfe6ae33fa83f14bbe3e1dd8a209aa10e0aaee9d99e509cfbd` likewise matches |
+| Focused real acceptance | Go1.27.3 hermetic GeoIP lifecycle/MMDB-failure, server/basic-info race tests and targeted vet pass. Required CI runs lifecycle races and actual synthetic-Panel settings saves; attested release binary passes8/8 isolated OVH groups, same PID through malformed types/offline MMDB fallback/recovery, temporary stage removed |
+| Fresh pre-patch encrypted recovery | Installed OVH service succeeds; `oc424-20261027T065748757806Z-3085456cf8d7.tar.gz.age`,183081658bytes,SHA256 `2090f9a2b90526ef9874e06b01ef97cf1e8939e6a888a7c8a9c08881777f1c7a`; independent regular copy at `/srv/backups/oc424-encrypted/manual-v1.7.2-20261027/oc424-20261027T065748757806Z-3085456cf8d7.tar.gz.age` outside14-pair pruning. Same ciphertext on MAC-WAN passes actual pinned-v1.7.1 recovery in35.36s, both DBs,14 clients,current scoped-key metadata and cleanup |
+| Local recovery | `/opt/nekomari/rollbacks/v1.7.2-20261027T071349Z-a2e6bc48` retains per-DB WAL-safe paired snapshots, schemas, old/new compose/images/checksums and image-only rollback instructions; prior v1.7.1 native image stays installed. Per-DB snapshots are not a cross-DB transaction |
+| Continuity | Owner confirms Pi's added node;14 registered UUIDs/tokens preserved, all13 previously fresh CPU reporters remain fresh. Both DB quick_check/schema unchanged; key scopes/expiry,zero rollout targets,GeoIP true/ipinfo,nginx,recipients and probe override unchanged. OC424 AgentPID499631/restarts2 unchanged; OVH/MAC-WAN Agents and Hermes not restarted |
+| Bounded live checks | Healthy/restart0,upgrade9/9,public23/23;0 new ERROR lines in bounded log window,ipinfo startup observed. MAC-WAN current scoped-key read/forecast14rows passes without writes; not owner-session UI/history/audit acceptance |
+| Fresh post-patch encrypted recovery | Installed OVH service succeeds; `oc424-20261027T071437379700Z-c47edfa7cd27.tar.gz.age`,183230391bytes,SHA256 `978f8e0efcef936941d463b1417e433194856ec590ea5a202208cf24a60d1f79`; independent regular copy at `/srv/backups/oc424-encrypted/manual-v1.7.2-20261027/oc424-20261027T071437379700Z-c47edfa7cd27.tar.gz.age`. Same ciphertext on MAC-WAN passes exact-v1.7.2 isolated recovery in33.27s,both DBs/14 clients/current auth metadata/cleanup. No identity export or remaining plaintext/container |
+
+### Patch rollback to v1.7.1 (preserve current DBs)
+
+Verify the private recovery checksums and `docker-compose.before.yml`, restore
+that compose file under `/opt/nekomari`, then run `docker compose config --quiet`
+and `docker compose up -d --no-deps nekomari`. Expect pinned v1.7.1/3b7e300,
+healthy/restart0. No schema/auth downgrade is involved: keep current DBs and Pi's
+new node. Do not restore an older13-client snapshot. This production image
+rollback is prepared, not live-exercised; old/new isolated encrypted restores
+are separate evidence. The older v1.7->v1.6 migration rollback still needs its
+paired old DB + binary and would lose newer data/permissions.
+
+No Agent rollout/token/key rotation, production GeoIP setting toggle, backup
+schedule/retention change or200-node work occurs. All legacy plaintext/manual/
+local rollback copies remain. Owner authenticated UI, remaining caller inventory,
+independent-media recovery, scheduled-freshness observation/alerting and measured
+production SLO/RPO/RTO remain separate. Only owned disposable tools/downloads are
+cleaned, not shared caches, installed rollback images or backups.
+
+The first post-release MAC-WAN transfer and a read-only destination inspection
+via OVH time out during the SSH banner exchange. No data is transferred in that
+attempt; the OVH backup/service and live Panel are not repeated. A strict pinned
+route via OC424 verifies destination/sidecar/partial absence, then transfers the
+same checksum-matched ciphertext and completes recovery. Failure evidence is
+retained; no host-verification bypass, gate relaxation or duplicate backup.
 
 ## v1.7.1 rollout (2026-10-27 14:15:34 Asia/Shanghai)
 

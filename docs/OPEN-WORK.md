@@ -15,16 +15,15 @@ What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit 
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
 **Current checkpoint (2026-10-27, Asia/Shanghai):** OC424 serves
-**v1.7.1/3b7e300** at `nekomari.orderly2233.org`, healthy/restart0. Immutable
-patch/source, exact CI40458344881 7/7, release40459059246 10/10,
-Docker40459610734 2/2, checksums/provenance,
-upgrade check9/9 and bounded public checks23/23 pass. The five tools remain
+**v1.7.2/832b528** at `nekomari.orderly2233.org`, healthy/restart0. Immutable
+patch/source, exactCI40464125160 7/7, release40464858298 10/10, Docker40465511917 2/2, checksums/provenance,
+upgrade9/9, bounded public23/23 and scoped forecast14rows pass. The five tools remain
 in the admin shell. After the earlier removal, Pi adds a node with the owner's
 explicit authorization: the current approved baseline is 14 registered clients
 and 13 previously fresh CPU-reporting nodes. Preserve that addition; the earlier
 13-client release records are historical. Existing UUIDs/tokens and Agent services are
 unchanged. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for immutable artifacts,
-actual evidence and patch rollback to v1.7.0. The earlier v1.7.0->v1.6
+actual evidence and patch rollback to v1.7.1. The earlier v1.7.0->v1.6
 auth-migration rollback still requires the paired old binary and DB.
 
 **Adjusted active objective:** close the bounded v1.7 delivery/handoff, then
@@ -33,25 +32,26 @@ roadmap or every v1.7 exit criterion complete. All 200-node experiments/benchmar
 and their 26 failed reports remain deferred. Reuse exact-source and unchanged
 source-batch checks; no redundant broad local frontend/Go/capacity rerun.
 
-**Current bounded candidate:** v1.7.2 optional GeoIP configuration safety and
-hot reload. Focused regressions cover malformed types/read failures, both event
-keys, cache/resource lifetime and shutdown; the synthetic real-Panel acceptance
-checks settings saves without touching production. Exact-source CI, immutable
-publication, fresh 14-client encrypted recovery and OC424 deployment remain gates.
-No Agent/token/key-permission/schema/frontend change. See
-[`GEOIP-RELOAD.md`](./GEOIP-RELOAD.md).
+**Latest bounded delivery:** v1.7.2 optional GeoIP safety/hot reload passes
+exact-source CI/publication,8/8 real synthetic-Panel groups on OVH, fresh14-client
+pre/post encrypted MAC-WAN recovery and OC424 update. Both settings keys,
+malformed types/read failures,cache/resource lifetime and shutdown are covered.
+GeoIP true/ipinfo is preserved in production, not toggled as a test. No Agent/
+token/key-permission/schema/frontend change. See [`GEOIP-RELOAD.md`](./GEOIP-RELOAD.md).
+Next choose one bounded observability/correctness item; do not bundle the full
+roadmap or rerun unchanged broad local suites.
 
 ### v1.7 release readiness (2026-10-27)
 
 | Gate | Current state | Required next evidence/action |
 |---|---|---|
-| Source/publication/deployment | Security batches shipped in v1.7.0; compatible forecast patch v1.7.1/3b7e300 exactCI40458344881 7/7, release40459059246 10/10, Docker40459610734 2/2, OC4249/9 and public23/23 pass | Retain immutable tag/assets and truthful release evidence; do not rebuild them for documentation |
+| Source/publication/deployment | Security batches shipped in v1.7.0; forecast v1.7.1 and GeoIP v1.7.2/832b528; exactCI40464125160 7/7, release40464858298 10/10, Docker40465511917 2/2,OC4249/9 and public23/23 pass | Retain immutable tag/assets and truthful release evidence; do not rebuild them for documentation |
 | Legacy API consumers | Owner-configured `hermes-node-management` matches exactly `nodes:read` + `nodes:write`, active365days until2027-10-27 13:38:02 Asia/Shanghai; actual MAC-WAN disposable create/edit/read/remove passes and original13 metadata is unchanged | Reviewed CLI writes may resume; no token/exec/update grant or key rotation. Other callers/runtime rewiring are not inferred from three reference edits; old30-day read-only key remains |
-| Token recovery/edit/import | Owner accepts restrictions and requests no rotation; 13 existing UUIDs/tokens and all Agent services unchanged | No rotation canary now; future rotation requires independent SSH/console and per-node consent |
-| D12 custody/recovery | OC424 public recipient only, OVH ciphertext, MAC-WAN online identity/recovery runner; fresh 13-node pre/post backups restore with pinned old/new images | Owner reports offline copy downloaded and authorizes switch; independent-media restore is still unverified. Same-UID Hermes/root/Docker exposure remains explicit |
+| Token recovery/edit/import | Owner accepts restrictions and requests no rotation; 14 current UUIDs/tokens and all Agent services unchanged | No rotation canary now; future rotation requires independent SSH/console and per-node consent |
+| D12 custody/recovery | OC424 public recipient only, OVH ciphertext, MAC-WAN online identity/recovery runner; fresh14-node v1.7.2 pre/post backups restore with pinned old/new images | Owner reports offline copy downloaded and authorizes switch; independent-media restore is still unverified. Same-UID Hermes/root/Docker exposure remains explicit |
 | Nightly schedule/retention | OVH encrypted service succeeds; enabled daily 03:30 UTC timer replaces only old cron row, keep 14 ciphertext pairs; pre/post release copies retained outside pruning | Observe subsequent scheduled success; backup-freshness alert is a later bounded task. No old plaintext/manual/local rollback copy is deleted; deletion needs an explicit policy |
 | OC424 authenticated acceptance | Owner elects self-run history/audit/API-key UI checks after deployment | Await owner's actual result. Public shells/401 and synthetic checks are not authenticated live acceptance |
-| Rollback | Fresh paired pre-patch DBs/compose + v1.7.0 image retained; earlier pre-migration DB/assets/old image retained separately; actual off-host recovery passes | v1.7.1->v1.7.0 is image-only (no schema/auth change), preserving current data. Across the v1.7 auth migration to v1.6, freeze writers and restore paired old DB + binary; newer data/permissions would be lost |
+| Rollback | Fresh14-node paired pre-patch DBs/compose + v1.7.1 image retained; earlier pre-migration DB/assets/old image retained separately; actual off-host recovery passes | v1.7.2->v1.7.1 is image-only (no schema/auth change), preserving current data. Across the v1.7 auth migration to v1.6, freeze writers and restore paired old DB + binary; newer data/permissions would be lost |
 
 **Hermes handoff:** the gateway is active again (PID922780/restart0); AgentPID976/
 restart0 is unchanged. The metadata-only CLI stays checksum-matched on MAC-WAN;
@@ -63,24 +63,22 @@ inventory or owner UI acceptance; no key/session is recovered from SQLite,
 backups, process args or Hermes history. Installation is owner-UI only; no token-read/exec/update grant is
 silently added. See [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md).
 
-**Backup handoff:** fresh v1.7.1 pre/post encrypted archives from the installed
-OVH service pass actual isolated MAC-WAN recovery with pinned v1.7.0/v1.7.1
-images, both DBs,13 clients/current auth metadata and cleanup. Independent
-regular release copies stay outside14-pair pruning; earlier migration recovery
-copies remain. The owner-reported offline download is not independently
-exercised escrow recovery. Two pre-switch CDN latency excursions have0.002s
-origin and5/5HTTP200; post-switch explicit probe passes at1.011s public. Do not
-relax thresholds or claim measured SLOs. See
-[`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
+**Backup handoff:** fresh v1.7.2 pre/post archives from the installed OVH service
+pass actual isolated MAC-WAN recovery with pinned v1.7.1/v1.7.2 images,both
+DBs,14 clients/current auth metadata and cleanup. Independent regular release
+copies stay outside14-pair pruning; all older copies remain. Earlier13-client
+release backups are historical; never use them to overwrite Pi's added node.
+Owner-reported offline download is not independently exercised media recovery.
+The daily timer is unchanged; first scheduled trigger/freshness alerting and
+measured SLO/RPO/RTO remain separate. See [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
 
-**Verification scope:** focused Go1.27.3 forecast/notifier race tests and forecast
-vet pass; exact release CI covers the full source. Unchanged query, scoped-key,
-report/queue, rotation, backup and Hermes source checks are reused, not broadly
-rerun locally.
-It does not claim native fleet upgrades, capacity/SLO measurements, owner login
-or unattended decrypted production recovery. OC424 remains the real acceptance
-host; OVH handles off-host ciphertext and suitable isolated tests. Only owned
-disposable downloads/tools are cleaned, not shared caches or backups.
+**Verification scope:** focused Go1.27.3 GeoIP/server/basic-info races and targeted
+vet; required exact-source CI/full existing gates; attested binary8/8 real
+synthetic-Panel groups on OVH; bounded OC424/API continuity. Unchanged query,
+scoped-key,report/queue,rotation,backup and Hermes source checks are reused, not
+broadly rerun locally. No fleet upgrade,capacity/SLO measurement,owner login or
+unattended decrypted production recovery is claimed. Only owned disposable
+tools/downloads are cleaned, not shared caches or backups.
 
 The application-level all-roadmap goal was previously observed paused. The owner
 revokes the pause and narrows repository work, but the available goal interface
@@ -218,8 +216,6 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | The mutation-envelope check is re-implemented at ~24 call sites | `frontend/src/lib/`, `frontend/src/pages/admin/` | Only the node table uses the shared helper; the loosest call site does not check `response.ok` at all |
 | Locale strings are injected as raw HTML at 8 sites with `escapeValue: false` | `frontend/src/i18n/config.ts` + 8 components | Today's values are benign markup, but `frontend/crowdin.yml` accepts outside contributions and `dompurify` is already a dependency |
 | Absolute asset URLs ignore the configurable `base` | `frontend/src/components/Flag.tsx` + 2 more | A sub-path deployment gets 404 flags and logos |
-| GeoIP malformed settings/provider lifetime acceptance | `utils/geoip/geoip.go`, `docs/GEOIP-RELOAD.md` | v1.7.2 candidate guards types/read failures and synchronizes replacement/close/cache; exact CI and actual rollout remain |
-| GeoIP enabled-setting hot-reload acceptance | `internal/server/runtime.go`, `deploy/geoip-reload-smoke.py` | v1.7.2 candidate watches both keys; synthetic real-Panel and production release gates remain |
 | `utils.DataMasking` and its Levenshtein chain are dead code | `utils/utils.go` | ~150 lines with no caller, and it suggests log redaction happens there (the real redaction is regex-based in `internal/metricstore/redact.go`) |
 | The theme extractor honours the archive's own file modes while the plugin extractor does not | `web/api/admin/theme.go` vs `internal/plugin/install.go` | Two hardening standards for the same untrusted input |
 | `/api/clients` re-identifies the principal on every WebSocket message | `web/api/ws.go` | A session lookup per frame, behind the same lock the session cache used to hold |

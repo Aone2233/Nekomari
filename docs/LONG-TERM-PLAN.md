@@ -45,7 +45,7 @@ correctness batches. The full v1.8-v2.1 roadmap is not one continuous task.
 All 200-node work remains deferred, preserving its original limits and 26 failed
 reports. Publication is not proof that every roadmap exit criterion passed.
 
-**Delivered:** OC424 serves v1.7.1/3b7e300 at `nekomari.orderly2233.org`, healthy/
+**Delivered:** OC424 serves v1.7.2/832b528 at `nekomari.orderly2233.org`, healthy/
 restart0, after exact-source CI 7/7, release 10/10, Docker 2/2 and upgrade check 9/9.
 Both Linux assets pass checksums/tag/source/workflow attestations; both image
 architectures identify exact source. Public checks 23/23 pass. The owner-approved
@@ -57,17 +57,19 @@ shared in-panel navigation. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 Scoped keys, history/audit bounds, report/queue invariants, session-only token
 rotation and encrypted-backup tooling are published. The one old global key
 migrates to 30-day `nodes:read`; no live Agent token is rotated. Generic token
-edit/import restrictions are owner-accepted. Hermes's gateway is paused during
-the switch and resumed with three references directed to the metadata-only CLI;
+edit/import restrictions are owner-accepted. During the earlier v1.7.0 cutover,
+Hermes's gateway was paused and resumed with three references directed to the metadata-only CLI;
 the owner-configured scoped key now matches only `nodes:read` + `nodes:write`
 and passes actual disposable CLI create/edit/read/remove. Original13 metadata is
-unchanged. The owner selects365days to2027-10-27 13:38:02 Asia/Shanghai, not the
-suggested90; no silent rotation. Other runtime callers are not fully inventoried.
+unchanged at that handoff; Pi's later authorized addition is preserved in the
+current14-node baseline. The owner selects365days to2027-10-27 13:38:02
+Asia/Shanghai, not the suggested90; no silent rotation. Other runtime callers
+are not fully inventoried. v1.7.2 does not restart Hermes or any Agent.
 
 **Backup delivery:** OC424 has only public recipients; OVH's encrypted daily
 03:30 UTC timer replaces only the old plaintext cron row, with 14 ciphertext-pair
 retention. The installed service succeeds; fresh pre/post archives pass isolated
-MAC-WAN old/new-image recovery with both DBs, 13 clients and cleanup. Release
+MAC-WAN old/new-image recovery with both DBs,14 clients and cleanup. Release
 recovery copies are outside automatic retention, and all old plaintext/local
 rollback assets are kept. The owner reports downloading the offline identity
 copy and authorizes cutover; independent-media restore is not claimed. Online
@@ -88,9 +90,9 @@ scheduler or production RPO/RTO/SLO acceptance is implied.
    exact candidate CI, safe backups and OC424 acceptance. The first completed
    batch is the compatible v1.7.1 forecast-boundary patch, not a full v1.8 feature release
    or a declaration that the pending owner UI acceptance has passed.
-   The next candidate is v1.7.2 GeoIP configuration safety/hot reload, with
-   focused lifecycle race tests and isolated real-Panel settings acceptance;
-   publication/14-node encrypted recovery/OC424 update remain gates. See
+   The next completed batch is v1.7.2 GeoIP configuration safety/hot reload:
+   focused lifecycle races,exact CI,8/8 isolated OVH real-Panel groups,
+   fresh14-node old/new encrypted recovery and OC424 deployment pass. See
    [`GEOIP-RELOAD.md`](./GEOIP-RELOAD.md).
    Do not bundle fleet privilege/platform changes or 200-node work.
 
@@ -98,7 +100,7 @@ v1.7 is released/deployed, **not unconditionally exit-complete**: owner
 acceptance, remaining caller inventory, independent-media recovery and the
 stronger automated freshness/drill policy remain truthfully open in
 [`OPEN-WORK.md`](./OPEN-WORK.md#v17-release-readiness-2026-10-27).
-v1.7.1->v1.7.0 needs only the pinned prior image, preserving current DB data.
+v1.7.2->v1.7.1 needs only the pinned prior image, preserving current DB data.
 Across credential migration to v1.6, rollback needs the old binary and pre-upgrade
 DB, not an image-only downgrade; frozen-writer/failure-preservation instructions
 are retained with the paired local snapshots.
