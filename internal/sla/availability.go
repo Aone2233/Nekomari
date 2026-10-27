@@ -41,11 +41,18 @@ type Sample struct {
 // sense as a node that reported throughout — and collapsing the two into one number
 // is how a dead node reads as perfectly available.
 type Presence struct {
-	// ExpectedBuckets is how many buckets the window should hold at the observed
-	// cadence, and ObservedBuckets is how many actually carried data.
+	// ExpectedBuckets is how many buckets the observed span (FirstData to
+	// LastData) should hold at the observed cadence, capped by the requested
+	// window, and ObservedBuckets is how many actually carried data. It is the
+	// span, not the window: a series with six hours of evidence inside a 24-hour
+	// request is not missing 75% of anything.
 	ExpectedBuckets int `json:"expected_buckets"`
 	ObservedBuckets int `json:"observed_buckets"`
-	// Coverage is ObservedBuckets/ExpectedBuckets. Zero when ExpectedBuckets is 0.
+	// Coverage is ObservedBuckets/ExpectedBuckets over that span, not over the
+	// requested window: a node that reports only the last ten minutes of an hour
+	// reads 1, not 1/6. Zero when ExpectedBuckets is 0. Read it as "how much of
+	// the period with evidence had data", never as freshness; see
+	// docs/SLA-COVERAGE.md.
 	Coverage float64 `json:"coverage"`
 	// FirstData and LastData bound the buckets that carried data. Zero when none did.
 	FirstData time.Time `json:"first_data"`
