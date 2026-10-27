@@ -1,12 +1,14 @@
 # Recovery startup: the boot-time coarse-rollup scan
 
-Status: fixed and delivered in v1.7.5 (see `DEPLOY-OC424.md`). Date: 2026-10-27. Applies to the metric store
-opened by `internal/metricstore.InitializeStore`.
+Status: SQLite startup optimization delivered in v1.7.5; cross-backend
+corrections are the v1.7.6 candidate. Date: 2026-10-27. Applies to the metric
+store opened by `internal/metricstore.InitializeStore`.
 
-This document records an investigation, not a deployment. Nothing here ran
-against a production database, changed a stored archive, or altered a schema.
-Production acceptance, an OC424 rollout and an independent-media restore are
-separate gates and are still open.
+The investigation and synthetic measurements below did not modify a production
+database, stored archive or schema. v1.7.5 was subsequently deployed on OC424
+and passed isolated encrypted recovery; see `DEPLOY-OC424.md` for that delivery.
+Independent-media restore remains separate and unverified. v1.7.6 must pass its
+own source/publication/recovery and production gates before being called deployed.
 
 ## What was observed
 
@@ -148,10 +150,30 @@ exact text that `Open` runs.
 | `go vet ./pkg/metric`, `go build ./...` (CGO, Go 1.27.3) | pass |
 | Full `pkg/metric` suite | pass |
 
-## Still open
+## Cross-backend review (v1.7.6 candidate, 2026-10-27)
 
-The fix is not production acceptance. Release, OC424 rollout with a fresh
-pre-upgrade archive, post-upgrade checks and the still-unverified
-independent-media restore remain the gates in
-[`HANDOFF-DSH-2026-10-27.md`](./HANDOFF-DSH-2026-10-27.md) §9 and
-[`OPEN-WORK.md`](./OPEN-WORK.md).
+The v1.7.5 statement contains three placeholders but returned five arguments:
+metric name, child id, parent id and two unused durations. SQLite silently
+tolerates extras; real MySQL and PostgreSQL reject the recovery with
+`expected 3 arguments, got 5`. The correction passes only the three used values.
+The existing test incorrectly asserted five arguments, so it did not protect
+the other supported drivers.
+
+MySQL also differs in parent alignment: integer operands with `/` still produce
+a fractional quotient. A child at minute 2 within a five-minute parent was
+therefore treated as parentless even after that parent was sealed. Use `DIV`
+on MySQL only; SQLite/PostgreSQL retain integer `/`. This arithmetic issue
+predates v1.7.5; it is not attributed to the new index hint.
+
+Actual disposable MySQL 8.4 and PostgreSQL 17 tests cover recovery of a durable
+nonaligned child, its value/count, repeat recovery and exclusion of the sealed
+parent. An old-source overlay reproduces the arity failures on both databases;
+after removing only the extra arguments, the nonaligned MySQL case reproduces
+the second defect. Both pass with the complete correction. SQL placeholders
+and the SQLite plan are independently asserted, and a dedicated bounded CI job
+now runs these backends rather than relying on environment-skipped tests.
+
+No planner-statistics refresh, new index/schema, history rewrite, credential
+change or larger initialization timeout is needed. This does not establish
+unbounded repair scalability or a production RTO/RPO/SLO. Current release and
+remaining acceptance state belong to [`OPEN-WORK.md`](./OPEN-WORK.md).

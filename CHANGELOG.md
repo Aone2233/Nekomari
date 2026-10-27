@@ -8,8 +8,25 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- No unreleased runtime change beyond delivered v1.7.5; delivery records do
-  not rebuild immutable artifacts.
+- No other unreleased runtime change; delivery records do not rebuild
+  immutable artifacts.
+
+## [v1.7.6] - 2026-10-27
+
+### Fixed
+
+- Match the coarse-recovery query's three placeholders with exactly three
+  arguments. v1.7.5 passed two unused interval arguments, which SQLite tolerated
+  but MySQL and PostgreSQL rejected once a stored fine tier needed a recovery
+  scan, preventing metric-store startup. Keep the series-driven SQLite plan.
+- Use MySQL integer `DIV` for parent-bucket alignment; `/` retains a fractional
+  result and misidentifies an existing sealed parent for a nonaligned child.
+  Add actual MySQL/PostgreSQL recovery and sealed-parent regressions, including
+  a dedicated bounded CI job with disposable databases. No schema, auth, Agent,
+  protocol, frontend or dependency change.
+- Reconcile the current deployment/recovery documentation with delivered
+  v1.7.5; correct SLA coverage examples without changing its runtime contract.
+  Publication and OC424 acceptance for v1.7.6 are recorded only after completion.
 
 ## [v1.7.5] - 2026-10-27
 

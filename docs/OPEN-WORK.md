@@ -15,16 +15,18 @@ What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit 
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
 **Current checkpoint (2026-10-27, Asia/Shanghai):** OC424 serves
-**v1.7.4/b0ea917** at `nekomari.orderly2233.org`, healthy/restart0. Immutable
-patch/source, exact CI40476853150 7/7, release40478743592 10/10 (attempt 2),
-Docker40479934401 2/2, checksums/provenance, upgrade9/9, bounded public23/23,
-scoped forecast14rows and live SLA reads for 14 nodes/58 tasks pass. The five tools remain
+**v1.7.5/c84c3cc** at `nekomari.orderly2233.org`, healthy/restart0, confirmed
+again by public/origin version and exact pinned image during the dsh review.
+Exact CI40497025299 7/7, release40498907426 10/10, Docker40499760158 2/2,
+checksums/provenance, upgrade9/9 and14-client/auth continuity are recorded by dsh.
+Earlier v1.7.4 public23/23, forecast14rows and SLA14nodes/58tasks remain dated
+evidence, not newly rerun v1.7.5 acceptance. The five tools remain
 in the admin shell. After the earlier removal, Pi adds a node with the owner's
 explicit authorization: the current approved baseline is 14 registered clients
 and 14 currently fresh CPU-reporting nodes. Preserve that addition; the earlier
 13-client release records are historical. Existing UUIDs/tokens and Agent services are
 unchanged. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for immutable artifacts,
-actual evidence and patch rollback to v1.7.3. The earlier v1.7.0->v1.6
+actual evidence and patch rollback to v1.7.4. The earlier v1.7.0->v1.6
 auth-migration rollback still requires the paired old binary and DB.
 
 **Adjusted active objective:** close the bounded v1.7 delivery/handoff, then
@@ -33,7 +35,15 @@ roadmap or every v1.7 exit criterion complete. All 200-node experiments/benchmar
 and their 26 failed reports remain deferred. Reuse exact-source and unchanged
 source-batch checks; no redundant broad local frontend/Go/capacity rerun.
 
-**Latest bounded delivery:** v1.7.4 SLA task-generation normalization. Unique
+**Latest bounded delivery:** v1.7.5 recovery-startup optimization, actual
+released-binary old/new synthetic comparison on OVH and fresh encrypted
+pre/post pinned-v1.7.5 recovery on MAC-WAN. The SQLite scan no longer needs
+scratch `ANALYZE`; old v1.7.4 recovery can still need that workaround.
+Review finds surplus query arguments on MySQL/PostgreSQL and MySQL parent
+division; v1.7.6 is the bounded correction candidate, with real SQL regressions
+and unchanged SQLite access plan. See [`DSH-REVIEW-2026-10-27.md`](./DSH-REVIEW-2026-10-27.md).
+
+**Prior bounded delivery:** v1.7.4 SLA task-generation normalization. Unique
 chronological measured buckets feed loss/latency/incidents/presence/maintenance;
 empty placeholders cannot override actual values. Focused regressions/races,
 exact CI/publication, six installed synthetic-Panel groups on OVH, 14-client
@@ -47,10 +57,10 @@ See [`SLA-GENERATIONS.md`](./SLA-GENERATIONS.md).
 
 Existing v1.7.3 health service/timer and quiet persisted state remain unchanged;
 recurring 15-minute checks are now observed successful. First nightly backup,
-live incident delivery, independent media and authenticated owner UI remain open.
-Initial offline recovery startup deadlines require scratch-only SQLite planner
-statistics refresh; archives/production DBs are unchanged. Record a separate
-bounded startup-recovery follow-up rather than claiming a source fix here.
+live incident delivery and independent media remain open. dsh records owner
+history/audit/API-key UI acceptance; no new owner session is exercised here.
+v1.7.5 provides the source startup fix; v1.7.6 cross-backend corrections still
+need publication, recovery and live acceptance. Archives/production DBs are unchanged.
 Continue one bounded correctness/observability item, with 200-node work deferred.
 
 ### v1.7 release readiness (2026-10-27)
@@ -166,6 +176,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 
 | Item | Where | Why it is still here |
 |---|---|---|
+| Cross-backend recovery correction release acceptance | `pkg/metric/coarse_rollup.go`; `docs/DSH-REVIEW-2026-10-27.md` | v1.7.6 candidate removes surplus SQL arguments rejected by actual MySQL/PostgreSQL and uses MySQL integer parent alignment. Real isolated SQL regressions and SQLite plan tests pass; exact publication, fresh encrypted recovery and OC424 acceptance remain before calling it delivered |
 | Restored metrics startup could exhaust connection deadlines with stale planner statistics | `pkg/metric/coarse_rollup.go`; `docs/METRIC-RECOVERY-STARTUP.md` | **Fixed and deployed in v1.7.5**: the recovery statement constrained the tier through a join, so stale statistics drove the scan from the resolution index and re-read every series' rows once per metric; it now binds the tier id and forces the series-leading index on SQLite. Released binaries on a production-shaped restored store: 1.7s vs 30s+ deadline-exceeded, and MAC-WAN pinned v1.7.5 recovery passes on fresh pre/post ciphertext. The pinned v1.7.4 image still cannot restore a fresh archive without the scratch `ANALYZE` workaround, which is a rollback caveat rather than an open defect. Independent-media restore remains unverified and no production database was ever analysed |
 | The legacy monitoring migration has no checkpoint, so a crash restarts it from the beginning | `internal/migrations/legacy_monitoring.go` | Re-running is idempotent (argued in the audit report), so the cost is time, not correctness |
 | The auto-upgrade archive excludes `metrics.db` by design | `database/dbcore/dbcore.go` | **Accepted** — but it should be stated in the upgrade log, so an operator does not read the archive as a full backup |

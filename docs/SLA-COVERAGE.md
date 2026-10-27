@@ -12,8 +12,9 @@ number that is misread is worse than a number that is missing.
 
 ```
 expected = floor((last_data - first_data) / cadence) + 1     # the observed span
-expected = min(expected, floor(window / cadence))            # capped by the request
-coverage = observed / expected                               # clamped to [0, 1]
+expected = min(expected, floor(window / cadence))           # only when window > 0
+expected = max(1, expected, observed)                       # keep denominator valid
+coverage = observed / expected                             # clamped to [0, 1]
 ```
 
 `cadence` is the median gap between consecutive buckets **including the empty
@@ -36,17 +37,17 @@ that carried data.
 | 8 of 10 consecutive minutes, 2 missing in the middle | 9 min | 10 | 8 | **0.8** | 0.8 |
 | nothing reported | — | 0 | 0 | **0** | 0 |
 
-The second row is the one that gets misread: a node that started reporting 50
-minutes into an hour reads **100% coverage**, because everything it did report
-carried data. The window fraction is 10/60. Both statements are true; the field
-reports the first.
+The second row is the one that gets misread: a node that stopped after the first
+ten minutes still reads **100% coverage**, because its observed span has no
+interior gaps. Reporting only the last ten minutes gives the same fraction.
+The window fraction is 10/60 in either case; the field reports the span fraction.
 
 ## Why the span, and not the window
 
 Two reasons, both of which are load-bearing:
 
 1. The window is only an **upper bound** on what the data can be checked
-   against. A series whose window is 24 hours and whose archived data starts 20
+   against. A series whose window is 24 hours and whose archived data starts six
    hours ago has six hours of evidence; dividing by the full window would report
    a 75% "gap" that no bucket is missing from.
 2. `window/step + 1` double-counts the endpoints. A complete ten-minute series
@@ -66,8 +67,10 @@ Two reasons, both of which are load-bearing:
   cadence, compare `first_data`/`last_data` against the requested window instead
   of trying to reconstruct it from the fraction.
 - **Availability**: `fraction` is computed over the *reported* buckets only, so
-  availability and coverage must be read together. A dead node is
-  "100% available, 0% covered", not "100% available".
+  availability and coverage must be read together. No samples means
+  `has_data=false`, `fraction=0`, `coverage=0`; it is not a measured 0% or 100%
+  availability. Earlier successful samples may still read `fraction=1` and
+  span coverage 1 after reporting stops, which is why the timestamps matter.
 
 ## What a semantic change would require
 

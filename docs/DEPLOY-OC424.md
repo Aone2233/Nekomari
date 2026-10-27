@@ -5,22 +5,27 @@ restored, and the two hostname/TLS traps that cost the most time.
 
 ## Current checkpoint (2026-10-27, Asia/Shanghai)
 
-OC424 serves **v1.7.4 / b0ea917** at
+OC424 serves **v1.7.5 / c84c3cc** at
 `https://nekomari.orderly2233.org`. Scoped-key migration and session-only token
 rotation are deployed; no existing Agent token is rotated. OVH now receives
 nightly ciphertext, with MAC-WAN as the online identity/recovery runner. The
 owner reports downloading an offline identity copy and authorizes the switch;
-independent-media recovery and owner authenticated UI acceptance are not claimed.
+independent-media recovery remains unverified. dsh records the owner's
+authenticated history/audit/API-key acceptance; this review does not repeat it.
 Older rollout sections are dated evidence, not the current version/node count.
 
 | Item | Observed evidence |
 |---|---|
-| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.4/b0ea917; upgrade9/9,public23/23,scoped-key forecast14rows |
+| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.5/c84c3cc; dsh's upgrade9/9 and14-client/auth continuity; public and origin version rechecked during review |
 | Nodes | Owner confirms Pi's later addition;current approved baseline14registered clients,14fresh CPU reporters. Preserve the new node; earlier13-client release snapshots are historical |
 | Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2, unchanged; generic `nekomari-agent` is not the reporter |
 | OVH | Alias `KSLE`, encrypted receiver + daily 03:30 UTC timer; AgentPID495903/restart0 unchanged |
 | MAC-WAN | Linux x86_64 user `macos`; online identity/isolated recovery, AgentPID976/restart0 unchanged; Hermes gateway briefly stopped/resumed, nowPID922780/restart0 |
-| Acceptance | Hermes private-key/disposable CLI writes pass; owner login/history/audit/API-key UI and complete caller inventory remain separate; public401 is not authenticated acceptance |
+| Acceptance | Hermes private-key/disposable CLI writes pass; dsh records owner history/audit/API-key acceptance; complete caller inventory remains separate; public401 is not authenticated acceptance |
+
+Latest delivery: [v1.7.5 recovery-startup rollout](#v175--recovery-startup-fix-2026-10-27).
+The v1.7.6 cross-backend correction is a candidate, not yet a deployed version.
+See [`DSH-REVIEW-2026-10-27.md`](./DSH-REVIEW-2026-10-27.md).
 
 ## v1.7.4 rollout (2026-10-27 17:23:20 Asia/Shanghai)
 

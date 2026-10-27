@@ -171,6 +171,10 @@ func (s *Store) flushClosedCoarseRollupsUnderView(ctx context.Context, now time.
 // aligns a child with its parent without dialect-specific date arithmetic.
 func (s *Store) coarseRecoveryQuery(ctx context.Context, metricName string, fineID, coarseID int64, coarse time.Duration) (string, []any) {
 	parentStart := fmt.Sprintf("(r.bucket_milli / %d) * %d", coarse.Milliseconds(), coarse.Milliseconds())
+	if s.cfg.Driver == DriverMySQL {
+		// MySQL / keeps fractions; DIV floors the nonnegative bucket timestamp.
+		parentStart = fmt.Sprintf("(r.bucket_milli DIV %d) * %d", coarse.Milliseconds(), coarse.Milliseconds())
+	}
 	hint := ""
 	if index := s.rollupSeriesIndexName(ctx); index != "" {
 		hint = " INDEXED BY " + index
@@ -187,7 +191,7 @@ func (s *Store) coarseRecoveryQuery(ctx context.Context, metricName string, fine
 		ORDER BY r.bucket_milli ASC`, s.tables.rollups, hint, s.tables.series,
 		s.tables.labels, s.dialect.placeholder(1), s.dialect.placeholder(2), s.tables.rollups,
 		s.dialect.placeholder(3), parentStart)
-	return query, []any{metricName, fineID, coarseID, coarse.Milliseconds(), coarse.Milliseconds()}
+	return query, []any{metricName, fineID, coarseID}
 }
 
 // resolutionIDFor returns the id of one persisted resolution tier, or zero when
