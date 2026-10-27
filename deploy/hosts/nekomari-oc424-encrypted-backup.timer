@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily encrypted OC424 Panel backup on OVH (03:30 UTC)
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+Persistent=true
+AccuracySec=1min
+Unit=nekomari-oc424-encrypted-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,10 +1,12 @@
 # MAC-WAN backup custody and recovery (2026-10-27, Asia/Shanghai)
 
-The owner designates SSH alias **MAC-WAN** as both the Hermes host and the
-backup-identity custodian/recovery runner. This is Linux x86_64, user `macos`,
-not macOS. OC424 remains the production Panel; OVH (`KSLE`) stores ciphertext.
-This record covers an actual encrypted canary, **not a v1.7 deployment or
-independent offline-escrow acceptance**.
+MAC-WAN is the owner-selected Hermes and online identity/recovery host (Linux
+x86_64, user `macos`). OC424 now serves v1.7.0/8eb711e; OVH (`KSLE`) stores
+nightly ciphertext. Actual fresh 13-node pre/post-cutover old/new-image recovery
+passes. The owner reports downloading the offline identity copy and authorizes
+cutover; **independent-media recovery is not claimed**. All existing readable
+plaintext/manual/local rollback copies are retained; no deletion policy is
+inferred from downloading a key.
 
 ## Custody and access boundary
 
@@ -13,7 +15,7 @@ independent offline-escrow acceptance**.
 | OC424 | Public `/etc/nekomari/backup.recipients`; checksum-matched backup tool and native arm64 age; fixed, restricted ciphertext producer; no recovery identity |
 | OVH | `/srv/backups/oc424-encrypted` (`0700`), ciphertext/checksums (`0600`); a dedicated SSH pull key generated and retained on OVH, not a decryption identity |
 | MAC-WAN | `/home/macos/.local/share/nekomari-recovery` (`0700`); `identities/oc424-primary.agekey` (`0600`), public recipient, tools, ciphertext and local recovery instructions |
-| Independent offline copy | **Pending** owner-controlled media, access instructions and recovery verification; a second copy on MAC-WAN does not qualify |
+| Independent offline copy | **Downloaded per owner report**; derived-recipient comparison/access instructions/actual independent-media recovery not independently verified. A second online MAC-WAN copy is not an offline drill |
 
 The private identity is generated **on MAC-WAN**, not in the workspace, OC424 or
 OVH. Only its public recipient leaves that host. No private identity is placed in
@@ -38,7 +40,7 @@ credential and recovery identity. Docker access is privileged. MAC-WAN is an
 additional sensitive online host, not an offline vault or an untrusted-agent
 sandbox. No unattended decrypt/restore scheduler is enabled.
 
-## Installed, opt-in producer and receiver
+## Installed producer, receiver and nightly schedule
 
 The source and receiver use the unchanged `deploy/encrypted_backup.py`, SHA-256
 `0e240418c853ce65cfb2d353c8be55ea2c4853cd3511fad57856d742fd737e78`, installed
@@ -81,9 +83,10 @@ before reading production data.
 
 OVH's `/usr/local/sbin/receive-oc424-encrypted-backup` uses its dedicated
 `/etc/nekomari-backup/oc424-encrypted-pull` key and pinned OC424 host keys.
-It runs the checked receiver with prefix `oc424`, keep14, no shell producer or
-unchecked stdin. Existing backup keys/wrappers/schedulers are unchanged.
-This new receiver is **manual/opt-in**, not the nightly production schedule.
+It runs the checked receiver with prefix `oc424`, keep 14, no shell producer or
+unchecked stdin. Existing backup keys/wrappers remain unchanged. The receiver
+now runs through the OVH encrypted service/timer; only the legacy backup cron
+row is removed.
 It cannot authenticate/decrypt the archive without MAC-WAN.
 
 Installed wrapper SHA-256 values are
@@ -93,7 +96,7 @@ Installed wrapper SHA-256 values are
 (OVH receiver). Neither evaluates `SSH_ORIGINAL_COMMAND`; fixed paths and argv
 are the privileged trust boundary.
 
-## Completed real canary
+## Earlier real canary (before cutover)
 
 | Evidence | Result |
 |---|---|
@@ -114,6 +117,39 @@ independent offline-copy drill, fleet test, production RPO/RTO measurement or
 proof of automated freshness. Temporary plaintext uses tmpfs; cleanup is not
 secure erasure and swap/system snapshots remain part of the host threat model.
 
+## v1.7 cutover recovery evidence
+
+| Evidence | Pre-migration | Post-migration / first installed service run |
+|---|---|---|
+| Archive basename | `oc424-20261027T043120813844Z-2b48d4a466c6.tar.gz.age` | `oc424-20261027T044833717100Z-7c911d43f0a3.tar.gz.age` |
+| Bytes / SHA256 | 182893531; `0577eed95c9eaa073044e26097ab789b37d0915606221aa3a1d433ceda3207d6` | 182862307; `618e8b80e9f5f68885cad452e77887c99d6395868805eb514f6202072f0532f0` |
+| Restored image/source | v1.6.29/510f7d3, existing pinned amd64 digest `sha256:db0381c4faa97c5f39fe2534a7709eb6f72bd6ae5cb67220d1fb8f89c5a27893` | v1.7.0/8eb711e, amd64 digest `sha256:66ca7338cd5e2237bc4456e52260f2fd9b3559434abacb86d0627a485871aaa7` |
+| Actual restore | First boot timeout retained, retry passes in 36.39s | Passes in 70.72s |
+| Metadata/data | Both DB integrity,13 clients, old auth schema/no scoped-key table | Both DB integrity,13 clients, migrated auth schema/marker, no legacy plaintext config row |
+| Isolation/cleanup | Networknone/noports, readonly root/nonroot/bounded resources; no scratch plaintext/container remains | Same isolation/cleanup; identity never mounted in Panel |
+
+Both pairs live under `/srv/backups/oc424-encrypted` on OVH and recovery
+`incoming/` on MAC-WAN. OVH also retains them under
+`/srv/backups/oc424-encrypted/manual-v1.7.0-20261027`, outside top-level 14-pair
+pruning (hardlinks, not duplicate data blocks). Native image source and packaged
+binary checksums/attestations are verified separately; the recovery harness
+also checks exact reported version/hash. Never use an old 14-client backup for
+this cutover rollback: the owner intentionally deleted one client.
+
+OVH's enabled persistent `nekomari-oc424-encrypted-backup.timer` runs daily
+03:30 UTC (11:30 Asia/Shanghai); the installed service has already succeeded.
+Only its predecessor plaintext cron row is removed, leaving other rows/script/
+keys unchanged. Encrypted keep 14 does not prune legacy plaintext or manual
+release copies. Schedule before/after/rollback evidence is root-private at
+`/root/nekomari-backup-schedule-v1.7-20261027T044832Z-07b722` on OVH.
+This is scheduled ciphertext reception plus manual real recovery, **not** a
+scheduled decryption drill, independent-media recovery or measured RPO/RTO/SLO.
+
+Hermes gateway is stopped during the Panel switch and resumed afterward with
+3 known references redirected to the metadata client. It is nowPID922780/
+restart0; AgentPID976/restart0 is unchanged. No key is configured yet and node
+writes wait for owner issuance/private TTY configure/disposable live acceptance.
+
 ## Manual recovery and remaining gates
 
 On MAC-WAN, the private recovery directory contains `README.md` with the exact
@@ -123,23 +159,21 @@ are changed to disable production notifications/OAuth/GeoIP. The private identit
 is never mounted inside the restored Panel. Do not blindly execute archived
 compose or point recovered metrics paths at production.
 
-The owner still needs an **independent protected offline copy** of the identity
-and access/recovery instructions, transferred directly from MAC-WAN through an
-approved private channel. Compare the copy's derived public recipient with the
-value above using `age-keygen -y <offline-copy-path>`; do not print/send its
-private contents. Matching public material verifies a key copy, not a full
-offline-media recovery; record the latter separately when performed. Keep old
-identities while matching archives are retained.
+The owner reports the **independent protected offline copy downloaded** and
+authorizes cutover. Compare the copy's derived public recipient using
+`age-keygen -y <offline-copy-path>` without sending its private contents.
+Matching public material checks a key copy, not a full offline-media recovery;
+record an actual drill separately. Keep old identities while matching archives
+are retained. Online MAC-WAN restore does not prove independent-media recovery.
 
-Before switching the nightly schedule: verify independent recovery, review
-freshness/retention and explicitly select which old readable plaintext copies
-remain. **No old backup or rollback copy is deleted here.** Reverting the
-producer/receiver does not decrypt ciphertext. Removing a public recipient
-cannot revoke its access to old archives.
+Nightly encryption is switched only after fresh actual online recovery;
+**all old readable plaintext/manual/local rollback copies remain**. Explicit
+deletion/longer-term retention still needs approval. Reverting the scheduler
+or removing a recipient does not decrypt/revoke old archives. Observe later
+scheduled success; freshness alerts/periodic drill policy are separate work.
 
-Full v1.7 also needs Hermes's write pause, exact consumer/configuration changes,
-owner-session scoped-key issuance/secure handoff and a bounded live check before
-resume. Agent-token read is a separate fleet-wide grant, absent by default.
-The owner will perform authenticated UI acceptance after deployment; existing
-Agent tokens/services remain unchanged. See [`API-KEYS.md`](./API-KEYS.md) and
-[`V1.7-CUTOVER-READINESS.md`](./V1.7-CUTOVER-READINESS.md).
+The release is deployed, with authenticated owner UI acceptance and Hermes's
+actual dedicated-key/live workflow handoff still pending. Agent-token read is
+a separate unapproved fleet-wide grant; existing Agent tokens/services remain
+unchanged. See [`API-KEYS.md`](./API-KEYS.md) and
+[`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md).

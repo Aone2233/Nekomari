@@ -1,10 +1,12 @@
-# Client-token rotation (v1.7 preparation, unreleased)
+# Client-token rotation (v1.7.0)
 
-This is the fourth bounded v1.7 source batch, based on report/queue merge
-`fc84915`. It adds a supported replacement operation instead of editing live
-SQLite. It does not rotate any production credential, update an Agent binary,
-change the protocol/schema or deploy the panel. OC424 remains v1.6.28/502a269,
-which contains query hardening but none of this token-rotation batch.
+This supported replacement operation ships in v1.7.0/8eb711e on OC424, instead
+of editing live SQLite. The owner accepts token edit/import restrictions and
+explicitly requests **no live rotation now**: all13current UUIDs/Agent tokens
+and Agent services remain unchanged. The feature's deployment does not itself
+rotate a credential or authorize a fleet rollout. Owner UI acceptance remains
+pending. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for delivery/backup evidence.
+The fourth source batch below is retained historical verification.
 
 **Integration checkpoint (2026-10-27):** the original 13cdcc5 passes exact-source
 CI40313616989 (7/7). Integration with main e234385 changes only delivery

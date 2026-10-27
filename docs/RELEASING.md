@@ -2,6 +2,15 @@
 
 ## Cut a release
 
+**v1.7.0 delivered checkpoint (2026-10-27):** immutable tag/source 8eb711e,
+exact CI 40446315166 7/7, release40450095088 10/10 and Docker40450707458 2/2.
+OC424 migration/upgrade 9/9 and actual encrypted old/new-image recovery pass.
+The maintenance guidance below describes why earlier 1.6 patches were separated;
+it is not a statement that v1.7 is still unpublished. After auth migration,
+rollback needs old binary **and pre-migration DB**; never use image-only
+maintenance rollback instructions. Owner UI and Hermes key/live handoff remain
+pending. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
 Maintenance releases may use `codex/v1.6-maintenance` when main contains an
 intentional authentication/schema compatibility change whose production gates
 are still open. Its branch and PRs use the maintenance branch's CI workflow;
@@ -48,17 +57,22 @@ supplying a tag name.
 
 ## Does the fleet move with this release?
 
-**Only when the agent source changes.** A panel-only release leaves the agents
-alone, and that has been the default for most of this project's releases. The
-check is one command, run before the rollout is planned:
+**Only when the Agent actually needs an update.** A Panel-only release leaves
+the Agents alone, as most releases do. Start with the source diff, then review
+Agent dependency/compiler/packaging changes separately before planning rollout:
 
 ```bash
-git diff --stat <previous-tag>..<tag> -- agent/ protocol/ pkg/
+git diff --stat <previous-tag>..<tag> -- 'agent/**/*.go' protocol/
 ```
 
-Empty output means the agents stay where they are, and the rollout covers the
-panel only. Anything in `agent/` means the fleet has to move too, because the
-release changes what a probe does rather than only how it was compiled —
+This filters Agent Go source and the shared root protocol, not server-only
+`pkg/`: the Agent has its own module and does not import root `pkg/rpc`.
+Review Agent module/dependency, packaging and install changes separately;
+not every source change requires deployment, and an empty source diff is not
+proof that no Agent dependency/compiler/packaging change exists. In v1.7.0,
+Agent/protocol/module bytes are unchanged from v1.6.29, so no fleet rollout is
+needed. Deleted Agent workflow/docs or Panel scope changes are not rollout
+signals. When actual probe behavior does change, consider an Agent rollout —
 v0.1.26 is the example: it makes a probe report the address family it measured,
 and the panel half of that change does nothing while the agents still run the
 old binary.

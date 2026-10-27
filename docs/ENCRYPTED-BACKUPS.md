@@ -1,14 +1,18 @@
-# Encrypted off-host backups (v1.7 preparation, unreleased)
+# Encrypted off-host backups (v1.7.0)
 
-This is a bounded, opt-in tooling batch on token-rotation merge `31a5b43`.
-PR84 is source-merged as `f567128` after exact candidate `5899614` passes
-CI40426994745 (7/7). Source delivery is not production rollout.
-**The OC424/OVH backup schedule still writes the existing plaintext archives.**
-No production key, forced command, scheduler, retention setting, credential or
-Panel/Agent service is changed by that source work. Subsequent owner-authorized
-MAC-WAN custody and an actual encrypted canary are now implemented as recorded
-below; the production nightly schedule is still unchanged. OC424 remains v1.6.29/510f7d3.
-See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for the retained recovery copies.
+`deploy/encrypted_backup.py` ships in v1.7.0. OC424 has only public recipients,
+OVH stores ciphertext, and MAC-WAN holds the online age identity/recovery runner.
+**The nightly production schedule is now encrypted:** enabled persistent OVH
+systemd timer at 03:30 UTC,14ciphertext pairs, old plaintext cron row removed.
+The installed service succeeds, and its actual v1.7 backup passes isolated
+MAC-WAN recovery; fresh pre-cutover old-image recovery also passes. The owner
+reports downloading an offline identity copy and authorizes the switch; this
+is not independently exercised offline-media recovery. All old plaintext/manual
+and local rollback assets remain. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md)
+and [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md) for exact evidence.
+
+The original opt-in source batch PR84/f567128 and exact5899614 CI 7/7 are retained
+source history, not claims that that earlier batch changed live operations.
 
 ## Contract and dependencies
 
@@ -42,43 +46,38 @@ Only 1-16 native X25519 recipients/identities per file are supported. Password,
 SSH-key, plugin/hardware identities and interactive prompting are unsupported.
 The tool does not generate production recovery keys.
 
-## D12: Approved architecture and partial implementation
+## D12: Implemented custody and remaining recovery scope
 
-On2026-10-27 the owner approves the recommended architecture: OC424 holds only
-public recipients, OVH holds ciphertext, and the owner controls the private
-identity with an independent offline recovery copy. An approved separate restore
-environment uses it. The owner subsequently designates **MAC-WAN**, also the
-Hermes host, for online identity custody and recovery. The private identity is
-now generated there with mode0600 under0700; only its public recipient goes to
-OC424. Actual production ciphertext is retained on OVH and verifies/restores
-successfully on MAC-WAN with a pinned v1.6.29 offline Docker image. No identity
-is exported to the workspace/OC424/OVH. See the exact paths, hashes, host trust
-and shared-Hermes/Docker exposure in [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
+The owner chooses MAC-WAN for online identity custody and recovery. Only public
+recipients go to OC424; OVH never receives a decryption identity. MAC-WAN's
+unencrypted 0600 identity under 0700 is reachable by same-UID Hermes/root/Docker
+administrators. File modes do not create an untrusted-agent isolation boundary.
+No private identity is exported to Git/chat/the workspace/OC424/OVH.
 
-An **independent offline copy and its recovery remain unverified**. MAC-WAN's
-online unencrypted identity is not isolated from its same-UID Hermes process,
-root or Docker administrators. No unattended decryption is enabled, no nightly
-schedule changes and no known-good plaintext copies are deleted.
+The owner reports downloading a protected independent offline copy and
+explicitly authorizes the switch. Public-recipient comparison and actual
+independent-media recovery remain unverified by this task. The current/new
+and previous/old encrypted archives both pass actual online MAC-WAN isolated
+recovery; this is not RPO/RTO or offline-escrow proof.
 
-Implement the approved design before changing the production backup schedule:
+Production schedule files are
+`deploy/hosts/nekomari-oc424-encrypted-backup.service` and matching `.timer`,
+installed on OVH only after the restricted producer/SSH/recipient setup and
+actual recovery pass. The root oneshot receiver is locked with `flock`, has a
+360s service deadline and existing 300s receiver deadline, read-only system/home
+protection, explicit writable backup/lock paths and journal success/failure.
+The daily 03:30 UTC timer is persistent; a missed event runs after the host returns.
+No general sudo grant or identity is supplied to the old ubuntu cron account.
+Only its old backup row is removed; other cron rows and the old script/keys
+remain. Enabling these units by itself does not provision their prerequisites.
 
-1. MAC-WAN is the approved online custodian/runner. Complete the owner's
-   independent offline copy, custodians/access instructions and recovery check.
-   Verify public recipient fingerprints out of band; transfer public material
-   only to OC424.
-2. Put **only public recipients** on OC424; keep identities off OC424/OVH.
-   Multiple recipients provide independent decryption, not threshold approval.
-3. Authorize a separate restore runner and how it temporarily unlocks an
-   identity. Fully offline keys cannot also support autonomous restore drills;
-   approve the actual exposure/approval policy rather than putting a key on OVH.
-4. Agree which old plaintext copies remain and for how long. Keep known-good
-   recovery copies until an actual escrow-path restore passes; source tests do
-   not authorize deleting them.
-
-The actual off-host canary and online custody restore pass on2026-10-27;
-independent offline recovery, schedule/freshness review and legacy retention
-still precede switching the existing schedule. v1.7's encrypted-backup exit
-criterion stays open until the remaining conditions are met.
+Retention keeps 14 top-level encrypted pairs. Exact pre/post v1.7 release pairs
+also remain under `manual-v1.7.0-20261027`, outside that pruning namespace, and
+on MAC-WAN. **No legacy plaintext/manual/local rollback copy is deleted.**
+An explicit deletion policy and separately documented independent-media recovery
+are still needed. Future backup freshness alerts/periodic drill policy are not
+silently implemented by enabling the timer; there is no unattended decryption
+scheduler or independently measured RPO/RTO acceptance.
 
 Adding a new public recipient affects future archives only. Verify a new backup
 with the new identity before removing a retired public recipient. Keep old
@@ -150,7 +149,9 @@ python3 /usr/local/lib/nekomari/encrypted_backup.py receive \
 The producer is an argv command, never shell text or unchecked stdin. The tool
 locks the destination, stages only ciphertext, waits for successful producer
 exit, fsyncs and exclusively publishes the archive/sidecar. Failed, interrupted,
-oversized or plaintext producers do not start retention. No scheduler is enabled.
+oversized or plaintext producers do not start retention. This receiver command
+alone enables no scheduler; the installed production timer is described in the
+D12 checkpoint.
 
 Retention recognizes only complete
 `PREFIX-YYYYMMDDTHHMMSSffffffZ-<12 hex>.tar.gz.age` pairs. It reserves one slot
@@ -250,8 +251,9 @@ See [`API-KEYS.md`](./API-KEYS.md) and
 
 No local broad Go/frontend rebuild, fleet update, 200-node run, production
 encryption cutover or legacy-copy deletion occurs in the source batch. Subsequent
-MAC-WAN custody, restricted source/namespace review and an actual encrypted
-canary/online restore now pass; independent offline recovery, schedule/freshness
-review and explicit legacy retention remain rollout gates. Reverting the
+MAC-WAN custody, restricted source/namespace review, actual pre/post encrypted
+recovery and the nightly schedule cutover now pass. Owner-reported offline
+download is not independent-media restore; freshness/periodic drill policy and
+explicit legacy deletion remain open. Reverting the
 schedule/wrapper does not decrypt new archives or erase old plaintext; keep
 the last readable key/copy while reverting.

@@ -5,24 +5,70 @@ restored, and the two hostname/TLS traps that cost the most time.
 
 ## Current checkpoint (2026-10-27, Asia/Shanghai)
 
-OC424 serves **v1.6.29 / 510f7d3** at
-`https://nekomari.orderly2233.org`. Query hardening, report/queue fixes and
-release-image source labels ship early as compatible maintenance patches;
-scoped keys and client-token rotation are not deployed; nightly backups remain
-plaintext. Owner-authorized encrypted canary/online MAC-WAN recovery now passes,
-separately from the unchanged nightly schedule. Older rollout
-sections are dated evidence, not the current host/version or fleet count.
+OC424 serves **v1.7.0 / 8eb711e** at
+`https://nekomari.orderly2233.org`. Scoped-key migration and session-only token
+rotation are deployed; no existing Agent token is rotated. OVH now receives
+nightly ciphertext, with MAC-WAN as the online identity/recovery runner. The
+owner reports downloading an offline identity copy and authorizes the switch;
+independent-media recovery and owner authenticated UI acceptance are not claimed.
+Older rollout sections are dated evidence, not the current version/node count.
 
 | Item | Observed evidence |
 |---|---|
-| Panel | Docker `nekomari`, running/healthy, restart0; public version/config HTTP200 |
-| Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2; unchanged during this deployment |
-| Unused unit | Generic `nekomari-agent` is inactive; it is not the reporting Agent |
-| OC424 disk | Root filesystem 43% used, about113G free after the new image/local snapshots |
-| OVH | SSH alias `KSLE`; root filesystem 7% used, about364G free; Agent PID495903/restart0 unchanged |
-| MAC-WAN | Linux x86_64, user `macos`, approved online recovery-identity host/runner and Hermes host; HermesPID251037/restart0 and AgentPID976/restart0 unchanged |
+| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.0/8eb711e; upgrade 9/9 and public 23/23 |
+| Nodes | Owner deliberately removed one;13 registered clients retained, all 12 previously fresh CPU nodes remain fresh; UUIDs/tokens unchanged |
+| Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2, unchanged; generic `nekomari-agent` is not the reporter |
+| OVH | Alias `KSLE`, encrypted receiver + daily 03:30 UTC timer; AgentPID495903/restart0 unchanged |
+| MAC-WAN | Linux x86_64 user `macos`; online identity/isolated recovery, AgentPID976/restart0 unchanged; Hermes gateway briefly stopped/resumed, nowPID922780/restart0 |
+| Acceptance | Owner login/history/audit/API-key UI and dedicated Hermes key/live write handoff still pending; public401 is not authenticated acceptance |
 
-## Encrypted backup canary (2026-10-27, Asia/Shanghai)
+## v1.7.0 rollout (2026-10-27, Asia/Shanghai)
+
+Owner approves the current 13-node baseline after deliberately deleting a node.
+The offline identity copy is downloaded **per owner report**, not independently
+restored from that medium. Token edit/import restrictions are accepted and no
+Agent-token rotation is requested. Cutover at12:44:18 changes only the Panel;
+nginx, the public-probe hostname override and Agent services stay unchanged.
+
+| Item | Evidence |
+|---|---|
+| Immutable source/publication | `v1.7.0` -> `8eb711e93c7321098dbea108cb6468afdbc2eab0`; exactCI 40446315166 7/7, release40450095088 10/10 incl native amd64/arm64 deployment verification; Docker40450707458 2/2 |
+| OC424 image | `ghcr.io/aone2233/nekomari:v1.7.0@sha256:61fd8ffc00cf2f40e97d630ef1ee83e9327a43b2abff854fe4248fcb68d98cf0` (arm64); Panel index `sha256:2aa4ce9e90d2b1d59b11ea75755803ce42704bc89a25b8be33119d5c471c4208` |
+| Image/binary identity | Anonymous Panel/Agent image configs on both architectures identify full 8eb711e, OCI version1.7.0. Native/live arm64 binary SHA256 `e381396ef0d28d53445da93b16ee54a9bc493fec68a86cb20deb62dec9cea5b3` matches checksums and source/tag/workflow attestation; native `--help` passes without live-data mount |
+| Pre-cutover encrypted recovery | OVH `oc424-20261027T043120813844Z-2b48d4a466c6.tar.gz.age`,182893531bytes, SHA256 `0577eed95c9eaa073044e26097ab789b37d0915606221aa3a1d433ceda3207d6`; actual MAC-WAN pinned v1.6.29 recovery checks both DBs,13 clients and no scoped-key table. First boot check times out; retry passes in 36.39s, with no plaintext/container remaining |
+| Local paired rollback | `/opt/nekomari/rollbacks/v1.7.0-20261027T044353Z-2259d697`: stop Panel first, snapshot both DBs, capture selected assets, old/new compose/images, checksum evidence, `rollback.py` and `ROLLBACK.txt`. Old native image remains installed |
+| Migration | Both DB quick_check pass; all preexisting schema entries unchanged, only scoped-key table/indexes added. Legacy plaintext config row removed, migration marker present, exactly one unrevoked 30-day `nodes:read` key; no token/digest value selected for acceptance |
+| Continuity | Registered UUID set 13 and Agent tokens compare unchanged inside SQLite; zero rollout targets. All 12 pre-switch fresh CPU nodes remain fresh; no 13/13 online/SLO claim. OC424/OVH/MAC-WAN Agents not restarted |
+| Live acceptance | Healthy/restart0, upgrade 9/9, public 23/23, no new ERROR in bounded window; five admin tools' shells/assets remain in-panel. Owner authenticated UI/API-key acceptance is pending |
+| Hermes | Gateway stopped during switch;3 old skill references backed up and prepended with reviewed metadata-client/no-legacy-fallback rules. Gateway resumes; actual dedicated key and disposable live write/workflow acceptance remain pending. Old key is server-read-only, not a dormant global admin credential |
+| Encrypted nightly cutover | OVH installs `nekomari-oc424-encrypted-backup.service/.timer`; daily 03:30 UTC, persistent, keep 14 pairs, locked/bounded/restricted receiver and journal failures. Remove only old 03:30 cron row, preserve other rows/script/keys. Installed service succeeds, timer enabled/active; next event2026-10-28 11:30 Asia/Shanghai |
+| Post-cutover encrypted recovery | First installed-service archive `oc424-20261027T044833717100Z-7c911d43f0a3.tar.gz.age`,182862307bytes, SHA256 `618e8b80e9f5f68885cad452e77887c99d6395868805eb514f6202072f0532f0`; actual MAC-WAN exact v1.7.0/8eb711e offline recovery passes in 70.72s, both DBs/13 clients/migration metadata/cleanup. Pinned amd64 image `sha256:66ca7338cd5e2237bc4456e52260f2fd9b3559434abacb86d0627a485871aaa7`; packaged binary matches attested release |
+| Retention / schedule recovery | Both ciphertext pairs copied to MAC-WAN and retained under OVH `/srv/backups/oc424-encrypted/manual-v1.7.0-20261027` outside top-level 14-pair pruning. Old plaintext/manual/local rollback copies untouched. Schedule before/after/rollback at `/root/nekomari-backup-schedule-v1.7-20261027T044832Z-07b722` on OVH |
+
+### v1.7 rollback: old binary AND old database
+
+**Never downgrade the image alone after auth migration.** First freeze Hermes
+node writes and owner admin changes. The root-private recovery directory has
+`rollback.py`: verify its checksums, then run it only with explicit awareness
+that it stops the Panel, preserves failed current DB/WAL, restores paired
+pre-migration DBs/selected assets/old compose and starts the old pinned v1.6.29.
+It verifies old health/version. This loses changes/measurements after the
+snapshot and restores the old credential permissions; reconcile writers before
+resuming. Do not resurrect the deleted 14th node from older recovery copies.
+This paired rollback is **prepared, not exercised on live production**; the
+actual isolated old/new encrypted restore evidence is separate.
+
+Retained operational refusals: the first old-image recovery times out, retry
+passes; native image help originally omits the explicit binary entrypoint and
+fails before mounting data, then passes with `/app/nekomari`. Deployment checks
+succeed but final checksum enumeration encounters Ubuntu Python3.10's absent
+`hashlib.file_digest`; hashes are finalized with streaming SHA256, not a repeated
+migration or rollback. First schedule preflight compares the cron spool hash to
+header-stripped `crontab -l`; exact spool/row verification corrects that format
+mismatch before any schedule change. Failure evidence is kept; no gate is
+weakened or failed attempt counted as success.
+
+## Earlier encrypted canary (before v1.7 cutover, 2026-10-27)
 
 The owner identifies MAC-WAN and assigns it recovery custody. A native age
 identity is generated there only; OC424 receives only the public recipient and
@@ -154,21 +200,19 @@ evidence is retained; none is counted as a successful run.
 
 ## After every panel upgrade
 
-**Unreleased backup tooling (2026-10-27):**
-[`ENCRYPTED-BACKUPS.md`](./ENCRYPTED-BACKUPS.md) documents the opt-in source
-batch (PR84/f567128, exact candidate CI40426994745 passes7/7) and synthetic
-local/OVH/candidate-built CI restores. It has not replaced the
-plaintext backup schedule, provisioned production keys or changed retention.
-D12 custody/escrow/actual restore/legacy-copy approval remains open; retain all
-recovery copies recorded above. Token-rotation PR81 is merged as31a5b43 after
-integrated-candidate CI7/7, not deployed or authorized to rotate live tokens.
+The encrypted backup tooling and client-token rotation are now published and
+deployed in v1.7.0; existing Agent tokens are not rotated. The production
+schedule uses the installed encrypted receiver timer, while old plaintext/manual
+recovery copies remain. Source-batch tests are retained historical verification,
+not a reason to rerun unrelated broad suites. See the v1.7 rollout above and
+[`ENCRYPTED-BACKUPS.md`](./ENCRYPTED-BACKUPS.md).
 
 The hand-run checks from the rollouts below are one command now. Run it within five
 minutes of the upgrade — the log window is the last `LOG_WINDOW` measured from *now*, not
 from the moment the container started:
 
 ```bash
-sudo env EXPECTED_VERSION=v1.6.29 EXPECTED_HASH=510f7d3 bash deploy/panel-upgrade-check.sh
+sudo env EXPECTED_VERSION=v1.7.0 EXPECTED_HASH=8eb711e bash deploy/panel-upgrade-check.sh
 ```
 
 It prints one `PASS` / `FAIL` / `SKIP` line per check and exits `0` (all passed, SKIP is not a

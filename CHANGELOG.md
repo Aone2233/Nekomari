@@ -8,6 +8,37 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Record the v1.7.0 production cutover and installed OVH encrypted-backup
+  service/timer. No runtime or published artifact is rebuilt by this record.
+
+## [v1.7.0] - 2026-10-27
+
+- **Security release and OC424 cutover.** Immutable tag/source `8eb711e`;
+  exact-source CI 40446315166 passes7/7, release 40450095088 passes10/10 and
+  Docker 40450707458 passes2/2. Linux checksums/provenance and both image
+  architectures/source labels verify. OC424 switches at12:44:18 Asia/Shanghai:
+  healthy/restart0, upgrade check 9/9 and public checks 23/23. The owner deliberately
+  deletes one node before this release;13 registered UUIDs/tokens and all12
+  previously fresh reporting nodes are preserved, not a claim of13/13online.
+- **Live credential boundary.** One legacy global key migrates to 30-day
+  `nodes:read`; its plaintext settings row is removed. Hermes is briefly stopped
+  for the switch, three old references are redirected to the staged metadata
+  client, and its gateway resumes. Node writes remain unavailable with the old
+  key; owner-issued dedicated read/write key and actual live handoff/UI acceptance
+  are pending. No existing Agent token is rotated or Agent service restarted.
+- **Encrypted nightly backups.** OVH's daily 03:30 UTC systemd timer replaces only
+  the plaintext cron row. Its installed sandboxed service successfully receives
+  ciphertext; fresh pre/post-cutover archives pass actual isolated MAC-WAN
+  old/new-image recovery with both DBs and 13 clients. Keep14encrypted pairs;
+  release recovery copies are outside automatic retention. All existing plaintext,
+  keys and local paired old-image/DB rollback assets remain. The owner reports
+  downloading an offline identity copy; independent-media recovery is not claimed.
+  This is not unattended decrypt scheduling, RPO/RTO/SLO proof or full roadmap exit.
+
+The following entries retain the source-batch verification and boundaries at
+preparation time. Their no-deployment statements describe those earlier batches;
+the release/cutover record above supersedes their operational status.
+
 - **Stage a metadata-only Hermes v1.7 consumer and private owner handoff.**
   Add a standard-library HTTPS CLI for node reads/create/edit/explicit removal,
   stable-v1.7+ guard, bounded allowlisted data and no token/install/exec or
@@ -107,7 +138,7 @@ Nekomari's own.
   anonymous registry checks pass for Panel/Agent on amd64/arm64: revision510f7d3,
   OCI version `1.6.29`. Existing tag/`latest` policy and v1.6.28 artifacts stay unchanged.
 - **OC424 update and real recovery.** Exact-source CI7/7, release10/10 including
-  native amd64/arm64 deployment verification, Docker2/2 and upgrade check9/9
+  native amd64/arm64 deployment verification, Docker2/2 and upgrade check 9/9
   pass. The native/live arm64 binary matches verified checksums/provenance.
   OVH retains a fresh paired backup after actual isolated old-image recovery;
   local image-only rollback assets are prepared, not exercised live. Both DB
@@ -130,7 +161,7 @@ Nekomari's own.
   SQL cancellation. Defaults, response shapes, filters and CSV remain compatible.
 - **Panel-only release and OC424 delivery.** Exact-source CI7/7, release10/10
   (native amd64/arm64 deploy verification), both Docker jobs and OC424 upgrade
-  check9/9 pass. A verified paired backup is retained on OVH after an isolated
+  check 9/9 pass. A verified paired backup is retained on OVH after an isolated
   old-image restore drill. Public assets/private-site denial and both DB
   integrity/schema checks pass; authenticated live history/audit owner acceptance
   remains pending. See `docs/DEPLOY-OC424.md` for immutable digests and rollback.

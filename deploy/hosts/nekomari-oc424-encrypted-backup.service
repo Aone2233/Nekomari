@@ -1,0 +1,20 @@
+[Unit]
+Description=Receive encrypted OC424 Panel backup on OVH
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/bin/flock --nonblock /run/lock/nekomari-oc424-encrypted.lock /usr/local/sbin/receive-oc424-encrypted-backup
+TimeoutStartSec=360
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/backups/oc424-encrypted /run/lock
+StandardOutput=journal
+StandardError=journal
