@@ -1778,6 +1778,8 @@
     "scope_diagnostics_read": "讀取上傳清理診斷資訊（包含內部路徑和錯誤）"
   },
   "server_errors": {
+    "client_uuid_invalid": "節點 ID 無效，請重新整理節點清單並重新選擇目標節點。",
+    "client_not_found": "此節點已不存在，請重新整理節點清單後再進行 token 輪替。",
     "api_key_create_failed": "無法確認金鑰是否建立成功。請先重新整理清單並檢查現有金鑰，再決定是否重新提交；token 之後無法再次讀取。",
     "api_key_expiry_invalid": "請將有效期限設為 1 至 365 之間的整數天數，然後重新提交。",
     "api_key_id_invalid": "金鑰 ID 無效。請重新整理清單並再次選擇要操作的金鑰。",
@@ -1790,5 +1792,15 @@
     "invalid_params": "請求參數無效。請檢查表單內容；若問題持續，請重新整理頁面。",
     "nodes_write_restricted": "此 API 金鑰不能透過編輯節點修改憑證、Agent 版本或回報指標。請使用對應的專用操作。",
     "session_required": "此操作需要管理員瀏覽器工作階段。請先登入面板。"
+  },
+  "client_token": {
+    "rotate": "輪替節點 token",
+    "warning": "確認替換 {{name}} 的 token？舊 token 立即失效，現有連線、佇列命令、終端和檔案傳輸將關閉。需透過獨立復原通道更新 Agent 後，監控才會恢復。",
+    "recovery": "我已準備獨立的 SSH／主控台通道，不需面板終端即可更新此節點。",
+    "confirm": "停用舊 token 並輪替",
+    "install": "請妥善儲存新 token，透過 SSH／主控台更新 Agent 的 token 檔案，限制檔案權限並重新啟動 Agent。面板不會透過舊連線傳送新 token。",
+    "saved": "我已妥善儲存新 token",
+    "token": "新的節點 token",
+    "uncertain": "無法確認輪替是否成功，舊 token 可能已失效。請勿盲目重試：透過已驗證身分的 token 讀取介面及獨立 SSH／主控台復原，再檢查回報。"
   }
 }

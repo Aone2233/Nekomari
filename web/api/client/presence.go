@@ -25,6 +25,17 @@ var (
 	postPresenceStates = make(map[string]*postPresenceEntry)
 )
 
+// ResetClientState runs inside credential retirement, before new admissions.
+func ResetClientState(uuid string) {
+	postPresenceMu.Lock()
+	defer postPresenceMu.Unlock()
+	if entry := postPresenceStates[uuid]; entry != nil {
+		entry.timer.Stop()
+		delete(postPresenceStates, uuid)
+	}
+	agent_runtime.ResetClient(uuid)
+}
+
 // refreshPostPresence 管理 HTTP POST 上报者的在线/离线状态。
 func refreshPostPresence(uuid string) {
 	postPresenceMu.Lock()
@@ -33,9 +44,9 @@ func refreshPostPresence(uuid string) {
 	if entry, exists := postPresenceStates[uuid]; exists {
 		entry.generation++
 		entry.timer.Stop()
-		gen := entry.generation
+		gen, connID := entry.generation, entry.connID
 		entry.timer = time.AfterFunc(postPresenceTTL, func() {
-			postPresenceExpired(uuid, entry.connID, gen)
+			postPresenceExpired(uuid, connID, gen)
 		})
 		agent_runtime.KeepAlivePresence(uuid, entry.connID, postPresenceTTL)
 		return
@@ -62,8 +73,8 @@ func postPresenceExpired(uuid string, connID int64, gen uint64) {
 		return
 	}
 	delete(postPresenceStates, uuid)
+	agent_runtime.SetPresence(uuid, connID, false)
 	postPresenceMu.Unlock()
 
-	agent_runtime.SetPresence(uuid, connID, false)
 	notifier.OfflineNotification(uuid, connID)
 }

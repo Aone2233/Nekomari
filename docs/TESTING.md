@@ -40,6 +40,7 @@ python script/selector-state.browser.spec.py
 python script/number-picker.browser.spec.py
 python script/remote-file-tree.browser.spec.py
 python script/account-sso-2fa.browser.spec.py
+python script/client-token.browser.spec.py
 ```
 
 | Spec | Fixture mounts | Covers |
@@ -52,6 +53,7 @@ python script/account-sso-2fa.browser.spec.py
 | `number-picker.browser.spec.py` | `components/ui/number-picker`, and the real `pages/admin/log` | one `onChange` per valid keystroke, an out-of-range draft kept then clamped on blur, a `defaultValue` change re-syncing without reporting, an unrelated parent render reporting nothing, and the log page's pagination: page 2 stays page 2, and editing the limit returns to page 1 exactly once |
 | `remote-file-tree.browser.spec.py` | `pages/terminal/RemoteFileTree` | the root listing exactly once on mount, the directory memo (expanding lists once and re-expanding does not re-list), refresh forcing a re-list, reveal expanding and listing its ancestor chain, a root-path change dropping the memo, and selection and context-menu targeting |
 | `account-sso-2fa.browser.spec.py` | `pages/admin/account` | the SSO bind/unbind buttons against the `RequireSensitive2FA` gate: an account without a factor keeps the bare URL and is shown no prompt, an account with one gets the OTP dialog, an empty code sends no request at all, the code reaches the query percent-encoded, and a `401` renders the server's message instead of navigating away to a raw JSON page |
+| `client-token.browser.spec.py` | `pages/admin/nodeTable/RotateTokenButton` | independent recovery consent, optional TOTP, duplicate-submit exclusion, no automatic replay after refusal/lost response, secret disposal and mobile-dark in-page behavior |
 
 **On Windows, `npm run build` can die with `[vite:esbuild-transpile] remove
 C:\...\esbuild-<hash>: Access is denied`.** That is not a source error and `tsc -b` will

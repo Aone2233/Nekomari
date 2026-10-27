@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"github.com/Aone2233/nekomari/pkg/rpc"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 	"github.com/Aone2233/nekomari/web/api"
 	"github.com/gin-gonic/gin"
@@ -49,6 +50,7 @@ func TestUploadV2RPCSizeLimitDependsOnMethod(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest("POST", "/api/clients/v2/rpc", bytes.NewReader(body))
 		c.Set("client_uuid", "test-client")
+		api.SetPrincipal(c, rpc.NewUserPrincipal("fixture-admin"))
 		UploadV2RPC(c)
 		return w
 	}

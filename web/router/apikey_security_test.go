@@ -117,7 +117,7 @@ func TestScopedAPIKeysAcrossHTTPAndWebSocket(t *testing.T) {
 
 	t.Run("NoEscapeViaRPCOrDirectREST", func(t *testing.T) {
 		for _, method := range []string{"admin:getSettings", "admin:editSettings", "admin:getSessions", "admin:dbQuery", "admin:dbExec",
-			"admin:exportConfigSecrets", "admin:importConfig", "admin:createAPIKey", "admin:rotateAPIKey", "admin:revokeAPIKey", "admin:listAPIKeys",
+			"admin:exportConfigSecrets", "admin:importConfig", "admin:createAPIKey", "admin:rotateAPIKey", "admin:revokeAPIKey", "admin:listAPIKeys", "admin:rotateClientToken",
 			"admin:setPluginEnabled", "client:report"} {
 			denied(rpcCall(method, allToken, map[string]any{"sql": "SELECT 1"}, false))
 		}
@@ -132,6 +132,7 @@ func TestScopedAPIKeysAcrossHTTPAndWebSocket(t *testing.T) {
 			{"GET", "/api/admin/client/" + node.UUID + "/file/preview-token"}, {"GET", "/api/admin/plugin/list"},
 			{"GET", "/api/admin/api-keys"}, {"POST", "/api/admin/api-keys"}, {"GET", "/plugin-custom"},
 			{"POST", "/api/clients/v2/rpc"}, {"GET", "/api/admin/settings/"},
+			{"POST", "/api/admin/client/" + node.UUID + "/token/rotate"},
 		} {
 			status, _, _ := request(route.verb, route.path, allToken, map[string]any{}, true)
 			if status != http.StatusForbidden {

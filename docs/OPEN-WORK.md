@@ -34,17 +34,23 @@ PR78 is merged as 502a269 with merge CI40275930537 successful (7/7).
 Scoped-key PR79/5b005d5 is merged as 3dd20fb with an identical tree and merge
 CI40280921167 successful (7/7). Report/queue PR80 is merged as fc84915 with exact
 merge CI40298579581 successful (7/7). Only query hardening is released; scoped
-keys and report/queue changes remain unreleased. Client-token rotation PR81 is
-open at 13cdcc5 with CI7/7, not included in this deployment. The scoped-key contract
-is in [`API-KEYS.md`](./API-KEYS.md); its local/UI/migration evidence is retained,
-not rerun in every backend-only batch.
+keys and report/queue changes remain unreleased. Client-token rotation PR81's
+original 13cdcc5 passes exact-source CI40313616989 (7/7); this is original
+evidence, not CI for its subsequent main integration. It is not included in
+this deployment. The scoped-key contract is in [`API-KEYS.md`](./API-KEYS.md);
+its local/UI/migration evidence is retained, not rerun in every backend-only batch.
 
-**Next ordered work (renewed owner instruction after v1.6.28):** fix release
-image source identity first, reconcile PR81 with current delivery records and
-require its new exact-candidate CI, then prepare gated v1.7 cutover. The full
-roadmap is not the active single batch. Source delivery and production acceptance
-remain separate; no API-consumer migration, token rotation or backup-key custody
-is silently approved. See the post-v1.6.28 target in
+**Continuation checkpoint (2026-10-27):** release-image source identity PR83 is
+merged as e234385 after exact-source CI40324022778 passes 7/7. It verifies the
+resolved release checkout and labels both images with that source; actual
+publication acceptance waits for the next release, without republishing v1.6.28.
+PR81 is integrated with that main for review and new exact-candidate CI; only
+workflow/checker/docs change from its original 13cdcc5, not runtime or the
+embedded theme. Next, prepare gated v1.7 cutover or independent engineering
+while its external gates remain open. The full roadmap is not the active single
+batch. Source delivery and production acceptance remain separate; no API-consumer
+migration, token rotation or backup-key custody is silently approved. See the
+post-v1.6.28 target in
 [`LONG-TERM-PLAN.md`](./LONG-TERM-PLAN.md).
 
 The merged isolated report/queue batch starts from 3dd20fb. It clamps only
@@ -72,6 +78,35 @@ nine top-level groups (13 with visible subtests) in private fixtures, with
 Agent495903/restart0 unchanged. This is not a remote-native build or production
 acceptance. No Agent/protocol, dependency,
 frontend, later metrics/history or backup-policy change is part of this batch.
+
+**Fourth source batch (original evidence, 2026-10-26):**
+`codex/v1.7-client-token-rotation`, originally based on fc84915 and now integrated
+with main e234385, adds session-only `admin:rotateClientToken` and a same-page
+node-table dialog. Integration preserves the original runtime/frontend bytes;
+the retained checks below are dated evidence, not new integration-CI results.
+Existing account TOTP policy applies; API keys cannot rotate. A per-node gate
+orders credential retirement with short Agent mutations; old credentials,
+delayed handshakes, sockets, queues, POST presence, terminals and file relays
+cannot revive retired runtime state. Measurements remain; already-admitted
+writes/jobs are not undone. Generic edits and existing-node imports cannot
+replace tokens outside this boundary; Agent basic-info maps write host facts
+only. The UI requires independent SSH/console recovery consent and never
+automatically retries uncertain writes. See
+[`CLIENT-TOKEN-ROTATION.md`](./CLIENT-TOKEN-ROTATION.md) for the contract,
+intentional compatibility restrictions and recovery/rollback procedure.
+
+Twelve affected Go packages pass 247 top-level tests (580 with subtests)
+ordinarily/race, selected from the latest retained complete run per package.
+Embedded-public ordinary tests add 71 top-level/111 with subtests. Frontend
+194/194, lint/compiler audit/build, theme repack, four rotation and eight
+node-table mounted browser groups pass. A real compiled embedded Panel passes
+desktop-dark/mobile-light synthetic REST rotations without new tabs, page errors
+or document overflow. OVH's exact prebuilt race executables pass six focused
+groups (13 with visible subtests), Agent495903/restart0 unchanged. Vet, module
+verification, Go1.27.3 build and reachable/imported-package binary scan pass;
+one required-module-only advisory remains. This is not a full-suite/native
+platform, production, SLO or capacity claim. No release tag, live credential
+rotation, Agent/protocol/dependency/schema change or OC424 app upgrade occurs.
 
 The application-level all-roadmap goal still reports paused. The owner explicitly
 requests that it be revised and work continue, revoking the earlier pause as a
@@ -163,7 +198,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Item | Where | Why it is still here |
 |---|---|---|
 | History query hardening owner acceptance | `web/rpc/jsonrpc/common.record.go`; `web/rpc/jsonrpc/budget.go` | Released/deployed as v1.6.28/502a269: 366-day ceiling, shared budgets/cancellation and guest visibility filtering. Release/platform and OC424 health/data checks pass; authenticated live history UI acceptance remains pending |
-| Client-token rotation release/acceptance | PR81, `docs/CLIENT-TOKEN-ROTATION.md` on `codex/v1.7-client-token-rotation` | Implemented/verified at 13cdcc5, CI7/7; PR open and not deployed. Session/step-up-only API/UI with old-credential retirement; independent recovery, edit/import compatibility and bounded live acceptance remain gates. Never patch live SQLite to rotate |
+| Client-token rotation release/acceptance | PR81, `docs/CLIENT-TOKEN-ROTATION.md` on `codex/v1.7-client-token-rotation` | Original 13cdcc5 passes CI7/7; integration with e234385 requires its own exact-candidate CI before merge. Not deployed. Session/step-up-only API/UI with old-credential retirement; independent recovery, edit/import compatibility and bounded live acceptance remain gates. Never patch live SQLite to rotate |
 | Scoped API-key release and consumer migration | `internal/apikeys/`, `pkg/rpc/apikey_scopes.go`, `docs/API-KEYS.md` | PR79 merged as 3dd20fb; exact PR and merge CI each pass 7/7. Not released: OC424 still has the old global credential policy. Inventory/provision actual legacy consumers before the intentional read-only migration |
 | Audit-log pagination hardening owner acceptance | `web/rpc/jsonrpc/admin.system.go` | Released/deployed as v1.6.28: 1-1000 rows, checked offsets, strict binding and cancellation. REST/filter/CSV compatibility verified in exact-source CI; authenticated live audit UI acceptance remains pending |
 | `/plugin/*` is still owned by the installed theme | `web/public/public.go` | **Accepted**: the panel took back only its own pages. Tightening it would break installed themes |

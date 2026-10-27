@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
+	"github.com/Aone2233/nekomari/web/connection"
 )
 
 const (
@@ -76,30 +78,31 @@ func sweepV2EventQueues(now time.Time) {
 }
 
 func DispatchV2Event(uuid, method string, params any) bool {
-	if conn := GetConnectedClient(uuid); conn != nil {
+	mu.RLock()
+	conn, generation := connectedClients[uuid], v2Clients[uuid]
+	mu.RUnlock()
+	if conn != nil {
 		payload := v2.Request{JSONRPC: v2.Version, Method: method, Params: params}
 		if conn.WriteJSON(payload) == nil {
 			return true
 		}
 	}
-	if !IsV2Client(uuid) {
-		return false
-	}
-	EnqueueV2Event(uuid, method, params)
-	return true
+	return enqueueCurrentV2Event(uuid, conn, generation, method, params)
 }
 
 func DispatchPing(uuid string, params v2.PingParams) bool {
-	if conn := GetConnectedClient(uuid); conn != nil {
-		payload := v2.Request{JSONRPC: v2.Version, Method: v2.MethodAgentPing, Params: params}
-		if conn.WriteJSON(payload) == nil {
-			return true
-		}
-	}
-	if !IsV2Client(uuid) {
+	return DispatchV2Event(uuid, v2.MethodAgentPing, params)
+}
+
+func enqueueCurrentV2Event(uuid string, conn *connection.SafeConn, generation uint64, method string, params any) bool {
+	// Retirement holds mu through queue deletion. A failed old socket write
+	// cannot recreate its queue or inject commands into a fresh connection.
+	mu.RLock()
+	defer mu.RUnlock()
+	if generation == 0 || v2Clients[uuid] != generation || connectedClients[uuid] != conn {
 		return false
 	}
-	EnqueueV2Event(uuid, v2.MethodAgentPing, params)
+	EnqueueV2Event(uuid, method, params)
 	return true
 }
 
@@ -270,12 +273,35 @@ func WaitV2Events(uuid string, ackIDs []string, timeout time.Duration) []v2.Even
 	if timeout <= 0 {
 		return TakeV2Events(uuid, ackIDs, v2EventQueueLimit)
 	}
+	return PrepareV2EventWait(uuid, ackIDs).Wait(context.Background(), timeout)
+}
+
+// V2EventWait captures queue identity during credential admission, but never
+// holds that admission while waiting or returns another generation's work.
+type V2EventWait struct {
+	uuid  string
+	queue *v2EventQueue
+}
+
+func PrepareV2EventWait(uuid string, ackIDs []string) V2EventWait {
 	v2EventMu.Lock()
+	defer v2EventMu.Unlock()
 	q := getV2EventQueueLocked(uuid)
 	ackV2EventsLocked(q, ackIDs)
 	pruneExpiredV2EventsLocked(q, q.lastUsed)
-	events := takeV2EventsLocked(q, v2EventQueueLimit)
-	if len(events) > 0 {
+	return V2EventWait{uuid: uuid, queue: q}
+}
+
+func (wait V2EventWait) Wait(ctx context.Context, timeout time.Duration) []v2.Event {
+	v2EventMu.Lock()
+	q := wait.queue
+	if q == nil || v2EventQueues[wait.uuid] != q || ctx.Err() != nil {
+		v2EventMu.Unlock()
+		return []v2.Event{}
+	}
+	pruneExpiredV2EventsLocked(q, time.Now())
+	if len(q.events) > 0 || timeout <= 0 {
+		events := takeV2EventsLocked(q, v2EventQueueLimit)
 		v2EventMu.Unlock()
 		return events
 	}
@@ -287,12 +313,13 @@ func WaitV2Events(uuid string, ackIDs []string, timeout time.Duration) []v2.Even
 	select {
 	case <-signal:
 	case <-timer.C:
+	case <-ctx.Done():
 	}
 	v2EventMu.Lock()
 	defer v2EventMu.Unlock()
 	// A delete followed by UUID reuse must not let an old poll read or revive
 	// a new generation's commands, on either the signal or timeout path.
-	if v2EventQueues[uuid] != q {
+	if v2EventQueues[wait.uuid] != q || ctx.Err() != nil {
 		return []v2.Event{}
 	}
 	q.lastUsed = time.Now()

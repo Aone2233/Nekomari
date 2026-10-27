@@ -1778,6 +1778,8 @@
     "scope_diagnostics_read": "Baca diagnostik pembersihan unggahan (termasuk jalur internal dan galat)"
   },
   "server_errors": {
+    "client_uuid_invalid": "ID node tidak valid. Muat ulang daftar dan pilih kembali node yang dituju.",
+    "client_not_found": "Node ini tidak lagi tersedia. Muat ulang daftar node sebelum merotasi token.",
     "api_key_create_failed": "Pembuatan kunci belum dapat dipastikan. Muat ulang daftar dan periksa kunci yang ada sebelum mencoba lagi secara sengaja; token tidak dapat diambil kembali nanti.",
     "api_key_expiry_invalid": "Pilih masa berlaku berupa bilangan bulat antara 1 dan 365 hari, lalu kirim ulang.",
     "api_key_id_invalid": "ID kunci tidak valid. Muat ulang daftar dan pilih kembali kunci yang dimaksud.",
@@ -1790,5 +1792,15 @@
     "invalid_params": "Permintaan tidak valid. Periksa isian dan muat ulang halaman jika masalah berlanjut.",
     "nodes_write_restricted": "Kunci API ini tidak dapat mengubah kredensial, versi Agent, atau metrik yang dilaporkan melalui penyuntingan node. Gunakan operasi khusus yang sesuai.",
     "session_required": "Operasi ini memerlukan sesi browser administrator. Masuk ke panel terlebih dahulu."
+  },
+  "client_token": {
+    "rotate": "Rotasi token agen",
+    "warning": "Ganti token untuk {{name}}? Token lama langsung tidak berlaku. Koneksi, antrean perintah, terminal, dan transfer berkas ditutup. Pemantauan berlanjut setelah agen diperbarui melalui jalur pemulihan independen.",
+    "recovery": "Saya memiliki akses SSH/konsol independen untuk memperbarui agen tanpa terminal panel.",
+    "confirm": "Nonaktifkan token lama dan rotasi",
+    "install": "Simpan token ini dengan aman. Perbarui berkas token agen melalui SSH/konsol, batasi izin berkas, lalu mulai ulang agen. Panel tidak mengirim token pengganti melalui koneksi lama.",
+    "saved": "Saya telah menyimpan token baru",
+    "token": "Token agen baru",
+    "uncertain": "Rotasi belum dapat dipastikan. Token lama mungkin sudah tidak berlaku. Jangan langsung mencoba ulang: pulihkan melalui operasi baca token terautentikasi dan SSH/konsol independen, lalu periksa pelaporan."
   }
 }

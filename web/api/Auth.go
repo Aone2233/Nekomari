@@ -2,20 +2,25 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/Aone2233/nekomari/database/accounts"
+	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/internal/clientguard"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 	"github.com/Aone2233/nekomari/pkg/secretcmp"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 const (
@@ -185,6 +190,10 @@ func hasTempAccess(c *gin.Context) bool {
 }
 
 func extractClientToken(c *gin.Context) string {
+	if token, ok := c.Get("authenticated_agent_token"); ok {
+		value, _ := token.(string)
+		return value
+	}
 	token := c.Query("token")
 	if token != "" {
 		return token
@@ -239,7 +248,7 @@ func checkTokenAndGetUUID(token string) (string, error) {
 		return "", nil
 	}
 	var client models.Client
-	err := db.Select("uuid").Where("token = ?", token).Take(&client).Error
+	err := db.Session(&gorm.Session{Logger: logger.Discard}).Select("uuid").Where("token = ?", token).Take(&client).Error
 
 	if err == sql.ErrNoRows {
 		return "", nil
@@ -251,4 +260,33 @@ func checkTokenAndGetUUID(token string) (string, error) {
 		return "", err
 	}
 	return client.UUID, nil
+}
+
+var ErrClientCredentialRetired = errors.New("client credential is no longer valid")
+
+// ClientOperation captures body credentials before consumption. Its short side
+// effects share the retirement gate, so validation cannot race commit + reset.
+func ClientOperation(c *gin.Context, clientUUID string) func(context.Context, func() error) error {
+	p := GetPrincipal(c)
+	allowed := p != nil && ((p.Type == rpc.PrincipalUser && p.UserUUID != "") ||
+		(p.Type == rpc.PrincipalAgent && p.ClientUUID == clientUUID && clientUUID != ""))
+	isAgent := p != nil && p.Type == rpc.PrincipalAgent
+	token := ""
+	if isAgent {
+		token = extractClientToken(c)
+	}
+	return func(ctx context.Context, fn func() error) error {
+		if !allowed {
+			return ErrClientCredentialRetired
+		}
+		return clientguard.With(ctx, clientUUID, func() error {
+			if isAgent {
+				current, err := clients.GetClientUUIDByTokenContext(ctx, token)
+				if err != nil || current == "" || current != clientUUID {
+					return ErrClientCredentialRetired
+				}
+			}
+			return fn()
+		})
+	}
 }

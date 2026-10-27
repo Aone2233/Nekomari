@@ -1,18 +1,25 @@
 package clients
 
 import (
+	"context"
 	"fmt"
 	"math"
 
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func GetClientUUIDByToken(token string) (clientUUID string, err error) {
-	db := dbcore.GetDBInstance()
+	return GetClientUUIDByTokenContext(context.Background(), token)
+}
+
+func GetClientUUIDByTokenContext(ctx context.Context, token string) (clientUUID string, err error) {
+	db := dbcore.GetDBInstance().WithContext(ctx).Session(&gorm.Session{Logger: logger.Discard})
 	var client models.Client
-	err = db.Where("token = ?", token).First(&client).Error
+	err = db.Select("uuid").Where("token = ?", token).Take(&client).Error
 	if err != nil {
 		return "", err
 	}

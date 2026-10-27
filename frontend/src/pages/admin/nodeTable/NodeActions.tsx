@@ -4,6 +4,7 @@ import { Terminal } from "lucide-react";
 import type { NodeDetail } from "@/contexts/NodeDetailsContext";
 import { GenerateCommandButton } from "./GenerateCommandButton";
 import { BillingButton, DeleteButton, EditButton } from "./NodeDialogs";
+import { RotateTokenButton } from "./RotateTokenButton";
 
 /** The per-row action strip: install command, terminal, edit, billing, delete. */
 export const ActionButtons = ({
@@ -33,6 +34,7 @@ export const ActionButtons = ({
         <Terminal size="18" />
       </IconButton>
       <EditButton node={node} />
+      <RotateTokenButton node={node} />
       <BillingButton node={node} />
       <DeleteButton node={node} />
     </div>

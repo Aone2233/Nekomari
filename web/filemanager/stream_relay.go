@@ -12,9 +12,10 @@ import (
 	"sync"
 	"time"
 
+	logger "github.com/Aone2233/nekomari/utils/log"
+	"github.com/Aone2233/nekomari/web/api"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	logger "github.com/Aone2233/nekomari/utils/log"
 )
 
 const (
@@ -205,12 +206,32 @@ func lookupStreamTransfer(c *gin.Context) (*streamTransfer, error) {
 // upload receives the browser bytes in the response body. GET remains an alias
 // for upload so an interrupted rollout cannot strand an already-open session.
 func AgentTransfer(c *gin.Context) {
-	transfer, err := lookupStreamTransfer(c)
+	clientID, _ := c.Get("client_uuid")
+	uuid, _ := clientID.(string)
+	operation := api.ClientOperation(c, uuid)
+	var transfer *streamTransfer
+	err := operation(c.Request.Context(), func() error {
+		var err error
+		transfer, err = lookupStreamTransfer(c)
+		return err
+	})
 	if err != nil {
 		logger.Warnf("file-transfer", "agent stream authentication failed method=%s path=%s remote=%s: %v", c.Request.Method, c.Request.URL.Path, c.ClientIP(), err)
 		_ = c.Error(err)
 		c.String(http.StatusUnauthorized, err.Error())
 		return
+	}
+	connect := func() bool {
+		err := operation(c.Request.Context(), transfer.markConnected)
+		if err == nil {
+			return true
+		}
+		if errors.Is(err, api.ErrClientCredentialRetired) {
+			c.String(http.StatusUnauthorized, "client credential retired")
+		} else {
+			c.String(http.StatusConflict, "file transfer is closed or already connected")
+		}
+		return false
 	}
 
 	switch c.Request.Method {
@@ -220,7 +241,9 @@ func AgentTransfer(c *gin.Context) {
 			c.String(http.StatusMethodNotAllowed, "transfer direction does not allow GET")
 			return
 		}
-		serveUploadTransfer(c, transfer)
+		if connect() {
+			serveUploadTransfer(c, transfer)
+		}
 	case http.MethodPost:
 		if transfer.direction == streamUploadDirection {
 			if c.Request.ContentLength > 0 {
@@ -230,7 +253,9 @@ func AgentTransfer(c *gin.Context) {
 				c.String(http.StatusBadRequest, "invalid upload transfer request")
 				return
 			}
-			serveUploadTransfer(c, transfer)
+			if connect() {
+				serveUploadTransfer(c, transfer)
+			}
 			return
 		}
 		if c.Request.ContentLength >= 0 && c.Request.ContentLength != transfer.size {
@@ -240,10 +265,7 @@ func AgentTransfer(c *gin.Context) {
 			c.String(http.StatusBadRequest, "invalid transfer content length")
 			return
 		}
-		if err := transfer.markConnected(); err != nil {
-			logger.Warnf("file-transfer", "agent download stream connection rejected id=%s: %v", transfer.id, err)
-			_ = c.Error(err)
-			c.String(http.StatusConflict, err.Error())
+		if !connect() {
 			return
 		}
 		written, copyErr := copyExactStream(transfer.writer, c.Request.Body, transfer.size, false, nil)
@@ -267,12 +289,6 @@ func AgentTransfer(c *gin.Context) {
 }
 
 func serveUploadTransfer(c *gin.Context, transfer *streamTransfer) {
-	if err := transfer.markConnected(); err != nil {
-		logger.Warnf("file-transfer", "agent upload stream connection rejected id=%s: %v", transfer.id, err)
-		_ = c.Error(err)
-		c.String(http.StatusConflict, err.Error())
-		return
-	}
 	committed := false
 	commitHeaders := func() {
 		if committed {

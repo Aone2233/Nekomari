@@ -1778,6 +1778,8 @@
     "scope_diagnostics_read": "读取上传清理诊断信息（包含内部路径和错误）"
   },
   "server_errors": {
+    "client_uuid_invalid": "节点 ID 无效，请刷新节点列表并重新选择目标节点。",
+    "client_not_found": "该节点已不存在，请刷新节点列表后再进行 token 轮换。",
     "api_key_create_failed": "无法确认密钥是否创建成功。请先刷新列表并检查已有密钥，再决定是否重新提交；token 之后无法再次读取。",
     "api_key_expiry_invalid": "请将有效期设为 1 至 365 之间的整数天数，然后重新提交。",
     "api_key_id_invalid": "密钥 ID 无效。请刷新列表并重新选择要操作的密钥。",
@@ -1790,5 +1792,15 @@
     "invalid_params": "请求参数无效。请检查表单内容；若问题持续，请刷新页面。",
     "nodes_write_restricted": "此 API 密钥不能通过编辑节点修改凭据、Agent 版本或上报指标。请使用对应的专用操作。",
     "session_required": "此操作需要管理员浏览器会话。请先登录面板。"
+  },
+  "client_token": {
+    "rotate": "轮换节点 token",
+    "warning": "确认替换 {{name}} 的 token？旧 token 立即失效，现有连接、排队命令、终端和文件传输将被关闭。需要通过独立的恢复通道更新 Agent 后，监控才会恢复。",
+    "recovery": "我已准备独立的 SSH／控制台通道，无需面板终端即可更新该节点。",
+    "confirm": "停用旧 token 并轮换",
+    "install": "请妥善保存新 token，通过 SSH／控制台更新 Agent 的 token 文件，限制文件权限并重启 Agent。面板不会通过旧连接下发新 token。",
+    "saved": "我已妥善保存新 token",
+    "token": "新的节点 token",
+    "uncertain": "无法确认轮换是否成功，旧 token 可能已经失效。请勿盲目重试：通过经过身份验证的 token 读取接口及独立 SSH／控制台恢复，再检查上报。"
   }
 }

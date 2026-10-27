@@ -27,6 +27,7 @@ var sensitiveMethodsAllowlist = []string{
 	"admin:revokeAPIKey",
 	"admin:rollAgentUpdate",
 	"admin:rotateAPIKey",
+	"admin:rotateClientToken",
 }
 
 func createStepUpAccount(t *testing.T, username, password string) models.User {

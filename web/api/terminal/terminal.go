@@ -124,10 +124,10 @@ func attachBrowser(id, userUUID string, apiKey bool, conn *connection.SafeConn) 
 	return session, true
 }
 
-func attachAgent(id string, conn *connection.SafeConn) (*TerminalSession, bool) {
+func attachAgent(id string, expected *TerminalSession, conn *connection.SafeConn) (*TerminalSession, bool) {
 	TerminalSessionsMutex.Lock()
 	session, ok := TerminalSessions[id]
-	if !ok || session == nil {
+	if !ok || session == nil || session != expected {
 		TerminalSessionsMutex.Unlock()
 		return nil, false
 	}
@@ -139,9 +139,31 @@ func attachAgent(id string, conn *connection.SafeConn) (*TerminalSession, bool) 
 	}
 	TerminalSessionsMutex.Unlock()
 	if oldAgent != nil && oldAgent != conn {
-		_ = oldAgent.Close()
+		oldAgent.Abort()
+		go oldAgent.Close()
 	}
 	return session, true
+}
+
+// CloseClientSessions also removes resumable sessions and their cleanup timers.
+func CloseClientSessions(uuid string) {
+	var connections []*connection.SafeConn
+	TerminalSessionsMutex.Lock()
+	for id, session := range TerminalSessions {
+		if session == nil || session.UUID != uuid {
+			continue
+		}
+		stopCleanup(session)
+		connections = append(connections, session.Browser, session.Agent)
+		delete(TerminalSessions, id)
+	}
+	TerminalSessionsMutex.Unlock()
+	for _, conn := range connections {
+		if conn != nil {
+			conn.Abort()
+			go conn.Close()
+		}
+	}
 }
 
 func maybeStartForwarding(id string) {

@@ -1,6 +1,7 @@
 package clients
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	logger "github.com/Aone2233/nekomari/utils/log"
@@ -11,22 +12,34 @@ import (
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/database/tasks"
+	"github.com/Aone2233/nekomari/internal/clientguard"
 	"github.com/Aone2233/nekomari/utils"
 
 	"github.com/google/uuid"
 )
 
 func DeleteClient(clientUuid string) error {
-	db := dbcore.GetDBInstance()
-	err := db.Delete(&models.Client{}, "uuid = ?", clientUuid).Error
-	if err != nil {
-		return err
-	}
-	return nil
+	return DeleteClientAndReset(context.Background(), clientUuid, nil)
+}
+
+func DeleteClientAndReset(ctx context.Context, clientUUID string, reset func()) error {
+	return clientguard.With(ctx, clientUUID, func() error {
+		if err := dbcore.GetDBInstance().WithContext(ctx).Delete(&models.Client{}, "uuid = ?", clientUUID).Error; err != nil {
+			return err
+		}
+		if reset != nil {
+			reset()
+		}
+		return nil
+	})
 }
 
 func SaveClientInfo(update map[string]interface{}) error {
-	db := dbcore.GetDBInstance()
+	return SaveClientInfoContext(context.Background(), update)
+}
+
+func SaveClientInfoContext(ctx context.Context, update map[string]interface{}) error {
+	db := dbcore.GetDBInstance().WithContext(ctx)
 	clientUUID, ok := update["uuid"].(string)
 	if !ok || clientUUID == "" {
 		return fmt.Errorf("invalid client UUID")
@@ -115,7 +128,11 @@ func SaveClientInfo(update map[string]interface{}) error {
 		return err
 	}
 
-	err := db.Model(&models.Client{}).Where("uuid = ?", clientUUID).Updates(update).Error
+	// Agent-controlled maps may report host facts, never credentials or policy.
+	fields := []string{"cpu_name", "cpu_cores", "cpu_physical_cores", "arch", "os", "kernel_version",
+		"ipv4", "ipv6", "mem_total", "swap_total", "disk_total", "gpu_name", "virtualization",
+		"version", "icmp_capability", "region", "updated_at"}
+	err := db.Model(&models.Client{}).Where("uuid = ?", clientUUID).Select(fields).Updates(update).Error
 	if err != nil {
 		return err
 	}
@@ -216,6 +233,11 @@ func SaveClient(updates map[string]interface{}) error {
 	clientUUID, ok := updates["uuid"].(string)
 	if !ok || clientUUID == "" {
 		return fmt.Errorf("invalid client UUID")
+	}
+	for field := range updates {
+		if strings.EqualFold(strings.Trim(field, "`\"[] "), "token") {
+			return fmt.Errorf("use rotateClientToken to change an agent credential")
+		}
 	}
 
 	// 确保更新的字段不为空

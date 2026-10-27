@@ -11,7 +11,8 @@ import (
 
 var (
 	connectedClients = make(map[string]*connection.SafeConn)
-	v2Clients        = make(map[string]struct{})
+	v2Clients        = make(map[string]uint64)
+	v2Generation     uint64
 	latestReport     = make(map[string]*v2.Report)
 	recentReports    = make(map[string][]v2.Report)
 	reportClamps     = make(map[string]string)
@@ -56,7 +57,10 @@ func SetConnectedClients(uuid string, conn *connection.SafeConn) {
 func MarkV2Client(uuid string) {
 	mu.Lock()
 	defer mu.Unlock()
-	v2Clients[uuid] = struct{}{}
+	if v2Clients[uuid] == 0 {
+		v2Generation++
+		v2Clients[uuid] = v2Generation
+	}
 }
 
 func IsV2Client(uuid string) bool {
@@ -82,6 +86,22 @@ func DeleteConnectedClients(uuid string) {
 	// 只从 map 中删除，不再负责关闭连接
 	delete(connectedClients, uuid)
 	delete(v2Clients, uuid)
+}
+
+// ResetClient retires connection/presence/commands but preserves measurements.
+// Transport close bypasses the writer mutex so a stalled peer cannot pin reset.
+func ResetClient(uuid string) {
+	mu.Lock()
+	conn := connectedClients[uuid]
+	delete(connectedClients, uuid)
+	delete(v2Clients, uuid)
+	delete(presenceOnly, uuid)
+	delete(reportClamps, uuid)
+	DeleteV2EventQueue(uuid)
+	mu.Unlock()
+	if conn != nil {
+		conn.Abort()
+	}
 }
 
 // SetPresence sets or clears presence for non-WebSocket agents.

@@ -63,7 +63,11 @@ bounded to 1000 rows with checked offsets, strict binding and cancellation.
 label reports default-branch `fc84915`, despite checkout and packaged assets
 being from `502a269`. The verified release attestation, extracted binary hash
 and `/api/version` establish the deployed source; the label does not. Keep this
-published image immutable and correct workflow metadata in a later batch.
+published image immutable. Source-identity PR83 is merged as e234385 on
+2026-10-27 after exact-source CI40324022778 passes 7/7: verify the resolved
+release checkout before asset download and explicitly label both images from
+that commit. Actual registry publication/label acceptance waits for the next
+release; this source fix does not rebuild v1.6.28 or change the running image.
 
 **Retained non-production refusals:** the original local `gh` lacked attestation
 support; a temporary checksum-verified modern CLI verified the signature and
