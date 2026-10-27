@@ -5,7 +5,7 @@ restored, and the two hostname/TLS traps that cost the most time.
 
 ## Current checkpoint (2026-10-27, Asia/Shanghai)
 
-OC424 serves **v1.7.2 / 832b528** at
+OC424 serves **v1.7.3 / 0fe0b37** at
 `https://nekomari.orderly2233.org`. Scoped-key migration and session-only token
 rotation are deployed; no existing Agent token is rotated. OVH now receives
 nightly ciphertext, with MAC-WAN as the online identity/recovery runner. The
@@ -15,12 +15,70 @@ Older rollout sections are dated evidence, not the current version/node count.
 
 | Item | Observed evidence |
 |---|---|
-| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.2/832b528; upgrade9/9,public23/23,scoped-key forecast14rows |
-| Nodes | Owner confirms Pi's later addition;current approved baseline14registered clients,13fresh CPU reporters. Preserve the new node; earlier13-client release snapshots are historical |
+| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.3/0fe0b37; upgrade9/9,public23/23,scoped-key forecast14rows |
+| Nodes | Owner confirms Pi's later addition;current approved baseline14registered clients,14fresh CPU reporters. Preserve the new node; earlier13-client release snapshots are historical |
 | Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2, unchanged; generic `nekomari-agent` is not the reporter |
 | OVH | Alias `KSLE`, encrypted receiver + daily 03:30 UTC timer; AgentPID495903/restart0 unchanged |
 | MAC-WAN | Linux x86_64 user `macos`; online identity/isolated recovery, AgentPID976/restart0 unchanged; Hermes gateway briefly stopped/resumed, nowPID922780/restart0 |
 | Acceptance | Hermes private-key/disposable CLI writes pass; owner login/history/audit/API-key UI and complete caller inventory remain separate; public401 is not authenticated acceptance |
+
+## v1.7.3 rollout (2026-10-27 16:29:42 Asia/Shanghai)
+
+Bounded encrypted-backup freshness/heartbeat monitor PR96, not a full v1.8
+release. OVH checks its newest ciphertext pair and pushes only non-secret health
+metadata through a dedicated restricted SSH command. An opt-in Linux Panel
+watcher uses existing notifications for26-hour backup/45-minute report incidents
+and recovery, persisting dedupe across normal restarts and retrying unavailable
+delivery15minutes later. Telegram delivery has30-second/64KiB bounds. No public
+API,DB/settings schema,Agent/protocol,existing token/scope/identity or nightly
+backup encryption/retention change. See [`BACKUP-HEALTH.md`](./BACKUP-HEALTH.md).
+
+| Item | Evidence |
+|---|---|
+| Immutable publication | `v1.7.3` -> `0fe0b3758c3f615b85af93bd0ad94fee71a90ed4`; exactCI40471914791 7/7,release40472663920 10/10,Docker40473430351 2/2. PR96 merge has the identical tested tree; no tag/asset rebuild |
+| OC424 pinned image | `ghcr.io/aone2233/nekomari:v1.7.3@sha256:206981e01fc40d7cce7bf6a464973783a0128b58f7111114d9cd33a8c1830a14`; Panel index `sha256:08f81141c50466f8f64618f85b972747125d817f14c3368929790018ad0499cd` |
+| Native/source provenance | Both Linux binaries match checksums/tag/source/workflow attestations; Panel/Agent amd64/arm64 OCI metadata identify full0fe0b3758c3f615b85af93bd0ad94fee71a90ed4/version1.7.3. Native/live arm64 SHA256 `2d907fd66d826f8ddb0fe5c158afab3208f4f2a55b70a9ca3bab9ca14573acbf`; MAC-WAN amd64 image `ghcr.io/aone2233/nekomari:v1.7.3@sha256:0235dab28c139735b8dd072f0bd9b2a388727c227df590b5cf0ca906706e6763`, binary `75fae0034744bf00f84fe40f148c432ac3a1bd3e1f85f9e114ae26766d54f084` |
+| Focused verification | Python9offline groups,backupwatch/server/messageSender races and vet pass. Attested release binary6/6 installed synthetic-Panel/fake-Telegram groups on OVH cover stale backup,restart dedupe,recovery and stale heartbeat; no real Telegram/provider lookup. Required exact-source CI also retains full existing gates |
+| Pre encrypted recovery | Installed OVH service succeeds: `oc424-20261027T080733407301Z-6d77309d288e.tar.gz.age`,183146864bytes,SHA256 `bc1ce19195024575669b892d533380ea291e2e9b7ec286283bd6cc087f1e6bac`; regular copy `/srv/backups/oc424-encrypted/manual-v1.7.3-20261027/oc424-20261027T080733407301Z-6d77309d288e.tar.gz.age` outside14-pair pruning. Same ciphertext on MAC-WAN passes actual pinned-v1.7.2 recovery in36.11s,both DBs/14clients/auth metadata/cleanup |
+| Restricted health installation | OC424 recovery `/root/nekomari-v173-health-20261027T082843Z-e84d4362` retains original authorized_keys/hash and health-specific rollback; source-limited restrict/forced-command public key,one fixed sudo receiver,root0700/0600 local report. OVH recovery `/root/nekomari-v173-health-20261027T082845Z-76e2a235` records exact tool/wrapper/unit hashes; dedicated push private key remains only OVH. Existing authorizations,pull key,encrypted producer/receiver/nightly units/retention remain unchanged |
+| Actual health acceptance | New OVH service/manual check and initial automatic health-timer trigger succeed;15-minute timer is enabled/active. OC424 receives fresh4KiB-bounded status and persists observed=ok,notified=empty. Opt-in environment and healthy startup log verify; no simulated live outage/test Telegram. Later recurring health/nightly backup success or actual live Telegram delivery remain separate |
+| Local app recovery | `/opt/nekomari/rollbacks/v1.7.3-20261027T082941Z-ca9d9477` retains paired per-DB WAL-safe snapshots,old/new compose/images/hashes and image rollback instructions; old v1.7.2 native image remains. Restore prior compose to remove the health environment opt-in; keep current DBs and Pi's node |
+| Actual continuity |14registered UUIDs/Agent tokens retained; all14fresh CPU reporters stay fresh (improved from13at the earlier release). Both DB quick_check/schema,key scopes/expiry,zero rollout targets,GeoIP true/ipinfo,nginx/recipients/probe override unchanged. OC424/OVH/MAC-WAN Agents and Hermes not restarted |
+| Bounded live acceptance | Healthy/restart0,upgrade9/9,public23/23,current MAC-WAN scoped-key forecast14rows,0new error lines in bounded log window. Owner-session history/audit/API-key UI remains separate |
+| Post encrypted recovery | Installed OVH service succeeds: `oc424-20261027T083031292998Z-cd23f23c0f7a.tar.gz.age`,183422090bytes,SHA256 `57b3a47cc2d730da3d97a7b47b6e073879b868678ca7c2f3a0367fdabf94c3d3`; regular release copy `/srv/backups/oc424-encrypted/manual-v1.7.3-20261027/oc424-20261027T083031292998Z-cd23f23c0f7a.tar.gz.age` and MAC-WAN same-hash copy retained. Actual exact-v1.7.3 offline recovery passes in37.6s,both DBs/14clients/current auth metadata/cleanup; no identity export or remaining plaintext/container |
+
+### v1.7.3 rollback and operational boundaries
+
+For app rollback verify private recovery checksums,restore
+`docker-compose.before.yml` under `/opt/nekomari`,then `docker compose config
+--quiet` and `docker compose up -d --no-deps nekomari`. Expect pinned
+v1.7.2/832b528,healthy/restart0,without the health env. Keep current DBs; no schema
+or credential downgrade is required. Do not restore historical13-node DBs.
+Live image rollback is prepared,not exercised; actual old/new encrypted restores
+are separate. Older auth-migration rollback to v1.6 still needs paired DB/binary.
+
+To remove monitoring,disable only `nekomari-oc424-backup-health.timer` on OVH.
+Use recorded hashes to restore only the exact appended health SSH line/sudoers/
+wrapper/tool/unit changes; stop if another operator changed a file. Retain health
+report/state and all backups by default. Never disable the encrypted nightly
+timer,revoke unrelated keys or delete legacy plaintext/manual/rollback copies.
+Private identities remain MAC-WAN-only. Receiver checksum/filename time is not
+age authentication,restore proof,measured RPO/RTO or a Panel-independent alert:
+OC424/provider outages still need external monitoring. The initial automatic
+health-timer trigger succeeds; later recurring checks, first nightly backup,
+owner authenticated UI, independent-media recovery, caller inventory and
+200-node work remain separate. Only owned temporary tools/downloads are cleaned.
+
+A public version read during the guarded container replacement returns HTTP502;
+the subsequent healthy-image guard, upgrade9/9 and public23/23 all pass. This
+single-container switch is not a zero-downtime rollout; no outage duration or
+availability SLO is inferred from these bounded checks.
+
+Post-acceptance cleanup removes only this batch's downloaded binaries,
+synthetic Panel, temporary GitHub CLI and checksum-matched OC424 tool stage
+(about 183.5MiB). Metadata, attestations, rollback images/DBs and all backups
+remain. Final root-filesystem use is about43% on OC424,7% on OVH,24% on MAC-WAN;
+the development host is63%, not near80%. No shared cache purge is performed.
 
 ## v1.7.2 rollout (2026-10-27 15:13:50 Asia/Shanghai)
 

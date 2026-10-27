@@ -45,12 +45,12 @@ correctness batches. The full v1.8-v2.1 roadmap is not one continuous task.
 All 200-node work remains deferred, preserving its original limits and 26 failed
 reports. Publication is not proof that every roadmap exit criterion passed.
 
-**Delivered:** OC424 serves v1.7.2/832b528 at `nekomari.orderly2233.org`, healthy/
+**Delivered:** OC424 serves v1.7.3/0fe0b37 at `nekomari.orderly2233.org`, healthy/
 restart0, after exact-source CI 7/7, release 10/10, Docker 2/2 and upgrade check 9/9.
 Both Linux assets pass checksums/tag/source/workflow attestations; both image
 architectures identify exact source. Public checks 23/23 pass. The owner-approved
 baseline now includes Pi's explicitly owner-authorized addition: 14 clients and
-13 previously fresh reporting nodes, not the earlier 13-client release snapshot.
+14 currently fresh reporting nodes, not the earlier 13-client release snapshot.
 UUIDs/tokens/Agent services are unchanged. The five tools retain
 shared in-panel navigation. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
@@ -64,7 +64,7 @@ and passes actual disposable CLI create/edit/read/remove. Original13 metadata is
 unchanged at that handoff; Pi's later authorized addition is preserved in the
 current14-node baseline. The owner selects365days to2027-10-27 13:38:02
 Asia/Shanghai, not the suggested90; no silent rotation. Other runtime callers
-are not fully inventoried. v1.7.2 does not restart Hermes or any Agent.
+are not fully inventoried. v1.7.3 does not restart Hermes or any Agent.
 
 **Backup delivery:** OC424 has only public recipients; OVH's encrypted daily
 03:30 UTC timer replaces only the old plaintext cron row, with 14 ciphertext-pair
@@ -85,7 +85,8 @@ scheduler or production RPO/RTO/SLO acceptance is implied.
 2. Observe subsequent encrypted timer success, document independent-media
    recovery separately, and retain all old recovery copies until an explicit
    deletion policy. Automated restore harness/real manual restores exist, but
-   scheduled decryption, freshness alerts and measured RPO/RTO remain separate.
+   scheduled decryption and measured RPO/RTO remain separate. v1.7.3 health/
+   heartbeat alerts are delivered.
 3. Continue one bounded correctness or observability change at a time, with
    exact candidate CI, safe backups and OC424 acceptance. The first completed
    batch is the compatible v1.7.1 forecast-boundary patch, not a full v1.8 feature release
@@ -95,16 +96,19 @@ scheduler or production RPO/RTO/SLO acceptance is implied.
    fresh14-node old/new encrypted recovery and OC424 deployment pass. See
    [`GEOIP-RELOAD.md`](./GEOIP-RELOAD.md).
    Do not bundle fleet privilege/platform changes or 200-node work.
-   The next bounded candidate is v1.7.3 backup freshness/heartbeat alerts with
-   restricted metadata-only SSH reporting and existing Panel notification
-   delivery. Focused tests pass; actual installation/publication/deployment and
-   first scheduled event evidence remain gates. See [`BACKUP-HEALTH.md`](./BACKUP-HEALTH.md).
+   v1.7.3 backup freshness/heartbeat alerts are delivered with restricted
+   metadata-only SSH reporting and existing Panel notification delivery. Exact
+   CI/publication, six real OVH synthetic groups, 14-node recovery/continuity,
+   installed service and initial automatic health-timer trigger pass. Later
+   recurring checks, first nightly backup and live Telegram delivery remain
+   separate. See [`BACKUP-HEALTH.md`](./BACKUP-HEALTH.md).
 
 v1.7 is released/deployed, **not unconditionally exit-complete**: owner
 acceptance, remaining caller inventory, independent-media recovery and the
-stronger automated freshness/drill policy remain truthfully open in
+recurring schedule observation and stronger restore-drill policy remain open in
 [`OPEN-WORK.md`](./OPEN-WORK.md#v17-release-readiness-2026-10-27).
-v1.7.2->v1.7.1 needs only the pinned prior image, preserving current DB data.
+v1.7.3->v1.7.2 needs the pinned prior compose/image (removing the health opt-in),
+preserving current DB data.
 Across credential migration to v1.6, rollback needs the old binary and pre-upgrade
 DB, not an image-only downgrade; frozen-writer/failure-preservation instructions
 are retained with the paired local snapshots.

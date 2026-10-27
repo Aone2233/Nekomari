@@ -8,18 +8,33 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- **v1.7.3 candidate: off-host backup health.** Add bounded OVH ciphertext
-  checksum/freshness inspection and a dedicated fixed-destination SSH health
-  report, without an API grant or decryption identity. An opt-in Panel watcher
-  detects backup age26hours and missing reports45minutes, persists incident/
-  recovery dedupe, and retries unavailable notification delivery15minutes later.
-  Healthy unchanged checks stay quiet. Operational notification errors are
-  sanitized; Telegram requests use a30-second timeout/64KiB response bound.
-  Offline/race tests and a6-group real synthetic-Panel/fake-Telegram harness
-  cover failure,recovery,restart dedupe and heartbeat loss. Exact CI,publication,
-  fresh14-client encrypted recovery and live installation/deployment remain gates.
-  No Agent/API/schema/token/scope/identity/retention/nightly schedule change.
-  See `docs/BACKUP-HEALTH.md`;200-node work and owner UI remain separate.
+- No additional runtime change after delivered v1.7.3; delivery records do not
+  rebuild immutable artifacts.
+
+## [v1.7.3] - 2026-10-27
+
+- **Published and deployed on OC424.** Source `0fe0b37`; exact CI40471914791
+  passes 7/7, release40472663920 10/10, Docker40473430351 2/2. Linux checksums,
+  source attestations and OCI metadata verify. Healthy/restart0, upgrade9/9,
+  public23/23 and current-key forecast read (14 rows) pass. Both DB schemas and
+  integrity, 14 UUIDs/tokens, all 14 fresh reporters, key scopes/expiry, GeoIP
+  and Agent/Hermes services remain unchanged. Fresh encrypted pre/post backups
+  pass actual old/new-image MAC-WAN recovery; copies stay outside pruning.
+  Rollback uses pinned v1.7.2 compose/image, preserving current DBs.
+- **Encrypted backup freshness/reporting alerts.** OVH checks newest ciphertext
+  checksum/header/time and pushes bounded metadata via a dedicated restricted
+  SSH key, not a Panel grant. Linux opt-in watcher detects 26-hour backup or
+  45-minute report age; persistent incident/recovery dedupe, 15-minute retries,
+  quiet healthy checks and no overlapping notification queue. Single-attempt
+  operational sends sanitize provider failures; Telegram uses 30-second/64KiB bounds.
+- Nine Python offline groups, lifecycle/notification races/vet and six actual
+  synthetic-Panel/fake-Telegram groups pass; the attested binary repeats that
+  bounded acceptance on OVH. Installed service, initial automatic health-timer
+  trigger, fresh report, quiet healthy state and environment opt-in verify.
+  No production fake outage/test message, API/schema/Agent/token/scope/identity
+  or nightly retention change. Later recurring checks, first nightly backup,
+  live Telegram, owner UI, independent-media recovery, SLOs and 200-node work
+  remain separate. See `docs/BACKUP-HEALTH.md`.
 
 ## [v1.7.2] - 2026-10-27
 

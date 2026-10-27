@@ -1,12 +1,33 @@
 # MAC-WAN backup custody and recovery (2026-10-27, Asia/Shanghai)
 
 MAC-WAN is the owner-selected Hermes and online identity/recovery host (Linux
-x86_64, user `macos`). OC424 now serves v1.7.2/832b528; OVH (`KSLE`) stores
-nightly ciphertext. Actual fresh14-node v1.7.2 pre/post old/new-image recovery
+x86_64, user `macos`). OC424 now serves v1.7.3/0fe0b37; OVH (`KSLE`) stores
+nightly ciphertext. Actual fresh14-node v1.7.3 pre/post old/new-image recovery
 passes. The owner reports downloading the offline identity copy and authorizes
 cutover; **independent-media recovery is not claimed**. All existing readable
 plaintext/manual/local rollback copies are retained; no deletion policy is
 inferred from downloading a key.
+
+## v1.7.3 backup-health recovery (2026-10-27)
+
+Fresh pre/post installed-service ciphertext includes 14 clients and current scoped
+key metadata; both DB integrity and cleanup pass on actual offline MAC-WAN drills.
+Pinned-v1.7.2 recovery takes 36.11s; exact-v1.7.3 takes 37.60s.
+Same-hash ciphertext copies and independent regular OVH
+release copies stay outside pruning under
+`/srv/backups/oc424-encrypted/manual-v1.7.3-20261027`. Strict pinned SSH via OC424
+transfers ciphertext only; identity remains MAC-WAN-only and no plaintext/container
+remains. Native binaries/images match immutable source/checksums/attestations.
+Actual health reporting adds only a dedicated restricted SSH key on OVH and
+non-secret OC424 status, not decryption custody or Panel API grants. Existing
+nightly 03:30 UTC timer, 14-pair retention and producer/receiver/tool hashes remain.
+Agents/Hermes are unchanged. No old plaintext/manual/13-client recovery copy is
+deleted; never restore historical 13-client DBs over Pi's addition. Health
+reports are not restore/authenticated freshness proof. The initial automatic
+health-timer trigger succeeds; later recurring checks, first nightly backup,
+owner UI, independent media, live Telegram and measured RPO/RTO remain separate.
+See [`BACKUP-HEALTH.md`](./BACKUP-HEALTH.md) and
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for exact installation/rollback evidence.
 
 ## v1.7.2 patch recovery (2026-10-27)
 

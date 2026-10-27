@@ -1,4 +1,4 @@
-# Off-host backup health (v1.7.3 candidate)
+# Off-host backup health (v1.7.3)
 
 This optional Linux monitor checks encrypted backup freshness on OVH and missing
 reports on OC424. It does not decrypt backups, prove authenticated freshness,
@@ -76,6 +76,26 @@ Telegram delivery test and never uses production secrets or fakes a live outage.
 Required exact-source CI also retains all existing gates. Run the attested
 release binary on OVH before OC424's real continuity acceptance.
 
-Publication, actual deployment, first scheduled events and authenticated owner UI
-remain separate evidence. See [the live work list](./OPEN-WORK.md),
+Publication, actual deployment, scheduled events and authenticated owner UI
+are separate evidence. See [the live work list](./OPEN-WORK.md),
 [OC424 runbook](./DEPLOY-OC424.md) and [custody](./MAC-WAN-RECOVERY.md).
+
+## Actual delivery (2026-10-27 16:29:42 Asia/Shanghai)
+
+PR96/source `0fe0b37`: exact CI40471914791 7/7, release40472663920 10/10,
+Docker40473430351 2/2. Native Linux checksums/source attestations and OCI versions
+verify; six actual synthetic-Panel groups pass on OVH. OC424 is healthy/restart0;
+upgrade9/9 and public23/23 pass. All 14 UUIDs/tokens/fresh reporters, DB schemas
+and integrity, keys/scopes/expiry and Agent/Hermes services remain unchanged.
+
+The installed OVH service/manual check and initial automatic health-timer
+trigger succeed; the 15-minute timer is enabled/active. OC424 receives the
+restricted SSH report and persists `observed=ok`, `notified=""`, with no live
+test alert. Fresh old/new-image encrypted recovery passes; all backup/identity
+boundaries remain. Later recurring checks, first nightly backup, live delivery,
+owner UI, independent-media restore and measured SLO/RPO/RTO remain unclaimed.
+
+Root-private operational recovery: OC424 `/root/nekomari-v173-health-20261027T082843Z-e84d4362`,
+OVH `/root/nekomari-v173-health-20261027T082845Z-76e2a235`; app snapshots/compose/image rollback
+`/opt/nekomari/rollbacks/v1.7.3-20261027T082941Z-ca9d9477`. Exact hashes/images/archives are in the runbook;
+no private identity, API token or SSH private key is included in repository evidence.
