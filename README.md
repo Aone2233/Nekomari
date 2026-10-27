@@ -160,6 +160,7 @@ checksum check and the systemd unit.
 | [docs/RETIRE-CF-PROBE.md](./docs/RETIRE-CF-PROBE.md) | Retiring the previous monitoring stack, and how to roll it back |
 | [docs/SECRETS.md](./docs/SECRETS.md) | The no-credentials rule, and the token-leak incident record |
 | [docs/API-KEYS.md](./docs/API-KEYS.md) | Scoped-key lifecycle, exact permissions, legacy consumer migration and rollback gates |
+| [docs/HERMES-NODE-CLIENT.md](./docs/HERMES-NODE-CLIENT.md) | Metadata-only Hermes CLI, hidden owner-TTY key handoff and remaining live transition steps |
 | [docs/CLIENT-TOKEN-ROTATION.md](./docs/CLIENT-TOKEN-ROTATION.md) | Session-only Agent-token rotation, retirement boundaries, independent recovery and compatibility gates |
 | [docs/V1.7-CUTOVER-READINESS.md](./docs/V1.7-CUTOVER-READINESS.md) | Inspected production conditions, remaining owner arrangements and compatible maintenance delivery |
 | [docs/ENCRYPTED-BACKUPS.md](./docs/ENCRYPTED-BACKUPS.md) | Recipient-only tooling, restore drills and remaining offline-recovery/schedule gates |

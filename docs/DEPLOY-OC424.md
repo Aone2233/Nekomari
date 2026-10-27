@@ -41,6 +41,13 @@ not isolate those processes. Independent offline-copy/access/recovery and
 schedule/freshness/legacy-retention review remain. **The nightly plaintext
 schedule,14-copy retention and all known rollback copies are unchanged.**
 
+Hermes's metadata-only v1.7 client and hidden owner-TTY key handoff are staged
+on MAC-WAN without a production key or service restart. It refuses current
+v1.6 before authentication; existing Hermes jobs/configuration are untouched,
+not automatically migrated or paused. No application update occurs. See
+[`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md) for bounded tests and the
+owner's post-deployment steps.
+
 ### Public probe override
 
 The earlier failing process was `panel-probe.service`, still using the old

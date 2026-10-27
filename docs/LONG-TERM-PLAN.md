@@ -62,7 +62,11 @@ restrictions with no rotation now, approves the recommended backup architecture
 and chooses self-run authenticated acceptance after deployment. No temporary
 test credential is required for that path. MAC-WAN gateway/reference methods
 are inspected without secrets; actual active configuration, dedicated scoped key
-and secure handoff/write pause remain. Owner-authorized MAC-WAN online key
+and secure handoff/write pause remain. A metadata-only version-gated client and
+owner-TTY provisioning path are staged on MAC-WAN without a key or gateway
+restart; local/MAC-WAN17-group fixtures and real synthetic HTTPS/Panel6-group
+checks pass, not live migration. See
+[`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md). Owner-authorized MAC-WAN online key
 custody/runner and OC424 public recipient are now provisioned; actual encrypted
 OVH ciphertext verifies/restores on MAC-WAN with pinned v1.6.29 in isolated
 Docker, with scratch/container cleanup and no service restart. Same-UID Hermes

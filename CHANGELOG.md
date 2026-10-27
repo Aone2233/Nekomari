@@ -8,6 +8,16 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **Stage a metadata-only Hermes v1.7 consumer and private owner handoff.**
+  Add a standard-library HTTPS CLI for node reads/create/edit/explicit removal,
+  stable-v1.7+ guard, bounded allowlisted data and no token/install/exec or
+  cookie/proxy/redirect/retry fallback. Owner-only hidden TTY input verifies a
+  new scoped key before exclusive0600/0700 storage. Stage it on MAC-WAN without
+  a production key or existing workflow/service changes; local/MAC-WAN17-group
+  regressions and real synthetic HTTPS/Panel6-group checks pass. Live workflow
+  pause/key issuance/handoff, independent offline recovery and gated v1.7
+  deployment/owner acceptance remain. See `docs/HERMES-NODE-CLIENT.md`.
+
 - **Establish owner-authorized MAC-WAN online backup custody.** Hermes runs on
   MAC-WAN; bounded gateway/reference inspection does not expose credentials or
   establish a complete consumer inventory. Generate the recovery identity there

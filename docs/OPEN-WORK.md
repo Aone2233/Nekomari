@@ -39,7 +39,9 @@ there only, OC424 has its public recipient, and a real encrypted OVH canary
 verifies/restores on MAC-WAN in an isolated v1.6.29 container. Same-UID Hermes
 and Docker administrators can reach the online identity; an independent offline
 copy/recovery, nightly schedule/retention review and Hermes's actual scoped-key
-configuration/write pause/handoff remain. These are implementation gaps, not a
+configuration/write pause/handoff remain. A metadata-only version-gated CLI and
+hidden owner-TTY provisioning path are staged on MAC-WAN **without a key**,
+not wired into its existing tasks. These are implementation gaps, not a
 request for acceptance credentials. Full v1.7 remains unreleased;
 do not migrate credentials, extract stored secrets or invent custodians. See
 [`V1.7-CUTOVER-READINESS.md`](./V1.7-CUTOVER-READINESS.md) for the precise gates.
@@ -168,7 +170,7 @@ removes only owned temporary fixtures/tools, not backups or shared caches.
 | Gate | Current state | Required next evidence/action |
 |---|---|---|
 | Source and tests | All bounded source batches merged; query/report/queue fixes shipped as compatible1.6 patches, other v1.7 runtime remains unreleased | Preserve exact commit/artifact evidence; no redundant local broad rerun |
-| Legacy API consumers | MAC-WAN gateway and bounded node list/edit/remove/install references inspected; four prior key-attributed mutations are not individually attributed to Hermes | Establish actual active configuration/operations; prepare dedicated read/write key and a write pause/owner-session issuance/secure handoff. Token-read access needs separate approval if Hermes installs Agents; do not declare all callers inventoried |
+| Legacy API consumers | MAC-WAN gateway/references inspected; metadata-only CLI and owner-TTY key handoff staged without credentials; four prior mutations are not individually attributed to Hermes | Verify actual active workflow/write pause, owner-session dedicated read/write key and live handoff. Token-read remains absent without separate approval; staging is not migration or complete inventory |
 | Token recovery/edit/import | Independent OC424/OVH SSH/sudo verified; owner accepts edit/import restrictions and explicitly defers rotation | No rotation canary required now; leave existing Agent tokens/services unchanged. Future rotations still require per-node independent recovery |
 | D12 backup custody | MAC-WAN online identity/runner, OC424 public recipient and actual encrypted OVH canary/isolated v1.6.29 recovery pass; no private identity leaves MAC-WAN | Complete independent offline copy/access/recovery, review nightly encryption/freshness and explicit legacy retention. Same-UID Hermes/root/Docker are trusted; keep old plaintext copies |
 | OC424 authenticated acceptance | Owner chooses self-run checks after deployment, not temporary credentials | Await actual history/audit/API-key UI result; do not extract sessions or count public shells/401 as acceptance |
@@ -196,6 +198,16 @@ the offline container are cleaned; Panel/Hermes/Agents remain unchanged. This
 is not independent offline-escrow recovery or a nightly schedule cutover. Exact
 paths/hashes and same-user/Docker exposure are recorded in
 [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
+
+**Hermes replacement tooling (2026-10-27):** `deploy/hermes_nodes.py` is staged
+on MAC-WAN without a production key, existing workflow/skill edits or restarts.
+It accepts a new key only via hidden owner-TTY input after stable-v1.7+ version
+and read checks, stores it exclusively0600/0700, uses HTTPS without redirects/
+proxies/cookies/retries and exposes only node metadata operations. Local and
+MAC-WAN offline groups each pass17/17; a real local synthetic compiled Panel
+passes6 HTTPS/consumer groups. No live key/write/UI acceptance is claimed.
+See [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md); actual workflow pause/
+handoff, offline recovery and nightly schedule gates remain open.
 
 Owner confirmations settle the design, token compatibility and acceptance path;
 MAC-WAN closes host/online-custody recovery, not the remaining offline-copy and
@@ -294,7 +306,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | History query hardening owner acceptance | `web/rpc/jsonrpc/common.record.go`; `web/rpc/jsonrpc/budget.go` | Released/deployed as v1.6.28/502a269: 366-day ceiling, shared budgets/cancellation and guest visibility filtering. Release/platform and OC424 health/data checks pass; authenticated live history UI acceptance remains pending |
 | Client-token rotation release/acceptance | PR81, `docs/CLIENT-TOKEN-ROTATION.md` | Source merged as31a5b43, exact CI7/7, not deployed. Owner accepts edit/import restrictions and requests no rotation now; deploy the feature without a live rotation canary. Later rotations require independent per-node recovery; never patch live SQLite to rotate |
-| Scoped API-key release and consumer migration | `internal/apikeys/`, `pkg/rpc/apikey_scopes.go`, `docs/API-KEYS.md` | PR79/PR88 merged with exact CI7/7. Hermes on MAC-WAN is inspected; actual active configuration/scoped-key handoff/write pause remain. Synthetic read/write REST/RPC regression passes, not live consumer acceptance |
+| Scoped API-key release and consumer migration | `internal/apikeys/`, `pkg/rpc/apikey_scopes.go`, `docs/API-KEYS.md`, `docs/HERMES-NODE-CLIENT.md` | PR79/PR88 merged with exact CI7/7. MAC-WAN inspected; metadata-only consumer/owner-TTY handoff staged without key. Active workflow/write pause, session-issued key and live consumer acceptance remain |
 | Audit-log pagination hardening owner acceptance | `web/rpc/jsonrpc/admin.system.go` | Released/deployed as v1.6.28: 1-1000 rows, checked offsets, strict binding and cancellation. REST/filter/CSV compatibility verified in exact-source CI; authenticated live audit UI acceptance remains pending |
 | `/plugin/*` is still owned by the installed theme | `web/public/public.go` | **Accepted**: the panel took back only its own pages. Tightening it would break installed themes |
 | An installed theme that renders "no data" as 0 | outside this repository (SAO) | **Accepted**: the default document is the panel's own now; the remaining risk is a third-party bundle |
