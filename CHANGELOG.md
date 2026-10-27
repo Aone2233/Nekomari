@@ -8,8 +8,31 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- No additional runtime change after delivered v1.7.4; delivery records do not
-  rebuild immutable artifacts.
+- No unreleased runtime change beyond v1.7.5; delivery records do not rebuild
+  immutable artifacts.
+
+## [v1.7.5] - 2026-10-27
+
+### Fixed
+
+- **Bound the boot-time coarse-rollup recovery scan.** The startup pass that
+  rebuilds absent coarse parents constrained the child and the parent tier
+  through a join on the resolutions table, which left the resolution id unknown
+  to the planner as a constant. With stale statistics SQLite drove the scan from
+  the resolution index and re-read every series' rows of that tier once per
+  metric: 27x the necessary work on a production-shaped store, with a digest
+  blob page behind every row. A restored archive is exactly the case with no
+  statistics, which is why an isolated recovery boot could miss its 30s
+  metric-store deadline until a scratch-only `ANALYZE` changed the plan. The
+  statement now resolves the tier id once and binds it, dropping the
+  resolutions join, and on SQLite forces the index that leads with `series_id`,
+  so the plan is derived from the metric's series and no longer depends on
+  statistics. Measured on a production-shaped fixture with stale statistics:
+  18.2s -> 0.12s, with the same empty result. No schema, row, archive or
+  production database is modified, no rollup is dropped, and absent parents are
+  still created while sealed parents are still never overwritten. See
+  `docs/METRIC-RECOVERY-STARTUP.md`; `Presence.Coverage` was clarified in the
+  same window without changing its value (`docs/SLA-COVERAGE.md`).
 
 ## [v1.7.4] - 2026-10-27
 
