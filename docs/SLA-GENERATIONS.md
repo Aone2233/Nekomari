@@ -1,4 +1,4 @@
-# SLA task-generation normalization (v1.7.4 candidate)
+# SLA task-generation normalization (v1.7.4)
 
 The metric store retains separate series when a task's tags evolve, for example
 `{task_id}` then `{task_id,protocol,family}`. Those series may overlap or arrive
@@ -60,3 +60,21 @@ keeping current DBs and the existing health environment/report state.
 Actual deployment, owner-session UI, first nightly backup, independent-media
 restore and production SLO/RPO/RTO evidence must not be inferred from this source
 change. See [the live work list](./OPEN-WORK.md) and [runbook](./DEPLOY-OC424.md).
+
+## Actual delivery (2026-10-27 17:23:20 Asia/Shanghai)
+
+PR98/source `b0ea91756e700e871491a4c4388757f65ead263e`: exact CI40476853150
+7/7, release40478743592 10/10 (attempt 2), Docker40479934401 2/2.
+Source/tag/workflow attestations, Linux checksums and both image architectures
+verify. Attested binary passes six installed synthetic-Panel groups on OVH.
+OC424 healthy/restart0, upgrade9/9, public23/23, forecast14rows and bounded scoped
+live SLA reads for 14 nodes/58 tasks pass. Independent preserve-series bucket
+comparisons cover 11 tasks over two reporting nodes; none shows multiple
+generations in that window. Synthetic overlaps, not the 44 multi-generation
+source group count, prove the overlap-specific case.
+All 14 UUIDs/tokens/reporters, schemas, key grants/expiry, GeoIP and quiet backup-health
+state remain; no Agent/Hermes restart. Pre/post encrypted old/new-image recoveries
+pass; scratch-only planner statistics refresh addresses retained startup timeouts
+without changing archives/production data. Existing recurring health checks pass;
+first nightly backup, owner UI, independent-media restore and SLOs remain separate.
+See the runbook for exact pinned images, archives and v1.7.3 rollback.

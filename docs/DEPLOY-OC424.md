@@ -5,7 +5,7 @@ restored, and the two hostname/TLS traps that cost the most time.
 
 ## Current checkpoint (2026-10-27, Asia/Shanghai)
 
-OC424 serves **v1.7.3 / 0fe0b37** at
+OC424 serves **v1.7.4 / b0ea917** at
 `https://nekomari.orderly2233.org`. Scoped-key migration and session-only token
 rotation are deployed; no existing Agent token is rotated. OVH now receives
 nightly ciphertext, with MAC-WAN as the online identity/recovery runner. The
@@ -15,12 +15,72 @@ Older rollout sections are dated evidence, not the current version/node count.
 
 | Item | Observed evidence |
 |---|---|
-| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.3/0fe0b37; upgrade9/9,public23/23,scoped-key forecast14rows |
+| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.4/b0ea917; upgrade9/9,public23/23,scoped-key forecast14rows |
 | Nodes | Owner confirms Pi's later addition;current approved baseline14registered clients,14fresh CPU reporters. Preserve the new node; earlier13-client release snapshots are historical |
 | Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2, unchanged; generic `nekomari-agent` is not the reporter |
 | OVH | Alias `KSLE`, encrypted receiver + daily 03:30 UTC timer; AgentPID495903/restart0 unchanged |
 | MAC-WAN | Linux x86_64 user `macos`; online identity/isolated recovery, AgentPID976/restart0 unchanged; Hermes gateway briefly stopped/resumed, nowPID922780/restart0 |
 | Acceptance | Hermes private-key/disposable CLI writes pass; owner login/history/audit/API-key UI and complete caller inventory remain separate; public401 is not authenticated acceptance |
+
+## v1.7.4 rollout (2026-10-27 17:23:20 Asia/Shanghai)
+
+Bounded SLA task-generation correctness patch PR98: normalize one chronological
+measured bucket per entity/task/time before loss, latency percentiles, incidents,
+presence union and maintenance exclusions. Keep the worst measured value and
+ignore empty placeholders; bucket means are not raw-probe percentiles. Historical
+rollups, API/wire/schema, coverage definition, frontend/dependencies, Agent and
+credentials remain unchanged. The separate span-based coverage issue stays open.
+See [`SLA-GENERATIONS.md`](./SLA-GENERATIONS.md).
+
+| Item | Evidence |
+|---|---|
+| Immutable publication | `v1.7.4` -> `b0ea91756e700e871491a4c4388757f65ead263e`; exact CI40476853150 7/7, release40478743592 10/10 (attempt 2), Docker40479934401 2/2. PR98 merge has identical tested tree; no retag/rebuild |
+| Publication retry | First release attempt fails at GitHub OIDC identity-token retrieval before a Release exists; dependent Docker40479558885 also fails. Only failed publication/verification jobs retry; all five successful build artifact IDs/digests/sizes/timestamps are unchanged. Provenance is never bypassed |
+| OC424 pinned image | `ghcr.io/aone2233/nekomari:v1.7.4@sha256:e089dabfcba5c3b89365b53d3288f6925d05069e6195adf9832d3c8879e1355e`; Panel index `sha256:62e18cd71d461bdbf89f5e0b8bfe1ee4830aacc9f2d13f3d2289a20c1ccab332` |
+| Native/source provenance | Both Linux binaries match source/tag/workflow attestations and checksums; both Panel/Agent architectures label exact full source/version1.7.4. Native/live arm64 SHA256 `38e0fcafc6c7201394507d7313adaa91fbeb852b3ff97981ae1dccf265655638`; MAC-WAN amd64 `ghcr.io/aone2233/nekomari:v1.7.4@sha256:b2c6cf4cc986682ace82cf6c0abdc42ab24b3b9bf3830882bc042c64c10453c6`, binary `198a4e69be41f77b11a3e68571e2ac9016abe38896baba8576bb021036e18405` |
+| Focused acceptance | SLA race tests, bounded existing SLA RPC tests and vet pass; regressions fail before the fix. Attested release binary passes6/6 installed synthetic-Panel groups on OVH: overlaps/placeholders, loss/latency/incidents, entity/task/gap isolation, maintenance, guest-hidden filtering, identical restart report/stored row count. No production fixtures or external notifications |
+| Live source observation | Read-only baseline finds44 multi-generation metric/entity/task groups (22loss+22latency); a series count is not independently measured timestamp overlap |
+| Pre encrypted recovery | Installed OVH service: `oc424-20261027T085608950432Z-8a4761db5628.tar.gz.age`,183512271bytes,SHA256 `94b92ef8c060e23d07e8bc719a7b309ce0b4042538748a28ed52c15d8600e7f6`; regular copy `/srv/backups/oc424-encrypted/manual-v1.7.4-20261027/oc424-20261027T085608950432Z-8a4761db5628.tar.gz.age` outside14-pair pruning. MAC-WAN exact-v1.7.3 recovery passes in8.73s; same archive also boots exact-v1.7.4 before the switch in9.6s |
+| Recovery readiness diagnostic | Initial offline v1.7.3 attempts time out in metric-store startup (context deadlines), despite authenticated archive/both DB checks. Refresh SQLite planner statistics using `ANALYZE` only in disposable verified metrics copies; retain all645172 rollup rows/business schema. Old/new image actual boots then pass. Original archives/production DBs and installed encryption tool remain untouched; this is an operational workaround, not a source-level startup fix |
+| Local recovery | `/opt/nekomari/rollbacks/v1.7.4-20261027T092318Z-84a48b94` retains per-DB WAL-safe snapshots, prior/new compose/images/checksums and image rollback instructions. Old v1.7.3 image remains; current DBs and backup-health environment/state stay intact |
+| Actual continuity |14registered UUIDs/tokens and all14fresh CPU reporters; both DB quick_check/schema, scoped-key permissions/expiry, GeoIP true/ipinfo,zero rollout targets,nginx/recipient/probe override and quiet backup-health state unchanged. OC424/OVH/MAC-WAN Agents and Hermes not restarted |
+| Bounded live acceptance | Healthy/restart0,upgrade9/9,public23/23,forecast14rows; scoped live SLA reads14nodes/58tasks and independently compares11task results against preserve-series bucket means across two reporting nodes. Multi-generation tasks in that comparison:0. Incident chronology/counts and p50/p95/p99 verify;0new bounded error lines. No owner session/UI claim |
+| Preserved backup monitor | Existing restricted health SSH/tool/unit hashes unchanged; recurring15-minute checks succeed and latest OC424 report is fresh/ok,observed=ok/notified=empty across restart. Nightly encrypted timer still03:30UTC,first trigger not observed; no live fake outage/Telegram test |
+| Post encrypted recovery | Installed OVH service: `oc424-20261027T092415525807Z-c3696c018496.tar.gz.age`,183649817bytes,SHA256 `daf3e4c3d211c86eed722387b8d1266f524763df6248571f5ab2240ebdf2d311`; regular release copy `/srv/backups/oc424-encrypted/manual-v1.7.4-20261027/oc424-20261027T092415525807Z-c3696c018496.tar.gz.age` and MAC-WAN same-hash copy retained. Exact-v1.7.4 actual offline recovery passes in8.31s,both DBs/14clients/current auth metadata/cleanup |
+
+### v1.7.4 rollback and boundaries
+
+Verify the private recovery checksums and restore `docker-compose.before.yml`
+as `/opt/nekomari/docker-compose.yml`, then run:
+
+```sh
+cd /opt/nekomari
+docker compose config --quiet
+docker compose up -d --no-deps nekomari
+```
+
+Expect pinned v1.7.3/0fe0b37, healthy/restart0, keeping current DBs and the
+existing health environment/report/state. No auth/schema downgrade
+or Agent change is required. Do not overwrite Pi's added node with historical
+13-client DBs. This live image rollback is prepared, not exercised; actual
+old/new encrypted restores are separate. Across v1.7->v1.6 auth migration the
+paired pre-migration DB and binary are still required.
+
+Only owned disposable tools/downloads are cleaned after all checks. Retain all
+ciphertext, legacy plaintext/manual/local recovery copies, images and identity
+material. Strict pinned SSH uses the working direct MAC-WAN route after retained
+proxy banner timeouts; only ciphertext is transferred. Independent-media
+recovery, first nightly scheduled backup, actual incident delivery, owner UI,
+measured production SLO/RPO/RTO and 200-node work remain separate. A public version
+read returns HTTP502 during the single-container replacement; subsequent healthy,
+upgrade9/9 and public23/23 guards pass. This is not a zero-downtime rollout or a
+measured outage-duration/availability SLO.
+
+Post-acceptance cleanup removes only this batch's downloaded Linux binaries,
+synthetic Panel, temporary GitHub CLI and checksum-matched OC424 tool stage
+(about 183.5 MiB). Attestations/metadata, rollback images/DBs and all backups
+remain. Root-filesystem use is about 43% on OC424, 8% on OVH, 25% on MAC-WAN
+and 63% on the development host. No shared cache purge is needed or performed.
 
 ## v1.7.3 rollout (2026-10-27 16:29:42 Asia/Shanghai)
 

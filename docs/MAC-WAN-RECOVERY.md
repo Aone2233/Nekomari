@@ -1,12 +1,41 @@
 # MAC-WAN backup custody and recovery (2026-10-27, Asia/Shanghai)
 
 MAC-WAN is the owner-selected Hermes and online identity/recovery host (Linux
-x86_64, user `macos`). OC424 now serves v1.7.3/0fe0b37; OVH (`KSLE`) stores
-nightly ciphertext. Actual fresh14-node v1.7.3 pre/post old/new-image recovery
+x86_64, user `macos`). OC424 now serves v1.7.4/b0ea917; OVH (`KSLE`) stores
+nightly ciphertext. Actual fresh14-node v1.7.4 pre/post old/new-image recovery
 passes. The owner reports downloading the offline identity copy and authorizes
 cutover; **independent-media recovery is not claimed**. All existing readable
 plaintext/manual/local rollback copies are retained; no deletion policy is
 inferred from downloading a key.
+
+## v1.7.4 SLA recovery (2026-10-27 17:23:20 Asia/Shanghai)
+
+The same fresh pre archive boots pinned-v1.7.3 in 8.73s and exact-v1.7.4
+in 9.60s before cutover; fresh post archive boots exact-v1.7.4 in 8.31s.
+These are isolated drill elapsed times, not production RTO measurements.
+Authenticated age contents, manifest/file hashes, both DB checks,
+14 clients/current auth metadata, exact version/source and cleanup pass. Ciphertext
+and independent regular OVH copies remain under
+`/srv/backups/oc424-encrypted/manual-v1.7.4-20261027`, outside 14-pair pruning.
+Only ciphertext crosses strict pinned SSH; the working direct MAC-WAN route is
+used after retained proxy banner timeouts. No identity/private credential export,
+Agent/Hermes restart or grant/expiry change occurs.
+
+Initial v1.7.3 recovery attempts time out in metric-store startup despite valid
+archive/both DB integrity. Before retry, confirm no restore container/plaintext
+scratch remains. Refresh query-planner statistics with `ANALYZE` only on the
+verified disposable `metrics.db` before boot; compare rollup count/business schema
+before/after. All 645172 pre-archive rollup rows are preserved. Old/new actual boot
+then passes. Do not change production DBs/archives or silently modify installed
+encryption tooling; this is an operational workaround, not a source startup fix.
+The temporary restore still disables notification/GeoIP/OAuth in scratch settings
+and uses no network/host ports. Exact ciphertext hashes,images/local rollback and
+retained failure/retry context are in [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+Existing backup-health hashes, quiet persisted state and recurring 15-minute
+checks pass; nightly03:30UTC timer/retention unchanged. First nightly scheduled
+success, actual live alert, independent-media recovery and owner UI are separate.
+All legacy plaintext/manual/local recovery copies and old images remain.
 
 ## v1.7.3 backup-health recovery (2026-10-27)
 

@@ -99,3 +99,15 @@ Root-private operational recovery: OC424 `/root/nekomari-v173-health-20261027T08
 OVH `/root/nekomari-v173-health-20261027T082845Z-76e2a235`; app snapshots/compose/image rollback
 `/opt/nekomari/rollbacks/v1.7.3-20261027T082941Z-ca9d9477`. Exact hashes/images/archives are in the runbook;
 no private identity, API token or SSH private key is included in repository evidence.
+
+## v1.7.4 continuity observation (2026-10-27 17:23:20 Asia/Shanghai)
+
+The existing restricted authorization, receiver/tool/unit hashes, nightly timer and
+15-minute health timer remain unchanged. Later recurring health checks now pass;
+OC424 fresh report/quiet `observed=ok`, `notified=""` state and environment opt-in
+survive the v1.7.4 image-only restart. No repeated healthy notification/startup
+log is required when persisted state is unchanged. First nightly encrypted
+backup is due 2026-10-28 11:30 Asia/Shanghai, not yet observed; manual release service
+runs are not scheduled-success evidence. No fake production outage/test Telegram
+is sent. Actual incident delivery, external Panel-independent monitoring, owner UI,
+independent-media recovery and measured SLO/RPO/RTO remain separate.
