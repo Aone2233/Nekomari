@@ -95,6 +95,10 @@ scheduler or production RPO/RTO/SLO acceptance is implied.
    fresh14-node old/new encrypted recovery and OC424 deployment pass. See
    [`GEOIP-RELOAD.md`](./GEOIP-RELOAD.md).
    Do not bundle fleet privilege/platform changes or 200-node work.
+   The next bounded candidate is v1.7.3 backup freshness/heartbeat alerts with
+   restricted metadata-only SSH reporting and existing Panel notification
+   delivery. Focused tests pass; actual installation/publication/deployment and
+   first scheduled event evidence remain gates. See [`BACKUP-HEALTH.md`](./BACKUP-HEALTH.md).
 
 v1.7 is released/deployed, **not unconditionally exit-complete**: owner
 acceptance, remaining caller inventory, independent-media recovery and the
