@@ -8,6 +8,17 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **Record the owner's v1.7 cutover choices and Hermes transition.** Hermes on
+  another machine is the main known node-management caller. Prepare a dedicated
+  read/write key, explicit create-response compatibility, brief write pause and
+  owner-session issuance/secure handoff; token-read access is not granted by
+  default. A focused REST/RPC regression exercises synthetic create/read/edit/
+  remove and privileged-operation denials. The owner accepts token edit/import
+  restrictions without rotation, approves the recommended backup architecture
+  and chooses self-run UI acceptance. Actual Hermes host/configuration and
+  owner-controlled key material/offline recovery runner remain to be established.
+  No runtime, live credentials, backup schedule or OC424 deployment changes.
+
 - **Encrypted off-host backup tooling (bounded v1.7 preparation).** Add opt-in
   native-age producer/receiver, WAL-safe local SQLite snapshots bound to captured
   metrics configuration, encrypted selected assets/manifest, exclusive publication

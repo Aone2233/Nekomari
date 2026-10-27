@@ -3,7 +3,7 @@
 This bounded batch replaces the global `configs.api_key` credential with named,
 expiring keys. It does not add user roles, client-token rotation, metrics/history
 features, encrypted backups or a production deployment. OC424 serves the
-query-only v1.6.28/502a269 patch; scoped-key migration is not deployed until
+compatible v1.6.29/510f7d3 patch; scoped-key migration is not deployed until
 the compatibility and release gates below pass.
 
 ## Credential contract
@@ -90,7 +90,8 @@ and the transition is explicitly accepted/arranged. Monitoring gets a replacemen
 `nodes:read` key; write/exec/token-read scripts need separate minimal grants.
 SQL/settings/backup/account automation must use sessions, not an all-powerful key.
 
-Repository inventory (2026-10-26, code only, not production credentials):
+Consumer inventory (repository review2026-10-26; owner clarification2026-10-27,
+no production credentials):
 
 | Consumer | Required access / action |
 |---|---|
@@ -98,12 +99,69 @@ Repository inventory (2026-10-26, code only, not production credentials):
 | `deploy/deploy-verify.sh` | Optional live smoke uses the preceding read-only key; isolated first-run install/node creation uses its synthetic session, not that production key |
 | `deploy/nekomari_auth.py` | Generic helper, not a fixed scope: explicit token or `NEKOMARI_API_KEY` only; database/SQLite fallback is removed; `data_dir` argument retained but ignored |
 | Browser smoke/install scripts | Synthetic sessions; no legacy key required |
-| Out-of-repository operator jobs/CI/other hosts | **Not proven inventoried**; obtain names, required methods and secure replacement provisioning before cutover |
+| Hermes on another machine (owner confirmed2026-10-27) | Main known external caller adds/manages nodes. Host/configuration/exact methods and replacement channel remain unverified; follow the transition below |
+| Other out-of-repository operator jobs/CI/hosts | No exhaustive inventory is claimed by the owner's identification of the main consumer |
 
 Production preparation must not read keys from SQLite, backups or Agent files.
 Securely inject replacements from a secret manager or use owner-run acceptance.
 Do not persist one-time tokens in reports, URLs, screenshots or Git. Rotate/revoke
 the transitional legacy key once callers are replaced, before its 30-day expiry.
+
+### Hermes transition (owner confirmed 2026-10-27)
+
+The owner identifies Hermes on another machine as the main node-management
+caller and accepts the new token-management rules without rotating Agent tokens.
+No access to that machine, credential extraction, installer token access or
+arbitrary command execution is implied by this identification.
+
+Proposed dedicated key: `hermes-node-management`, default90-day expiry and
+`nodes:read` + `nodes:write`. Confirm the actual REST/RPC methods before issuance.
+The write scope includes node removal as well as create/edit/order/bulk metadata;
+there is **no create-only or per-node scope** in v1.7. Do not describe this key
+as limited to adding nodes or as an untrusted-agent sandbox. Do not grant
+`tasks:exec`, `agents:update`, logs, task results or diagnostics by default.
+
+For API-key callers, `admin:addClient` / `POST /api/admin/client/add` returns a
+UUID **without an Agent token**, and ordinary node reads strip tokens. A Hermes
+flow that previously used `result.token` must change: if Hermes actually needs
+to install Agents, separately approve `agents:token:read` and an explicit
+`admin:getClientToken` / `GET /api/admin/client/:uuid/token` request. That grant
+can read tokens fleet-wide, not just for newly created nodes. Otherwise the owner
+handles installation using the authenticated UI; leave that grant absent.
+Generic edits must omit `token`; do not echo all fields from an old node object.
+
+The replacement cannot be created through the old production UI before the new
+version exists. Arrange this bounded sequence rather than preserving blanket
+legacy write access or writing credentials directly into the database:
+
+1. Identify Hermes's SSH alias/address or an owner-operated handoff path, actual
+   credential consumer/configuration and operations, without reading or printing
+   secrets. Prepare the request/response changes and secure replacement method.
+2. Agree a brief pause of Hermes's mutating Panel tasks; keep Agent reporting
+   running. Take fresh paired pre-migration snapshots and retain the old image.
+   Verify recovery with the old binary and the old DB, not image-only downgrade.
+3. After the gated v1.7 cutover is healthy, the owner logs in and creates the
+   dedicated key under Settings -> Sign-on -> API, using current TOTP if enabled.
+   Store the one-time token directly in the intended Hermes secret store/private
+   configuration, not chat, command-line arguments, URLs, screenshots or reports.
+   No administrator session is given to Hermes.
+4. From that consumer, check a read, then create/edit/remove one explicitly
+   disposable test node. Verify ungranted-operation denials in an isolated fixture,
+   not by sending potentially powerful commands to production. Retain only
+   non-secret evidence and clean only that test node. Do not
+   rotate or restart an existing Agent or automatically retry uncertain writes.
+5. Resume Hermes tasks only after its replacement passes. The old global key
+   becomes30-day read-only; revoke it after any other consumers are reconciled,
+   not merely because Hermes is the main known consumer. Set an expiry reminder
+   through the owner's approved mechanism; no reminder/scheduler is installed here.
+
+This is a prepared transition, not a claim that the host is inspected, a key is
+issued, Hermes code is changed or live acceptance passed. The owner will perform
+authenticated UI acceptance; no dedicated test session is requested for that path.
+`HermesStyleNodeManagement` in the router fixture covers this read/write-key
+combination through both existing REST and RPC contracts, with credential
+redaction and denial of privileged operations/cookie escalation. It creates only
+synthetic nodes, not a production account or consumer.
 
 ## Rollback and long-lived connections
 

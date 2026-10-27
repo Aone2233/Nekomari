@@ -56,11 +56,16 @@ CPU-reporting nodes among14registered clients are preserved. No Agent restart,
 credential/schema migration, frontend/protocol/dependency or backup-policy change
 occurs. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for digests and rollback.
 
-Independent OC424/OVH SSH/sudo is verified. Four recent API-key-attributed
-mutations, no approved production age recipients/custodians and no explicit
-acceptance credential keep the full v1.7 migration gated. Do not assume the old
-key is unused or supply custodians on the owner's behalf. Next complete the
-owner arrangements in [`V1.7-CUTOVER-READINESS.md`](./V1.7-CUTOVER-READINESS.md),
+Independent OC424/OVH SSH/sudo is verified. The owner now identifies Hermes on
+another machine as the main node-management caller, accepts token edit/import
+restrictions with no rotation now, approves the recommended backup architecture
+and chooses self-run authenticated acceptance after deployment. No temporary
+test credential is required for that path. Prepare Hermes's exact operations,
+dedicated scoped key and secure handoff/write pause; establish the actual
+owner-controlled key device/public recipients/offline copy/restore runner and
+real encrypted recovery. Design approval does not supply these missing facts.
+Next implement the arrangements in
+[`V1.7-CUTOVER-READINESS.md`](./V1.7-CUTOVER-READINESS.md),
 then release the exact v1.7 candidate with fresh pre-migration recovery. Until
 then, only independent engineering/compatible patches may proceed;200-node work
 and the later roadmap remain deferred, not completed.

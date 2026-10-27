@@ -162,7 +162,7 @@ checksum check and the systemd unit.
 | [docs/API-KEYS.md](./docs/API-KEYS.md) | Scoped-key lifecycle, exact permissions, legacy consumer migration and rollback gates |
 | [docs/CLIENT-TOKEN-ROTATION.md](./docs/CLIENT-TOKEN-ROTATION.md) | Session-only Agent-token rotation, retirement boundaries, independent recovery and compatibility gates |
 | [docs/V1.7-CUTOVER-READINESS.md](./docs/V1.7-CUTOVER-READINESS.md) | Inspected production conditions, remaining owner arrangements and compatible maintenance delivery |
-| [docs/ENCRYPTED-BACKUPS.md](./docs/ENCRYPTED-BACKUPS.md) | Recipient-only off-host tooling, isolated restore drills and unresolved key-custody/rollout decisions |
+| [docs/ENCRYPTED-BACKUPS.md](./docs/ENCRYPTED-BACKUPS.md) | Recipient-only off-host tooling, isolated restore drills and approved custody design awaiting real key/recovery implementation |
 | [docs/DEPLOY-VERIFICATION.md](./docs/DEPLOY-VERIFICATION.md) | Deploy verification on a test host, and what it found |
 | [docs/IP-INFO-API.md](./docs/IP-INFO-API.md) | The `/api/*/ip-info/v1` contract, its upstreams, and caching |
 | [deploy/README.md](./deploy/README.md) | What each operational script does, and why some hosts need their own |
