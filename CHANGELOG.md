@@ -33,26 +33,6 @@ Nekomari's own.
   jobs are not undone. No automatic rotation, Agent/protocol/schema/dependency
   change, release or OC424 app update. See `docs/CLIENT-TOKEN-ROTATION.md`.
 
-- **Release images identify the release checkout.** Verify HEAD against the
-  resolved local release tag before asset download and explicitly set the OCI
-  revision label from that commit for Panel and Agent images, rather than the
-  default-branch SHA carried by `workflow_run`. Offline real-Git regressions
-  cover distinct event/release commits, annotated tags and mismatch/missing/ref
-  refusals. Existing tag/`latest` gates are unchanged. Published v1.6.28 images
-  stay immutable; actual publication acceptance waits for the next release.
-
-- **Report and event-queue invariants (bounded v1.7 preparation).** The shared
-  HTTP/WebSocket ingest path validates every input before clamping only RAM,
-  Swap and disk usage above total, so a transient resource mismatch no longer
-  freezes all node data. Other invalid values remain rejected; accepted anomaly
-  episodes warn without logging report payloads. Successful node removal and an
-  existing-scheduler idle sweep retire event queues, wake blocked polls without
-  reviving or crossing queue generations, and release discarded payloads.
-  Newest-128 retention, command TTLs, acknowledgement, coalescing and ordinary
-  reconnect delivery remain compatible. Includes real transport, removal and
-  concurrency regressions. No Agent/protocol, dependency, frontend, credential
-  revocation-fence or capacity change; not released/deployed.
-
 - **Scoped, expiring API keys (bounded v1.7 preparation).** Eight exact grants
   replace implicit administrator access. The server generates one-time tokens,
   stores only digests, supports immediate rotation/revocation, requires sessions
@@ -72,6 +52,38 @@ Nekomari's own.
   39 MB, and the fleet-wide cleanup reclaimed ~300 MB. It only matches
   `komari-agent-*`, so credential backups are untouched. Measurements and long-term
   bounds are in `docs/AGENT-FOOTPRINT.md`.
+
+## [v1.6.29] - 2026-10-27
+
+- **Compatible maintenance release while full v1.7 remains gated.** PR86
+  backports only report/queue repairs and image source labels onto v1.6.28,
+  through `codex/v1.6-maintenance`, not current main. Immutable tag points to
+  exact tested `510f7d3`. Scoped API keys, session-only client-token rotation
+  and encrypted-backup tools remain unreleased; no credential/schema migration,
+  Agent/protocol/frontend/dependency change or automatic fleet action occurs.
+- **Report and event-queue invariants.** Validate every report field before
+  clamping only RAM/Swap/disk used above total. Other invalid inputs still
+  reject; accepted anomaly episodes warn without logging report payloads.
+  Successful removal and the existing idle scheduler retire event queues,
+  isolate/wake old-generation polls and release discarded payloads without
+  changing newest-128 limits, command TTLs, acknowledgements or reconnect delivery.
+- **Published images identify the release source.** Verify the resolved release
+  tag against checkout HEAD, and explicitly label both images with that commit
+  instead of the default-branch `workflow_run` SHA. Real-Git regressions cover
+  distinct commits, annotated tags and mismatch/missing/ref refusals. Actual
+  anonymous registry checks pass for Panel/Agent on amd64/arm64: revision510f7d3,
+  OCI version `1.6.29`. Existing tag/`latest` policy and v1.6.28 artifacts stay unchanged.
+- **OC424 update and real recovery.** Exact-source CI7/7, release10/10 including
+  native amd64/arm64 deployment verification, Docker2/2 and upgrade check9/9
+  pass. The native/live arm64 binary matches verified checksums/provenance.
+  OVH retains a fresh paired backup after actual isolated old-image recovery;
+  local image-only rollback assets are prepared, not exercised live. Both DB
+  schemas/integrity,14registered clients and all13 previously fresh reporting
+  nodes are preserved; both hosts' Agents stay unchanged. Public shell/assets
+  and unauthenticated denial checks pass; authenticated owner acceptance remains
+  pending. See `docs/DEPLOY-OC424.md` and `docs/V1.7-CUTOVER-READINESS.md` for
+  recovery, API-consumer/custody/acceptance gates. No plaintext backup deletion,
+  broad cache pruning or200-node work occurs.
 
 ## [v1.6.28] - 2026-10-26
 

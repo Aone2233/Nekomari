@@ -46,13 +46,32 @@ deferred with its original criteria and26 failed reports preserved. This narrows
 the work target; it does not declare the long-term roadmap or v1.7 exit criteria
 complete, and does not decide key custody or account/privilege/SLO policies.
 
+**Live maintenance checkpoint (2026-10-27, Asia/Shanghai):** v1.6.29/510f7d3 is
+deployed on OC424 after exact-source CI7/7, release10/10, Docker2/2 and upgrade
+check9/9. PR86 uses `codex/v1.6-maintenance`, not current main: only report/queue
+fixes and release-image source labels are backported onto v1.6.28. Both published
+images/architectures identify the correct source. A fresh OVH paired backup
+passes isolated old-image recovery; both DB schemas/integrity and all13 fresh
+CPU-reporting nodes among14registered clients are preserved. No Agent restart,
+credential/schema migration, frontend/protocol/dependency or backup-policy change
+occurs. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for digests and rollback.
+
+Independent OC424/OVH SSH/sudo is verified. Four recent API-key-attributed
+mutations, no approved production age recipients/custodians and no explicit
+acceptance credential keep the full v1.7 migration gated. Do not assume the old
+key is unused or supply custodians on the owner's behalf. Next complete the
+owner arrangements in [`V1.7-CUTOVER-READINESS.md`](./V1.7-CUTOVER-READINESS.md),
+then release the exact v1.7 candidate with fresh pre-migration recovery. Until
+then, only independent engineering/compatible patches may proceed;200-node work
+and the later roadmap remain deferred, not completed.
+
 **Post-v1.6.28 continuation (owner authorization, 2026-10-26):** replace the
 open-ended "finish every roadmap version" work target with this ordered batch:
 
 1. Source-identity follow-up merged as e234385 (PR83, 2026-10-27) after
    exact-source CI40324022778 passes 7/7: verify the resolved release tag against
    checkout HEAD and label both images with that commit. Actual publication
-   acceptance waits for the next release; immutable v1.6.28 is not republished.
+   acceptance now passes on v1.6.29; immutable v1.6.28 is not republished.
 2. Token-rotation PR81 is merged as 31a5b43 (2026-10-27), keeping the current
    production checkpoint and original runtime/frontend bytes. Integrated
    6a3b7eb passes new exact-source CI40425302716 (7/7), separate from original
@@ -76,11 +95,12 @@ application's stored goal still reports paused because the available goal tool
 cannot change its objective or resume it. This is a repository target update,
 not a claim that the app state was changed or the original roadmap completed.
 
-Query-hardening PR78/502a269 is released early as the compatible **v1.6.28**
-patch and deployed on OC424. Exact-source CI40275930537 passes7/7; release
+Query-hardening PR78/502a269 was released early as the compatible **v1.6.28**
+patch; its retained rollout evidence follows, not the current version.
+Exact-source CI40275930537 passes7/7; release
 40318142810 passes10/10, including native amd64/arm64 deployment verification;
 Docker40319017219 passes both jobs. The arm64 image's extracted executable
-matches the verified release checksum/provenance; OC424 reports v1.6.28/502a269,
+matches the verified release checksum/provenance; that rollout reported v1.6.28/502a269,
 healthy/restart0, upgrade check9/9. Public route/assets and private-site denial
 checks pass, both DB schemas/integrity remain unchanged, and 14 registered/12
 fresh CPU-reporting nodes match the pre-upgrade baseline. OVH retains the fresh
@@ -99,7 +119,8 @@ the rest of the v1.7 deliverables remain separate open gates.
 
 The third bounded source batch starts from exact 3dd20fb and is merged as
 fc84915 (PR80, exact merge CI40298579581 passes7/7), not the accumulated
-development tree. It remains unreleased and outside v1.6.28.
+development tree. Its report/queue fixes now ship in compatible v1.6.29, not
+v1.6.28 or the still-gated v1.7 authentication migration.
 It validates all report fields before clamping RAM/Swap/disk usage to total,
 retains every other invalid-input guard, and warns once per accepted anomaly
 episode. It removes queues after successful node deletion and sweeps empty
@@ -110,7 +131,7 @@ coalescing and reconnect delivery remain compatible. This does not add an
 in-flight credential-admission/revocation fence. Targeted ordinary/race and real
 HTTP/WebSocket/REST regressions verify this closure; no capacity, frontend or
 Agent/protocol/dependency change is included. Client-token rotation is the
-fourth independent engineering candidate; encrypted-backup custody remains D12.
+fourth independent source-merged, unreleased batch; encrypted-backup custody remains D12.
 Final affected ordinary/race evidence covers 211 top-level tests (524 including
 subtests), six packages in retained per-package runs. Linux CI adds race checks
 for the four report/queue/runtime packages. OVH's exact prebuilt race checks pass
@@ -174,7 +195,7 @@ tool can edit its objective or resume it. This document updates repository work
 scope under owner authorization, not the application's stored goal state, and
 does not claim v1.7 or the long-term roadmap complete.
 
-The production panel on OC424 is v1.6.28/502a269, retaining the compiler-only
+The production panel on OC424 is v1.6.29/510f7d3, retaining the compiler-only
 v1.6.26 patch and v1.6.27's five admin tools' in-panel navigation. The owner's
 earlier acceptance of v1.6.27 is not authenticated acceptance of the new patch.
 The public hostname is `nekomari.orderly2233.org`. No Agent, credential or

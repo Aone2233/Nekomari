@@ -2,6 +2,16 @@
 
 ## Cut a release
 
+Maintenance releases may use `codex/v1.6-maintenance` when main contains an
+intentional authentication/schema compatibility change whose production gates
+are still open. Its branch and PRs use the maintenance branch's CI workflow;
+current main's CI remains main-targeted. Tag the exact tested maintenance
+commit, never current main by convenience, and keep release assets/tags immutable.
+v1.6.29 is v1.6.28 plus isolated report/queue and source-label backports, not
+permission to ship the rest of v1.7. Do not merge the maintenance runtime branch
+back into main wholesale: its reviewed runtime fixes are already present there.
+See [`V1.7-CUTOVER-READINESS.md`](./V1.7-CUTOVER-READINESS.md).
+
 ```bash
 git tag v0.1.0
 git push origin v0.1.0
@@ -110,8 +120,13 @@ names `fc84915` in its OCI label, while its packaged/attested executable is
 extracted executable checksum and `/api/version` remain the source evidence.
 The workflow fix does not authenticate a rewritten tag or replaced release asset
 by itself, nor change tag selection/`latest` policy. Continue verifying release
-checksums/provenance and record actual image labels/digests on the next eligible
-release; offline fixtures are not a completed registry publication.
+checksums/provenance and record actual image labels/digests for each release.
+v1.6.29 Docker40431987946 passes2/2, and anonymous registry inspection verifies
+both images on amd64/arm64 label the exact tested release commit510f7d3 rather
+than event6b8f340. OCI version is semver `1.6.29` (without the tag's `v`). OC424's
+native arm64 packaged/live binary matches the release checksum/attestation.
+See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for immutable digests and acceptance;
+offline fixtures alone are not a completed registry publication.
 
 **A cancelled release run is the one case that publishes nothing at all** — no
 version tag, no `latest`: `docker.yml`'s job is skipped outright by its job-level
