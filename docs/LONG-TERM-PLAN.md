@@ -37,7 +37,7 @@ its exit criteria are met, not when the calendar says so.
 | `v2.0.0` | 2027-Q2 | Agent and platform v2 | non-root agent default with capability/ICMP strategy; Windows/macOS agent support and footprint measurement; single protocol source (remove root/agent duplication); agent updater/rollback hardening; secrets at rest (session/2FA) with key management; optional DB encryption; 200-node capacity | Migration guide; protocol compatibility policy (two-minor deprecation); 200-node benchmark; no plaintext session/2FA secrets on new installs |
 | `v2.1.0` | 2027-Q3 | Scale and ecosystem | HA/read-replica evaluation, plugin/theme marketplace signing, multi-region backup, optional external metrics export | Scale/HA runbook; marketplace signature verification; backup across two providers |
 
-## Current Delivery Checkpoint (2026-10-26)
+## Current Delivery Checkpoint (2026-10-27)
 
 **Adjusted active objective (owner-authorized):** incrementally finish v1.7
 security hardening in independently verified/releasable batches. Do not treat all
@@ -61,8 +61,10 @@ open-ended "finish every roadmap version" work target with this ordered batch:
    token-recovery compatibility and D12 backup key custody/restore authorization
    are established. Until then, continue independent engineering, not live
    credential/schema changes or a declaration that v1.7 is delivered.
-   The fifth source batch prepares opt-in encrypted backups and synthetic
-   restores on exact31a5b43; it does not decide D12 production custody.
+   Encrypted-backup PR84 is merged asf567128 after exact5899614
+   CI40426994745 passes7/7, including candidate-built synthetic recovery.
+   This source tooling does not decide D12 production custody. The live gate
+   checklist is in [`OPEN-WORK.md`](./OPEN-WORK.md#v17-release-readiness-2026-10-27).
 
 Each source batch closes with reviewed changes, exact-candidate CI and retained
 evidence; publication/deployment additionally need backups/rollback and bounded
@@ -159,8 +161,9 @@ real-age/WAL tests each pass22/22 groups; both perform real synthetic offline
 restores and wrong-version cleanup with preexisting images. OVH's temporary
 tools/source match checksums, Agent495903/restart0 stays unchanged, and owned
 workspaces/containers are removed. CI reuses its existing Panel build for the
-new drill and adds the offline harness; exact-candidate CI/source merge remain
-required. No broad local Go/frontend rebuild, production key/schedule/retention
+new drill and adds the offline harness. Exact5899614 CI40426994745 passes7/7,
+including22/22 real-age groups and the actual candidate-built restore/wrong-version
+drill; PR84 is merged asf567128. No broad local Go/frontend rebuild, production key/schedule/retention
 change or plaintext-backup deletion occurs. See
 [`ENCRYPTED-BACKUPS.md`](./ENCRYPTED-BACKUPS.md): these checks are not actual
 escrow-path recovery, production custody acceptance or current-release images.
