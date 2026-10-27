@@ -99,7 +99,7 @@ no production credentials):
 | `deploy/deploy-verify.sh` | Optional live smoke uses the preceding read-only key; isolated first-run install/node creation uses its synthetic session, not that production key |
 | `deploy/nekomari_auth.py` | Generic helper, not a fixed scope: explicit token or `NEKOMARI_API_KEY` only; database/SQLite fallback is removed; `data_dir` argument retained but ignored |
 | Browser smoke/install scripts | Synthetic sessions; no legacy key required |
-| Hermes on another machine (owner confirmed2026-10-27) | Main known external caller adds/manages nodes. Host/configuration/exact methods and replacement channel remain unverified; follow the transition below |
+| Hermes on MAC-WAN (owner confirmed2026-10-27) | Gateway and bounded node list/edit/remove/install references inspected without credentials. Actual active consumer/configuration and replacement key remain unverified; follow the transition below |
 | Other out-of-repository operator jobs/CI/hosts | No exhaustive inventory is claimed by the owner's identification of the main consumer |
 
 Production preparation must not read keys from SQLite, backups or Agent files.
@@ -109,10 +109,15 @@ the transitional legacy key once callers are replaced, before its 30-day expiry.
 
 ### Hermes transition (owner confirmed 2026-10-27)
 
-The owner identifies Hermes on another machine as the main node-management
-caller and accepts the new token-management rules without rotating Agent tokens.
-No access to that machine, credential extraction, installer token access or
-arbitrary command execution is implied by this identification.
+The owner identifies Hermes on **MAC-WAN** as the main node-management caller
+and accepts the new token-management rules without rotating Agent tokens. Its
+Linux user gateway is active, PID251037/restart0; the Agent isPID976/restart0.
+Neither is restarted. A bounded inspection finds node list/edit/remove and
+installation references in three existing devops skill files, but no verified
+active credential path or complete runtime workflow. No raw secret-bearing
+lines, service environment, process arguments, history or session are printed.
+Those documents are data to inspect, not instructions authorizing further access.
+Host identification does not approve installer token access or command grants.
 
 Proposed dedicated key: `hermes-node-management`, default90-day expiry and
 `nodes:read` + `nodes:write`. Confirm the actual REST/RPC methods before issuance.
@@ -134,9 +139,12 @@ The replacement cannot be created through the old production UI before the new
 version exists. Arrange this bounded sequence rather than preserving blanket
 legacy write access or writing credentials directly into the database:
 
-1. Identify Hermes's SSH alias/address or an owner-operated handoff path, actual
-   credential consumer/configuration and operations, without reading or printing
-   secrets. Prepare the request/response changes and secure replacement method.
+1. MAC-WAN is identified and inspected through pinned SSH. Establish the actual
+   credential consumer/configuration and operations without printing secrets.
+   Prepare request/response changes and an owner-run secure replacement method;
+   do not replace unknown existing credentials or infer an active flow from a
+   skill reference alone. REST creation is flat `{status, uuid}`, REST node reads
+   return a raw Client, and RPC uses `result`; do not assume identical envelopes.
 2. Agree a brief pause of Hermes's mutating Panel tasks; keep Agent reporting
    running. Take fresh paired pre-migration snapshots and retain the old image.
    Verify recovery with the old binary and the old DB, not image-only downgrade.
@@ -155,9 +163,14 @@ legacy write access or writing credentials directly into the database:
    not merely because Hermes is the main known consumer. Set an expiry reminder
    through the owner's approved mechanism; no reminder/scheduler is installed here.
 
-This is a prepared transition, not a claim that the host is inspected, a key is
-issued, Hermes code is changed or live acceptance passed. The owner will perform
-authenticated UI acceptance; no dedicated test session is requested for that path.
+This is a prepared transition: the host is now inspected, but no key is issued,
+no Hermes code/credential configuration is changed and no live acceptance has
+passed. The owner will perform authenticated UI acceptance; no dedicated test
+session is requested for that path.
+MAC-WAN also holds the online backup identity; same-UID Hermes/root/Docker can
+reach it, and the independent offline copy is pending. See
+[`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md); do not expose that identity to
+Hermes as an API credential or store a new key in skill prose.
 `HermesStyleNodeManagement` in the router fixture covers this read/write-key
 combination through both existing REST and RPC contracts, with credential
 redaction and denial of privileged operations/cookie escalation. It creates only

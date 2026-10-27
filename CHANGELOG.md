@@ -8,6 +8,17 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **Establish owner-authorized MAC-WAN online backup custody.** Hermes runs on
+  MAC-WAN; bounded gateway/reference inspection does not expose credentials or
+  establish a complete consumer inventory. Generate the recovery identity there
+  only, provision OC424 public recipients and an opt-in restricted OVH receiver,
+  then verify an actual encrypted production canary and isolated pinned-v1.6.29
+  restore on MAC-WAN. Source/restore scratch and the container are cleaned;
+  Panel/Hermes/Agents are not restarted. Same-UID Hermes/root/Docker can reach
+  the online identity; independent offline-copy recovery, nightly encryption/
+  freshness/retention and the scoped-key handoff remain open. Existing nightly
+  plaintext/rollback copies stay intact. See `docs/MAC-WAN-RECOVERY.md`.
+
 - **Record the owner's v1.7 cutover choices and Hermes transition.** Hermes on
   another machine is the main known node-management caller. Prepare a dedicated
   read/write key, explicit create-response compatibility, brief write pause and
@@ -15,9 +26,10 @@ Nekomari's own.
   default. A focused REST/RPC regression exercises synthetic create/read/edit/
   remove and privileged-operation denials. The owner accepts token edit/import
   restrictions without rotation, approves the recommended backup architecture
-  and chooses self-run UI acceptance. Actual Hermes host/configuration and
-  owner-controlled key material/offline recovery runner remain to be established.
-  No runtime, live credentials, backup schedule or OC424 deployment changes.
+  and chooses self-run UI acceptance. That source preparation did not establish
+  the Hermes host/configuration or custody; the subsequent MAC-WAN checkpoint
+  above supplies host/online recovery, not a scoped-key handoff or offline copy.
+  No runtime, live API credentials, backup schedule or OC424 app update changes.
 
 - **Encrypted off-host backup tooling (bounded v1.7 preparation).** Add opt-in
   native-age producer/receiver, WAL-safe local SQLite snapshots bound to captured

@@ -57,13 +57,19 @@ credential/schema migration, frontend/protocol/dependency or backup-policy chang
 occurs. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for digests and rollback.
 
 Independent OC424/OVH SSH/sudo is verified. The owner now identifies Hermes on
-another machine as the main node-management caller, accepts token edit/import
+MAC-WAN as the main node-management caller, accepts token edit/import
 restrictions with no rotation now, approves the recommended backup architecture
 and chooses self-run authenticated acceptance after deployment. No temporary
-test credential is required for that path. Prepare Hermes's exact operations,
-dedicated scoped key and secure handoff/write pause; establish the actual
-owner-controlled key device/public recipients/offline copy/restore runner and
-real encrypted recovery. Design approval does not supply these missing facts.
+test credential is required for that path. MAC-WAN gateway/reference methods
+are inspected without secrets; actual active configuration, dedicated scoped key
+and secure handoff/write pause remain. Owner-authorized MAC-WAN online key
+custody/runner and OC424 public recipient are now provisioned; actual encrypted
+OVH ciphertext verifies/restores on MAC-WAN with pinned v1.6.29 in isolated
+Docker, with scratch/container cleanup and no service restart. Same-UID Hermes
+and Docker administrators can reach the online identity. Independent offline
+copy/access/recovery, nightly encryption/freshness and legacy-retention review
+remain; no private identity leaves MAC-WAN or old backup is deleted. See
+[`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
 Next implement the arrangements in
 [`V1.7-CUTOVER-READINESS.md`](./V1.7-CUTOVER-READINESS.md),
 then release the exact v1.7 candidate with fresh pre-migration recovery. Until
@@ -193,7 +199,9 @@ drill; PR84 is merged asf567128. No broad local Go/frontend rebuild, production 
 change or plaintext-backup deletion occurs. See
 [`ENCRYPTED-BACKUPS.md`](./ENCRYPTED-BACKUPS.md): these checks are not actual
 escrow-path recovery, production custody acceptance or current-release images.
-D12 canary/restore/legacy-retention and credential-consumer gates remain open.
+That source batch did not close D12. The subsequent MAC-WAN checkpoint above
+supplies actual online custody/canary recovery; independent offline recovery,
+schedule/legacy-retention and credential-consumer gates remain open.
 
 The older application-level goal remains observed paused because no available
 tool can edit its objective or resume it. This document updates repository work
@@ -237,10 +245,11 @@ is performed for the query-only deployment.
 
 Before the scoped-key cutover, inventory legacy API consumers and arrange scoped
 replacements for intentional compatibility changes. Production backup encryption
-still needs approved age key custody/escrow/unlock, an actual restore drill and
-legacy-copy retention. General development/deployment permission does not decide
-these policies or complete the v1.7 exit criteria. Unreleased-candidate platform,
-SLO and secrets-at-rest gates likewise remain open.
+has approved and implemented MAC-WAN online custody/actual restore, but still
+needs independent offline recovery, schedule/freshness and legacy-copy retention.
+General development/deployment permission alone does not decide those policies
+or complete the v1.7 exit criteria. Unreleased-candidate platform, SLO and
+secrets-at-rest gates likewise remain open.
 
 ## Stability and quality targets
 

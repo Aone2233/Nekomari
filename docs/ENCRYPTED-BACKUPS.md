@@ -5,7 +5,9 @@ PR84 is source-merged as `f567128` after exact candidate `5899614` passes
 CI40426994745 (7/7). Source delivery is not production rollout.
 **The OC424/OVH backup schedule still writes the existing plaintext archives.**
 No production key, forced command, scheduler, retention setting, credential or
-Panel/Agent service is changed by this source work. OC424 remains v1.6.29/510f7d3.
+Panel/Agent service is changed by that source work. Subsequent owner-authorized
+MAC-WAN custody and an actual encrypted canary are now implemented as recorded
+below; the production nightly schedule is still unchanged. OC424 remains v1.6.29/510f7d3.
 See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for the retained recovery copies.
 
 ## Contract and dependencies
@@ -40,21 +42,30 @@ Only 1-16 native X25519 recipients/identities per file are supported. Password,
 SSH-key, plugin/hardware identities and interactive prompting are unsupported.
 The tool does not generate production recovery keys.
 
-## D12: Approved architecture and pending implementation
+## D12: Approved architecture and partial implementation
 
 On2026-10-27 the owner approves the recommended architecture: OC424 holds only
 public recipients, OVH holds ciphertext, and the owner controls the private
 identity with an independent offline recovery copy. An approved separate restore
-environment temporarily unlocks it. No actual personal device, recipient,
-offline escrow copy or restore runner is supplied or verified yet. Do not
-interpret design approval as deployed custody or permission to generate and keep
-a production private identity in the development workspace/OC424/OVH.
+environment uses it. The owner subsequently designates **MAC-WAN**, also the
+Hermes host, for online identity custody and recovery. The private identity is
+now generated there with mode0600 under0700; only its public recipient goes to
+OC424. Actual production ciphertext is retained on OVH and verifies/restores
+successfully on MAC-WAN with a pinned v1.6.29 offline Docker image. No identity
+is exported to the workspace/OC424/OVH. See the exact paths, hashes, host trust
+and shared-Hermes/Docker exposure in [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
+
+An **independent offline copy and its recovery remain unverified**. MAC-WAN's
+online unencrypted identity is not isolated from its same-UID Hermes process,
+root or Docker administrators. No unattended decryption is enabled, no nightly
+schedule changes and no known-good plaintext copies are deleted.
 
 Implement the approved design before changing the production backup schedule:
 
-1. Name the primary and independent recovery custodians, escrow locations and
-   restore approvers and actual owner-controlled device. Verify public recipient
-   fingerprints out of band; transfer public material only to OC424.
+1. MAC-WAN is the approved online custodian/runner. Complete the owner's
+   independent offline copy, custodians/access instructions and recovery check.
+   Verify public recipient fingerprints out of band; transfer public material
+   only to OC424.
 2. Put **only public recipients** on OC424; keep identities off OC424/OVH.
    Multiple recipients provide independent decryption, not threshold approval.
 3. Authorize a separate restore runner and how it temporarily unlocks an
@@ -64,9 +75,10 @@ Implement the approved design before changing the production backup schedule:
    recovery copies until an actual escrow-path restore passes; source tests do
    not authorize deleting them.
 
-Record the real arrangements, then run one off-host encrypted canary and a restore via
-the actual approved recovery path before switching the existing schedule.
-Until that evidence exists, v1.7's encrypted-backup exit criterion stays open.
+The actual off-host canary and online custody restore pass on2026-10-27;
+independent offline recovery, schedule/freshness review and legacy retention
+still precede switching the existing schedule. v1.7's encrypted-backup exit
+criterion stays open until the remaining conditions are met.
 
 Adding a new public recipient affects future archives only. Verify a new backup
 with the new identity before removing a retired public recipient. Keep old
@@ -237,8 +249,9 @@ See [`API-KEYS.md`](./API-KEYS.md) and
   PR84 is merged as `f567128`; this is not production escrow-path recovery.
 
 No local broad Go/frontend rebuild, fleet update, 200-node run, production
-encryption cutover or legacy-copy deletion occurs. D12 decisions, restricted
-source/namespace review, actual escrow-path canary/restore, schedule/freshness
+encryption cutover or legacy-copy deletion occurs in the source batch. Subsequent
+MAC-WAN custody, restricted source/namespace review and an actual encrypted
+canary/online restore now pass; independent offline recovery, schedule/freshness
 review and explicit legacy retention remain rollout gates. Reverting the
 schedule/wrapper does not decrypt new archives or erase old plaintext; keep
 the last readable key/copy while reverting.
