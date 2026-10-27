@@ -8,7 +8,9 @@ restored, and the two hostname/TLS traps that cost the most time.
 OC424 serves **v1.6.29 / 510f7d3** at
 `https://nekomari.orderly2233.org`. Query hardening, report/queue fixes and
 release-image source labels ship early as compatible maintenance patches;
-scoped keys, client-token rotation and backup encryption are not deployed. Older rollout
+scoped keys and client-token rotation are not deployed; nightly backups remain
+plaintext. Owner-authorized encrypted canary/online MAC-WAN recovery now passes,
+separately from the unchanged nightly schedule. Older rollout
 sections are dated evidence, not the current host/version or fleet count.
 
 | Item | Observed evidence |
@@ -18,6 +20,28 @@ sections are dated evidence, not the current host/version or fleet count.
 | Unused unit | Generic `nekomari-agent` is inactive; it is not the reporting Agent |
 | OC424 disk | Root filesystem 43% used, about113G free after the new image/local snapshots |
 | OVH | SSH alias `KSLE`; root filesystem 7% used, about364G free; Agent PID495903/restart0 unchanged |
+| MAC-WAN | Linux x86_64, user `macos`, approved online recovery-identity host/runner and Hermes host; HermesPID251037/restart0 and AgentPID976/restart0 unchanged |
+
+## Encrypted backup canary (2026-10-27, Asia/Shanghai)
+
+The owner identifies MAC-WAN and assigns it recovery custody. A native age
+identity is generated there only; OC424 receives only the public recipient and
+an opt-in fixed producer. A new OVH-only restricted pull key and opt-in receiver
+preserve existing authorization/schedulers. A183095002-byte production encrypted
+canary is retained on OVH and MAC-WAN; all1012 hashes, both SQLite integrity
+checks and pinned v1.6.29 isolated Docker recovery pass. No private identity
+leaves MAC-WAN, no temporary plaintext/container remains and no live service is
+restarted. The Panel start time and old backup-producer/helper hashes stay
+unchanged. This is online custody, not independent offline escrow.
+
+Exact paths/hashes, public recipient, restrictions, tool provenance and manual
+recovery are in [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md). MAC-WAN shares
+its identity UID with Hermes and has privileged Docker access; permissions do
+not isolate those processes. Independent offline-copy/access/recovery and
+schedule/freshness/legacy-retention review remain. **The nightly plaintext
+schedule,14-copy retention and all known rollback copies are unchanged.**
+
+### Public probe override
 
 The earlier failing process was `panel-probe.service`, still using the old
 `https://komari.orderly2233.org` default. Preserve the explicit deployed override:
