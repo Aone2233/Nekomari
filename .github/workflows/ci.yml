@@ -162,6 +162,8 @@ jobs:
         run: bash deploy/panel-auth-smoke.test.sh
       - name: Test explicit scoped-key provisioning (offline)
         run: python3 deploy/nekomari_auth_test.py
+      - name: Test the Hermes node metadata client (offline)
+        run: python3 -W error::ResourceWarning deploy/hermes_nodes_test.py
       - name: Test encrypted backups with throwaway identities (offline)
         run: |
           sudo apt-get update -qq

@@ -100,6 +100,7 @@ no production credentials):
 | `deploy/nekomari_auth.py` | Generic helper, not a fixed scope: explicit token or `NEKOMARI_API_KEY` only; database/SQLite fallback is removed; `data_dir` argument retained but ignored |
 | Browser smoke/install scripts | Synthetic sessions; no legacy key required |
 | Hermes on MAC-WAN (owner confirmed2026-10-27) | Gateway and bounded node list/edit/remove/install references inspected without credentials. Actual active consumer/configuration and replacement key remain unverified; follow the transition below |
+| `deploy/hermes_nodes.py` (staged replacement, not yet active) | `nodes:read` + `nodes:write`; stable-v1.7+ HTTPS guard, metadata-only REST CLI, owner-TTY exclusive key handoff. No Agent token/install/exec/update access; see [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md) |
 | Other out-of-repository operator jobs/CI/hosts | No exhaustive inventory is claimed by the owner's identification of the main consumer |
 
 Production preparation must not read keys from SQLite, backups or Agent files.
@@ -118,6 +119,11 @@ active credential path or complete runtime workflow. No raw secret-bearing
 lines, service environment, process arguments, history or session are printed.
 Those documents are data to inspect, not instructions authorizing further access.
 Host identification does not approve installer token access or command grants.
+The replacement metadata-only CLI and owner-TTY handoff instructions are now
+staged on MAC-WAN without a production credential. It is version-gated against
+v1.6; it does not change the gateway, replace unknown old keys or pause existing
+jobs. See [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md) for the exact paths,
+no-retry behavior and post-deployment owner command.
 
 Proposed dedicated key: `hermes-node-management`, default90-day expiry and
 `nodes:read` + `nodes:write`. Confirm the actual REST/RPC methods before issuance.
