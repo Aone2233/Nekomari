@@ -177,7 +177,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 
 | Item | Where | Why it is still here |
 |---|---|---|
-| `Presence.Coverage` is a span, not a window coverage | `internal/sla/availability.go` | The field's own documentation disagrees with it; `batch_test.go` pins the current behaviour |
+| `Presence.Coverage` is a span, not a window coverage | `internal/sla/availability.go`; `docs/SLA-COVERAGE.md` | Clarified 2026-10-27 without changing behaviour: coverage is observed/expected over the observed span, capped by the requested window, so a series that reports only the last ten minutes of an hour reads 1 (window fraction 1/6). The field comment, worked examples, correct reading for freshness and the compatibility rules are now stated; `batch_test.go` still pins the value. Still open: the owner decision on adding a separate window-coverage field (which must also report the inferred cadence) — an in-place redefinition would move every stored figure and is not done |
 | `PriceTags` has no "no expiry" state | `frontend/src/components/PriceTags.tsx` | Only checks `undefined`, so a `null` expiry reads as "expires in 30 days" |
 | Dragging under a filter reorders only the visible subset | `frontend/src/pages/admin/index.tsx` | Needs a decision about what reordering a filtered list should mean |
 | No uptime / restart-count metric exists | `internal/metricstore/definitions.go` | A capability gap: the panel cannot state "how long was this node up" |
