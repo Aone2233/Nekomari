@@ -155,8 +155,8 @@ func cadence(samples []Sample) time.Duration {
 	return gaps[len(gaps)/2]
 }
 
-// computePresence derives coverage by comparing the buckets that carried data with
-// how many the window should hold at the observed cadence.
+// computePresence compares measured buckets with the observed span at the inferred
+// cadence, capped by the requested window and widened to fit observed evidence.
 //
 // When there are fewer than two buckets there is no cadence to infer, so coverage is
 // reported as 1 if anything arrived and 0 if nothing did — a single bucket is all the

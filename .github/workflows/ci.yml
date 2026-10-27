@@ -143,6 +143,47 @@ jobs:
           python3 -W error::ResourceWarning deploy/encrypted_backup_drill_test.py \
             --panel-binary ./nekomari --panel-image "$digest"
 
+  metric-recovery-sql:
+    name: metric recovery (mysql + postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+        env:
+          POSTGRES_USER: probe
+          POSTGRES_PASSWORD: recovery-fixture-only
+          POSTGRES_DB: recovery
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U probe -d recovery"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      mysql:
+        image: mysql:8.4@sha256:76f0358884cb92d9a086d24e5671c38048d3fef40f2588703d73eb55392d6b69
+        env:
+          MYSQL_ROOT_PASSWORD: recovery-root-fixture-only
+          MYSQL_DATABASE: recovery
+          MYSQL_USER: probe
+          MYSQL_PASSWORD: recovery-fixture-only
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd "mysqladmin ping --silent"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.3'
+          cache: true
+          cache-dependency-path: go.sum
+      - name: Verify recovery bindings and sealed parents on both backends
+        env:
+          METRIC_POSTGRES_DSN: postgres://probe:recovery-fixture-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/recovery?sslmode=disable
+          METRIC_MYSQL_DSN: probe:recovery-fixture-only@tcp(127.0.0.1:${{ job.services.mysql.ports[3306] }})/recovery?parseTime=true
+        run: go test -race -count=1 ./pkg/metric -run '^TestCoarseRecovery' -timeout 3m
+
   # Shell-level tests for the deployment scripts. Offline and hermetic: the
   # installer's own flags confine every write to a temp directory, so this needs
   # no host, no network and no root.

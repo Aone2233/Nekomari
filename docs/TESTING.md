@@ -79,6 +79,26 @@ counts from the JSON formatter rather than the default `stylish` output, which
 interleaves each finding's primary and related locations and so overstates the
 total by roughly 5%.
 
+## Cross-backend recovery (bounded integration)
+
+The `metric recovery (mysql + postgres)` CI job uses disposable MySQL 8.4 and
+PostgreSQL 17 services and runs `TestCoarseRecovery*` under the race detector.
+This gate is not interchangeable with SQLite: SQLite tolerates surplus bind
+arguments, and MySQL `/` does not perform integer division. The fixture recovers
+a durable child offset from its parent's boundary and verifies that a sealed
+parent is not staged again. No production database or credential is used.
+
+To repeat locally, configure `METRIC_MYSQL_DSN` and `METRIC_POSTGRES_DSN` for
+**disposable** databases and run:
+
+```sh
+GOTOOLCHAIN=go1.27.3 go test -race -count=1 ./pkg/metric -run '^TestCoarseRecovery' -timeout 3m
+```
+
+Unset DSNs skip actual backend subtests locally; that is not backend acceptance.
+The hermetic binding-shape test and SQLite access-plan test still run without
+external services. The separate CI job supplies both DSNs explicitly.
+
 ## Encrypted-backup tooling (Linux, opt-in)
 
 The new backup format is tested with temporary keys/accounts/SQLite data only.
