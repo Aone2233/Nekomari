@@ -40,7 +40,9 @@ damage, not a malicious writer replacing both files. The receiver trusts its
 restricted producer and checks successful exit, native-age header, minimum
 size and ciphertext byte limit. It cannot prove decryptability without an
 identity. A successful receive is not restore, freshness or RPO/RTO evidence.
-Signatures, replay prevention and external freshness alerts are not added here.
+This encryption tool adds no signatures or persistent receive-order ledger. v1.7.3
+adds bounded non-secret health/heartbeat alerts separately; they do not authenticate
+archive creation or decrypt contents. See [backup health](./BACKUP-HEALTH.md).
 
 Only 1-16 native X25519 recipients/identities per file are supported. Password,
 SSH-key, plugin/hardware identities and interactive prompting are unsupported.
@@ -75,9 +77,11 @@ Retention keeps 14 top-level encrypted pairs. Exact pre/post v1.7 release pairs
 also remain under `manual-v1.7.0-20261027`, outside that pruning namespace, and
 on MAC-WAN. **No legacy plaintext/manual/local rollback copy is deleted.**
 An explicit deletion policy and separately documented independent-media recovery
-are still needed. Future backup freshness alerts/periodic drill policy are not
-silently implemented by enabling the timer; there is no unattended decryption
-scheduler or independently measured RPO/RTO acceptance.
+are still needed. v1.7.3 separately installs ciphertext freshness/heartbeat
+alerts and verifies the initial automatic health-timer trigger. Later recurring
+checks and the first nightly backup remain to observe. This does not add an
+unattended decryption scheduler, periodic restore policy or independently
+measured RPO/RTO acceptance.
 
 Adding a new public recipient affects future archives only. Verify a new backup
 with the new identity before removing a retired public recipient. Keep old
@@ -170,8 +174,10 @@ Defaults: 16 GiB ciphertext, 16 GiB expanded payloads, 10,000 filesystem entries
 2 MiB manifest and 300-second snapshot/receive/verify timeout. Configure
 `--max-archive-bytes`, `--max-expanded-bytes` and `--timeout` for the host. Budget
 source scratch, ciphertext and restore scratch space. Review scheduler logs and
-exit status; this batch installs no notifications. Producer/Docker arguments
-are trusted operator inputs, not an untrusted-code sandbox.
+exit status; the encryption source batch installs no notifications. v1.7.3 adds
+a separate opt-in health reporting/notification monitor without changing this
+tool. Producer/Docker arguments are trusted operator inputs, not an
+untrusted-code sandbox.
 
 ## Verify, extract and restore drill
 
