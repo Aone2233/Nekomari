@@ -8,8 +8,14 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- No additional runtime change after delivered v1.7.3; delivery records do not
-  rebuild immutable artifacts.
+- **v1.7.4 candidate: SLA task-generation normalization.** Sort and deduplicate
+  overlapping historical tag series after grouping by entity/task, before loss,
+  latency percentiles, incidents and maintenance calculations. Keep the worst
+  measured bucket value; empty placeholders cannot turn failed latency into a
+  zero-millisecond success. Historical data, wire shape and coverage definition
+  stay unchanged. Focused regressions/races and six real synthetic-Panel groups
+  pass; exact-source CI, publication, OVH release-binary acceptance and OC424
+  continuity/recovery remain gates. See `docs/SLA-GENERATIONS.md`.
 
 ## [v1.7.3] - 2026-10-27
 

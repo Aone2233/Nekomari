@@ -69,8 +69,7 @@ type Availability struct {
 	Window time.Duration `json:"window"`
 }
 
-// dedupe merges samples that share a bucket timestamp into one, and reports whether it
-// changed anything.
+// dedupe merges samples that share a bucket timestamp into one.
 //
 // It has to happen before the cadence is measured, and the reason is a live bug (H1a): a
 // task's series are split by their tags, and the tags have grown over time — one task_id
@@ -83,8 +82,8 @@ type Availability struct {
 // "unknown" rendered as "one", and 100% hid the gaps coverage exists to expose.
 //
 // Merging rather than dropping: two series disagreeing about the same bucket is a stronger
-// signal, not a duplicate to discard, so the losses combine and the worst is kept — the
-// same rule `unionPresence` uses across tasks.
+// signal, not a duplicate to discard, so the worst measured value is kept — the same
+// rule `unionPresence` uses across tasks. Empty placeholders are never measurements.
 func dedupe(samples []Sample) []Sample {
 	if len(samples) < 2 {
 		return samples
@@ -102,7 +101,7 @@ func dedupe(samples []Sample) []Sample {
 		// A bucket is measured if any generation measured it.
 		combined := existing
 		combined.Count = existing.Count + sample.Count
-		if sample.Value > combined.Value {
+		if sample.Count > 0 && (existing.Count == 0 || sample.Value > combined.Value) {
 			combined.Value = sample.Value
 		}
 		merged[key] = combined

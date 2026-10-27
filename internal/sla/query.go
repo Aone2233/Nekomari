@@ -315,6 +315,10 @@ func Build(ctx context.Context, req ReportRequest) (Report, error) {
 	for _, bucket := range latencyBuckets {
 		index(latencyByEntity, bucket)
 	}
+	// Different tag generations of one task can overlap or arrive out of time order.
+	// Normalize after grouping, before loss, latency, incidents and exclusions diverge.
+	normalizeTaskSamples(byEntity)
+	normalizeTaskSamples(latencyByEntity)
 
 	// Maintenance windows are per entity, clipped to the report and merged, so the same
 	// exclusion cannot discount the same second twice. Building the map once here keeps
@@ -339,6 +343,15 @@ func Build(ctx context.Context, req ReportRequest) (Report, error) {
 			BuildNodeReportExcluding(entityID, presence, tasks, latencyByEntity[entityID], window, req.Interval, exclusions[entityID]))
 	}
 	return report, nil
+}
+
+func normalizeTaskSamples(entities map[string]map[string][]Sample) {
+	for _, tasks := range entities {
+		for taskID, samples := range tasks {
+			sort.Slice(samples, func(i, j int) bool { return samples[i].Bucket.Before(samples[j].Bucket) })
+			tasks[taskID] = dedupe(samples)
+		}
+	}
 }
 
 // unionPresence merges every task's samples into one grid for the node.

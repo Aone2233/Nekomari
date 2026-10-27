@@ -45,6 +45,16 @@ separate. See [`BACKUP-HEALTH.md`](./BACKUP-HEALTH.md).
 Next continue a bounded observability/correctness item without bundling the
 roadmap or rerunning unchanged broad local suites.
 
+**Current bounded candidate:** v1.7.4 SLA task-generation normalization. The
+live store has 44 multi-generation entity/task/metric groups (22 loss and 22
+latency). Merge overlapping task buckets once before every statistic, ignoring
+empty placeholder values; do not rewrite history or change the separately open
+span-based coverage definition. Focused regressions/races and six real installed
+synthetic-Panel groups pass. Exact CI/publication, attested OVH acceptance and
+OC424 continuity/recovery remain gates. All 14 existing reporters are fresh;
+no Agent/token/scope/backup-health or nightly retention change. See
+[`SLA-GENERATIONS.md`](./SLA-GENERATIONS.md).
+
 ### v1.7 release readiness (2026-10-27)
 
 | Gate | Current state | Required next evidence/action |

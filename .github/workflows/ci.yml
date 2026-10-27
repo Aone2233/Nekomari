@@ -127,6 +127,8 @@ jobs:
         run: python3 deploy/geoip-reload-smoke.py --panel-binary ./nekomari
       - name: Check backup freshness notifications in a synthetic Panel
         run: python3 -W error::ResourceWarning deploy/backup-health-smoke.py --panel-binary ./nekomari
+      - name: Check overlapping SLA task generations in a synthetic Panel
+        run: python3 -W error::ResourceWarning deploy/sla-generations-smoke.py --panel-binary ./nekomari
       - name: Restore a synthetic encrypted backup into an offline panel container
         run: |
           sudo apt-get update -qq
@@ -374,6 +376,7 @@ jobs:
           # Hermetic provider lifecycle/reload regressions, not third-party lookups.
           go test -race ./utils/geoip -count=1 -run 'TestGeoIP|TestUpdateDatabase'
           go test -race ./internal/backupwatch ./utils/messageSender/...
+          go test -race ./internal/sla
           go test -race ./database/accounts ./web/api/public -count=10 -shuffle=on
           go test -race ./web/oauth/... ./web/security ./web/upload
           go test -race ./internal/apikeys ./pkg/rpc ./web/api ./web/router ./web/rpc/jsonrpc
