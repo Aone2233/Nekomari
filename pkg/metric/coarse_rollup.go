@@ -146,6 +146,68 @@ func (s *Store) flushClosedCoarseRollupsUnderView(ctx context.Context, now time.
 	}
 }
 
+// coarseRecoveryQuery builds the statement that lists durable fine-tier buckets
+// whose coarse parent is absent.
+//
+// It is a method rather than an inline string so the startup probe can explain
+// the exact statement Open runs. Two details are deliberate, because this
+// statement runs once per metric per tier on every startup over the whole
+// retained history:
+//
+//   - The resolution is bound as its row id instead of being filtered through a
+//     join on the resolutions table. With the join, the planner is free to drive
+//     the scan from the resolution index, which re-reads every series' rows of
+//     that tier once per metric: 27x the necessary work on a production store,
+//     and enough to turn a stale-statistics startup into tens of seconds. With a
+//     constant resolution_id the equality is on the child row itself, so the
+//     same index can seek straight to one series and one tier.
+//   - On SQLite the rollup access path is forced to the unique index that leads
+//     with series_id, so the statement is planned from the metric's series
+//     outward and cannot depend on statistics that a restore or a large recent
+//     ingest leaves stale. MySQL and PostgreSQL have real cardinality statistics
+//     for the join and are left to their own optimizers.
+//
+// Bucket timestamps are nonnegative Unix milliseconds, so integer division
+// aligns a child with its parent without dialect-specific date arithmetic.
+func (s *Store) coarseRecoveryQuery(ctx context.Context, metricName string, fineID, coarseID int64, coarse time.Duration) (string, []any) {
+	parentStart := fmt.Sprintf("(r.bucket_milli / %d) * %d", coarse.Milliseconds(), coarse.Milliseconds())
+	hint := ""
+	if index := s.rollupSeriesIndexName(ctx); index != "" {
+		hint = " INDEXED BY " + index
+	}
+	query := fmt.Sprintf(`SELECT s.entity_id, s.tags_hash, s.tags, l.labels_hash, l.labels,
+		r.bucket_milli, r.count, r.sum, r.sum_sq, r.min_val, r.max_val,
+		r.first_val, r.first_ts_milli, r.last_val, r.last_ts_milli, r.digest
+		FROM %s r%s JOIN %s s ON s.id = r.series_id
+		JOIN %s l ON l.id = r.label_id
+		WHERE s.metric_name = %s AND r.resolution_id = %s
+		AND NOT EXISTS (SELECT 1 FROM %s p
+			WHERE p.series_id = r.series_id AND p.label_id = r.label_id
+			AND p.resolution_id = %s AND p.bucket_milli = %s)
+		ORDER BY r.bucket_milli ASC`, s.tables.rollups, hint, s.tables.series,
+		s.tables.labels, s.dialect.placeholder(1), s.dialect.placeholder(2), s.tables.rollups,
+		s.dialect.placeholder(3), parentStart)
+	return query, []any{metricName, fineID, coarseID, coarse.Milliseconds(), coarse.Milliseconds()}
+}
+
+// resolutionIDFor returns the id of one persisted resolution tier, or zero when
+// the store has never written that tier. Zero is a usable parent id for the
+// recovery probe: it matches nothing, which is correct when no coarse parent
+// exists yet.
+func (s *Store) resolutionIDFor(ctx context.Context, interval time.Duration) (int64, error) {
+	var id int64
+	err := s.reader().QueryRowContext(ctx,
+		"SELECT id FROM "+s.tables.resolutions+" WHERE resolution_milli = "+s.dialect.placeholder(1),
+		interval.Milliseconds()).Scan(&id)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
 // Recover only absent parents, never overwrite a sealed historical bucket.
 // Durable children, rather than raw samples, make restart recovery idempotent.
 func (s *Store) recoverPendingCoarseRollups(ctx context.Context) error {
@@ -163,22 +225,22 @@ func (s *Store) recoverPendingCoarseRollups(ctx context.Context) error {
 		policy := s.cfg.RollupPolicy.withMetricRetention(time.Duration(def.RetentionDays) * 24 * time.Hour)
 		for i := 1; i < len(policy.Tiers); i++ {
 			fine, coarse := policy.Tiers[i-1].Interval, policy.Tiers[i].Interval
-			// Bucket timestamps are nonnegative Unix milliseconds. Integer division
-			// works with SQLite, PostgreSQL and MySQL without dialect-specific dates.
-			parentStart := fmt.Sprintf("(r.bucket_milli / %d) * %d", coarse.Milliseconds(), coarse.Milliseconds())
-			query := fmt.Sprintf(`SELECT s.entity_id, s.tags_hash, s.tags, l.labels_hash, l.labels,
-				r.bucket_milli, r.count, r.sum, r.sum_sq, r.min_val, r.max_val,
-				r.first_val, r.first_ts_milli, r.last_val, r.last_ts_milli, r.digest
-				FROM %s r JOIN %s s ON s.id = r.series_id
-				JOIN %s d ON d.id = r.resolution_id JOIN %s l ON l.id = r.label_id
-				WHERE s.metric_name = %s AND d.resolution_milli = %s
-				AND NOT EXISTS (SELECT 1 FROM %s p JOIN %s pd ON pd.id = p.resolution_id
-					WHERE p.series_id = r.series_id AND p.label_id = r.label_id
-					AND pd.resolution_milli = %s AND p.bucket_milli = %s)
-				ORDER BY r.bucket_milli ASC`, s.tables.rollups, s.tables.series, s.tables.resolutions,
-				s.tables.labels, s.dialect.placeholder(1), s.dialect.placeholder(2), s.tables.rollups,
-				s.tables.resolutions, s.dialect.placeholder(3), parentStart)
-			rows, err := s.reader().QueryContext(ctx, query, def.Name, fine.Milliseconds(), coarse.Milliseconds())
+			// A tier that has never been written holds no children to recover,
+			// and probing for a parent tier that does not exist yet must match
+			// nothing rather than every child.
+			fineID, err := s.resolutionIDFor(ctx, fine)
+			if err != nil {
+				return err
+			}
+			if fineID == 0 {
+				continue
+			}
+			coarseID, err := s.resolutionIDFor(ctx, coarse)
+			if err != nil {
+				return err
+			}
+			query, args := s.coarseRecoveryQuery(ctx, def.Name, fineID, coarseID, coarse)
+			rows, err := s.reader().QueryContext(ctx, query, args...)
 			if err != nil {
 				return err
 			}
