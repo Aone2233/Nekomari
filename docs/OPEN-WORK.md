@@ -30,13 +30,18 @@ isolated old-image recovery; no Agent is restarted. See
 
 **Established conditions and remaining owner facts:** independent SSH/sudo on
 both hosts, exact-source CI/provenance and fresh off-host restore are verified;
-image-only rollback is prepared, not exercised live. Four recent API-key-attributed
-mutations mean the old global key cannot be presumed unused. Approved public age recipients/custody
-and explicit acceptance credentials are absent. Full v1.7 remains unreleased;
+image-only rollback is prepared, not exercised live. The owner identifies Hermes
+on another machine as the main node-management API consumer, accepts the token
+edit/import restrictions with **no rotation now**, approves the recommended
+backup architecture and chooses self-run authenticated acceptance after deployment.
+Hermes's actual host/operations/secure replacement and the owner-controlled backup
+key device/public recipients/offline copy/restore runner remain to be arranged;
+these are implementation gaps, not unanswered policy choices or a request for
+acceptance credentials. Full v1.7 remains unreleased;
 do not migrate credentials, extract stored secrets or invent custodians. See
 [`V1.7-CUTOVER-READINESS.md`](./V1.7-CUTOVER-READINESS.md) for the precise gates.
-Authenticated live history/audit UI acceptance remains pending the owner or
-securely provisioned temporary credentials;401 is not authenticated cap acceptance.
+Authenticated live history/audit/API-key UI acceptance awaits the owner's actual
+result after deployment;401 is not authenticated cap acceptance.
 
 **Adjusted active target (owner authorization, 2026-10-26):** complete bounded
 v1.7 security batches with explicit verification and release gates, rather than
@@ -160,14 +165,27 @@ removes only owned temporary fixtures/tools, not backups or shared caches.
 | Gate | Current state | Required next evidence/action |
 |---|---|---|
 | Source and tests | All bounded source batches merged; query/report/queue fixes shipped as compatible1.6 patches, other v1.7 runtime remains unreleased | Preserve exact commit/artifact evidence; no redundant local broad rerun |
-| Legacy API consumers | Four key-attributed mutations in30days, latest2026-10-23 23:25:31 Asia/Shanghai; external readers/replacements unconfirmed | Owner inventory including observed use; required methods, minimum grants and secure provisioning before30-day read-only migration |
-| Token recovery/edit/import | Independent OC424/OVH SSH/sudo verified; source/synthetic checks pass; no live rotation | Accept edit/import restrictions and actual per-node recovery procedure; do not rotate the fleet automatically |
-| D12 backup custody | Tooling/synthetic restores pass; no approved production recipients file; existing plaintext backup actually restored on OVH | Name custodians/escrow/unlock and approved restore runner; verify recipients, actual encrypted canary/escrow-path restore and old-copy retention before schedule cutover |
-| OC424 authenticated acceptance | Public health/assets/private401 checks pass; authenticated history/audit UI remains open | Owner-run bounded acceptance or explicitly provisioned test credentials, never recover credentials from DB/backups |
+| Legacy API consumers | Owner identifies Hermes on another machine for node management; four prior key-attributed mutations retained, not individually attributed to Hermes | Obtain actual host/operations; prepare dedicated read/write key and a write pause/owner-session issuance/secure handoff. Token-read access needs separate approval if Hermes installs Agents; do not declare all callers inventoried |
+| Token recovery/edit/import | Independent OC424/OVH SSH/sudo verified; owner accepts edit/import restrictions and explicitly defers rotation | No rotation canary required now; leave existing Agent tokens/services unchanged. Future rotations still require per-node independent recovery |
+| D12 backup custody | Recommended architecture approved; real owner key device/recipients/offline copy/restore runner still absent; existing plaintext recovery passes | Implement the approved custody without private identities on OC424/OVH; run actual encrypted canary/escrow-path restore before schedule cutover; retain old plaintext copies |
+| OC424 authenticated acceptance | Owner chooses self-run checks after deployment, not temporary credentials | Await actual history/audit/API-key UI result; do not extract sessions or count public shells/401 as acceptance |
 | Release/rollback | No v1.7 tag/publication; immutablev1.6.29, old-image restore verified and image-only rollback prepared | After external gates pass, pin the exact v1.7 candidate/CI/assets/provenance; create fresh pre-migration snapshots and old binary/DB rollback before bounded OC424 checks |
 
-General development/deploy authorization does not supply the missing external
-inventory/custody facts. These are production gates, not a reason to repeat
+**Hermes transition preparation (2026-10-27):** the scoped-key guide now records
+owner-session issuance after a brief Hermes write pause, secure handoff and
+verification before resume. A focused router regression verifies the proposed
+`nodes:read` + `nodes:write` combination through REST and RPC: create/read/edit/
+remove a disposable synthetic node, no implicit Agent token, and denials of
+token read/rotation, command execution, rollout and key management even with an
+administrator cookie present. The complete scoped-key router group passes11
+tests including subtests, ordinarily/race; affected vet and docs navigation pass.
+This is not Hermes-host inspection or actual migration. A first fixture assumed
+the wrong REST read envelope; it is retained and corrected to the unchanged raw
+Client response, without changing runtime. No production credentials, backups,
+services or Agent tokens change in this preparation batch.
+
+Owner confirmations settle the design, token compatibility and acceptance path,
+not the missing host/key material or actual recovery evidence. These are production gates, not a reason to repeat
 unchanged tests or claim all later roadmap versions are finished. Continue only
 independent engineering while awaiting the required arrangements.
 
@@ -241,7 +259,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | D9 | **Authentication policy, as a group** | (a) `sso_id` after a password change; (b) the scoped-key candidate replaces blanket exemption with exact grants, but live consumer migration/compatibility acceptance is still required; (c) OIDC + 2FA challenge flow; (d) globally invalidated sessions | Scoped-key source work does not silently decide the other account policies or authorize the compatibility cutover |
 | D10 | **How much of the remaining frontend polish to do at once** | Three known batches: ~33 unconverted `toLocaleString*` sites (the helper now exists), ~24 re-implementations of the mutation-envelope check, and 8 `dangerouslySetInnerHTML` sites fed by locale strings | Each is mechanical but wide; they are the kind of change that is safe alone and risky mixed with a release |
 | D11 | **Agent privilege and platform footprint** | Non-root agents are still the exception (MAC-WAN); ICMP tasks force root on hosts without `setcap`. Windows/macOS agent footprint and peak memory are unmeasured. Ping precision shipped in v1.6.24, so it is no longer part of this decision | Moving agents between users/init systems is a fleet-wide change; the footprint gaps are measurements, not code |
-| D12 | **Encrypted-backup key custody and restore authorization** | Recommend source-side age public recipients, ciphertext-only OVH storage, independent recovery escrow and a separately approved restore runner. Decide custodians/unlock and old plaintext-copy retention before cutover. | Bounded source tooling and synthetic local/OVH restores in `docs/ENCRYPTED-BACKUPS.md` do not establish production custody/recovery; v1.6.29 changes no backup policy |
+| D12 | **Encrypted-backup custody implementation** | Owner approves public recipients on OC424, ciphertext on OVH, owner-held private identity with independent offline copy and a separate restore environment. Actual device/recipients/escrow/runner remain to be supplied; keep old plaintext copies until real recovery passes. | This is no longer an unanswered architecture choice; actual custody and escrow-path restore in `docs/ENCRYPTED-BACKUPS.md` still gate cutover; v1.6.29 changes no backup policy |
 
 ## How to read this
 
@@ -261,8 +279,8 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Item | Where | Why it is still here |
 |---|---|---|
 | History query hardening owner acceptance | `web/rpc/jsonrpc/common.record.go`; `web/rpc/jsonrpc/budget.go` | Released/deployed as v1.6.28/502a269: 366-day ceiling, shared budgets/cancellation and guest visibility filtering. Release/platform and OC424 health/data checks pass; authenticated live history UI acceptance remains pending |
-| Client-token rotation release/acceptance | PR81, `docs/CLIENT-TOKEN-ROTATION.md` | Merged as31a5b43 after integrated6a3b7eb passes exact CI40425302716 (7/7), not deployed. Session/step-up-only API/UI with old-credential retirement; independent recovery, edit/import compatibility and bounded live acceptance remain gates. Never patch live SQLite to rotate |
-| Scoped API-key release and consumer migration | `internal/apikeys/`, `pkg/rpc/apikey_scopes.go`, `docs/API-KEYS.md` | PR79 merged as 3dd20fb; exact PR and merge CI each pass 7/7. Not released: OC424 still has the old global credential policy. Inventory/provision actual legacy consumers before the intentional read-only migration |
+| Client-token rotation release/acceptance | PR81, `docs/CLIENT-TOKEN-ROTATION.md` | Source merged as31a5b43, exact CI7/7, not deployed. Owner accepts edit/import restrictions and requests no rotation now; deploy the feature without a live rotation canary. Later rotations require independent per-node recovery; never patch live SQLite to rotate |
+| Scoped API-key release and consumer migration | `internal/apikeys/`, `pkg/rpc/apikey_scopes.go`, `docs/API-KEYS.md` | PR79 merged as3dd20fb, exact CI7/7. Hermes is the main known node-management caller; actual host/methods and secure scoped-key handoff/write pause remain to be arranged. Synthetic read/write REST/RPC regression passes, not live consumer acceptance |
 | Audit-log pagination hardening owner acceptance | `web/rpc/jsonrpc/admin.system.go` | Released/deployed as v1.6.28: 1-1000 rows, checked offsets, strict binding and cancellation. REST/filter/CSV compatibility verified in exact-source CI; authenticated live audit UI acceptance remains pending |
 | `/plugin/*` is still owned by the installed theme | `web/public/public.go` | **Accepted**: the panel took back only its own pages. Tightening it would break installed themes |
 | An installed theme that renders "no data" as 0 | outside this repository (SAO) | **Accepted**: the default document is the panel's own now; the remaining risk is a third-party bundle |

@@ -204,6 +204,83 @@ func TestScopedAPIKeysAcrossHTTPAndWebSocket(t *testing.T) {
 		}
 	})
 
+	t.Run("HermesStyleNodeManagement", func(t *testing.T) {
+		_, managementToken := newKey(rpc.ScopeNodesRead, rpc.ScopeNodesWrite)
+		for _, transport := range []string{"REST", "RPC"} {
+			t.Run(transport, func(t *testing.T) {
+				var created map[string]any
+				if transport == "REST" {
+					status, data, _ := request("POST", "/api/admin/client/add", managementToken, map[string]any{"name": "hermes-fixture"}, false)
+					if status != http.StatusOK || data["status"] != "success" {
+						t.Fatalf("node creation status = %d", status)
+					}
+					created = data
+				} else {
+					data := rpcCall("admin:addClient", managementToken, map[string]any{"name": "hermes-fixture"}, false)
+					if data["error"] != nil {
+						t.Fatal("node-management key could not create a node")
+					}
+					created, _ = data["result"].(map[string]any)
+				}
+				clientID, _ := created["uuid"].(string)
+				if uuid.Validate(clientID) != nil {
+					t.Fatal("node creation did not return a UUID")
+				}
+				t.Cleanup(func() { db.Delete(&models.Client{}, "uuid = ?", clientID) })
+				if _, exposed := created["token"]; exposed {
+					t.Fatal("node creation exposed an Agent token without a separate grant")
+				}
+				if transport == "REST" {
+					status, data, _ := request("GET", "/api/admin/client/"+clientID, managementToken, nil, false)
+					if status != http.StatusOK || data["uuid"] != clientID {
+						t.Fatal("node-management key could not read the created node")
+					}
+					if _, exposed := data["token"]; exposed {
+						t.Fatal("node read exposed an Agent token")
+					}
+					status, data, _ = request("POST", "/api/admin/client/"+clientID+"/edit", managementToken, map[string]any{"remark": "hermes-fixture-edit"}, false)
+					if status != http.StatusOK || data["status"] != "success" {
+						t.Fatal("node-management key could not edit metadata")
+					}
+				} else {
+					data := rpcCall("admin:getClient", managementToken, map[string]any{"uuid": clientID}, false)
+					read, _ := data["result"].(map[string]any)
+					if data["error"] != nil || read["uuid"] != clientID {
+						t.Fatal("node-management key could not read the created node")
+					}
+					if _, exposed := read["token"]; exposed {
+						t.Fatal("node read exposed an Agent token")
+					}
+					if data := rpcCall("admin:editClient", managementToken, map[string]any{"uuid": clientID, "remark": "hermes-fixture-edit"}, false); data["error"] != nil {
+						t.Fatal("node-management key could not edit metadata")
+					}
+				}
+				var saved models.Client
+				if err := db.Select("uuid", "remark").Where("uuid = ?", clientID).First(&saved).Error; err != nil || saved.Remark != "hermes-fixture-edit" {
+					t.Fatal("metadata edit did not persist")
+				}
+				for _, method := range []string{"admin:getClientToken", "admin:rotateClientToken", "admin:exec", "admin:rollAgentUpdate", "admin:createAPIKey"} {
+					denied(rpcCall(method, managementToken, map[string]any{"uuid": clientID}, true))
+				}
+				if status, _, _ := request("GET", "/api/admin/client/"+clientID+"/token", managementToken, nil, true); status != http.StatusForbidden {
+					t.Fatalf("token read without grant returned %d", status)
+				}
+				if transport == "REST" {
+					status, data, _ := request("POST", "/api/admin/client/"+clientID+"/remove", managementToken, map[string]any{}, false)
+					if status != http.StatusOK || data["status"] != "success" {
+						t.Fatal("node-management key could not remove its fixture node")
+					}
+				} else if data := rpcCall("admin:removeClient", managementToken, map[string]any{"uuid": clientID}, false); data["error"] != nil {
+					t.Fatal("node-management key could not remove its fixture node")
+				}
+				var remaining int64
+				if err := db.Model(&models.Client{}).Where("uuid = ?", clientID).Count(&remaining).Error; err != nil || remaining != 0 {
+					t.Fatal("fixture node remained after removal")
+				}
+			})
+		}
+	})
+
 	t.Run("ExplicitSensitiveGrantsAllowExecAndRolloutButNotEachOther", func(t *testing.T) {
 		_, execToken := newKey(rpc.ScopeTasksExec)
 		_, rolloutToken := newKey(rpc.ScopeAgentUpdate)

@@ -5,7 +5,7 @@ PR84 is source-merged as `f567128` after exact candidate `5899614` passes
 CI40426994745 (7/7). Source delivery is not production rollout.
 **The OC424/OVH backup schedule still writes the existing plaintext archives.**
 No production key, forced command, scheduler, retention setting, credential or
-Panel/Agent service is changed by this source work. OC424 remains v1.6.28/502a269.
+Panel/Agent service is changed by this source work. OC424 remains v1.6.29/510f7d3.
 See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for the retained recovery copies.
 
 ## Contract and dependencies
@@ -40,12 +40,21 @@ Only 1-16 native X25519 recipients/identities per file are supported. Password,
 SSH-key, plugin/hardware identities and interactive prompting are unsupported.
 The tool does not generate production recovery keys.
 
-## D12: Required owner decisions
+## D12: Approved architecture and pending implementation
 
-The following is a recommendation, not an approved custody arrangement:
+On2026-10-27 the owner approves the recommended architecture: OC424 holds only
+public recipients, OVH holds ciphertext, and the owner controls the private
+identity with an independent offline recovery copy. An approved separate restore
+environment temporarily unlocks it. No actual personal device, recipient,
+offline escrow copy or restore runner is supplied or verified yet. Do not
+interpret design approval as deployed custody or permission to generate and keep
+a production private identity in the development workspace/OC424/OVH.
+
+Implement the approved design before changing the production backup schedule:
 
 1. Name the primary and independent recovery custodians, escrow locations and
-   restore approvers. Verify public recipient fingerprints out of band.
+   restore approvers and actual owner-controlled device. Verify public recipient
+   fingerprints out of band; transfer public material only to OC424.
 2. Put **only public recipients** on OC424; keep identities off OC424/OVH.
    Multiple recipients provide independent decryption, not threshold approval.
 3. Authorize a separate restore runner and how it temporarily unlocks an
@@ -55,7 +64,7 @@ The following is a recommendation, not an approved custody arrangement:
    recovery copies until an actual escrow-path restore passes; source tests do
    not authorize deleting them.
 
-Record these choices, then run one off-host encrypted canary and a restore via
+Record the real arrangements, then run one off-host encrypted canary and a restore via
 the actual approved recovery path before switching the existing schedule.
 Until that evidence exists, v1.7's encrypted-backup exit criterion stays open.
 
