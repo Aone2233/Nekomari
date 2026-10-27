@@ -3,6 +3,7 @@ package geoip
 import (
 	"net"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -13,6 +14,9 @@ import (
 
 var CurrentProvider GeoIPService
 var geoCache *cache.Cache
+var providerMu sync.RWMutex
+var reloadMu sync.Mutex
+var stopped bool
 
 type GeoInfo struct {
 	ISOCode string
@@ -52,78 +56,110 @@ func GetRegionUnicodeEmoji(isoCode string) string {
 }
 
 func InitGeoIp() {
+	// Serialize reloads and read current settings rather than event snapshots, so
+	// queued reloads converge to the latest state and cannot publish after shutdown.
+	reloadMu.Lock()
+	defer reloadMu.Unlock()
+	if stopped {
+		return
+	}
+	if config.Database() == nil {
+		logger.Warn("geoip", "configuration unavailable; using EmptyProvider")
+		replaceProvider(&EmptyProvider{})
+		return
+	}
 	conf, err := config.GetMany(map[string]any{
 		config.GeoIpEnabledKey:  true,
 		config.GeoIpProviderKey: "ipinfo",
 	})
 	if err != nil {
-		panic("Failed to get configuration for GeoIP: " + err.Error())
-	}
-	if !conf[config.GeoIpEnabledKey].(bool) {
+		logger.Warn("geoip", "failed to read configuration; using EmptyProvider")
+		replaceProvider(&EmptyProvider{})
 		return
 	}
-	switch conf[config.GeoIpProviderKey].(string) {
+	enabled, ok := conf[config.GeoIpEnabledKey].(bool)
+	if !ok {
+		logger.Warn("geoip", "invalid GeoIP enabled setting; expected boolean; using EmptyProvider")
+		replaceProvider(&EmptyProvider{})
+		return
+	}
+	if !enabled {
+		replaceProvider(&EmptyProvider{})
+		logger.Info("geoip", "GeoIP disabled")
+		return
+	}
+	name, ok := conf[config.GeoIpProviderKey].(string)
+	if !ok {
+		logger.Warn("geoip", "invalid GeoIP provider setting; expected string; using EmptyProvider")
+		replaceProvider(&EmptyProvider{})
+		return
+	}
+	var provider GeoIPService = &EmptyProvider{}
+	switch name {
 	case "mmdb":
-		NewCurrentProvider, err := NewMaxMindGeoIPService()
-		if err != nil {
-			logger.Error("geoip", "failed to initialize MaxMind GeoIP service", "error", err)
-		}
-		if NewCurrentProvider != nil {
-			CurrentProvider = NewCurrentProvider
+		if service, initErr := NewMaxMindGeoIPService(); initErr == nil && service != nil {
+			provider = service
 		} else {
-			CurrentProvider = &EmptyProvider{}
-			logger.Error("geoip", "failed to initialize MaxMind GeoIP service; using EmptyProvider")
+			err = initErr
 		}
 	case "ip-api":
-		NewCurrentProvider, err := NewIPAPIService()
-		if err != nil {
-			logger.Error("geoip", "failed to initialize ip-api service", "error", err)
-		}
-		if NewCurrentProvider != nil {
-			CurrentProvider = NewCurrentProvider
-			logger.Info("geoip", "using GeoIP provider", "provider", "ip-api.com")
+		if service, initErr := NewIPAPIService(); initErr == nil && service != nil {
+			provider = service
 		} else {
-			CurrentProvider = &EmptyProvider{}
-			logger.Warn("geoip", "failed to initialize ip-api service; using EmptyProvider")
+			err = initErr
 		}
 	case "geojs":
-		NewCurrentProvider, err := NewGeoJSService()
-		if err != nil {
-			logger.Error("geoip", "failed to initialize GeoJS service", "error", err)
-		}
-		if NewCurrentProvider != nil {
-			CurrentProvider = NewCurrentProvider
-			logger.Info("geoip", "using GeoIP provider", "provider", "geojs.io")
+		if service, initErr := NewGeoJSService(); initErr == nil && service != nil {
+			provider = service
 		} else {
-			CurrentProvider = &EmptyProvider{}
-			logger.Warn("geoip", "failed to initialize GeoJS service; using EmptyProvider")
+			err = initErr
 		}
 	case "ipinfo":
-		NewCurrentProvider, err := NewIPInfoService()
-		if err != nil {
-			logger.Error("geoip", "failed to initialize IPInfo service", "error", err)
-		}
-		if NewCurrentProvider != nil {
-			CurrentProvider = NewCurrentProvider
-			logger.Info("geoip", "using GeoIP provider", "provider", "ipinfo.io")
+		if service, initErr := NewIPInfoService(); initErr == nil && service != nil {
+			provider = service
 		} else {
-			CurrentProvider = &EmptyProvider{}
-			logger.Warn("geoip", "failed to initialize IPInfo service; using EmptyProvider")
+			err = initErr
 		}
+	case "", "empty":
+		logger.Info("geoip", "no GeoIP provider selected; using EmptyProvider")
 	default:
-		CurrentProvider = &EmptyProvider{}
+		logger.Warn("geoip", "unknown GeoIP provider; using EmptyProvider")
 	}
+	if err != nil {
+		logger.Warn("geoip", "provider initialization failed; using EmptyProvider")
+	}
+	replaceProvider(provider)
+	logger.Info("geoip", "using GeoIP provider", "provider", provider.Name())
+}
+
+// Callers hold reloadMu. Readers finish before a provider is closed, and cannot
+// repopulate the cache with results from the retired instance after the flush.
+func replaceProvider(next GeoIPService) error {
+	providerMu.Lock()
+	previous := CurrentProvider
+	CurrentProvider = next
+	geoCache.Flush()
+	providerMu.Unlock()
+	if previous != nil {
+		if err := previous.Close(); err != nil {
+			logger.Warn("geoip", "failed to close retired GeoIP provider")
+			return err
+		}
+	}
+	return nil
 }
 
 // Shutdown 关闭当前 GeoIP provider 持有的资源（如 mmdb 文件句柄）。供关闭流程调用。
 func Shutdown() error {
-	if CurrentProvider == nil {
-		return nil
-	}
-	return CurrentProvider.Close()
+	reloadMu.Lock()
+	defer reloadMu.Unlock()
+	stopped = true
+	return replaceProvider(&EmptyProvider{})
 }
 
 func GetGeoInfo(ip net.IP) (*GeoInfo, error) {
+	providerMu.RLock()
+	defer providerMu.RUnlock()
 	providerName := CurrentProvider.Name()
 	cacheKey := providerName + ":" + ip.String()
 
@@ -139,6 +175,11 @@ func GetGeoInfo(ip net.IP) (*GeoInfo, error) {
 }
 
 func UpdateDatabase() error {
+	// MMDB constructors and updates share the same on-disk database/temp path.
+	reloadMu.Lock()
+	defer reloadMu.Unlock()
+	providerMu.RLock()
+	defer providerMu.RUnlock()
 	err := CurrentProvider.UpdateDatabase()
 	if err == nil {
 		geoCache.Flush()

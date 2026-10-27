@@ -8,8 +8,16 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- No additional runtime change after the delivered v1.7.1 patch; delivery
-  records do not rebuild immutable release artifacts.
+- **v1.7.2 candidate: optional GeoIP stability and hot reload.** Malformed
+  enabled/provider settings and settings-read failure fall back with a warning
+  instead of a background panic. Enable/disable and provider changes both reload;
+  disabled providers stop serving cached locations. Synchronize lookups/database
+  updates with replacement/close, clear retired caches, and prevent a queued
+  reload from reopening a provider after shutdown. Focused race regressions and
+  existing MMDB failure contracts pass; exact-source CI/publication and OC424
+  deployment remain gates. Preserve Pi's owner-authorized new node: current
+  baseline14clients/13previously fresh reporters. No Agent, schema/auth,
+  frontend/dependency, permission or token change. See `docs/GEOIP-RELOAD.md`.
 
 ## [v1.7.1] - 2026-10-27
 

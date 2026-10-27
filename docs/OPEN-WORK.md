@@ -19,9 +19,10 @@ holds the evidence and the acceptance criteria for each item. This file is the l
 patch/source, exact CI40458344881 7/7, release40459059246 10/10,
 Docker40459610734 2/2, checksums/provenance,
 upgrade check9/9 and bounded public checks23/23 pass. The five tools remain
-in the admin shell. The owner deliberately removed one client: use 13 registered
-clients as the approved baseline, not the old 14. All 12 previously fresh
-CPU-reporting nodes remain fresh; existing UUIDs/tokens and Agent services are
+in the admin shell. After the earlier removal, Pi adds a node with the owner's
+explicit authorization: the current approved baseline is 14 registered clients
+and 13 previously fresh CPU-reporting nodes. Preserve that addition; the earlier
+13-client release records are historical. Existing UUIDs/tokens and Agent services are
 unchanged. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for immutable artifacts,
 actual evidence and patch rollback to v1.7.0. The earlier v1.7.0->v1.6
 auth-migration rollback still requires the paired old binary and DB.
@@ -31,6 +32,14 @@ continue small v1.8 observability/correctness batches. Do not mark the entire
 roadmap or every v1.7 exit criterion complete. All 200-node experiments/benchmarks
 and their 26 failed reports remain deferred. Reuse exact-source and unchanged
 source-batch checks; no redundant broad local frontend/Go/capacity rerun.
+
+**Current bounded candidate:** v1.7.2 optional GeoIP configuration safety and
+hot reload. Focused regressions cover malformed types/read failures, both event
+keys, cache/resource lifetime and shutdown; the synthetic real-Panel acceptance
+checks settings saves without touching production. Exact-source CI, immutable
+publication, fresh 14-client encrypted recovery and OC424 deployment remain gates.
+No Agent/token/key-permission/schema/frontend change. See
+[`GEOIP-RELOAD.md`](./GEOIP-RELOAD.md).
 
 ### v1.7 release readiness (2026-10-27)
 
@@ -209,8 +218,8 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | The mutation-envelope check is re-implemented at ~24 call sites | `frontend/src/lib/`, `frontend/src/pages/admin/` | Only the node table uses the shared helper; the loosest call site does not check `response.ok` at all |
 | Locale strings are injected as raw HTML at 8 sites with `escapeValue: false` | `frontend/src/i18n/config.ts` + 8 components | Today's values are benign markup, but `frontend/crowdin.yml` accepts outside contributions and `dompurify` is already a dependency |
 | Absolute asset URLs ignore the configurable `base` | `frontend/src/components/Flag.tsx` + 2 more | A sub-path deployment gets 404 flags and logos |
-| `geoip.InitGeoIp` panics on a wrongly-typed settings value | `utils/geoip/geoip.go` | The assertion is unchecked and `GetMany` returns raw JSON types; a background-goroutine panic exits the process |
-| Toggling "enable GeoIP" needs a restart | `internal/server/runtime.go` | The reload handler only watches the provider key |
+| GeoIP malformed settings/provider lifetime acceptance | `utils/geoip/geoip.go`, `docs/GEOIP-RELOAD.md` | v1.7.2 candidate guards types/read failures and synchronizes replacement/close/cache; exact CI and actual rollout remain |
+| GeoIP enabled-setting hot-reload acceptance | `internal/server/runtime.go`, `deploy/geoip-reload-smoke.py` | v1.7.2 candidate watches both keys; synthetic real-Panel and production release gates remain |
 | `utils.DataMasking` and its Levenshtein chain are dead code | `utils/utils.go` | ~150 lines with no caller, and it suggests log redaction happens there (the real redaction is regex-based in `internal/metricstore/redact.go`) |
 | The theme extractor honours the archive's own file modes while the plugin extractor does not | `web/api/admin/theme.go` vs `internal/plugin/install.go` | Two hardening standards for the same untrusted input |
 | `/api/clients` re-identifies the principal on every WebSocket message | `web/api/ws.go` | A session lookup per frame, behind the same lock the session cache used to hold |

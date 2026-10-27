@@ -84,9 +84,7 @@ func (a *App) registerReloadHandlers(cors *security.CorsController) {
 		}
 	})
 	a.reload.Register("geoip-provider", func(event config.ConfigEvent) {
-		if event.IsChanged(config.GeoIpProviderKey) {
-			go geoip.InitGeoIp()
-		}
+		reloadGeoIP(event, geoip.InitGeoIp)
 	})
 	a.reload.Register("message-sender", func(event config.ConfigEvent) {
 		if event.IsChanged(config.NotificationMethodKey) {
@@ -94,6 +92,12 @@ func (a *App) registerReloadHandlers(cors *security.CorsController) {
 		}
 	})
 	a.reload.Register("cors", func(event config.ConfigEvent) { cors.Update(event) })
+}
+
+func reloadGeoIP(event config.ConfigEvent, initialize func()) {
+	if event.IsChanged(config.GeoIpProviderKey) || event.IsChanged(config.GeoIpEnabledKey) {
+		go initialize()
+	}
 }
 
 // trustedProxyCIDRs 是允许其转发头（X-Forwarded-For / X-Real-IP）被采信的直连来源。

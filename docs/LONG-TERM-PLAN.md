@@ -49,8 +49,9 @@ reports. Publication is not proof that every roadmap exit criterion passed.
 restart0, after exact-source CI 7/7, release 10/10, Docker 2/2 and upgrade check 9/9.
 Both Linux assets pass checksums/tag/source/workflow attestations; both image
 architectures identify exact source. Public checks 23/23 pass. The owner-approved
-post-deletion baseline is 13 clients; all 12 previously fresh reporting nodes remain
-fresh, and UUIDs/tokens/Agent services are unchanged. The five tools retain
+baseline now includes Pi's explicitly owner-authorized addition: 14 clients and
+13 previously fresh reporting nodes, not the earlier 13-client release snapshot.
+UUIDs/tokens/Agent services are unchanged. The five tools retain
 shared in-panel navigation. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
 Scoped keys, history/audit bounds, report/queue invariants, session-only token
@@ -87,6 +88,10 @@ scheduler or production RPO/RTO/SLO acceptance is implied.
    exact candidate CI, safe backups and OC424 acceptance. The first completed
    batch is the compatible v1.7.1 forecast-boundary patch, not a full v1.8 feature release
    or a declaration that the pending owner UI acceptance has passed.
+   The next candidate is v1.7.2 GeoIP configuration safety/hot reload, with
+   focused lifecycle race tests and isolated real-Panel settings acceptance;
+   publication/14-node encrypted recovery/OC424 update remain gates. See
+   [`GEOIP-RELOAD.md`](./GEOIP-RELOAD.md).
    Do not bundle fleet privilege/platform changes or 200-node work.
 
 v1.7 is released/deployed, **not unconditionally exit-complete**: owner
