@@ -1,9 +1,12 @@
-# Hermes node metadata client (v1.7 preparation)
+# Hermes node metadata client (v1.7.0)
 
-`deploy/hermes_nodes.py` provides an explicit, small REST consumer for the
-owner's Hermes on MAC-WAN. It replaces neither the current credentials nor all
-existing Hermes workflows. It is staged without a production key; the live
-Panel remains v1.6.29, so its version gate intentionally refuses use there.
+`deploy/hermes_nodes.py` is the reviewed metadata-only consumer for the owner's
+Hermes on MAC-WAN. The Panel now serves v1.7.0/8eb711e, so its version gate is
+satisfied; **no production key is configured yet**. During cutover the gateway
+is briefly stopped, 3 old references are backed up/directed to this client, then
+the gateway resumes. This is not proof that every existing runtime task has
+been rewired or live writes accepted. The old global key is now 30-day read-only;
+node mutations wait for owner key issuance/private configure/disposable check.
 
 ## Scope and trust boundary
 
@@ -62,27 +65,32 @@ does not automatically clean up/retry an uncertain operation.
 | Future owner-created credential | `/home/macos/.config/nekomari-hermes/credential.json` |
 | Separate recovery identity | `/home/macos/.local/share/nekomari-recovery/identities/oc424-primary.agekey` |
 
-The client is staged with a checksum match. No production credential is
-created/read/replaced, no existing skill prose is edited, and Hermes/Agent are
-not restarted. This **does not rewire the active Hermes gateway or disable
-old automation**. Its three existing node/install references are inventory
-evidence, not a verified complete runtime flow. At cutover, arrange a brief
-pause of actual mutating jobs and explicitly direct them to the staged client
-or an equivalently reviewed consumer. A new file is not evidence those tasks
-are paused or all old callers have migrated.
+The client remains checksum-matched. The cutover marker is
+`/home/macos/.local/share/nekomari-hermes/v1.7-cutover.json`; it records only
+non-secret status/reference hashes. 3 known devops references now begin with a
+reviewed-client override that forbids legacy API/token/install fallback for
+this Panel. Their original bytes are preserved privately on MAC-WAN; they are
+not copied into Git/evidence because historical prose may contain credentials.
+Hermes gatewayPID922780/restart0 is active again; AgentPID976/restart0 is
+unchanged. No key or administrator session is extracted or handed to Hermes.
+
+These reference edits do **not** prove a complete active-task inventory or
+runtime migration. Existing-key writes are denied server-side after migration.
+Do not resume node writes until the new credential and explicit live workflow
+check pass. Unrelated Hermes operations can continue. No autonomous retry,
+credential recovery or Agent-token grant is authorized.
 
 ## Owner actions, at the appropriate time
 
-### Now: independent offline recovery
+### Offline recovery checkpoint
 
-An additional protected offline copy of the MAC-WAN recovery identity and its
-instructions is still needed. Copy directly through a private channel to an
-owner-controlled device/offline medium; do not paste it into chat. Compare the
-derived public recipient and record actual independent recovery separately.
-See [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md). No backup schedule cutover
-or plaintext deletion is implied by staging this client.
+The owner reports the independent offline identity copy downloaded and
+explicitly authorizes cutover. No private identity is exported by this task.
+Matching the copy's derived public recipient and actual recovery from that
+medium remain separate owner-run checks; online MAC-WAN restore is not their
+substitute. See [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
 
-### After the gated v1.7 deployment, not on v1.6
+### Now: owner key and authenticated acceptance
 
 1. Log in to Settings -> Sign-on -> API. Create `hermes-node-management`,90days,
    **only** `nodes:read` and `nodes:write`, with existing TOTP when required.
@@ -103,7 +111,7 @@ or plaintext deletion is implied by staging this client.
    Agent, rotate tokens or probe powerful forbidden operations in production.
 4. Verify history/audit/API-key UI behavior during owner acceptance. Resume
    Hermes mutations only after the new consumer passes. Reconcile any other
-   callers before retiring the migrated30-day read-only key.
+   callers before retiring the migrated 30-day read-only key.
 
 Metadata examples, **not executed against production**:
 
@@ -137,6 +145,7 @@ was corrected without weakening the client guard or changing application code.
 
 The staged scripts also run their synthetic17-group harness on MAC-WAN without
 credentials or production calls. No redundant broad local frontend/Go suite,
-fleet work or200-node run is needed for this operational-only batch. Full
-v1.7 release/backup/consumer/owner-acceptance gates remain in
+fleet work or 200-node run is needed for this operational-only batch. The release
+and encrypted backup cutover are delivered; actual consumer/owner acceptance
+remains in
 [`V1.7-CUTOVER-READINESS.md`](./V1.7-CUTOVER-READINESS.md).

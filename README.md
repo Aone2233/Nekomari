@@ -162,9 +162,9 @@ checksum check and the systemd unit.
 | [docs/API-KEYS.md](./docs/API-KEYS.md) | Scoped-key lifecycle, exact permissions, legacy consumer migration and rollback gates |
 | [docs/HERMES-NODE-CLIENT.md](./docs/HERMES-NODE-CLIENT.md) | Metadata-only Hermes CLI, hidden owner-TTY key handoff and remaining live transition steps |
 | [docs/CLIENT-TOKEN-ROTATION.md](./docs/CLIENT-TOKEN-ROTATION.md) | Session-only Agent-token rotation, retirement boundaries, independent recovery and compatibility gates |
-| [docs/V1.7-CUTOVER-READINESS.md](./docs/V1.7-CUTOVER-READINESS.md) | Inspected production conditions, remaining owner arrangements and compatible maintenance delivery |
-| [docs/ENCRYPTED-BACKUPS.md](./docs/ENCRYPTED-BACKUPS.md) | Recipient-only tooling, restore drills and remaining offline-recovery/schedule gates |
-| [docs/MAC-WAN-RECOVERY.md](./docs/MAC-WAN-RECOVERY.md) | Approved online key custody, actual encrypted OVH canary/MAC-WAN restore and pending independent offline copy |
+| [docs/V1.7-CUTOVER-READINESS.md](./docs/V1.7-CUTOVER-READINESS.md) | Delivered v1.7 cutover evidence, historical conditions and remaining owner acceptance/handoff |
+| [docs/ENCRYPTED-BACKUPS.md](./docs/ENCRYPTED-BACKUPS.md) | Recipient-only tooling, encrypted nightly schedule and isolated restore contract |
+| [docs/MAC-WAN-RECOVERY.md](./docs/MAC-WAN-RECOVERY.md) | Online key custody, actual pre/post encrypted recovery and owner-reported offline copy |
 | [docs/DEPLOY-VERIFICATION.md](./docs/DEPLOY-VERIFICATION.md) | Deploy verification on a test host, and what it found |
 | [docs/IP-INFO-API.md](./docs/IP-INFO-API.md) | The `/api/*/ip-info/v1` contract, its upstreams, and caching |
 | [deploy/README.md](./deploy/README.md) | What each operational script does, and why some hosts need their own |
