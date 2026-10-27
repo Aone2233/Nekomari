@@ -178,7 +178,24 @@ jobs:
         uses: actions/checkout@v7
         with:
           # 用 tag 本身而不是默认分支，保证 Dockerfile 与产物同代。
-          ref: ${{ steps.tag.outputs.tag || github.ref }}
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - name: Verify release source
+        id: source
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          REVISION=$(git rev-parse --verify 'HEAD^{commit}')
+          if ! TAG_REVISION=$(git rev-parse --verify "refs/tags/$TAG^{commit}"); then
+            echo "::error::resolved release tag is not a local commit"
+            exit 1
+          fi
+          if [ "$REVISION" != "$TAG_REVISION" ]; then
+            echo "::error::checkout $REVISION does not match release tag $TAG_REVISION"
+            exit 1
+          fi
+          printf 'revision=%s\n' "$REVISION" >> "$GITHUB_OUTPUT"
 
       # docker/build-push-action 的 file 是相对 context 解析的，
       # 所以 Dockerfile 必须和二进制放在同一个目录里。
@@ -228,6 +245,9 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ steps.tag.outputs.image }}
+          # workflow_run's event SHA belongs to the default branch, not the release checkout.
+          labels: |
+            org.opencontainers.image.revision=${{ steps.source.outputs.revision }}
           # latest 的开关见上面 Resolve tag 里的 release_verified：版本号 tag 始终推，
           # latest 只在触发它的 release 运行真的成功（或没有结论可读）时才推。
           # 注意这里不能改成裸的 release_verified —— GitHub 把任何非空字符串都当 true，

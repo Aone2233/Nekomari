@@ -46,6 +46,30 @@ deferred with its original criteria and26 failed reports preserved. This narrows
 the work target; it does not declare the long-term roadmap or v1.7 exit criteria
 complete, and does not decide key custody or account/privilege/SLO policies.
 
+**Post-v1.6.28 continuation (owner authorization, 2026-10-26):** replace the
+open-ended "finish every roadmap version" work target with this ordered batch:
+
+1. Close the delivered release's source-identity follow-up: verify the resolved
+   release tag against checkout HEAD and label both images with that commit,
+   without republishing immutable v1.6.28 assets/images.
+2. Reconcile the independently verified token-rotation PR81 with current main's
+   delivery records; keep the current production checkpoint and reuse unaffected
+   evidence. Require CI on the integrated candidate, not the old branch tip.
+3. Prepare the next v1.7 cutover only after live API consumers/replacements,
+   token-recovery compatibility and D12 backup key custody/restore authorization
+   are established. Until then, continue independent engineering, not live
+   credential/schema changes or a declaration that v1.7 is delivered.
+
+Each source batch closes with reviewed changes, exact-candidate CI and retained
+evidence; publication/deployment additionally need backups/rollback and bounded
+acceptance. OC424 remains the live acceptance host, OVH handles appropriate
+isolated checks/backups, and only owned disposable caches/fixtures are cleaned.
+No 200-node work or redundant broad local suite is part of this target. The
+owner's continue request revokes the earlier pause as a work instruction; the
+application's stored goal still reports paused because the available goal tool
+cannot change its objective or resume it. This is a repository target update,
+not a claim that the app state was changed or the original roadmap completed.
+
 Query-hardening PR78/502a269 is released early as the compatible **v1.6.28**
 patch and deployed on OC424. Exact-source CI40275930537 passes7/7; release
 40318142810 passes10/10, including native amd64/arm64 deployment verification;

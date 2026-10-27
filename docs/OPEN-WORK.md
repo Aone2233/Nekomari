@@ -39,6 +39,14 @@ open at 13cdcc5 with CI7/7, not included in this deployment. The scoped-key cont
 is in [`API-KEYS.md`](./API-KEYS.md); its local/UI/migration evidence is retained,
 not rerun in every backend-only batch.
 
+**Next ordered work (renewed owner instruction after v1.6.28):** fix release
+image source identity first, reconcile PR81 with current delivery records and
+require its new exact-candidate CI, then prepare gated v1.7 cutover. The full
+roadmap is not the active single batch. Source delivery and production acceptance
+remain separate; no API-consumer migration, token rotation or backup-key custody
+is silently approved. See the post-v1.6.28 target in
+[`LONG-TERM-PLAN.md`](./LONG-TERM-PLAN.md).
+
 The merged isolated report/queue batch starts from 3dd20fb. It clamps only
 non-negative, in-range RAM/Swap/disk `used > total`
 snapshots after all other validation succeeds. Accepted uploads record a
@@ -65,10 +73,11 @@ Agent495903/restart0 unchanged. This is not a remote-native build or production
 acceptance. No Agent/protocol, dependency,
 frontend, later metrics/history or backup-policy change is part of this batch.
 
-The application-level all-roadmap goal was still observed paused, and this
-session exposes no objective/resume control. The repository target is updated
-and development continues under owner authorization; this is not a claim that
-the application's stored goal has been edited, resumed or completed.
+The application-level all-roadmap goal still reports paused. The owner explicitly
+requests that it be revised and work continue, revoking the earlier pause as a
+work instruction, but the available goal interface cannot edit the objective or
+resume app state. The repository target above is updated and development
+continues; the stored app goal has not been edited, resumed or marked complete.
 
 The repository's key-consuming scripts are inventoried; no helper reads a key
 from SQLite. Out-of-repository live consumers and secure replacement provisioning
@@ -200,7 +209,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Most agents still run as root; only MAC is non-root | `docs/DEPLOY-OC424.md` | The NOSLA pattern (unprivileged user + `AmbientCapabilities=CAP_NET_RAW`) works; Alpine has no `setcap`. OpenRC install support shipped in v1.6.25, but moving users is still a fleet-wide change |
 | Windows local builds can fail on a locked esbuild temp file | Windows dev environment | The build itself is deterministic on Windows: two builds with a project-local `TEMP`/`TMP` were byte-identical (819 files, diff 0). With the system `%TEMP%`, esbuild sometimes cannot delete its temp file ("Access is denied"); CI's Windows runner is unaffected. Not a source change — a dev-environment workaround until the temp cleaner/AV exclusion is settled |
 | Off-host backups are not encrypted | `docs/DEPLOY-OC424.md` v1.6.28 rollout | Fresh paired pre-v1.6.28 backup is retained separately on OVH (164 MB); checksum/zstd/isolated v1.6.27 restore pass. Nightly 14-copy retention is unchanged. D12 key custody/restore authorization still blocks encryption cutover; this is not an encrypted restore |
-| Docker workflow-run OCI revision label names the wrong source | `.github/workflows/docker.yml` metadata step | v1.6.28 label says default-branch fc84915 although the packaged/attested binary is 502a269. Pin/verify binaries, not the label; fix metadata from the resolved tag in a later batch without republishing immutable v1.6.28 |
+| Release-image source identity publication acceptance | `.github/workflows/docker.yml`, `deploy/docker-workflow-check.py` | Source fix verifies checkout HEAD against the resolved local release tag before asset download and uses its commit in both image labels. Nine existing policy cases and eight real-Git identity cases cover defaults, annotated tags, mismatch/missing/injection refusals. Actual image-publication acceptance awaits the next eligible release; immutable v1.6.28 retains its disclosed old label |
 | OIDC + 2FA makes SSO login fail-closed with no way for the browser to answer the challenge | `docs/ROADMAP.md` §F12 | Deliberately shipped as a gate, not half a state machine. Needs a one-time pending token plus a code prompt; production impact is zero while OIDC is off |
 | `sso_id` survives a password change, and `DeleteAllSessions()` is global | `database/accounts/` | Policy questions now that the SSO path requires TOTP; recommendation was (b)+(c) in the audit report |
 | A committed admin password from the SECRETS incident still has to be changed | `docs/SECRETS.md` incident 4 | An ops action on the live panel, not a repository change |

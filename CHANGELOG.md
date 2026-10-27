@@ -8,6 +8,14 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **Release images identify the release checkout.** Verify HEAD against the
+  resolved local release tag before asset download and explicitly set the OCI
+  revision label from that commit for Panel and Agent images, rather than the
+  default-branch SHA carried by `workflow_run`. Offline real-Git regressions
+  cover distinct event/release commits, annotated tags and mismatch/missing/ref
+  refusals. Existing tag/`latest` gates are unchanged. Published v1.6.28 images
+  stay immutable; actual publication acceptance waits for the next release.
+
 - **Report and event-queue invariants (bounded v1.7 preparation).** The shared
   HTTP/WebSocket ingest path validates every input before clamping only RAM,
   Swap and disk usage above total, so a transient resource mismatch no longer
