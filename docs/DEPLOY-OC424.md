@@ -3,12 +3,12 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
-## Current checkpoint (rechecked 2026-10-27)
+## Current checkpoint (2026-10-27, Asia/Shanghai)
 
-OC424 serves **v1.6.28 / 502a269** at
-`https://nekomari.orderly2233.org`. Only the first bounded v1.7 query-hardening
-batch ships early as this compatible patch; scoped keys, report/queue changes,
-client-token rotation and backup encryption are not deployed. Older rollout
+OC424 serves **v1.6.29 / 510f7d3** at
+`https://nekomari.orderly2233.org`. Query hardening, report/queue fixes and
+release-image source labels ship early as compatible maintenance patches;
+scoped keys, client-token rotation and backup encryption are not deployed. Older rollout
 sections are dated evidence, not the current host/version or fleet count.
 
 | Item | Observed evidence |
@@ -16,8 +16,8 @@ sections are dated evidence, not the current host/version or fleet count.
 | Panel | Docker `nekomari`, running/healthy, restart0; public version/config HTTP200 |
 | Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2; unchanged during this deployment |
 | Unused unit | Generic `nekomari-agent` is inactive; it is not the reporting Agent |
-| OC424 disk | Root filesystem 42% used |
-| OVH | SSH alias `KSLE`; root filesystem 7% used, about 365 G free; Agent PID495903/restart0 unchanged |
+| OC424 disk | Root filesystem 43% used, about113G free after the new image/local snapshots |
+| OVH | SSH alias `KSLE`; root filesystem 7% used, about364G free; Agent PID495903/restart0 unchanged |
 
 The earlier failing process was `panel-probe.service`, still using the old
 `https://komari.orderly2233.org` default. Preserve the explicit deployed override:
@@ -29,9 +29,51 @@ Environment=PANEL_URL=https://nekomari.orderly2233.org
 ```
 
 The probe-only repair did not restart the Panel/Agent. A separate, explicit
-post-upgrade probe succeeds at 12:12:20Z, `Result=success`, exit0.
+v1.6.29 post-upgrade probe succeeds at09:29:05 Asia/Shanghai, `Result=success`, exit0.
 `deploy/panel-probe.sh` retains its historical fallback URL; deployed units must
 set `PANEL_URL` explicitly.
+
+## v1.6.29 rollout (2026-10-27, Asia/Shanghai)
+
+Panel-only maintenance PR86 backports report/queue fixes from PR80 and source
+labels from PR83 onto v1.6.28. Exact tested/tagged source is
+`510f7d354786f373e5816fa72b295f56d3ec3036`; the maintenance merge e9f778f has
+the same tree. **Do not deploy main** while the v1.7 authentication/custody gates
+in [`V1.7-CUTOVER-READINESS.md`](./V1.7-CUTOVER-READINESS.md) remain open.
+
+Reports validate every field before clamping RAM/Swap/disk used above total;
+other invalid values remain rejected. Queue cleanup follows successful removal
+and the existing idle scheduler, wakes old-generation polls without resurrecting
+state and releases discarded payloads. Existing limits/TTLs/reconnect behavior
+remain. No auth/schema migration, token rotation, Agent/protocol/frontend or
+dependency change occurs. Legacy callers retain their existing permissions.
+
+| Item | Evidence |
+|---|---|
+| Exact source and publication | Candidate CI40430587909 and maintenance merge CI40431319479 each pass7/7; release40431323373 passes10/10, including native amd64/arm64 deployment verification; Docker40431987946 passes2/2. Immutable tag `v1.6.29` points to510f7d3, not default main |
+| Pinned OC424 image | `ghcr.io/aone2233/nekomari:v1.6.29@sha256:46398954dd29bf341424b4fe5f89e39e23129b36ec3c559e12e4c816b67258e6` (arm64 manifest) |
+| Published image identity | Anonymous pull works. Panel index `sha256:a0480ae8c2a0d215ff9f3e05f2d1f5f2ce5888ea011f0546505ed2f22fb6c01e`; Agent index `sha256:4b419c31ae44493361487dc4ac004f4351e50ff553146a9a79fa3d71d1cacf3e`. Both architectures of both images label full510f7d3 and OCI version `1.6.29`, despite workflow_run carrying default-main6b8f340 |
+| Binary provenance | Arm64 SHA-256 `cd463d4d6fe13857edcd663dd8f044bcecc85b88d573b107e6b559df426b0377` matches release manifest and packaged/live binary. Verified release-workflow attestation binds full source, tag and run40431323373; native arm64 `--help` passes with no network/live data mounts |
+| Off-host recovery | OVH `/srv/backups/oc424/manual-pre-v1.6.29-20261027T010326Z/oc424-pre-v1.6.29.tar.zst`, mode600,165838142bytes; SHA-256 `6521dda91a1da76d40908765dd7a3d0c143f950614063c1f01583e151ae90dee`. Checksum/zstd integrity pass; WAL-safe snapshots of both DBs, compose, INFO and upgrade archives retained outside nightly14-copy retention |
+| Actual old-image restore | OVH restores this fresh backup into disposable clones and exact v1.6.28/502a269 amd64 image `sha256:b3ecaae7d7e1ebf2b5221cc8dfcc3963ac28d2e2ccbca4afaf438675a3bae49d`. Both DBs pass quick_check before/after,14clients, exact version/hash, public200,restart0. Networknone/nohostports; scratch data/container removed, original backup retained. Not encrypted escrow recovery |
+| Local recovery | Root-private `/opt/nekomari/rollbacks/v1.6.29-20261027T012705Z-ae778bbf`: both WAL-safe online DB snapshots, ordered full schema fingerprints, checksums, old/new compose/image references, logs and `ROLLBACK.txt`. Per-DB snapshots are not an atomic cross-DB transaction |
+| Switch | Only compose image line changes; `docker compose up -d --no-deps nekomari`. Container starts09:27:07, guarded acceptance finishes09:27:35 Asia/Shanghai. Agents/nginx, legacy credentials, backup schedule/retention and probe override stay unchanged |
+| Upgrade check | **9 passed,0failed,0skipped**: healthy/restart0, exact version/hash, public config/HTML, read-only DB integrity, three upgrade archives53.3MB and zero ERROR lines in the5-minute window |
+| Additional acceptance | Public version/config, homepage/admin/five child-route shells and10referenced JS/CSS assets pass with correct MIME types; private client/log/RPC calls return401 without credentials. Both DBs pass quick_check with unchanged complete schema fingerprints; registered UUID set14 unchanged, legacy key row exists and no scoped-key migration table is created. No credential value is read |
+| Node/process continuity | All13 CPU-reporting nodes fresh within120s immediately before switch remain fresh after it among14registered clients. This is not14/14online or a capacity/SLO claim. Actual OC424 AgentPID499631/restarts2 and OVH AgentPID495903/restart0 remain unchanged |
+| Authenticated acceptance | Still **pending** owner-run history/audit UI checks or securely provisioned temporary credentials. Public shells/401/synthetic authenticated tests are not live authenticated acceptance |
+| Rollback prepared, not exercised live | Restore only `docker-compose.before.yml` from the local recovery directory and recreate `nekomari`; expect v1.6.28/502a269 with healthy/restart0. Keep old pinned arm64 image `sha256:dccebe2e87518f78aba8e918de9d3553878f3ddc4a7ecade5114e89af6d3c102`. No schema migration means image-only rollback; do not restore DB snapshots unnecessarily and discard newer data |
+
+**Retained verification refusal:** the initial registry checker expected a
+v-prefixed OCI version, but metadata-action semver correctly labels `1.6.29`.
+It refused before deployment; full source510f7d3 already matched. The checker
+was corrected to the strict semver value and all four configurations verified.
+No published artifact was modified. The old local gh CLI lacked attestation;
+a temporary checksum-verified modern CLI completed provenance verification.
+Only owned disposable downloads/tools are removed afterward; signatures, scripts,
+checksums, refusal evidence and every recovery copy remain. Removing the three
+owned downloads reclaims95,903,081bytes (about91.5MiB). Development disk62%,
+OC42443%, OVH7%; no broad cache/Docker/backup pruning or200-node run occurs.
 
 ## v1.6.28 rollout (2026-10-26)
 
@@ -66,8 +108,8 @@ and `/api/version` establish the deployed source; the label does not. Keep this
 published image immutable. Source-identity PR83 is merged as e234385 on
 2026-10-27 after exact-source CI40324022778 passes 7/7: verify the resolved
 release checkout before asset download and explicitly label both images from
-that commit. Actual registry publication/label acceptance waits for the next
-release; this source fix does not rebuild v1.6.28 or change the running image.
+that commit. Publication/label acceptance now passes on v1.6.29 for both images
+and architectures; the immutable v1.6.28 image is not rebuilt or relabeled.
 
 **Retained non-production refusals:** the original local `gh` lacked attestation
 support; a temporary checksum-verified modern CLI verified the signature and
@@ -95,7 +137,7 @@ minutes of the upgrade — the log window is the last `LOG_WINDOW` measured from
 from the moment the container started:
 
 ```bash
-sudo env EXPECTED_VERSION=v1.6.28 EXPECTED_HASH=502a269 bash deploy/panel-upgrade-check.sh
+sudo env EXPECTED_VERSION=v1.6.29 EXPECTED_HASH=510f7d3 bash deploy/panel-upgrade-check.sh
 ```
 
 It prints one `PASS` / `FAIL` / `SKIP` line per check and exits `0` (all passed, SKIP is not a
@@ -120,7 +162,7 @@ corresponding checks are `SKIP`ped and named rather than reported as failures.
 A `FAIL` is a reason to stop and assess rollback rather than to keep going: the
 previous image and paired DB snapshots belong in that rollout's **Rollback** row.
 The upgrade archive excludes `metrics.db` and is not a full backup. Image-only
-rollback is safe for v1.6.28's query-only patch, not for a future authentication
+rollback is safe for v1.6.28/v1.6.29's compatible patches, not for a future authentication
 migration that rewrites persistent credentials. `deploy/panel-upgrade-check.test.sh`
 is the offline test for the script (fake panel + `docker`/`sqlite3` stubs; no host involved).
 
