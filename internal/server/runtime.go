@@ -231,6 +231,7 @@ func (a *App) runCleanups(ctx context.Context) error {
 }
 
 func registerScheduledWork() {
+	registerBackupHealthWatch()
 	if err := tasks.ReloadPingSchedule(); err != nil {
 		logger.ErrorArgs("server", "Failed to reload ping schedule:", err)
 	}

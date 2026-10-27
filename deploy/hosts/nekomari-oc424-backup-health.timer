@@ -1,0 +1,11 @@
+[Unit]
+Description=Check encrypted backup freshness every 15 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+AccuracySec=30s
+Unit=nekomari-oc424-backup-health.service
+
+[Install]
+WantedBy=timers.target

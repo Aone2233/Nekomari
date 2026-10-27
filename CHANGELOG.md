@@ -8,8 +8,18 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- No additional runtime change after delivered v1.7.2; delivery records do not
-  rebuild immutable release artifacts.
+- **v1.7.3 candidate: off-host backup health.** Add bounded OVH ciphertext
+  checksum/freshness inspection and a dedicated fixed-destination SSH health
+  report, without an API grant or decryption identity. An opt-in Panel watcher
+  detects backup age26hours and missing reports45minutes, persists incident/
+  recovery dedupe, and retries unavailable notification delivery15minutes later.
+  Healthy unchanged checks stay quiet. Operational notification errors are
+  sanitized; Telegram requests use a30-second timeout/64KiB response bound.
+  Offline/race tests and a6-group real synthetic-Panel/fake-Telegram harness
+  cover failure,recovery,restart dedupe and heartbeat loss. Exact CI,publication,
+  fresh14-client encrypted recovery and live installation/deployment remain gates.
+  No Agent/API/schema/token/scope/identity/retention/nightly schedule change.
+  See `docs/BACKUP-HEALTH.md`;200-node work and owner UI remain separate.
 
 ## [v1.7.2] - 2026-10-27
 

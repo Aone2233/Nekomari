@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/Aone2233/nekomari/utils/messageSender/factory"
+	"github.com/Aone2233/nekomari/utils/messageSender/outboundhttp"
 )
 
 type TelegramSender struct {
@@ -54,7 +57,7 @@ func (t *TelegramSender) SendTextMessage(message, title string) error {
 		data.Set("message_thread_id", t.Addition.MessageThreadID)
 	}
 
-	resp, err := http.PostForm(endpoint, data)
+	resp, err := outboundhttp.NewClient(30*time.Second).PostForm(endpoint, data)
 	if err != nil {
 		return fmt.Errorf("failed to send message: %v", err)
 	}
@@ -64,7 +67,7 @@ func (t *TelegramSender) SendTextMessage(message, title string) error {
 		Ok          bool   `json:"ok"`
 		Description string `json:"description"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&result); err != nil {
 		return fmt.Errorf("failed to decode response: %v", err)
 	}
 

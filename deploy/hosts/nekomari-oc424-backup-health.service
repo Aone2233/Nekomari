@@ -1,0 +1,19 @@
+[Unit]
+Description=Check OC424 encrypted backup freshness on OVH
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/bin/timeout --signal=KILL 115s /usr/local/sbin/check-oc424-backup-health
+TimeoutStartSec=120
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+StandardOutput=journal
+StandardError=journal

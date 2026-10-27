@@ -38,8 +38,14 @@ pre/post encrypted MAC-WAN recovery and OC424 update. Both settings keys,
 malformed types/read failures,cache/resource lifetime and shutdown are covered.
 GeoIP true/ipinfo is preserved in production, not toggled as a test. No Agent/
 token/key-permission/schema/frontend change. See [`GEOIP-RELOAD.md`](./GEOIP-RELOAD.md).
-Next choose one bounded observability/correctness item; do not bundle the full
-roadmap or rerun unchanged broad local suites.
+**Current bounded candidate:** v1.7.3 encrypted-backup freshness/heartbeat
+monitoring with transition-only notifications. OVH checks ciphertext without an
+identity; a restricted SSH key writes only non-secret status to OC424, whose
+opt-in watcher uses existing notifications. Focused offline/race/synthetic tests
+pass; exact CI,publication and actual installation/deployment remain gates.
+At the latest preflight all14 existing nodes report fresh; preserve the entire
+set, not only the prior13-reporter floor. No Agent/token/API grant/rotation or
+nightly retention change. See [`BACKUP-HEALTH.md`](./BACKUP-HEALTH.md).
 
 ### v1.7 release readiness (2026-10-27)
 

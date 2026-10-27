@@ -125,6 +125,8 @@ jobs:
             --output ../smoke/admin-tools-navigation.json
       - name: Check actual GeoIP settings reload in a synthetic Panel
         run: python3 deploy/geoip-reload-smoke.py --panel-binary ./nekomari
+      - name: Check backup freshness notifications in a synthetic Panel
+        run: python3 -W error::ResourceWarning deploy/backup-health-smoke.py --panel-binary ./nekomari
       - name: Restore a synthetic encrypted backup into an offline panel container
         run: |
           sudo apt-get update -qq
@@ -175,6 +177,10 @@ jobs:
         run: |
           python3 deploy/encrypted_backup_schedule_test.py
           systemd-analyze verify deploy/hosts/nekomari-oc424-encrypted-backup.service deploy/hosts/nekomari-oc424-encrypted-backup.timer
+      - name: Check encrypted backup health and bounded reporting (offline)
+        run: |
+          python3 -W error::ResourceWarning deploy/backup_health_test.py
+          systemd-analyze verify deploy/hosts/nekomari-oc424-backup-health.service deploy/hosts/nekomari-oc424-backup-health.timer
       - name: Test the post-upgrade check (offline harness)
         run: bash deploy/panel-upgrade-check.test.sh
       - name: Test that the agent upgrade scripts preserve file capabilities
@@ -367,6 +373,7 @@ jobs:
         run: |
           # Hermetic provider lifecycle/reload regressions, not third-party lookups.
           go test -race ./utils/geoip -count=1 -run 'TestGeoIP|TestUpdateDatabase'
+          go test -race ./internal/backupwatch ./utils/messageSender/...
           go test -race ./database/accounts ./web/api/public -count=10 -shuffle=on
           go test -race ./web/oauth/... ./web/security ./web/upload
           go test -race ./internal/apikeys ./pkg/rpc ./web/api ./web/router ./web/rpc/jsonrpc
