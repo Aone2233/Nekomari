@@ -8,16 +8,31 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- **v1.7.2 candidate: optional GeoIP stability and hot reload.** Malformed
-  enabled/provider settings and settings-read failure fall back with a warning
-  instead of a background panic. Enable/disable and provider changes both reload;
-  disabled providers stop serving cached locations. Synchronize lookups/database
-  updates with replacement/close, clear retired caches, and prevent a queued
-  reload from reopening a provider after shutdown. Focused race regressions and
-  existing MMDB failure contracts pass; exact-source CI/publication and OC424
-  deployment remain gates. Preserve Pi's owner-authorized new node: current
-  baseline14clients/13previously fresh reporters. No Agent, schema/auth,
-  frontend/dependency, permission or token change. See `docs/GEOIP-RELOAD.md`.
+- No additional runtime change after delivered v1.7.2; delivery records do not
+  rebuild immutable release artifacts.
+
+## [v1.7.2] - 2026-10-27
+
+- **Published and deployed on OC424.** Source832b528, exactCI40464125160 7/7, release40464858298 10/10, Docker40465511917 2/2.
+  Native/source/checksums/attestations verify; healthy/restart0,upgrade9/9,
+  public23/23 and actual scoped-key forecast14rows pass. Both DB schemas and
+  integrity,14 registered UUIDs/tokens (including Pi's owner-approved addition),
+  all13 previously fresh reporters,key permissions/expiry,GeoIP settings and
+  Agent services remain unchanged. Fresh encrypted pre/post archives pass actual
+  MAC-WAN old/new-image recovery and are retained outside pruning; rollback is
+  pinned v1.7.1 by image preserving current DBs.
+- **Optional GeoIP safety/hot reload.** Guard enabled/provider types and
+  settings-read errors with warning + EmptyProvider, not a background panic.
+  Both settings keys reload; disabling replaces the provider and clears stale
+  cache. Serialize constructors/database updates/reload, protect in-flight
+  lookups until close, and prevent post-shutdown reload publication.
+- Add lifecycle race tests and an eight-group actual installed synthetic-Panel
+  harness in CI; the attested release binary passes the same bounded OVH
+  acceptance. No third-party lookups or production settings toggles for tests.
+  Reload is asynchronous and existing provider timeouts apply. No Agent,
+  protocol,frontend,dependency,auth/schema,permission or token change; owner UI,
+  independent-media recovery and200-node work remain separate. See
+  `docs/GEOIP-RELOAD.md`.
 
 ## [v1.7.1] - 2026-10-27
 

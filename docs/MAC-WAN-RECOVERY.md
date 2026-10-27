@@ -1,12 +1,33 @@
 # MAC-WAN backup custody and recovery (2026-10-27, Asia/Shanghai)
 
 MAC-WAN is the owner-selected Hermes and online identity/recovery host (Linux
-x86_64, user `macos`). OC424 now serves v1.7.1/3b7e300; OVH (`KSLE`) stores
-nightly ciphertext. Actual fresh 13-node pre/post-cutover old/new-image recovery
+x86_64, user `macos`). OC424 now serves v1.7.2/832b528; OVH (`KSLE`) stores
+nightly ciphertext. Actual fresh14-node v1.7.2 pre/post old/new-image recovery
 passes. The owner reports downloading the offline identity copy and authorizes
 cutover; **independent-media recovery is not claimed**. All existing readable
 plaintext/manual/local rollback copies are retained; no deletion policy is
 inferred from downloading a key.
+
+## v1.7.2 patch recovery (2026-10-27)
+
+Fresh installed-service pre/post ciphertext includes Pi's owner-approved added
+node:14 clients,current scoped-key schema/marker,both DB integrity checks and
+source/version pass. Pinned-v1.7.1 pre recovery takes35.36s;
+exact-v1.7.2 post recovery takes33.27s. Both isolated drills
+use no network/host ports and leave no plaintext/container. Ciphertext transfers
+use strict pinned SSH through OVH initially; post-release OVH banner timeouts
+lead to read-only absence verification and a successful strict pinned route
+through OC424 for the same archive. The private identity never leaves MAC-WAN.
+Independent regular release copies stay under
+`/srv/backups/oc424-encrypted/manual-v1.7.2-20261027`, outside14-pair pruning.
+Both native images/binaries match release checksums and source/tag/workflow
+attestations. All earlier plaintext/manual/local/13-client release recovery
+copies remain, but old13-client snapshots must not overwrite the added node.
+No schedule,retention,custody/key permission or Agent/Hermes service changes.
+Exact archives/hashes/images/local rollback are in
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+Owner UI,independent-media recovery,first scheduled success/freshness alerting
+and measured SLO/RPO/RTO remain separate.
 
 ## v1.7.1 patch recovery (2026-10-27)
 

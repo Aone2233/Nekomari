@@ -1,6 +1,6 @@
 # GeoIP configuration reload
 
-## v1.7.2 candidate scope (2026-10-27)
+## v1.7.2 delivered scope (2026-10-27)
 
 Panel-only optional-provider correctness patch. No Agent, protocol, dependency,
 frontend, schema, authentication, API-key permission or token change.
@@ -53,3 +53,14 @@ Publication/deployment and authenticated owner UI acceptance are separate gates.
 This no-schema patch can roll back by pinned v1.7.1 image while preserving current
 DBs. Do not restore an older 13-node DB or confuse this with a v1.6 auth downgrade.
 See [the live work list](./OPEN-WORK.md) and [OC424 runbook](./DEPLOY-OC424.md).
+
+## Actual delivery (2026-10-27 15:13:50 Asia/Shanghai)
+
+PR94/source832b528: exactCI40464125160 7/7, release40464858298 10/10, Docker40465511917 2/2. Attested release binary
+passes8/8 isolated OVH groups; OC424 is healthy/restart0, upgrade9/9 and
+public23/23. Both DB schemas/integrity,14 UUIDs/tokens,13 prior fresh reporters,
+key scopes/expiry and actual GeoIP true/ipinfo settings are unchanged. Fresh
+pre/post ciphertext passes actual MAC-WAN old/new pinned-image recovery; no
+production GeoIP toggle, Agent rollout, permission grant or rotation occurs.
+Source/publication is not owner authenticated UI or full roadmap acceptance.
+Immutable images/backups/local rollback are in [the runbook](./DEPLOY-OC424.md).
