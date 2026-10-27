@@ -2,6 +2,7 @@
 """Real installed Panel -> local fake Telegram; no production credentials/network."""
 
 import argparse
+import contextlib
 import datetime as dt
 from http.cookiejar import CookieJar
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -123,7 +124,7 @@ def main():
                 # creating a session: the acceptance must never query a real provider.
                 stop()
                 import sqlite3
-                with sqlite3.connect(scratch / "data/komari.db") as db:
+                with contextlib.closing(sqlite3.connect(scratch / "data/komari.db")) as db, db:
                     for key in ("geo_ip_enabled", "login_notification"):
                         db.execute("INSERT OR REPLACE INTO configs (key,value) VALUES (?,?)", (key, "false"))
                 start()
