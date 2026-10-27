@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Aone2233/nekomari/database/clients"
@@ -10,6 +11,7 @@ import (
 	"github.com/Aone2233/nekomari/database/tasks"
 	"github.com/Aone2233/nekomari/internal/metricstore"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
+	logger "github.com/Aone2233/nekomari/utils/log"
 	agent_runtime "github.com/Aone2233/nekomari/web/agent"
 )
 
@@ -24,7 +26,8 @@ func ingestReport(uuid string, report v2.Report, markPresence bool) error {
 	if err := normalizeReportTimestamp(&report, time.Now()); err != nil {
 		return err
 	}
-	if err := clients.ReportVerify(report); err != nil {
+	clamped, err := clients.NormalizeReportResources(&report)
+	if err != nil {
 		return err
 	}
 	savedReport, err := metricstore.WriteReport(context.Background(), report)
@@ -32,6 +35,9 @@ func ingestReport(uuid string, report v2.Report, markPresence bool) error {
 		return err
 	}
 	agent_runtime.RecordReport(savedReport)
+	if fields := strings.Join(clamped, ","); agent_runtime.NoteReportClamp(uuid, fields) {
+		logger.Warnf("client-api", "Clamped resource used to total for client %s: %s", uuid, fields)
+	}
 	agent_runtime.MarkV2Client(uuid)
 	if markPresence {
 		refreshPostPresence(uuid)

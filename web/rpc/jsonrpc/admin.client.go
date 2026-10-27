@@ -164,6 +164,7 @@ func adminRemoveClient(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.
 	auditlog.Log(ip, actor, "delete client:"+params.UUID, "warn")
 	agent_runtime.DeleteConnectedClients(params.UUID)
 	agent_runtime.DeleteLatestReport(params.UUID)
+	agent_runtime.DeleteV2EventQueue(params.UUID)
 	return nil, nil
 }
 

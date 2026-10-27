@@ -1,5 +1,16 @@
 # Nekomari long-term plan (2026-10-20 onward)
 
+**Maintenance continuation (2026-10-27):** prepare an isolated v1.6.29 patch
+from live v1.6.28, backporting only report/queue invariants and release-source
+labels. It excludes scoped-key migration, token rotation and backup custody;
+actual external caller/recipient/credential facts are not inferred from continue
+authorization. Independent SSH/sudo and host headroom are verified; details and
+remaining owner actions are in
+[`V1.7-CUTOVER-READINESS.md`](./V1.7-CUTOVER-READINESS.md). Require exact-source
+CI, artifact provenance, fresh paired off-host recovery and bounded OC424
+acceptance before release/update. Main's v1.7 source preparation is separate;
+200-node work stays deferred and no long-term exit criterion is waived.
+
 Status: living document. Version targets are windows, not promises; a release ships when
 its exit criteria are met, not when the calendar says so.
 
@@ -37,21 +48,155 @@ its exit criteria are met, not when the calendar says so.
 | `v2.0.0` | 2027-Q2 | Agent and platform v2 | non-root agent default with capability/ICMP strategy; Windows/macOS agent support and footprint measurement; single protocol source (remove root/agent duplication); agent updater/rollback hardening; secrets at rest (session/2FA) with key management; optional DB encryption; 200-node capacity | Migration guide; protocol compatibility policy (two-minor deprecation); 200-node benchmark; no plaintext session/2FA secrets on new installs |
 | `v2.1.0` | 2027-Q3 | Scale and ecosystem | HA/read-replica evaluation, plugin/theme marketplace signing, multi-region backup, optional external metrics export | Scale/HA runbook; marketplace signature verification; backup across two providers |
 
-## Current Delivery Checkpoint (2026-10-26)
+## Current Delivery Checkpoint (2026-10-27)
 
-The production panel on OC424 is v1.6.27/12ad73a, following the compiler-only
-v1.6.26 patch. v1.6.27 changes only the five admin tools' in-panel navigation.
-The owner reports no remaining issue and explicitly resumes next-stage version
-development. This is owner acceptance, not a newly performed authenticated
-browser/fleet check. The public hostname is `nekomari.orderly2233.org`.
+**Adjusted active objective (owner-authorized):** incrementally finish v1.7
+security hardening in independently verified/releasable batches. Do not treat all
+v1.8-v2.1 plans as the current implementation target. All200-node work remains
+deferred with its original criteria and26 failed reports preserved. This narrows
+the work target; it does not declare the long-term roadmap or v1.7 exit criteria
+complete, and does not decide key custody or account/privilege/SLO policies.
 
-Continue with bounded v1.7 security candidates, starting from the exact clean
-v1.6.27 tree rather than the accumulated unreleased development workspace.
-The first candidate covers only `getRecords` window/read budgets, retained-history
-visibility and `getLogs` pagination/cancellation. Query-limit code is implemented;
-release CI, publication and OC424 delivery remain separate steps. API-key scopes,
-token rotation, report/queue invariants and encrypted-backup tooling in the
-separate development workspace are not shipped by this candidate.
+**Post-v1.6.28 continuation (owner authorization, 2026-10-26):** replace the
+open-ended "finish every roadmap version" work target with this ordered batch:
+
+1. Source-identity follow-up merged as e234385 (PR83, 2026-10-27) after
+   exact-source CI40324022778 passes 7/7: verify the resolved release tag against
+   checkout HEAD and label both images with that commit. Actual publication
+   acceptance waits for the next release; immutable v1.6.28 is not republished.
+2. Token-rotation PR81 is merged as 31a5b43 (2026-10-27), keeping the current
+   production checkpoint and original runtime/frontend bytes. Integrated
+   6a3b7eb passes new exact-source CI40425302716 (7/7), separate from original
+   13cdcc5 CI40313616989. No production token is rotated.
+3. Prepare the next v1.7 cutover only after live API consumers/replacements,
+   token-recovery compatibility and D12 backup key custody/restore authorization
+   are established. Until then, continue independent engineering, not live
+   credential/schema changes or a declaration that v1.7 is delivered.
+   Encrypted-backup PR84 is merged asf567128 after exact5899614
+   CI40426994745 passes7/7, including candidate-built synthetic recovery.
+   This source tooling does not decide D12 production custody. The live gate
+   checklist is in [`OPEN-WORK.md`](./OPEN-WORK.md#v17-release-readiness-2026-10-27).
+
+Each source batch closes with reviewed changes, exact-candidate CI and retained
+evidence; publication/deployment additionally need backups/rollback and bounded
+acceptance. OC424 remains the live acceptance host, OVH handles appropriate
+isolated checks/backups, and only owned disposable caches/fixtures are cleaned.
+No 200-node work or redundant broad local suite is part of this target. The
+owner's continue request revokes the earlier pause as a work instruction; the
+application's stored goal still reports paused because the available goal tool
+cannot change its objective or resume it. This is a repository target update,
+not a claim that the app state was changed or the original roadmap completed.
+
+Query-hardening PR78/502a269 is released early as the compatible **v1.6.28**
+patch and deployed on OC424. Exact-source CI40275930537 passes7/7; release
+40318142810 passes10/10, including native amd64/arm64 deployment verification;
+Docker40319017219 passes both jobs. The arm64 image's extracted executable
+matches the verified release checksum/provenance; OC424 reports v1.6.28/502a269,
+healthy/restart0, upgrade check9/9. Public route/assets and private-site denial
+checks pass, both DB schemas/integrity remain unchanged, and 14 registered/12
+fresh CPU-reporting nodes match the pre-upgrade baseline. OVH retains the fresh
+paired backup after a successful isolated old-image restore drill. Authenticated
+live history/audit owner acceptance is still pending, not replaced by a 401 or
+synthetic release test. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+Scoped-key PR79/5b005d5 is merged as 3dd20fb with an identical tree and its merge
+CI40280921167 passes 7/7; it is **not released/deployed**. Its isolated scope is
+documented in [`API-KEYS.md`](./API-KEYS.md). Repository script inventory
+does not establish all live callers: arrange explicit minimal-scope replacements
+and accept the intentional legacy-key compatibility change before tag/cutover.
+Retain paired pre-upgrade DB snapshots and old binary/image; image-only rollback
+is insufficient after authentication migration. D12 encrypted-backup custody and
+the rest of the v1.7 deliverables remain separate open gates.
+
+The third bounded source batch starts from exact 3dd20fb and is merged as
+fc84915 (PR80, exact merge CI40298579581 passes7/7), not the accumulated
+development tree. It remains unreleased and outside v1.6.28.
+It validates all report fields before clamping RAM/Swap/disk usage to total,
+retains every other invalid-input guard, and warns once per accepted anomaly
+episode. It removes queues after successful node deletion and sweeps empty
+five-minute-idle queues on the existing scheduler. Blocked old-generation polls
+wake without resurrecting state or reading a new generation's commands;
+discarded payload references are cleared. Limits, TTLs, acknowledgement,
+coalescing and reconnect delivery remain compatible. This does not add an
+in-flight credential-admission/revocation fence. Targeted ordinary/race and real
+HTTP/WebSocket/REST regressions verify this closure; no capacity, frontend or
+Agent/protocol/dependency change is included. Client-token rotation is the
+fourth independent engineering candidate; encrypted-backup custody remains D12.
+Final affected ordinary/race evidence covers 211 top-level tests (524 including
+subtests), six packages in retained per-package runs. Linux CI adds race checks
+for the four report/queue/runtime packages. OVH's exact prebuilt race checks pass
+nine top-level groups (13 with visible subtests), Agent495903/restart0 unchanged;
+that is not a native-platform or production acceptance claim. Go1.27.3 build,
+affected vet, module verification, documentation check and the reachable binary
+scan pass; one required-module advisory is non-reachable. No frontend rebuild
+or capacity run occurs locally for that source batch.
+
+The fourth candidate, `codex/v1.7-client-token-rotation`, originally starts from
+fc84915 and is integrated with main e234385 on 2026-10-27. Only workflow/checker
+and documentation differ from the original 13cdcc5; its runtime, frontend and
+embedded theme remain unchanged. The following checks are retained original
+evidence; integrated6a3b7eb passes exact-source CI40425302716 (7/7) and merges
+as31a5b43. Source delivery is not production acceptance.
+It adds session-only Agent-token rotation with existing TOTP policy and an
+in-panel recovery-consent dialog. Short Agent mutations share per-node
+admission with commit/retirement; delayed requests/handshakes and old runtime
+generations cannot revive state. Connections, presence, queues, terminals and
+file operations are retired while measurements remain. Already-admitted work
+and remote jobs are not undone; legacy plaintext Agent-token storage/read
+behavior remains. Generic edits and existing-node imports can no longer replace
+credentials outside this boundary. No automatic fleet rotation, Agent/protocol,
+schema/dependency change, release tag or production app update is included.
+See [`CLIENT-TOKEN-ROTATION.md`](./CLIENT-TOKEN-ROTATION.md).
+
+Final per-package retained evidence covers twelve affected packages, 247
+top-level/580 including subtests, ordinarily/race; public/embed regressions add
+71/111 ordinarily. Frontend 194/194, lint/compiler audit/build/repack, four
+rotation and eight node-table mounted groups pass. A compiled embedded Panel
+passes real synthetic REST rotations from desktop-dark/mobile-light UI with no
+new tabs/errors/document overflow. OVH's checksum-matched prebuilt race binaries
+pass six groups/13 including visible subtests, Agent495903/restart0 unchanged.
+Affected vet, module verification, Go1.27.3 build and reachable/imported-package
+binary scan pass (one required-module-only advisory remains). These are bounded
+source/synthetic checks, not native-platform CI, production acceptance or
+capacity/SLO evidence. Accept edit/import restrictions and independent recovery
+before deployment; API-consumer migration and D12 are still separate gates.
+
+The fifth candidate, `codex/v1.7-encrypted-backup-tools`, starts from exact31a5b43
+and extracts only opt-in backup tooling from the separate development workspace.
+It adds recipient-only age encryption, WAL-safe snapshots bound to captured
+metrics configuration, selected assets, exclusive ciphertext/checksum publication,
+fail-safe exact-prefix retention and bounded authenticated verify/extract. The
+automated drill requires local Unix-socket Docker before decryption, digest-pinned
+preinstalled images, no network/host ports and only scratch data. Local and OVH
+real-age/WAL tests each pass22/22 groups; both perform real synthetic offline
+restores and wrong-version cleanup with preexisting images. OVH's temporary
+tools/source match checksums, Agent495903/restart0 stays unchanged, and owned
+workspaces/containers are removed. CI reuses its existing Panel build for the
+new drill and adds the offline harness. Exact5899614 CI40426994745 passes7/7,
+including22/22 real-age groups and the actual candidate-built restore/wrong-version
+drill; PR84 is merged asf567128. No broad local Go/frontend rebuild, production key/schedule/retention
+change or plaintext-backup deletion occurs. See
+[`ENCRYPTED-BACKUPS.md`](./ENCRYPTED-BACKUPS.md): these checks are not actual
+escrow-path recovery, production custody acceptance or current-release images.
+D12 canary/restore/legacy-retention and credential-consumer gates remain open.
+
+The older application-level goal remains observed paused because no available
+tool can edit its objective or resume it. This document updates repository work
+scope under owner authorization, not the application's stored goal state, and
+does not claim v1.7 or the long-term roadmap complete.
+
+The production panel on OC424 is v1.6.28/502a269, retaining the compiler-only
+v1.6.26 patch and v1.6.27's five admin tools' in-panel navigation. The owner's
+earlier acceptance of v1.6.27 is not authenticated acceptance of the new patch.
+The public hostname is `nekomari.orderly2233.org`. No Agent, credential or
+backup-encryption cutover occurs during this panel-only update.
+
+Continue with bounded v1.7 security candidates on clean main rather than the
+accumulated unreleased development workspace. The first two batches implement
+query hardening and scoped API keys; the third implements report/queue invariants,
+and the fourth candidate implements client-token rotation.
+Source verification/merge, release artifacts and OC424 delivery are distinct
+steps. Token rotation and encrypted-backup cutover are not bundled here.
 
 200-node optimization, experiments, benchmarks and soak runs remain explicitly
 deferred by the owner; preserve the original thresholds and all26 failed reports.
@@ -68,17 +213,19 @@ visible/hidden/deleted/unknown UUIDs and audit-log permission/limit controls;
 the real REST bridge still rejects unsafe pagination. OVH runs the exact
 prebuilt race executable against private fixtures (12 focused top-level groups)
 with its existing Agent PID/restart count unchanged. This is not a native OVH
-build, arm64/Windows CI or production acceptance. Original baseline refusals and
+build or production acceptance; later release-platform and OC424 evidence is
+recorded separately above. Original baseline refusals and
 two fixture defects (independent comparison clocks and a missing same-origin
 handshake header) remain recorded; neither production policy nor assertions
-are weakened. No full-suite, frontend rebuild or capacity run is performed.
+are weakened. No redundant local full-suite, frontend rebuild or capacity run
+is performed for the query-only deployment.
 
-Before the scoped-key batch, inventory legacy API consumers and arrange scoped
+Before the scoped-key cutover, inventory legacy API consumers and arrange scoped
 replacements for intentional compatibility changes. Production backup encryption
 still needs approved age key custody/escrow/unlock, an actual restore drill and
 legacy-copy retention. General development/deployment permission does not decide
-these policies or complete the v1.7 exit criteria. Native-platform, SLO and
-secrets-at-rest gates likewise remain open.
+these policies or complete the v1.7 exit criteria. Unreleased-candidate platform,
+SLO and secrets-at-rest gates likewise remain open.
 
 ## Stability and quality targets
 
