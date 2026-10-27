@@ -39,31 +39,29 @@ its exit criteria are met, not when the calendar says so.
 
 ## Current Delivery Checkpoint (2026-10-27)
 
-**v1.7.5 delivery (2026-10-27 20:15 Asia/Shanghai):** the boot-time coarse-rollup
-recovery scan was bounded and deployed. The statement constrained the tier
-through a join on the resolutions table, so stale statistics drove it from the
-resolution index and re-read every series' rows once per metric; it now binds the
-tier id and forces the series-leading index on SQLite. Released binaries against
-a production-shaped restored store with no statistics: 1,653 ms versus
-`context deadline exceeded` after 31,458 ms for v1.7.4. Exact CI 7/7, release
-10/10, Docker 2/2, OC424 upgrade9/9 with 14 clients / 2 API keys / Agent PID and
-restarts unchanged, and MAC-WAN pinned v1.7.5 recovery passes on fresh pre- and
-post-upgrade ciphertext. v1.7 is released and deployed; the owner's UI acceptance
-is closed on the owner's report, while independent-media restore, first-nightly
-observation and the remaining owner decisions stay open. No 200-node work
-resumed.
+**Latest delivery: v1.7.6 (2026-10-27 21:25:17 Asia/Shanghai).** The dsh review
+finds three recovery placeholders supplied with five arguments, rejected by
+actual MySQL/PostgreSQL, and a preexisting MySQL fractional parent-division
+defect. Both are fixed while preserving v1.7.5's series-driven SQLite startup
+optimization. Exact CI40506697515 passes 8/8, release40507767971 10/10 and
+Docker40511319737 2/2. Published-binary actual SQL install/recovery, OVH 6/6,
+fresh MAC-WAN pre old/new and post new encrypted recovery, OC424 upgrade9/9,
+public23/23 and scoped forecast14rows pass. No schema, auth, Agent, frontend or
+dependency change; no production `ANALYZE`. See
+[`DSH-REVIEW-2026-10-27.md`](./DSH-REVIEW-2026-10-27.md).
 
 **Adjusted active objective (owner-authorized):** close v1.7's actual handoff and
-owner acceptance, then continue independently verified v1.8 observability/
+remaining operational gates, then continue independently verified v1.8 observability/
 correctness batches. The full v1.8-v2.1 roadmap is not one continuous task.
 All 200-node work remains deferred, preserving its original limits and 26 failed
 reports. Publication is not proof that every roadmap exit criterion passed.
 
-**Delivered:** OC424 serves v1.7.4/b0ea917 at `nekomari.orderly2233.org`, healthy/
-restart0, after exact-source CI 7/7, release 10/10, Docker 2/2 and upgrade check 9/9.
+**Delivered:** OC424 serves v1.7.6/f8c6ae1 at `nekomari.orderly2233.org`, healthy/
+restart0, after exact-source CI 8/8, release 10/10, Docker 2/2 and upgrade check 9/9.
 Both Linux assets pass checksums/tag/source/workflow attestations; both image
-architectures identify exact source. Public checks23/23, scoped forecast14rows
-and bounded live SLA reads pass. The owner-approved
+architectures identify exact source. Public checks23/23 and scoped forecast14rows
+pass; the earlier v1.7.4 bounded live SLA reads are dated evidence, not rerun
+for v1.7.6. The owner-approved
 baseline now includes Pi's explicitly owner-authorized addition: 14 clients and
 14 currently fresh reporting nodes, not the earlier 13-client release snapshot.
 UUIDs/tokens/Agent services are unchanged. The five tools retain
@@ -79,12 +77,13 @@ and passes actual disposable CLI create/edit/read/remove. Original13 metadata is
 unchanged at that handoff; Pi's later authorized addition is preserved in the
 current14-node baseline. The owner selects365days to2027-10-27 13:38:02
 Asia/Shanghai, not the suggested90; no silent rotation. Other runtime callers
-are not fully inventoried. v1.7.4 does not restart Hermes or any Agent.
+are not fully inventoried. v1.7.6 does not restart Hermes or any Agent.
 
 **Backup delivery:** OC424 has only public recipients; OVH's encrypted daily
 03:30 UTC timer replaces only the old plaintext cron row, with 14 ciphertext-pair
 retention. The installed service succeeds; fresh pre/post archives pass isolated
-MAC-WAN old/new-image recovery with both DBs,14 clients and cleanup. Release
+MAC-WAN pinned-v1.7.5/v1.7.6 recovery with both DBs,14 clients and cleanup,
+without refreshing planner statistics. Release
 recovery copies are outside automatic retention, and all old plaintext/local
 rollback assets are kept. The owner reports downloading the offline identity
 copy and authorizes cutover; independent-media restore is not claimed. Online
@@ -93,8 +92,10 @@ scheduler or production RPO/RTO/SLO acceptance is implied.
 
 **Next bounded actions:**
 
-1. Owner logs in for history/audit/API-key UI acceptance. Private key handoff
-   and disposable create/edit/read/remove have passed; reviewed Hermes CLI
+1. dsh records the owner's history/audit/API-key UI acceptance as closed; no
+   new owner session is performed in this review, nor is that acceptance
+   extended to future versions. Private key handoff and disposable
+   create/edit/read/remove have passed; reviewed Hermes CLI
    metadata writes may resume. No admin session/token-read/exec/update privilege is given
    to Hermes. See [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md).
 2. Observe subsequent encrypted timer success, document independent-media
@@ -104,8 +105,7 @@ scheduler or production RPO/RTO/SLO acceptance is implied.
    heartbeat alerts are delivered.
 3. Continue one bounded correctness or observability change at a time, with
    exact candidate CI, safe backups and OC424 acceptance. The first completed
-   batch is the compatible v1.7.1 forecast-boundary patch, not a full v1.8 feature release
-   or a declaration that the pending owner UI acceptance has passed.
+   batch is the compatible v1.7.1 forecast-boundary patch, not a full v1.8 feature release.
    The next completed batch is v1.7.2 GeoIP configuration safety/hot reload:
    focused lifecycle races,exact CI,8/8 isolated OVH real-Panel groups,
    fresh14-node old/new encrypted recovery and OC424 deployment pass. See
@@ -126,16 +126,22 @@ scheduler or production RPO/RTO/SLO acceptance is implied.
    The separate span-based
    coverage definition remains open. Existing backup-health recurring checks now
    succeed; first nightly backup/live incident delivery remain unclaimed.
-   Offline startup deadlines need scratch-only planner statistics refresh;
-   source-level recovery hardening is a separate bounded follow-up. See
+   The subsequent v1.7.5 SQLite recovery-startup fix removes the need for
+   scratch `ANALYZE`; v1.7.6 fixes SQL backend compatibility and adds real
+   MySQL/PostgreSQL CI. Actual published binaries and fresh encrypted restores
+   pass. Old v1.7.4 restores still need the documented workaround. See
+   [`METRIC-RECOVERY-STARTUP.md`](./METRIC-RECOVERY-STARTUP.md) and
    [`SLA-GENERATIONS.md`](./SLA-GENERATIONS.md).
 
-v1.7 is released/deployed, **not unconditionally exit-complete**: owner
-acceptance, remaining caller inventory, independent-media recovery and the
+v1.7 is released/deployed, **not unconditionally exit-complete**: remaining
+caller inventory, independent-media recovery and the
 recurring schedule observation and stronger restore-drill policy remain open in
 [`OPEN-WORK.md`](./OPEN-WORK.md#v17-release-readiness-2026-10-27).
-v1.7.4->v1.7.3 needs the pinned prior compose/image (keeping the health opt-in/state),
-preserving current DB data.
+v1.7.6->v1.7.5 needs the pinned prior compose/image (keeping the health opt-in/state),
+preserving current DB data and all14nodes. This reintroduces the SQL backend
+defects, but OC424 uses SQLite. The fresh per-DB WAL-safe snapshots/compose are
+retained in `rollbacks/v1.7.6-20261027T132515Z-5045e5f7`; they do not claim
+cross-DB atomicity.
 Across credential migration to v1.6, rollback needs the old binary and pre-upgrade
 DB, not an image-only downgrade; frozen-writer/failure-preservation instructions
 are retained with the paired local snapshots.

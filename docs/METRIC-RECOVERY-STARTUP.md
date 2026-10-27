@@ -1,14 +1,15 @@
 # Recovery startup: the boot-time coarse-rollup scan
 
 Status: SQLite startup optimization delivered in v1.7.5; cross-backend
-corrections are the v1.7.6 candidate. Date: 2026-10-27. Applies to the metric
+corrections delivered in v1.7.6. Date: 2026-10-27. Applies to the metric
 store opened by `internal/metricstore.InitializeStore`.
 
 The investigation and synthetic measurements below did not modify a production
 database, stored archive or schema. v1.7.5 was subsequently deployed on OC424
 and passed isolated encrypted recovery; see `DEPLOY-OC424.md` for that delivery.
-Independent-media restore remains separate and unverified. v1.7.6 must pass its
-own source/publication/recovery and production gates before being called deployed.
+Independent-media restore remains separate and unverified. v1.7.6 passes its
+own source/publication, old/new-image recovery and OC424 acceptance gates;
+the dated measurements below are not new production SLO measurements.
 
 ## What was observed
 
@@ -150,7 +151,7 @@ exact text that `Open` runs.
 | `go vet ./pkg/metric`, `go build ./...` (CGO, Go 1.27.3) | pass |
 | Full `pkg/metric` suite | pass |
 
-## Cross-backend review (v1.7.6 candidate, 2026-10-27)
+## Cross-backend review and delivery (v1.7.6, 2026-10-27)
 
 The v1.7.5 statement contains three placeholders but returned five arguments:
 metric name, child id, parent id and two unused durations. SQLite silently
@@ -177,3 +178,10 @@ No planner-statistics refresh, new index/schema, history rewrite, credential
 change or larger initialization timeout is needed. This does not establish
 unbounded repair scalability or a production RTO/RPO/SLO. Current release and
 remaining acceptance state belong to [`OPEN-WORK.md`](./OPEN-WORK.md).
+
+Actual v1.7.6 delivery uses immutable `f8c6ae1`, exact CI8/8, release10/10,
+Docker2/2, published-binary install/recovery on both actual backends, six OVH
+synthetic-Panel groups and OC424 upgrade9/9/public23/23. Fresh pre ciphertext
+recovers with pinned v1.7.5/v1.7.6; post recovers v1.7.6, without scratch
+`ANALYZE`. All14nodes and credentials remain unchanged. Exact digests, archives
+and rollback are in [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).

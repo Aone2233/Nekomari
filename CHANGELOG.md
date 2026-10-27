@@ -13,6 +13,19 @@ Nekomari's own.
 
 ## [v1.7.6] - 2026-10-27
 
+- **Published and deployed on OC424 at 21:25:17 Asia/Shanghai.** Immutable
+  `f8c6ae1161ce10a7493c454f1543c2cf556fbf44`, PR105; exact CI40506697515 8/8
+  including actual MySQL/PostgreSQL recovery, release40507767971 10/10,
+  Docker40511319737 2/2, Linux checksums/source attestations and dual-architecture
+  image identity pass. Actual published-binary SQL install/recovery passes both
+  backends, OVH synthetic SLA6/6 passes. OC424 healthy/restart0, upgrade9/9,
+  public23/23, scoped forecast14rows and14/14 fresh CPU reporters; schemas,
+  UUIDs/tokens, scopes/expiry, GeoIP and quiet backup-health state unchanged.
+  Fresh pre ciphertext restores with pinned v1.7.5/v1.7.6 in8.41/9.74s; post
+  restores v1.7.6 in8.71s, all without `ANALYZE`. These are isolated drill times,
+  not RTO. Agents/Hermes remain unchanged. Rollback is prior v1.7.5 compose/image
+  keeping current DBs; all backups/old rollback assets remain. See the runbook.
+
 ### Fixed
 
 - Match the coarse-recovery query's three placeholders with exactly three
@@ -26,7 +39,8 @@ Nekomari's own.
   protocol, frontend or dependency change.
 - Reconcile the current deployment/recovery documentation with delivered
   v1.7.5; correct SLA coverage examples without changing its runtime contract.
-  Publication and OC424 acceptance for v1.7.6 are recorded only after completion.
+  Publication and OC424 acceptance are recorded above after completion; no
+  independent-media, first nightly, live incident-delivery or SLO claim is added.
 
 ## [v1.7.5] - 2026-10-27
 

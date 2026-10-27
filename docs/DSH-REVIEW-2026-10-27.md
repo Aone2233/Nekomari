@@ -30,7 +30,7 @@ dated review, not another live backlog; current status is in `OPEN-WORK.md`.
 
 ## Bounded correction and evidence
 
-The v1.7.6 candidate addresses these findings without schema/auth/API/Agent,
+The reviewed v1.7.6 candidate addresses these findings without schema/auth/API/Agent,
 frontend or dependency changes. Local old-source overlay tests reproduce both
 backend arity errors. After the arity correction alone, a nonaligned child
 reproduces the MySQL sealed-parent error. The complete fix passes actual
@@ -47,5 +47,8 @@ release. The original uncommitted handoff/README copies in this worktree are
 preserved there before switching to the current main baseline.
 
 The existing v1.7.5 tag, release assets, backups and rollback images remain
-unchanged. Actual v1.7.6 publication, pinned-image recovery and OC424 acceptance
-must be recorded separately after success; a source test is not a deployment.
+unchanged. v1.7.6 is subsequently delivered at 21:25:17 Asia/Shanghai with exact
+CI 8/8, release 10/10, Docker 2/2, published-binary actual SQL recovery, OVH 6/6,
+MAC-WAN fresh pre old/new and post new encrypted recovery and OC424 9/9,
+public 23/23, 14 fresh reporters. See `DEPLOY-OC424.md` for immutable identities
+and evidence; these separate delivery gates are not inferred from source tests.

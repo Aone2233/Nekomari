@@ -5,7 +5,7 @@ restored, and the two hostname/TLS traps that cost the most time.
 
 ## Current checkpoint (2026-10-27, Asia/Shanghai)
 
-OC424 serves **v1.7.5 / c84c3cc** at
+OC424 serves **v1.7.6 / f8c6ae1** at
 `https://nekomari.orderly2233.org`. Scoped-key migration and session-only token
 rotation are deployed; no existing Agent token is rotated. OVH now receives
 nightly ciphertext, with MAC-WAN as the online identity/recovery runner. The
@@ -16,16 +16,69 @@ Older rollout sections are dated evidence, not the current version/node count.
 
 | Item | Observed evidence |
 |---|---|
-| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.5/c84c3cc; dsh's upgrade9/9 and14-client/auth continuity; public and origin version rechecked during review |
+| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.6/f8c6ae1; upgrade9/9,public23/23,scoped forecast14rows and14fresh CPU reporters |
 | Nodes | Owner confirms Pi's later addition;current approved baseline14registered clients,14fresh CPU reporters. Preserve the new node; earlier13-client release snapshots are historical |
 | Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2, unchanged; generic `nekomari-agent` is not the reporter |
 | OVH | Alias `KSLE`, encrypted receiver + daily 03:30 UTC timer; AgentPID495903/restart0 unchanged |
 | MAC-WAN | Linux x86_64 user `macos`; online identity/isolated recovery, AgentPID976/restart0 unchanged; Hermes gateway briefly stopped/resumed, nowPID922780/restart0 |
 | Acceptance | Hermes private-key/disposable CLI writes pass; dsh records owner history/audit/API-key acceptance; complete caller inventory remains separate; public401 is not authenticated acceptance |
 
-Latest delivery: [v1.7.5 recovery-startup rollout](#v175--recovery-startup-fix-2026-10-27).
-The v1.7.6 cross-backend correction is a candidate, not yet a deployed version.
-See [`DSH-REVIEW-2026-10-27.md`](./DSH-REVIEW-2026-10-27.md).
+Latest delivery: v1.7.6 cross-backend recovery correction, following dsh's
+v1.7.5 SQLite startup optimization. See
+[`DSH-REVIEW-2026-10-27.md`](./DSH-REVIEW-2026-10-27.md).
+
+## v1.7.6 rollout (2026-10-27 21:25:17 Asia/Shanghai)
+
+PR105 fixes three-placeholder/five-argument recovery binding rejected by actual
+MySQL/PostgreSQL and uses MySQL integer `DIV` for parent alignment. Keep the
+series-driven SQLite plan and sealed-parent recovery contract. No API/schema,
+auth, Agent/protocol, frontend/dependency, token/scope or coverage behavior change.
+The MySQL division issue predates v1.7.5; it is not attributed to dsh's index fix.
+
+| Item | Evidence |
+|---|---|
+| Immutable publication | `v1.7.6` -> `f8c6ae1161ce10a7493c454f1543c2cf556fbf44`; exact CI40506697515 8/8, merge CI40507760830 8/8, release40507767971 10/10, Docker40511319737 2/2. PR105 merge has identical tested tree |
+| Publication delay | ARM64 cross-toolchain apt installation is slow but eventually passes; one successful attempt, no bypass/rebuild. Four already-successful build artifact IDs/digests/sizes/timestamps remain unchanged |
+| OC424 arm64 | `ghcr.io/aone2233/nekomari:v1.7.6@sha256:0a3316d1f58ecd9016b150175cf3aa509bbb1a49e83da78b802adb62b7ded279`; index `sha256:3452bcf5e7b3cd9b46c84201b8a09bb97786b8afab26e79a5b180e0d600be822`; extracted/live binary SHA256 `dcf5feae352cd213dc88b59a2fb83cf2b8dd73e67fd76330a5b0fea54558d391` |
+| Recovery amd64 | `ghcr.io/aone2233/nekomari:v1.7.6@sha256:f637d34bd1272f1d977102a5fa221382accaf6c257ad1c22d8da8f7bba271369`; binary SHA256 `78e12f024cad615c6e9695067839932d3f8480f83440d88d3d7c7b885a483b17`. Both Linux checksums/source/tag/workflow attestations and both image architectures/source labels verify |
+| Focused verification | Old-source actual MySQL/PostgreSQL arity failures and arity-only MySQL sealed-parent failure reproduce; fixed races and vet pass. Added CI actual-SQL gate runs. Attested published binary completes install and two durable-child recovery startups on both backends, using only disposable DBs |
+| OVH acceptance | Attested release binary passes6/6 synthetic installed-Panel SLA groups, including restart/stored-row preservation and visibility/maintenance; no production fixtures, real notifications or third-party lookup. Existing Agent unchanged |
+| Pre encrypted backup/recovery | Installed OVH service creates `oc424-20261027T125459717197Z-ebf7524b9279.tar.gz.age`,183601242bytes,SHA256 `817c586909587c787efe0a26cea5c86cc414ab88dc2dedbf87dc215cc023c857`; MAC-WAN pinned-v1.7.5 recovery8.41s and exact-v1.7.6 recovery9.74s,636696rollups before boot,both DB checks/14clients/current auth pass, no planner-statistics refresh |
+| Local recovery | `/opt/nekomari/rollbacks/v1.7.6-20261027T132515Z-5045e5f7` retains per-DB WAL-safe snapshots, prior/new compose/images/checksums and rollback instructions; not a cross-DB atomic snapshot. Prior v1.7.5 image retained |
+| Actual continuity | Healthy/restart0,upgrade9/9,public23/23,14registered/fresh CPU reporters,scoped forecast14rows; both DB checks/schema, UUIDs/tokens,key scopes/expiry,GeoIP true/ipinfo,zero update targets,nginx/recipient/probe override and quiet persisted backup health unchanged. OC424/OVH/MAC-WAN Agents and Hermes not restarted |
+| Post encrypted backup/recovery | `oc424-20261027T132555571297Z-8cddff3f7a74.tar.gz.age`,183610914bytes,SHA256 `f5833d99db25f9ae8f11ec427aaa0514fd17db0d379f0d50490d9b323ee69241`; exact-v1.7.6 MAC-WAN recovery8.71s,626242rollups before boot,both DB checks/14clients/current auth pass, no ANALYZE or remaining plaintext/container |
+| Copies and schedule | Both archives have independent regular OVH copies under `/srv/backups/oc424-encrypted/manual-v1.7.6-20261027` outside14-pair pruning and same-hash MAC-WAN copies. dsh's two v1.7.5 archives and initial canary also gain verified independent copies before rotation. No legacy recovery copy is lost. Nightly03:30UTC/15-minutehealth schedule unchanged; first nightly still not triggered |
+
+### v1.7.6 rollback and boundaries
+
+Verify recovery checksums and restore `docker-compose.before.yml` as the actual
+compose under `/opt/nekomari`, then `docker compose config --quiet` and
+`docker compose up -d --no-deps nekomari`. Expect pinned v1.7.5/c84c3cc:
+`ghcr.io/aone2233/nekomari:v1.7.5@sha256:ed162ac2cd13b4571eb449a38c6a81b573d10e13d22ef9b5b59b135f4eadff48`.
+Keep current DBs,14nodes and health env/report/state. This live image rollback is
+prepared, not exercised; old/new off-host actual recovery is separate. v1.7.5
+rollback would reintroduce the MySQL/PostgreSQL defect for those deployments;
+OC424 uses SQLite. Across v1.7->v1.6 auth migration use paired pre-migration DB
+and old binary with frozen writers, never an image-only downgrade.
+
+No zero-downtime or measured SLO/RPO/RTO claim follows from this single-container
+switch. No new owner-session UI check, independent-media recovery, scheduled
+nightly success, real live incident delivery or200-node acceptance is claimed.
+Only this batch's owned disposable tools/databases are eligible for cleanup;
+shared caches, identities, all backups and rollback images remain.
+
+Final read-only checks retain the exact version/image/live binary, both DB
+checks, all14fresh reporters and quiet fresh backup health; no ERROR/panic
+appears in the bounded post-switch log. Agents/Hermes and restricted health
+authorization/tools/units remain unchanged. MAC-WAN has no restore container or
+plaintext scratch. v1.7.5/v1.7.6 tags and each release's10asset identities,
+sizes,digests and timestamps still match the pre-deployment records.
+
+Cleanup removes only the two ID-verified disposable SQL containers/internal
+network, their now-unused PostgreSQL/MySQL images, about188MiB of this batch's
+downloaded/test binaries and synthetic credentials, and checksum-matched OC424
+tool stage. Logs, attestations and all backups/rollback assets remain. Final
+`df -P /` use: OC42444%, OVH9%, MAC-WAN26%, development64%; no shared-cache purge.
 
 ## v1.7.4 rollout (2026-10-27 17:23:20 Asia/Shanghai)
 
