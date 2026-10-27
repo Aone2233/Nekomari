@@ -45,10 +45,11 @@ correctness batches. The full v1.8-v2.1 roadmap is not one continuous task.
 All 200-node work remains deferred, preserving its original limits and 26 failed
 reports. Publication is not proof that every roadmap exit criterion passed.
 
-**Delivered:** OC424 serves v1.7.3/0fe0b37 at `nekomari.orderly2233.org`, healthy/
+**Delivered:** OC424 serves v1.7.4/b0ea917 at `nekomari.orderly2233.org`, healthy/
 restart0, after exact-source CI 7/7, release 10/10, Docker 2/2 and upgrade check 9/9.
 Both Linux assets pass checksums/tag/source/workflow attestations; both image
-architectures identify exact source. Public checks 23/23 pass. The owner-approved
+architectures identify exact source. Public checks23/23, scoped forecast14rows
+and bounded live SLA reads pass. The owner-approved
 baseline now includes Pi's explicitly owner-authorized addition: 14 clients and
 14 currently fresh reporting nodes, not the earlier 13-client release snapshot.
 UUIDs/tokens/Agent services are unchanged. The five tools retain
@@ -64,7 +65,7 @@ and passes actual disposable CLI create/edit/read/remove. Original13 metadata is
 unchanged at that handoff; Pi's later authorized addition is preserved in the
 current14-node baseline. The owner selects365days to2027-10-27 13:38:02
 Asia/Shanghai, not the suggested90; no silent rotation. Other runtime callers
-are not fully inventoried. v1.7.3 does not restart Hermes or any Agent.
+are not fully inventoried. v1.7.4 does not restart Hermes or any Agent.
 
 **Backup delivery:** OC424 has only public recipients; OVH's encrypted daily
 03:30 UTC timer replaces only the old plaintext cron row, with 14 ciphertext-pair
@@ -99,20 +100,27 @@ scheduler or production RPO/RTO/SLO acceptance is implied.
    v1.7.3 backup freshness/heartbeat alerts are delivered with restricted
    metadata-only SSH reporting and existing Panel notification delivery. Exact
    CI/publication, six real OVH synthetic groups, 14-node recovery/continuity,
-   installed service and initial automatic health-timer trigger pass. Later
-   recurring checks, first nightly backup and live Telegram delivery remain
-   separate. See [`BACKUP-HEALTH.md`](./BACKUP-HEALTH.md).
-   The next bounded candidate is v1.7.4 SLA task-generation normalization:
-   unique chronological task buckets before loss/latency/incidents/maintenance,
-   without changing the separate span-based coverage definition. Exact CI,
-   publication, OVH release-binary acceptance and OC424 deployment remain gates.
-   See [`SLA-GENERATIONS.md`](./SLA-GENERATIONS.md).
+   installed service and initial/later recurring health checks pass. First nightly
+   backup and live Telegram delivery remain separate. See
+   [`BACKUP-HEALTH.md`](./BACKUP-HEALTH.md).
+   v1.7.4 SLA task-generation normalization is delivered: unique chronological
+   measured buckets before loss/latency/incidents/maintenance; focused races,
+   exact CI/publication, 6/6 OVH synthetic groups, 14-client old/new-image recovery
+   and OC424 acceptance pass. Bounded live SLA reads cover 14 nodes/58 tasks;
+   11 independent task-level bucket comparisons pass, with no multi-generation
+   task in that selected live window. Synthetic fixtures verify the overlap case.
+   The separate span-based
+   coverage definition remains open. Existing backup-health recurring checks now
+   succeed; first nightly backup/live incident delivery remain unclaimed.
+   Offline startup deadlines need scratch-only planner statistics refresh;
+   source-level recovery hardening is a separate bounded follow-up. See
+   [`SLA-GENERATIONS.md`](./SLA-GENERATIONS.md).
 
 v1.7 is released/deployed, **not unconditionally exit-complete**: owner
 acceptance, remaining caller inventory, independent-media recovery and the
 recurring schedule observation and stronger restore-drill policy remain open in
 [`OPEN-WORK.md`](./OPEN-WORK.md#v17-release-readiness-2026-10-27).
-v1.7.3->v1.7.2 needs the pinned prior compose/image (removing the health opt-in),
+v1.7.4->v1.7.3 needs the pinned prior compose/image (keeping the health opt-in/state),
 preserving current DB data.
 Across credential migration to v1.6, rollback needs the old binary and pre-upgrade
 DB, not an image-only downgrade; frozen-writer/failure-preservation instructions

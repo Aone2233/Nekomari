@@ -8,14 +8,33 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- **v1.7.4 candidate: SLA task-generation normalization.** Sort and deduplicate
-  overlapping historical tag series after grouping by entity/task, before loss,
-  latency percentiles, incidents and maintenance calculations. Keep the worst
-  measured bucket value; empty placeholders cannot turn failed latency into a
-  zero-millisecond success. Historical data, wire shape and coverage definition
-  stay unchanged. Focused regressions/races and six real synthetic-Panel groups
-  pass; exact-source CI, publication, OVH release-binary acceptance and OC424
-  continuity/recovery remain gates. See `docs/SLA-GENERATIONS.md`.
+- No additional runtime change after delivered v1.7.4; delivery records do not
+  rebuild immutable artifacts.
+
+## [v1.7.4] - 2026-10-27
+
+- **Published and deployed on OC424.** Source `b0ea917`; exact CI40476853150
+  7/7, release40478743592 10/10 (attempt 2), Docker40479934401 2/2.
+  Linux checksums/attestations and OCI metadata verify; healthy/restart0,
+  upgrade9/9, public23/23, forecast14rows and bounded authenticated SLA reads
+  covering 14 nodes/58 tasks pass. Independent preserve-series comparison covers
+  11 tasks across two nodes. All 14 UUIDs/tokens/fresh reporters,
+  schemas, scopes/expiry, GeoIP, quiet backup-health state and Agent/Hermes services
+  remain unchanged. Fresh encrypted pre/post actual old/new-image recovery passes;
+  copies stay outside pruning; rollback is pinned v1.7.3 preserving current DBs.
+- **SLA task-generation normalization.** Sort/deduplicate after grouping by
+  entity/task, before loss, latency percentiles, incidents, presence and maintenance.
+  Retain worst measured bucket means; empty placeholders cannot turn all-failed
+  latency into 0ms. No stored-data rewrite, wire/schema, frontend, dependency, Agent,
+  credential or coverage-definition change. Span-based coverage remains open.
+- Focused regression/race tests and six installed synthetic-Panel groups pass
+  locally, in required CI and with the attested binary on OVH. Initial release
+  OIDC failure retries only failed publication jobs without rebuilding successful
+  artifacts. Initial offline recovery startup deadlines resolve after scratch-only
+  planner statistics refresh, preserving rollup rows/business schema; production
+  DBs/archives/tool unchanged. Recurring health checks now observed; first nightly
+  backup, live incident delivery, owner UI, independent media, SLOs and 200-node work
+  remain separate. See `docs/SLA-GENERATIONS.md` and `docs/DEPLOY-OC424.md`.
 
 ## [v1.7.3] - 2026-10-27
 
