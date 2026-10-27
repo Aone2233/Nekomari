@@ -1,6 +1,9 @@
 package forecast
 
 import (
+	"encoding/json"
+	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -318,6 +321,152 @@ func TestACounterResetIsRefused(t *testing.T) {
 	}
 	if result.ProjectedBytes != 0 {
 		t.Fatalf("ProjectedBytes = %d, want 0", result.ProjectedBytes)
+	}
+}
+
+func TestInvalidCounterIntervalsAreRefused(t *testing.T) {
+	for name, totals := range map[string][]int64{
+		"reset recovered above first": {10, 30, 2, 20, 40},
+		"reset recovered above peak":  {10, 30, 2, 40, 60},
+		"negative starting total":     {-1, 0, 1, 2, 3},
+		"negative ending total":       {-5, -4, -3, -2, -1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			samples := steady(0, 24*time.Hour, len(totals))
+			for i, total := range totals {
+				samples[i].Total = total
+			}
+			// Storage order must not hide a reset in chronological order.
+			samples[0], samples[3] = samples[3], samples[0]
+			result := Compute(cycleStart.Add(4*24*time.Hour), Request{
+				CycleStart: cycleStart, CycleEnd: cycleEnd, Samples: samples, LimitBytes: 100,
+			})
+			if result.Method != MethodInsufficient || result.Reason == "" {
+				t.Fatalf("invalid counter series was projected: %+v", result)
+			}
+			if result.UsedBytes != totals[len(totals)-1] || result.ProjectedBytes != 0 ||
+				result.Warning != nil || !result.CrossesAt.IsZero() || result.WouldExceed {
+				t.Fatalf("refusal must retain usage without inventing a projection: %+v", result)
+			}
+		})
+	}
+}
+
+func TestProjectionIntegerBoundaries(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		start      int64
+		step       int64
+		endDay     int
+		want       int64
+		wantRefuse bool
+	}{
+		{name: "no growth at maximum", start: math.MaxInt64, endDay: 30, want: math.MaxInt64},
+		{name: "small growth above float precision", start: 1 << 60, step: 1, endDay: 30, want: 1<<60 + 30},
+		{name: "exactly maximum", start: math.MaxInt64 - 30, step: 1, endDay: 30, want: math.MaxInt64},
+		{name: "one byte beyond maximum", start: math.MaxInt64 - 29, step: 1, endDay: 30, wantRefuse: true},
+		{name: "large extrapolation", step: math.MaxInt64 / 4, endDay: 30, wantRefuse: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			samples := steady(test.step, 24*time.Hour, 5)
+			for i := range samples {
+				samples[i].Total += test.start
+			}
+			result := Compute(samples[4].At, Request{
+				CycleStart: cycleStart, CycleEnd: cycleStart.Add(time.Duration(test.endDay) * 24 * time.Hour),
+				Samples: samples, LimitBytes: math.MaxInt64,
+			})
+			if test.wantRefuse {
+				if result.Method != MethodInsufficient || !strings.Contains(result.Reason, "range") ||
+					result.ProjectedBytes != 0 || result.Warning != nil || !result.CrossesAt.IsZero() {
+					t.Fatalf("overflow must be an explained refusal, not a wrapped/capped projection: %+v", result)
+				}
+			} else if result.Method != MethodLinearRate || result.ProjectedBytes != test.want {
+				t.Fatalf("projection = %+v, want %d bytes", result, test.want)
+			}
+			if _, err := json.Marshal(result); err != nil {
+				t.Fatalf("forecast must remain JSON-encodable: %v", err)
+			}
+		})
+	}
+}
+
+func TestCrossingBeyondDurationRangeIsOmitted(t *testing.T) {
+	samples := steady(1, 24*time.Hour, 5)
+	result := Compute(samples[4].At, Request{
+		CycleStart: cycleStart, CycleEnd: cycleEnd, Samples: samples, LimitBytes: math.MaxInt64,
+	})
+	if result.Method != MethodLinearRate || result.ProjectedBytes != 30 {
+		t.Fatalf("a distant crossing must not prevent a useful projection: %+v", result)
+	}
+	if !result.CrossesAt.IsZero() || result.CrossesInDays != 0 || result.CrossesInCycle || result.Warning != nil {
+		t.Fatalf("unrepresentable crossing must not wrap into this cycle: %+v", result)
+	}
+}
+
+func TestCrossingUsesExactIntegerHeadroom(t *testing.T) {
+	samples := steady(1, 24*time.Hour, 5)
+	for i := range samples {
+		samples[i].Total += 1 << 60
+	}
+	result := Compute(samples[4].At, Request{
+		CycleStart: cycleStart, CycleEnd: cycleEnd, Samples: samples, LimitBytes: 1<<60 + 5,
+	})
+	if !result.CrossesAt.Equal(samples[4].At.Add(24*time.Hour)) || result.CrossesInDays != 1 {
+		t.Fatalf("one byte of headroom at one byte/day must cross tomorrow: %+v", result)
+	}
+}
+
+func TestCrossingOutsideJSONTimeRangeIsOmitted(t *testing.T) {
+	start := time.Date(9999, 12, 1, 0, 0, 0, 0, time.UTC)
+	samples := steady(1, 24*time.Hour, 5)
+	for i := range samples {
+		samples[i].At = start.Add(time.Duration(i) * 24 * time.Hour)
+	}
+	result := Compute(samples[4].At, Request{
+		CycleStart: start, CycleEnd: start.Add(30 * 24 * time.Hour), Samples: samples, LimitBytes: 100,
+	})
+	if result.Method != MethodLinearRate || !result.CrossesAt.IsZero() || result.CrossesInCycle {
+		t.Fatalf("a year-10000 crossing must be omitted without discarding the projection: %+v", result)
+	}
+	if _, err := json.Marshal(result); err != nil {
+		t.Fatalf("crossing must not break JSON responses: %v", err)
+	}
+}
+
+func TestProjectedGrowthRoundingAndOverflow(t *testing.T) {
+	for _, test := range []struct {
+		delta, remaining, span int64
+		want                   int64
+		ok                     bool
+	}{
+		{0, math.MaxInt64, 1, 0, true},
+		{math.MaxInt64, 0, 1, 0, true},
+		{1, 1, 2, 1, true},
+		{1, 1, 3, 0, true},
+		{1, 2, 3, 1, true},
+		{math.MaxInt64, math.MaxInt64, math.MaxInt64, math.MaxInt64, true},
+		{math.MaxInt64, 3, 2, 0, false},
+		{math.MaxInt64, math.MaxInt64, 1, 0, false},
+		{math.MaxInt64 - 1, math.MaxInt64, math.MaxInt64 - 1, math.MaxInt64, true},
+		{math.MaxInt64 - 1, math.MaxInt64 - 1, math.MaxInt64 - 2, math.MaxInt64, true},
+		{math.MaxInt64 - 1, math.MaxInt64, math.MaxInt64 - 2, 0, false},
+	} {
+		got, ok := projectedGrowth(test.delta, time.Duration(test.remaining), time.Duration(test.span))
+		if got != test.want || ok != test.ok {
+			t.Errorf("growth(%d, %d, %d) = (%d, %t), want (%d, %t)",
+				test.delta, test.remaining, test.span, got, ok, test.want, test.ok)
+		}
+	}
+}
+
+func TestCrossingExactlyAtCycleEndIsRetained(t *testing.T) {
+	samples := steady(1, 24*time.Hour, 5)
+	result := Compute(samples[4].At, Request{
+		CycleStart: cycleStart, CycleEnd: cycleEnd, Samples: samples, LimitBytes: 30,
+	})
+	if !result.CrossesAt.Equal(cycleEnd) || !result.CrossesInCycle || result.WouldExceed {
+		t.Fatalf("exactly filling the plan at cycle end must retain its crossing: %+v", result)
 	}
 }
 

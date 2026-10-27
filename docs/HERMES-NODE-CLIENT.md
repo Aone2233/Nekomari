@@ -2,11 +2,18 @@
 
 `deploy/hermes_nodes.py` is the reviewed metadata-only consumer for the owner's
 Hermes on MAC-WAN. The Panel now serves v1.7.0/8eb711e, so its version gate is
-satisfied; **no production key is configured yet**. During cutover the gateway
+satisfied. The owner has privately configured the dedicated key; metadata-only
+matching confirms exactly `nodes:read` + `nodes:write`, no extra grants, and
+0600/0700 storage. The owner selected 365 days, expiring **2027-10-27 13:38:02
+Asia/Shanghai**, rather than the suggested90; it is not silently shortened or
+rotated. Actual MAC-WAN create/read/edit/read/remove acceptance passes at
+13:49:10 on2026-10-27. The disposable node is deleted; the original13 nodes'
+metadata is unchanged and no Agent token is requested. During cutover the gateway
 is briefly stopped, 3 old references are backed up/directed to this client, then
 the gateway resumes. This is not proof that every existing runtime task has
 been rewired or live writes accepted. The old global key is now 30-day read-only;
-node mutations wait for owner key issuance/private configure/disposable check.
+reviewed CLI metadata mutations may now resume. This is not owner UI acceptance
+or proof that every Hermes task uses the CLI.
 
 ## Scope and trust boundary
 
@@ -16,7 +23,7 @@ node mutations wait for owner key issuance/private configure/disposable check.
   Default output selects UUID/name/group/region/hidden only, not raw private
   node objects, remarks, IPs or Agent tokens. These selected metadata values can
   still be private; do not post them publicly without review.
-- The proposed dedicated key is `hermes-node-management`,90-day expiry, with
+- The dedicated key is `hermes-node-management`, owner-selected365-day expiry, with
   `nodes:read` + `nodes:write`. Write is **fleet-wide and includes deletion**;
   it is not create-only, per-node isolation or an untrusted-agent sandbox.
 - There is no token-read/install/exec/update/rotation/key-management command,
@@ -62,7 +69,7 @@ does not automatically clean up/retry an uncertain operation.
 | Purpose | Path |
 |---|---|
 | Client and instructions | `/home/macos/.local/share/nekomari-hermes/hermes_nodes.py`, `README.md` |
-| Future owner-created credential | `/home/macos/.config/nekomari-hermes/credential.json` |
+| Owner-configured credential (never print/copy) | `/home/macos/.config/nekomari-hermes/credential.json` |
 | Separate recovery identity | `/home/macos/.local/share/nekomari-recovery/identities/oc424-primary.agekey` |
 
 The client remains checksum-matched. The cutover marker is
@@ -72,12 +79,15 @@ reviewed-client override that forbids legacy API/token/install fallback for
 this Panel. Their original bytes are preserved privately on MAC-WAN; they are
 not copied into Git/evidence because historical prose may contain credentials.
 Hermes gatewayPID922780/restart0 is active again; AgentPID976/restart0 is
-unchanged. No key or administrator session is extracted or handed to Hermes.
+unchanged. No administrator session is extracted. The owner supplies the new key
+only through the hidden terminal prompt; no key/digest is recorded in evidence.
 
 These reference edits do **not** prove a complete active-task inventory or
 runtime migration. Existing-key writes are denied server-side after migration.
-Do not resume node writes until the new credential and explicit live workflow
-check pass. Unrelated Hermes operations can continue. No autonomous retry,
+The new credential and disposable live check now pass. The three known reference
+overrides and cutover marker record reviewed-CLI write acceptance without a
+gateway/Agent restart; prior bytes remain privately backed up. Other callers
+still require reconciliation. No autonomous retry,
 credential recovery or Agent-token grant is authorized.
 
 ## Owner actions, at the appropriate time
@@ -90,7 +100,11 @@ Matching the copy's derived public recipient and actual recovery from that
 medium remain separate owner-run checks; online MAC-WAN restore is not their
 substitute. See [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
 
-### Now: owner key and authenticated acceptance
+### Key handoff procedure (completed); UI acceptance remains
+
+Steps1-3 are completed; the original recommendation is retained below. The
+actual key uses365days, not90. Do not rerun configure or create another key.
+Step4's history/audit/API-key UI acceptance still needs the owner's result.
 
 1. Log in to Settings -> Sign-on -> API. Create `hermes-node-management`,90days,
    **only** `nodes:read` and `nodes:write`, with existing TOTP when required.
@@ -113,7 +127,8 @@ substitute. See [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
    Hermes mutations only after the new consumer passes. Reconcile any other
    callers before retiring the migrated 30-day read-only key.
 
-Metadata examples, **not executed against production**:
+Metadata usage examples; the live acceptance used a uniquely named disposable
+UUID, never an existing reporting node:
 
 ```sh
 python3 -I /home/macos/.local/share/nekomari-hermes/hermes_nodes.py check
@@ -146,6 +161,6 @@ was corrected without weakening the client guard or changing application code.
 The staged scripts also run their synthetic17-group harness on MAC-WAN without
 credentials or production calls. No redundant broad local frontend/Go suite,
 fleet work or 200-node run is needed for this operational-only batch. The release
-and encrypted backup cutover are delivered; actual consumer/owner acceptance
-remains in
+and encrypted backup cutover are delivered. Actual reviewed-CLI write acceptance
+now passes; owner UI acceptance and complete caller inventory remain in
 [`V1.7-CUTOVER-READINESS.md`](./V1.7-CUTOVER-READINESS.md).

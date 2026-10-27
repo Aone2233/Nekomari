@@ -58,7 +58,10 @@ rotation and encrypted-backup tooling are published. The one old global key
 migrates to 30-day `nodes:read`; no live Agent token is rotated. Generic token
 edit/import restrictions are owner-accepted. Hermes's gateway is paused during
 the switch and resumed with three references directed to the metadata-only CLI;
-actual scoped-key provisioning/live workflow acceptance is still pending.
+the owner-configured scoped key now matches only `nodes:read` + `nodes:write`
+and passes actual disposable CLI create/edit/read/remove. Original13 metadata is
+unchanged. The owner selects365days to2027-10-27 13:38:02 Asia/Shanghai, not the
+suggested90; no silent rotation. Other runtime callers are not fully inventoried.
 
 **Backup delivery:** OC424 has only public recipients; OVH's encrypted daily
 03:30 UTC timer replaces only the old plaintext cron row, with 14 ciphertext-pair
@@ -72,21 +75,22 @@ scheduler or production RPO/RTO/SLO acceptance is implied.
 
 **Next bounded actions:**
 
-1. Owner logs in for history/audit/API-key UI acceptance and creates 90-day
-   `hermes-node-management` with only `nodes:read` + `nodes:write`. Private
-   owner-TTY handoff and disposable create/edit/read/remove check precede Hermes
-   node-write resume. No admin session/token-read/exec/update privilege is given
+1. Owner logs in for history/audit/API-key UI acceptance. Private key handoff
+   and disposable create/edit/read/remove have passed; reviewed Hermes CLI
+   metadata writes may resume. No admin session/token-read/exec/update privilege is given
    to Hermes. See [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md).
 2. Observe subsequent encrypted timer success, document independent-media
    recovery separately, and retain all old recovery copies until an explicit
    deletion policy. Automated restore harness/real manual restores exist, but
    scheduled decryption, freshness alerts and measured RPO/RTO remain separate.
-3. After the bounded handoff/acceptance, take one v1.8 correctness or observability
-   change at a time, with exact candidate CI, safe backups and OC424 acceptance.
+3. Continue one bounded correctness or observability change at a time, with
+   exact candidate CI, safe backups and OC424 acceptance. The first candidate
+   is a compatible v1.7.1 forecast-boundary patch, not a full v1.8 feature release
+   or a declaration that the pending owner UI acceptance has passed.
    Do not bundle fleet privilege/platform changes or 200-node work.
 
 v1.7 is released/deployed, **not unconditionally exit-complete**: owner
-acceptance, Hermes's real new-key handoff, independent-media recovery and the
+acceptance, remaining caller inventory, independent-media recovery and the
 stronger automated freshness/drill policy remain truthfully open in
 [`OPEN-WORK.md`](./OPEN-WORK.md#v17-release-readiness-2026-10-27).
 After credential migration, rollback needs the old binary and pre-upgrade DB,
