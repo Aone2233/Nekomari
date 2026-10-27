@@ -16,7 +16,7 @@ Older rollout sections are dated evidence, not the current version/node count.
 | Item | Observed evidence |
 |---|---|
 | Panel | Docker `nekomari`, healthy/restart0; exact v1.7.1/3b7e300; upgrade 9/9,public23/23,scoped-key forecast13/13 |
-| Nodes | Owner deliberately removed one;13 registered clients retained, all 12 previously fresh CPU nodes remain fresh; UUIDs/tokens unchanged |
+| Nodes | Owner confirms Pi's later addition;current approved baseline14registered clients,13fresh CPU reporters. Preserve the new node; earlier13-client release snapshots are historical |
 | Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2, unchanged; generic `nekomari-agent` is not the reporter |
 | OVH | Alias `KSLE`, encrypted receiver + daily 03:30 UTC timer; AgentPID495903/restart0 unchanged |
 | MAC-WAN | Linux x86_64 user `macos`; online identity/isolated recovery, AgentPID976/restart0 unchanged; Hermes gateway briefly stopped/resumed, nowPID922780/restart0 |
