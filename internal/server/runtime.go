@@ -25,6 +25,7 @@ import (
 	logger "github.com/Aone2233/nekomari/utils/log"
 	"github.com/Aone2233/nekomari/utils/messageSender"
 	"github.com/Aone2233/nekomari/utils/notifier"
+	agentruntime "github.com/Aone2233/nekomari/web/agent"
 	"github.com/Aone2233/nekomari/web/api"
 	"github.com/Aone2233/nekomari/web/oauth"
 	recoveryweb "github.com/Aone2233/nekomari/web/recovery"
@@ -260,6 +261,9 @@ func registerScheduledWork() {
 	// and one place to look when something is not running.
 	if err := scheduler.AddFunc("notifier:sweepDeferred", "@every 1m", notifier.SweepDeferredAlerts); err != nil {
 		logger.ErrorArgs("server", "Failed to add deferred alert task:", err)
+	}
+	if err := scheduler.AddFunc("agent:sweepEventQueues", "@every 1m", agentruntime.SweepV2EventQueues); err != nil {
+		logger.ErrorArgs("server", "Failed to add agent event queue cleanup task:", err)
 	}
 	// 主库完整性日检。启动时那次检查只回答「这个实例带着什么状态启动」；跑上几周之后，
 	// 库被外部改过、索引被人 DROP、磁盘出现坏页，启动那次都看不到。每日一次足够发现它们，

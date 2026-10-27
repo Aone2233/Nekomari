@@ -21,6 +21,41 @@ func GetClientUUIDByToken(token string) (clientUUID string, err error) {
 
 // 检查数据防止异常数据导致数据库损坏
 func ReportVerify(report v2.Report) error {
+	if err := verifyReportValues(report); err != nil {
+		return err
+	}
+	if report.Ram.Used > report.Ram.Total || report.Swap.Used > report.Swap.Total || report.Disk.Used > report.Disk.Total {
+		return fmt.Errorf("resource used value exceeds total")
+	}
+	return nil
+}
+
+// NormalizeReportResources tolerates inconsistent resource snapshots, but never
+// repairs invalid values. Validate everything before modifying any field.
+func NormalizeReportResources(report *v2.Report) ([]string, error) {
+	if report == nil {
+		return nil, fmt.Errorf("report is required")
+	}
+	if err := verifyReportValues(*report); err != nil {
+		return nil, err
+	}
+	var clamped []string
+	if report.Ram.Used > report.Ram.Total {
+		report.Ram.Used = report.Ram.Total
+		clamped = append(clamped, "ram")
+	}
+	if report.Swap.Used > report.Swap.Total {
+		report.Swap.Used = report.Swap.Total
+		clamped = append(clamped, "swap")
+	}
+	if report.Disk.Used > report.Disk.Total {
+		report.Disk.Used = report.Disk.Total
+		clamped = append(clamped, "disk")
+	}
+	return clamped, nil
+}
+
+func verifyReportValues(report v2.Report) error {
 	if !report.BoundedPayload() {
 		return fmt.Errorf("report payload exceeds retained data limits")
 	}
@@ -116,9 +151,6 @@ func ReportVerify(report v2.Report) error {
 	}
 	if report.Network.CycleUp < 0 || report.Network.CycleDown < 0 || report.Uptime < 0 {
 		return fmt.Errorf("cycle counters and uptime must be non-negative")
-	}
-	if report.Ram.Used > report.Ram.Total || report.Swap.Used > report.Swap.Total || report.Disk.Used > report.Disk.Total {
-		return fmt.Errorf("resource used value exceeds total")
 	}
 	// 拒绝所有负数Int
 	if report.Process < 0 {

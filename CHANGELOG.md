@@ -8,30 +8,108 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- **Bound legacy history and audit-log queries (v1.7 preparation).**
-  `common:getRecords` now validates its 366-day window before duration conversion
-  and shares the existing historical admission, deadline and row/byte budgets
-  without losing cancellation in load/ping adapters. Guests cannot read deleted
-  nodes' retained history or distinguish hidden/deleted UUIDs from unknown ones;
-  administrators retain their historical access. Audit logs reject pages above
-  1000 rows, malformed fields and overflowing offsets, skip fetches past the
-  filtered total and honor cancellation. Defaults, response shapes, message-type
-  filters and 1000-row CSV export stay compatible. Real HTTP/WebSocket and REST
-  regressions accompany the bounded candidate; no API-key migration, Agent,
-  schema, dependency or frontend change is included. Not yet released/deployed.
+- **Encrypted off-host backup tooling (bounded v1.7 preparation).** Add opt-in
+  native-age producer/receiver, WAL-safe local SQLite snapshots bound to captured
+  metrics configuration, encrypted selected assets/manifest, exclusive publication
+  and exact-prefix retention that preserves the just-received copy. Verification
+  bounds paths/size and checks full authentication, hashes and both DBs; recovery
+  targets only new directories or a local-only, digest-pinned, offline Docker
+  container. Real-age/WAL regressions and synthetic restore drills run locally,
+  on OVH and in CI. No production keys, schedule, plaintext retention, credentials,
+  app deployment or 200-node work changes; custody/escrow and actual production
+  recovery remain D12 release gates. See `docs/ENCRYPTED-BACKUPS.md`.
 
-- **Build with the patched Go 1.27.3 compiler.** CI and release builds use the
-  fix for GO-2026-6809 in `crypto/x509`. Module minimums, dependencies, application
-  source, credential/database formats and frontend source are unchanged. Existing
-  binaries remain unchanged until rebuilt and deployed; a compiler refresh alone
-  does not authorize or require a fleet-wide Agent update. See
-  `docs/COMPILER-SECURITY-1273.md` for scope and release gates.
+- **Session-only Agent-token rotation (bounded v1.7 preparation).** A dedicated
+  REST/RPC/WebSocket operation and in-panel node dialog replace credentials with
+  256-bit random tokens after session/optional existing TOTP authorization. Old
+  HTTP/WebSocket admissions, queued work, presence, terminals and file operations
+  are retired without deleting measurements; long polls do not block retirement.
+  Generic edits and existing-node imports can no longer replace credentials
+  outside this boundary, and Agent basic-info maps are limited to host facts.
+  The UI requires independent SSH/console recovery consent, clears transient
+  secrets on dismissal and never automatically replays uncertain writes. Includes
+  transport/race/browser regressions and a refreshed embedded theme. Legacy
+  plaintext Agent-token storage/read behavior remains; already running remote
+  jobs are not undone. No automatic rotation, Agent/protocol/schema/dependency
+  change, release or OC424 app update. See `docs/CLIENT-TOKEN-ROTATION.md`.
+
+- **Release images identify the release checkout.** Verify HEAD against the
+  resolved local release tag before asset download and explicitly set the OCI
+  revision label from that commit for Panel and Agent images, rather than the
+  default-branch SHA carried by `workflow_run`. Offline real-Git regressions
+  cover distinct event/release commits, annotated tags and mismatch/missing/ref
+  refusals. Existing tag/`latest` gates are unchanged. Published v1.6.28 images
+  stay immutable; actual publication acceptance waits for the next release.
+
+- **Report and event-queue invariants (bounded v1.7 preparation).** The shared
+  HTTP/WebSocket ingest path validates every input before clamping only RAM,
+  Swap and disk usage above total, so a transient resource mismatch no longer
+  freezes all node data. Other invalid values remain rejected; accepted anomaly
+  episodes warn without logging report payloads. Successful node removal and an
+  existing-scheduler idle sweep retire event queues, wake blocked polls without
+  reviving or crossing queue generations, and release discarded payloads.
+  Newest-128 retention, command TTLs, acknowledgement, coalescing and ordinary
+  reconnect delivery remain compatible. Includes real transport, removal and
+  concurrency regressions. No Agent/protocol, dependency, frontend, credential
+  revocation-fence or capacity change; not released/deployed.
+
+- **Scoped, expiring API keys (bounded v1.7 preparation).** Eight exact grants
+  replace implicit administrator access. The server generates one-time tokens,
+  stores only digests, supports immediate rotation/revocation, requires sessions
+  and existing TOTP step-up for management, and records non-secret key UUIDs in
+  audits. Both REST and RPC/WebSocket enforce grants; node reads strip agent
+  credentials and node writes cannot change tokens/version/report fields. The
+  sign-on card uses the existing panel theme and supports five languages.
+  Legacy keys migrate once to 30-day read-only monitoring; settings/import cannot
+  revive them. Operational helpers require explicit secret provisioning, never
+  SQLite recovery. This intentional compatibility change is **not deployed**:
+  live consumer inventory/replacements and paired-DB rollback are release gates.
+  See `docs/API-KEYS.md`. No Agent/protocol/dependency or later roadmap feature
+  is bundled in this batch.
 
 - **Agent disk-footprint pruning**: `deploy/prune-agent-backups.sh` keeps one rollback
   binary per node and removes the rest; OC424's agent directory went from 231 MB to
   39 MB, and the fleet-wide cleanup reclaimed ~300 MB. It only matches
   `komari-agent-*`, so credential backups are untouched. Measurements and long-term
   bounds are in `docs/AGENT-FOOTPRINT.md`.
+
+## [v1.6.29] - 2026-10-27
+
+- **Report and event-queue invariants, isolated maintenance patch.** Backport
+  PR80's validate-first RAM/Swap/disk resource clamp and accepted-sample anomaly
+  warnings. Invalid inputs remain rejected. Retire queues on successful node
+  removal or an empty five-minute idle sweep; generation-isolated polls wake
+  without recreating state, and discarded payload references are cleared.
+  Command limits/TTLs, acknowledgement, coalescing and reconnect remain compatible.
+- **Release-source provenance.** Backport PR83's release checkout/tag verification
+  and explicit source revision labels for both images; keep old images immutable.
+- Based only on v1.6.28, not current main. No Agent/protocol/frontend/dependency,
+  schema, API authentication, token-rotation or backup-policy changes. Full v1.7
+  still needs actual API-consumer migration, independent recovery, backup-key
+  custody/escrow and authenticated owner acceptance. See
+  `docs/V1.7-CUTOVER-READINESS.md`. Release/deployment evidence is recorded
+  separately after verification; this entry alone is not proof of delivery.
+
+## [v1.6.28] - 2026-10-26
+
+- **Bound legacy history and audit-log queries.** The first bounded v1.7 source
+  batch ships early as a compatible 1.6 patch on exact commit `502a269` (PR78).
+  `common:getRecords` validates its 366-day window before duration conversion
+  and shares historical admission, deadlines, row/byte budgets and cancellation
+  across load/ping adapters. Guests cannot read hidden/deleted nodes' retained
+  history; administrators retain historical access. Audit pages are limited to
+  1-1000 rows with strict binding, checked offsets, no fetch beyond total and
+  SQL cancellation. Defaults, response shapes, filters and CSV remain compatible.
+- **Panel-only release and OC424 delivery.** Exact-source CI7/7, release10/10
+  (native amd64/arm64 deploy verification), both Docker jobs and OC424 upgrade
+  check9/9 pass. A verified paired backup is retained on OVH after an isolated
+  old-image restore drill. Public assets/private-site denial and both DB
+  integrity/schema checks pass; authenticated live history/audit owner acceptance
+  remains pending. See `docs/DEPLOY-OC424.md` for immutable digests and rollback.
+- No Agent/protocol, frontend source, dependency, schema or credential behavior
+  change from v1.6.27. In-panel navigation is retained. Scoped API keys,
+  report/queue changes, client-token rotation, backup encryption and 200-node
+  work are **not** included; full v1.7 exit criteria remain open.
 
 ## [v1.6.27] — 2026-10-26
 
@@ -43,6 +121,14 @@ Nekomari's own.
   parameters and hashes. Existing standalone links remain available. This is
   a frontend-only patch on v1.6.26; backend, schemas and Agents are unchanged.
   See `docs/ADMIN-TOOLS-NAVIGATION.md`.
+
+## [v1.6.26] - 2026-10-24
+
+- **Build with the patched Go 1.27.3 compiler.** CI and release builds use the
+  fix for GO-2026-6809 in `crypto/x509`. Module minimums, dependencies, application
+  source, credential/database formats and frontend source are unchanged. This
+  compiler-only patch does not require a fleet-wide Agent update. See
+  `docs/COMPILER-SECURITY-1273.md` for the retained candidate evidence.
 
 ## [v1.6.25] — 2026-10-20
 
