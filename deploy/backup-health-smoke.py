@@ -119,6 +119,15 @@ def main():
                 assert call("/api/install/complete", {"username": "backup-test", "password": password,
                     "sitename": "Isolated backup watch", "metric_dsn": "./data/metrics.db"})["status"] == "success"
                 wait(lambda: call("/api/public")["status"] == "success")
+                # Disable the synthetic instance's default GeoIP/login notice before
+                # creating a session: the acceptance must never query a real provider.
+                stop()
+                import sqlite3
+                with sqlite3.connect(scratch / "data/komari.db") as db:
+                    for key in ("geo_ip_enabled", "login_notification"):
+                        db.execute("INSERT OR REPLACE INTO configs (key,value) VALUES (?,?)", (key, "false"))
+                start()
+                wait(lambda: call("/api/public")["status"] == "success")
                 assert call("/api/login", {"username": "backup-test", "password": password})["status"] == "success"
                 rpc("admin:setMessageSenderProvider", {"name": "telegram", "addition": json.dumps({
                     "endpoint": f"http://127.0.0.1:{stub.server_port}/bot", "bot_token": "TEST", "chat_id": "synthetic"})})
