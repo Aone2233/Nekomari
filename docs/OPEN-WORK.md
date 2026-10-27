@@ -34,20 +34,22 @@ PR78 is merged as 502a269 with merge CI40275930537 successful (7/7).
 Scoped-key PR79/5b005d5 is merged as 3dd20fb with an identical tree and merge
 CI40280921167 successful (7/7). Report/queue PR80 is merged as fc84915 with exact
 merge CI40298579581 successful (7/7). Only query hardening is released; scoped
-keys and report/queue changes remain unreleased. Client-token rotation PR81's
-original 13cdcc5 passes exact-source CI40313616989 (7/7); this is original
-evidence, not CI for its subsequent main integration. It is not included in
-this deployment. The scoped-key contract is in [`API-KEYS.md`](./API-KEYS.md);
+keys and report/queue changes remain unreleased. Client-token rotation PR81 is
+merged as 31a5b43 after integrated 6a3b7eb passes exact-source CI40425302716
+(7/7); original 13cdcc5 CI40313616989 is separately retained. It is not included
+in this deployment. The scoped-key contract is in [`API-KEYS.md`](./API-KEYS.md);
 its local/UI/migration evidence is retained, not rerun in every backend-only batch.
 
 **Continuation checkpoint (2026-10-27):** release-image source identity PR83 is
 merged as e234385 after exact-source CI40324022778 passes 7/7. It verifies the
 resolved release checkout and labels both images with that source; actual
 publication acceptance waits for the next release, without republishing v1.6.28.
-PR81 is integrated with that main for review and new exact-candidate CI; only
+PR81 is merged as 31a5b43 after integrated-candidate CI passes 7/7; only
 workflow/checker/docs change from its original 13cdcc5, not runtime or the
-embedded theme. Next, prepare gated v1.7 cutover or independent engineering
-while its external gates remain open. The full roadmap is not the active single
+embedded theme. The fifth batch prepares opt-in encrypted-backup source tooling
+and synthetic recovery, without adopting a production custody policy. Next,
+prepare gated v1.7 cutover while its external gates remain open. The full
+roadmap is not the active single
 batch. Source delivery and production acceptance remain separate; no API-consumer
 migration, token rotation or backup-key custody is silently approved. See the
 post-v1.6.28 target in
@@ -83,7 +85,8 @@ frontend, later metrics/history or backup-policy change is part of this batch.
 `codex/v1.7-client-token-rotation`, originally based on fc84915 and now integrated
 with main e234385, adds session-only `admin:rotateClientToken` and a same-page
 node-table dialog. Integration preserves the original runtime/frontend bytes;
-the retained checks below are dated evidence, not new integration-CI results.
+6a3b7eb passes new exact-source CI40425302716 (7/7) and is merged as 31a5b43.
+The retained detailed checks below are dated original evidence, not new local runs.
 Existing account TOTP policy applies; API keys cannot rotate. A per-node gate
 orders credential retirement with short Agent mutations; old credentials,
 delayed handshakes, sockets, queues, POST presence, terminals and file relays
@@ -107,6 +110,29 @@ verification, Go1.27.3 build and reachable/imported-package binary scan pass;
 one required-module-only advisory remains. This is not a full-suite/native
 platform, production, SLO or capacity claim. No release tag, live credential
 rotation, Agent/protocol/dependency/schema change or OC424 app upgrade occurs.
+
+**Fifth source batch (2026-10-27, unreleased):**
+`codex/v1.7-encrypted-backup-tools` starts from exact 31a5b43, not the accumulated
+development workspace. Opt-in native-age tooling creates WAL-safe SQLite
+snapshots bound to captured metrics configuration, encrypts selected assets and
+publishes ciphertext/checksums without overwriting. Exact-prefix retention
+reserves the just-received copy and verifies all survivors before pruning.
+Verify/extract bounds authentication, paths/types, hashes and both DBs; restores
+target only a new directory or a local-only, digest-pinned, offline Docker
+container. Remote/unknown Docker endpoints fail before decryption. See
+[`ENCRYPTED-BACKUPS.md`](./ENCRYPTED-BACKUPS.md).
+
+Local and OVH real-age/WAL checks each pass22/22 groups. Real synthetic
+producer/receiver -> verification -> offline Docker restore and wrong-version
+refusal pass on both hosts using preexisting images, not new candidate release
+images. OVH receives checksum-matched scripts and temporary age tools only;
+Agent495903/restart0 stays unchanged. Throwaway keys/data/workspaces/containers
+are removed, and source/failure evidence is retained. CI adds targeted backup
+checks and reuses the existing Panel smoke build for its actual restore drill;
+exact-candidate CI is required before merge. No local broad Go/frontend rebuild,
+production keys/schedule/retention changes, plaintext-backup deletion, app upgrade
+or 200-node work occurs. D12 custody, actual escrow-path canary/restore and
+API-consumer/recovery compatibility remain production/release gates.
 
 The application-level all-roadmap goal still reports paused. The owner explicitly
 requests that it be revised and work continue, revoking the earlier pause as a
@@ -178,7 +204,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | D9 | **Authentication policy, as a group** | (a) `sso_id` after a password change; (b) the scoped-key candidate replaces blanket exemption with exact grants, but live consumer migration/compatibility acceptance is still required; (c) OIDC + 2FA challenge flow; (d) globally invalidated sessions | Scoped-key source work does not silently decide the other account policies or authorize the compatibility cutover |
 | D10 | **How much of the remaining frontend polish to do at once** | Three known batches: ~33 unconverted `toLocaleString*` sites (the helper now exists), ~24 re-implementations of the mutation-envelope check, and 8 `dangerouslySetInnerHTML` sites fed by locale strings | Each is mechanical but wide; they are the kind of change that is safe alone and risky mixed with a release |
 | D11 | **Agent privilege and platform footprint** | Non-root agents are still the exception (MAC-WAN); ICMP tasks force root on hosts without `setcap`. Windows/macOS agent footprint and peak memory are unmeasured. Ping precision shipped in v1.6.24, so it is no longer part of this decision | Moving agents between users/init systems is a fleet-wide change; the footprint gaps are measurements, not code |
-| D12 | **Encrypted-backup key custody and restore authorization** | Recommend source-side age public recipients, ciphertext-only OVH storage, independent recovery escrow and a separately approved restore runner. Decide custodians/unlock and old plaintext-copy retention before cutover. | Source tooling in the separate development workspace does not establish production encryption or a custody/restore drill; v1.6.28 changes no backup policy |
+| D12 | **Encrypted-backup key custody and restore authorization** | Recommend source-side age public recipients, ciphertext-only OVH storage, independent recovery escrow and a separately approved restore runner. Decide custodians/unlock and old plaintext-copy retention before cutover. | Bounded source tooling and synthetic local/OVH restores in `docs/ENCRYPTED-BACKUPS.md` do not establish production custody/recovery; v1.6.28 changes no backup policy |
 
 ## How to read this
 
@@ -198,7 +224,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Item | Where | Why it is still here |
 |---|---|---|
 | History query hardening owner acceptance | `web/rpc/jsonrpc/common.record.go`; `web/rpc/jsonrpc/budget.go` | Released/deployed as v1.6.28/502a269: 366-day ceiling, shared budgets/cancellation and guest visibility filtering. Release/platform and OC424 health/data checks pass; authenticated live history UI acceptance remains pending |
-| Client-token rotation release/acceptance | PR81, `docs/CLIENT-TOKEN-ROTATION.md` on `codex/v1.7-client-token-rotation` | Original 13cdcc5 passes CI7/7; integration with e234385 requires its own exact-candidate CI before merge. Not deployed. Session/step-up-only API/UI with old-credential retirement; independent recovery, edit/import compatibility and bounded live acceptance remain gates. Never patch live SQLite to rotate |
+| Client-token rotation release/acceptance | PR81, `docs/CLIENT-TOKEN-ROTATION.md` | Merged as31a5b43 after integrated6a3b7eb passes exact CI40425302716 (7/7), not deployed. Session/step-up-only API/UI with old-credential retirement; independent recovery, edit/import compatibility and bounded live acceptance remain gates. Never patch live SQLite to rotate |
 | Scoped API-key release and consumer migration | `internal/apikeys/`, `pkg/rpc/apikey_scopes.go`, `docs/API-KEYS.md` | PR79 merged as 3dd20fb; exact PR and merge CI each pass 7/7. Not released: OC424 still has the old global credential policy. Inventory/provision actual legacy consumers before the intentional read-only migration |
 | Audit-log pagination hardening owner acceptance | `web/rpc/jsonrpc/admin.system.go` | Released/deployed as v1.6.28: 1-1000 rows, checked offsets, strict binding and cancellation. REST/filter/CSV compatibility verified in exact-source CI; authenticated live audit UI acceptance remains pending |
 | `/plugin/*` is still owned by the installed theme | `web/public/public.go` | **Accepted**: the panel took back only its own pages. Tightening it would break installed themes |
@@ -243,7 +269,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | Most agents still run as root; only MAC is non-root | `docs/DEPLOY-OC424.md` | The NOSLA pattern (unprivileged user + `AmbientCapabilities=CAP_NET_RAW`) works; Alpine has no `setcap`. OpenRC install support shipped in v1.6.25, but moving users is still a fleet-wide change |
 | Windows local builds can fail on a locked esbuild temp file | Windows dev environment | The build itself is deterministic on Windows: two builds with a project-local `TEMP`/`TMP` were byte-identical (819 files, diff 0). With the system `%TEMP%`, esbuild sometimes cannot delete its temp file ("Access is denied"); CI's Windows runner is unaffected. Not a source change — a dev-environment workaround until the temp cleaner/AV exclusion is settled |
-| Off-host backups are not encrypted | `docs/DEPLOY-OC424.md` v1.6.28 rollout | Fresh paired pre-v1.6.28 backup is retained separately on OVH (164 MB); checksum/zstd/isolated v1.6.27 restore pass. Nightly 14-copy retention is unchanged. D12 key custody/restore authorization still blocks encryption cutover; this is not an encrypted restore |
+| Off-host backups are not encrypted | `docs/ENCRYPTED-BACKUPS.md`; `docs/DEPLOY-OC424.md` v1.6.28 rollout | Opt-in source tooling and synthetic local/OVH encrypted restores pass; exact-candidate CI/source merge pending. Fresh paired pre-v1.6.28 plaintext backup and nightly 14-copy retention remain unchanged. D12 custody, actual escrow-path canary/restore and legacy-retention authorization still block production encryption |
 | Release-image source identity publication acceptance | `.github/workflows/docker.yml`, `deploy/docker-workflow-check.py` | Source fix verifies checkout HEAD against the resolved local release tag before asset download and uses its commit in both image labels. Nine existing policy cases and eight real-Git identity cases cover defaults, annotated tags, mismatch/missing/injection refusals. Actual image-publication acceptance awaits the next eligible release; immutable v1.6.28 retains its disclosed old label |
 | OIDC + 2FA makes SSO login fail-closed with no way for the browser to answer the challenge | `docs/ROADMAP.md` §F12 | Deliberately shipped as a gate, not half a state machine. Needs a one-time pending token plus a code prompt; production impact is zero while OIDC is off |
 | `sso_id` survives a password change, and `DeleteAllSessions()` is global | `database/accounts/` | Policy questions now that the SSO path requires TOTP; recommendation was (b)+(c) in the audit report |

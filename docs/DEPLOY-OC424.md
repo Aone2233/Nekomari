@@ -81,6 +81,14 @@ evidence is retained; none is counted as a successful run.
 
 ## After every panel upgrade
 
+**Unreleased backup tooling (2026-10-27):**
+[`ENCRYPTED-BACKUPS.md`](./ENCRYPTED-BACKUPS.md) documents the opt-in source
+candidate and synthetic local/OVH encrypted restores. It has not replaced the
+plaintext backup schedule, provisioned production keys or changed retention.
+D12 custody/escrow/actual restore/legacy-copy approval remains open; retain all
+recovery copies recorded above. Token-rotation PR81 is merged as31a5b43 after
+integrated-candidate CI7/7, not deployed or authorized to rotate live tokens.
+
 The hand-run checks from the rollouts below are one command now. Run it within five
 minutes of the upgrade — the log window is the last `LOG_WINDOW` measured from *now*, not
 from the moment the container started:

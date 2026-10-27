@@ -123,6 +123,19 @@ jobs:
           python script/admin-tools-navigation.browser.spec.py \
             --panel-binary ../nekomari --dist dist \
             --output ../smoke/admin-tools-navigation.json
+      - name: Restore a synthetic encrypted backup into an offline panel container
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y age
+          context=$(mktemp -d)
+          image="nekomari-restore-ci:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          trap 'rm -rf "$context"; docker image rm "$image" >/dev/null 2>&1 || true' EXIT
+          cp Dockerfile "$context/Dockerfile"
+          cp nekomari "$context/nekomari-linux-amd64"
+          docker build --build-arg TARGETOS=linux --build-arg TARGETARCH=amd64 -t "$image" "$context"
+          digest=$(docker image inspect "$image" --format '{{.Id}}')
+          python3 -W error::ResourceWarning deploy/encrypted_backup_drill_test.py \
+            --panel-binary ./nekomari --panel-image "$digest"
 
   # Shell-level tests for the deployment scripts. Offline and hermetic: the
   # installer's own flags confine every write to a temp directory, so this needs
@@ -149,6 +162,11 @@ jobs:
         run: bash deploy/panel-auth-smoke.test.sh
       - name: Test explicit scoped-key provisioning (offline)
         run: python3 deploy/nekomari_auth_test.py
+      - name: Test encrypted backups with throwaway identities (offline)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y age
+          python3 -W error::ResourceWarning deploy/encrypted_backup_test.py
       - name: Test the post-upgrade check (offline harness)
         run: bash deploy/panel-upgrade-check.test.sh
       - name: Test that the agent upgrade scripts preserve file capabilities

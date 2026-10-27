@@ -53,14 +53,16 @@ open-ended "finish every roadmap version" work target with this ordered batch:
    exact-source CI40324022778 passes 7/7: verify the resolved release tag against
    checkout HEAD and label both images with that commit. Actual publication
    acceptance waits for the next release; immutable v1.6.28 is not republished.
-2. Integrate the independently verified token-rotation PR81 with that main's
-   delivery records, keeping the current production checkpoint and unaffected
-   runtime/frontend bytes. Original 13cdcc5 CI40313616989 passes 7/7; require
-   new CI on the integrated candidate, not that old branch tip, before merge.
+2. Token-rotation PR81 is merged as 31a5b43 (2026-10-27), keeping the current
+   production checkpoint and original runtime/frontend bytes. Integrated
+   6a3b7eb passes new exact-source CI40425302716 (7/7), separate from original
+   13cdcc5 CI40313616989. No production token is rotated.
 3. Prepare the next v1.7 cutover only after live API consumers/replacements,
    token-recovery compatibility and D12 backup key custody/restore authorization
    are established. Until then, continue independent engineering, not live
    credential/schema changes or a declaration that v1.7 is delivered.
+   The fifth source batch prepares opt-in encrypted backups and synthetic
+   restores on exact31a5b43; it does not decide D12 production custody.
 
 Each source batch closes with reviewed changes, exact-candidate CI and retained
 evidence; publication/deployment additionally need backups/rollback and bounded
@@ -120,7 +122,8 @@ The fourth candidate, `codex/v1.7-client-token-rotation`, originally starts from
 fc84915 and is integrated with main e234385 on 2026-10-27. Only workflow/checker
 and documentation differ from the original 13cdcc5; its runtime, frontend and
 embedded theme remain unchanged. The following checks are retained original
-evidence; new exact-candidate CI is a separate merge gate.
+evidence; integrated6a3b7eb passes exact-source CI40425302716 (7/7) and merges
+as31a5b43. Source delivery is not production acceptance.
 It adds session-only Agent-token rotation with existing TOTP policy and an
 in-panel recovery-consent dialog. Short Agent mutations share per-node
 admission with commit/retirement; delayed requests/handshakes and old runtime
@@ -144,6 +147,24 @@ binary scan pass (one required-module-only advisory remains). These are bounded
 source/synthetic checks, not native-platform CI, production acceptance or
 capacity/SLO evidence. Accept edit/import restrictions and independent recovery
 before deployment; API-consumer migration and D12 are still separate gates.
+
+The fifth candidate, `codex/v1.7-encrypted-backup-tools`, starts from exact31a5b43
+and extracts only opt-in backup tooling from the separate development workspace.
+It adds recipient-only age encryption, WAL-safe snapshots bound to captured
+metrics configuration, selected assets, exclusive ciphertext/checksum publication,
+fail-safe exact-prefix retention and bounded authenticated verify/extract. The
+automated drill requires local Unix-socket Docker before decryption, digest-pinned
+preinstalled images, no network/host ports and only scratch data. Local and OVH
+real-age/WAL tests each pass22/22 groups; both perform real synthetic offline
+restores and wrong-version cleanup with preexisting images. OVH's temporary
+tools/source match checksums, Agent495903/restart0 stays unchanged, and owned
+workspaces/containers are removed. CI reuses its existing Panel build for the
+new drill and adds the offline harness; exact-candidate CI/source merge remain
+required. No broad local Go/frontend rebuild, production key/schedule/retention
+change or plaintext-backup deletion occurs. See
+[`ENCRYPTED-BACKUPS.md`](./ENCRYPTED-BACKUPS.md): these checks are not actual
+escrow-path recovery, production custody acceptance or current-release images.
+D12 canary/restore/legacy-retention and credential-consumer gates remain open.
 
 The older application-level goal remains observed paused because no available
 tool can edit its objective or resume it. This document updates repository work
