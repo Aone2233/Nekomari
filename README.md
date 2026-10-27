@@ -154,6 +154,7 @@ checksum check and the systemd unit.
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | How to build, test and submit a change |
 | [docs/SILENT-FAILURES.md](./docs/SILENT-FAILURES.md) | Where the system knows something is wrong and does not say so |
 | [docs/OPEN-WORK.md](./docs/OPEN-WORK.md) | What is unfinished, what is blocked, and what will bite again |
+| [docs/HANDOFF-DSH-2026-10-27.md](./docs/HANDOFF-DSH-2026-10-27.md) | Dated handoff for the v1.7.4 delivery: evidence, next bounded work, operational boundaries |
 | [docs/SLA-COVERAGE.md](./docs/SLA-COVERAGE.md) | What `Presence.Coverage` measures: the observed span, not the requested window |
 | [docs/METRIC-RECOVERY-STARTUP.md](./docs/METRIC-RECOVERY-STARTUP.md) | Why a restored metrics store could miss its startup deadline, and the plan fix that bounds it |
 | [docs/RELEASING.md](./docs/RELEASING.md) | How to cut a release, and the two traps |
