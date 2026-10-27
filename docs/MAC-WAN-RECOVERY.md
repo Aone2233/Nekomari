@@ -131,7 +131,8 @@ secure erasure and swap/system snapshots remain part of the host threat model.
 Both pairs live under `/srv/backups/oc424-encrypted` on OVH and recovery
 `incoming/` on MAC-WAN. OVH also retains them under
 `/srv/backups/oc424-encrypted/manual-v1.7.0-20261027`, outside top-level 14-pair
-pruning (hardlinks, not duplicate data blocks). Native image source and packaged
+pruning (independent regular copies, not hardlinks, as required by the backup
+verifier/retention contract). Native image source and packaged
 binary checksums/attestations are verified separately; the recovery harness
 also checks exact reported version/hash. Never use an old 14-client backup for
 this cutover rollback: the owner intentionally deleted one client.

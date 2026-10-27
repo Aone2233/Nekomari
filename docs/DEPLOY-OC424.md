@@ -66,7 +66,12 @@ succeed but final checksum enumeration encounters Ubuntu Python3.10's absent
 migration or rollback. First schedule preflight compares the cron spool hash to
 header-stripped `crontab -l`; exact spool/row verification corrects that format
 mismatch before any schedule change. Failure evidence is kept; no gate is
-weakened or failed attempt counted as success.
+weakened or failed attempt counted as success. Release retention copies were
+initially hardlinked; review catches the existing verifier's non-hardlink rule.
+The manual destinations are replaced with independently checksum-matched regular
+ciphertext files, leaving both source/manual pairs at link-count1; actual
+receiver ciphertext-verification contracts pass for all four archives. This
+avoids blocking subsequent nightly retention; no backup content is deleted.
 
 ## Earlier encrypted canary (before v1.7 cutover, 2026-10-27)
 
