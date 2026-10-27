@@ -35,7 +35,7 @@ source-batch checks; no redundant broad local frontend/Go/capacity rerun.
 | Gate | Current state | Required next evidence/action |
 |---|---|---|
 | Source/publication/deployment | All bounded security batches published as v1.7.0; exact 8eb711e CI 40446315166 7/7, release 40450095088 10/10 and Docker 40450707458 2/2; native image/source/binary and OC424 9/9 pass | Retain immutable tag/assets and truthful release evidence; do not rebuild them for documentation |
-| Legacy API consumers | One old key is 30-day `nodes:read`, no global admin key. Hermes gateway paused during switch, three skill references redirected, gateway resumed; no dedicated key exists | Owner creates 90-day `hermes-node-management`, only `nodes:read` + `nodes:write`; hidden TTY configure and disposable create/edit/read/remove acceptance before resuming node writes. Do not infer complete runtime rewiring from reference edits |
+| Legacy API consumers | Owner-configured `hermes-node-management` matches exactly `nodes:read` + `nodes:write`, active365days until2027-10-27 13:38:02 Asia/Shanghai; actual MAC-WAN disposable create/edit/read/remove passes and original13 metadata is unchanged | Reviewed CLI writes may resume; no token/exec/update grant or key rotation. Other callers/runtime rewiring are not inferred from three reference edits; old30-day read-only key remains |
 | Token recovery/edit/import | Owner accepts restrictions and requests no rotation; 13 existing UUIDs/tokens and all Agent services unchanged | No rotation canary now; future rotation requires independent SSH/console and per-node consent |
 | D12 custody/recovery | OC424 public recipient only, OVH ciphertext, MAC-WAN online identity/recovery runner; fresh 13-node pre/post backups restore with pinned old/new images | Owner reports offline copy downloaded and authorizes switch; independent-media restore is still unverified. Same-UID Hermes/root/Docker exposure remains explicit |
 | Nightly schedule/retention | OVH encrypted service succeeds; enabled daily 03:30 UTC timer replaces only old cron row, keep 14 ciphertext pairs; pre/post release copies retained outside pruning | Observe subsequent scheduled success; backup-freshness alert is a later bounded task. No old plaintext/manual/local rollback copy is deleted; deletion needs an explicit policy |
@@ -45,8 +45,11 @@ source-batch checks; no redundant broad local frontend/Go/capacity rerun.
 **Hermes handoff:** the gateway is active again (PID922780/restart0); AgentPID976/
 restart0 is unchanged. The metadata-only CLI stays checksum-matched on MAC-WAN;
 three references explicitly forbid old API/token/install examples for this Panel.
-Old-key writes are server-denied. Actual dedicated key/active-workflow acceptance
-is pending; no key/session is recovered from SQLite, backups, process args or
+Old-key writes are server-denied. Dedicated-key metadata/private storage and
+actual disposable CLI writes pass; three reference overrides/marker now permit
+that reviewed workflow without a service restart. This is not a complete task
+inventory or owner UI acceptance; no key/session is recovered from SQLite,
+backups, process args or
 Hermes history. Installation is owner-UI only; no token-read/exec/update grant is
 silently added. See [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md).
 
@@ -129,7 +132,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | History query hardening owner acceptance | `web/rpc/jsonrpc/common.record.go`; `web/rpc/jsonrpc/budget.go` | Released/deployed as v1.6.28/502a269: 366-day ceiling, shared budgets/cancellation and guest visibility filtering. Release/platform and OC424 health/data checks pass; authenticated live history UI acceptance remains pending |
 | Client-token rotation owner acceptance | PR81, `docs/CLIENT-TOKEN-ROTATION.md` | Published/deployed in v1.7.0. Owner accepts edit/import restrictions and requests no rotation now; no production rotation canary is required. Owner UI acceptance remains; future rotation requires independent per-node recovery, never SQLite edits |
-| Scoped API-key consumer handoff | `internal/apikeys/`, `pkg/rpc/apikey_scopes.go`, `docs/API-KEYS.md`, `docs/HERMES-NODE-CLIENT.md` | Published/deployed in v1.7.0; old key migrated read-only. Hermes briefly paused, references redirected and gateway resumed. Owner session-issued key, private TTY configure and actual disposable live write/workflow acceptance remain |
+| Scoped API-key remaining consumers | `internal/apikeys/`, `pkg/rpc/apikey_scopes.go`, `docs/API-KEYS.md`, `docs/HERMES-NODE-CLIENT.md` | v1.7.0 delivered; owner-configured Hermes key and actual disposable CLI writes pass. Reconcile any other callers before retiring the migrated30-day read-only key; no complete runtime inventory or owner UI acceptance is claimed |
 | Audit-log pagination hardening owner acceptance | `web/rpc/jsonrpc/admin.system.go` | Released/deployed as v1.6.28: 1-1000 rows, checked offsets, strict binding and cancellation. REST/filter/CSV compatibility verified in exact-source CI; authenticated live audit UI acceptance remains pending |
 | `/plugin/*` is still owned by the installed theme | `web/public/public.go` | **Accepted**: the panel took back only its own pages. Tightening it would break installed themes |
 | An installed theme that renders "no data" as 0 | outside this repository (SAO) | **Accepted**: the default document is the panel's own now; the remaining risk is a third-party bundle |
@@ -150,7 +153,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | A task's series from different tag generations are concatenated before the SLA/percentile maths | `internal/sla/query.go` | The metric path got `dedupe()` in v0.1.34; this path still merges by task id |
 | `Presence.Coverage` is a span, not a window coverage | `internal/sla/availability.go` | The field's own documentation disagrees with it; `batch_test.go` pins the current behaviour |
-| The forecast detects a counter reset only on a net decrease, and `CrossesAt` can overflow | `internal/forecast/forecast.go` | Two boundary cases with no observed production trigger |
+| Forecast boundary fix release | `internal/forecast/forecast.go` | v1.7.1 candidate rejects every chronological reset/negative total, uses checked integer projection and omits unrepresentable crossing dates. Focused regressions precede exact CI/publication/OC424 acceptance; not yet deployed |
 | `PriceTags` has no "no expiry" state | `frontend/src/components/PriceTags.tsx` | Only checks `undefined`, so a `null` expiry reads as "expires in 30 days" |
 | Dragging under a filter reorders only the visible subset | `frontend/src/pages/admin/index.tsx` | Needs a decision about what reordering a filtered list should mean |
 | No uptime / restart-count metric exists | `internal/metricstore/definitions.go` | A capability gap: the panel cannot state "how long was this node up" |

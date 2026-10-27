@@ -11,6 +11,24 @@ Nekomari's own.
 - Record the v1.7.0 production cutover and installed OVH encrypted-backup
   service/timer. No runtime or published artifact is rebuilt by this record.
 
+## [v1.7.1] - 2026-10-27
+
+- **Bounded traffic-forecast correctness patch.** Reject a counter reset in any
+  chronological interval, even when later usage recovers above the initial
+  total, and reject negative totals. Keep observed usage and an explained
+  `insufficient` result without a misleading projection or warning.
+- Use checked integer multiply/divide and rounding for projected byte growth;
+  retain low bytes near the int64 limit and refuse overflow rather than wrap
+  negative or silently cap. Compute limit headroom before float conversion;
+  omit crossing dates outside duration/JSON time ranges instead of wrapping
+  into the past. Ordinary and exact-cycle-end crossing behavior is retained.
+- Record owner-configured Hermes key/private storage and actual disposable
+  MAC-WAN create/edit/read/remove acceptance, preserving all13 original node
+  metadata. Exactly `nodes:read` + `nodes:write`, owner-selected365days; no
+  Agent-token, exec/update grant or rotation. Other callers and authenticated
+  owner UI acceptance remain separate. No Agent/protocol/frontend/dependency,
+  auth/schema or backup policy change; no fleet rollout or200-node work.
+
 ## [v1.7.0] - 2026-10-27
 
 - **Security release and OC424 cutover.** Immutable tag/source `8eb711e`;

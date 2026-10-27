@@ -17,6 +17,7 @@ package forecast
 import (
 	"fmt"
 	"math"
+	"math/bits"
 	"sort"
 	"time"
 )
@@ -100,10 +101,10 @@ type Forecast struct {
 	// WouldExceed is whether the projection reaches the limit before the cycle ends.
 	WouldExceed bool `json:"would_exceed"`
 
-	// CrossesAt is when the limit would be reached, and CrossesInDays how far away that is. Zero and
-	// zero when the limit is not projected to be reached.
-	CrossesAt   time.Time `json:"crosses_at,omitempty"`
-	CrossesInDays float64 `json:"crosses_in_days,omitempty"`
+	// CrossesAt is when the limit would be reached, and CrossesInDays how far away that is. Both are
+	// zero when no crossing can be computed within time.Duration and JSON's year 0..9999 range.
+	CrossesAt     time.Time `json:"crosses_at,omitempty"`
+	CrossesInDays float64   `json:"crosses_in_days,omitempty"`
 	// CrossesInCycle is whether the crossing falls inside this cycle. A crossing after the cycle ends
 	// is not a problem this cycle, and saying so is the difference between a warning and noise.
 	CrossesInCycle bool `json:"crosses_in_cycle"`
@@ -244,16 +245,24 @@ func Compute(now time.Time, request Request) Forecast {
 		return forecast
 	}
 
+	for index, sample := range usable {
+		if sample.Total < 0 {
+			forecast.Method = MethodInsufficient
+			forecast.Reason = "the cycle total is negative, so there is no valid rate to project from"
+			return forecast
+		}
+		if index > 0 && sample.Total < usable[index-1].Total {
+			// A reset can recover above the first total; checking only the net change misses it.
+			forecast.Method = MethodInsufficient
+			forecast.Reason = "the cycle total decreased, which means the counter restarted; there is no rate to project from"
+			return forecast
+		}
+	}
+
 	// The average rate, and the scatter that makes the uncertainty.
 	first, last := usable[0], usable[len(usable)-1]
-	bytesPerSecond := float64(last.Total-first.Total) / span.Seconds()
-	if bytesPerSecond < 0 {
-		// A total that goes down means a counter reset, which happens when the ledger rotates or a
-		// node is reinstalled. Projecting from a negative rate would produce a negative total.
-		forecast.Method = MethodInsufficient
-		forecast.Reason = "the cycle total decreased, which means the counter restarted; there is no rate to project from"
-		return forecast
-	}
+	delta := last.Total - first.Total
+	bytesPerSecond := float64(delta) / span.Seconds()
 	forecast.Basis.BytesPerDay = bytesPerSecond * 86400
 	forecast.Basis.Uncertainty = rateUncertainty(usable, bytesPerSecond)
 
@@ -262,12 +271,14 @@ func Compute(now time.Time, request Request) Forecast {
 	if remaining < 0 {
 		remaining = 0
 	}
-	projected := float64(last.Total) + bytesPerSecond*remaining.Seconds()
-	if projected < float64(last.Total) {
-		projected = float64(last.Total)
+	growth, ok := projectedGrowth(delta, remaining, span)
+	if !ok || growth > math.MaxInt64-last.Total {
+		forecast.Method = MethodInsufficient
+		forecast.Reason = "the projected total exceeds the supported byte range; no reliable projection can be reported"
+		return forecast
 	}
 	forecast.Method = MethodLinearRate
-	forecast.ProjectedBytes = int64(math.Round(projected))
+	forecast.ProjectedBytes = last.Total + growth
 
 	if !forecast.LimitSet {
 		// Nothing to project against. Stated rather than projected against infinity: a fraction of
@@ -275,7 +286,7 @@ func Compute(now time.Time, request Request) Forecast {
 		return forecast
 	}
 
-	forecast.ProjectedFraction = projected / float64(request.LimitBytes)
+	forecast.ProjectedFraction = float64(forecast.ProjectedBytes) / float64(request.LimitBytes)
 	forecast.WouldExceed = forecast.ProjectedBytes > request.LimitBytes
 
 	// The crossing date, from the rate rather than from the projection, so it can be reported with
@@ -285,17 +296,24 @@ func Compute(now time.Time, request Request) Forecast {
 	// with `>` that node produced no crossing date, no warning and nothing to look at — the one case
 	// where the plan is exhausted to the byte was the one case that stayed silent. It was found by
 	// this package's own test, which had a limit exactly equal to the observed total.
-	if float64(request.LimitBytes) >= float64(last.Total) && bytesPerSecond > 0 {
-		secondsToLimit := (float64(request.LimitBytes) - float64(last.Total)) / bytesPerSecond
-		crossesAt := last.At.Add(time.Duration(secondsToLimit * float64(time.Second)))
-		forecast.CrossesAt = crossesAt
-		forecast.CrossesInDays = secondsToLimit / 86400
-		// Not half-open, unlike the cycle itself: a crossing judged to land exactly on the cycle's
-		// end is still a crossing this cycle, and being strict about the boundary would turn the
-		// most marginal case — the node that exactly fills its plan — into the one case that is not
-		// reported. An earlier version used `Before` and failed its own test on precisely that
-		// scenario, which is the kind of off-by-one that only ever hides a warning.
-		forecast.CrossesInCycle = !crossesAt.After(cycleEnd)
+	if request.LimitBytes >= last.Total && bytesPerSecond > 0 {
+		secondsToLimit := float64(request.LimitBytes-last.Total) / bytesPerSecond
+		nanoseconds := secondsToLimit * float64(time.Second)
+		// A distant crossing is not evidence of a crossing this cycle. Never wrap its duration
+		// into the past or return a year that the JSON time encoder cannot represent.
+		if nanoseconds >= 0 && nanoseconds < float64(math.MaxInt64) {
+			crossesAt := last.At.Add(time.Duration(nanoseconds))
+			if crossesAt.Year() >= 0 && crossesAt.Year() <= 9999 {
+				forecast.CrossesAt = crossesAt
+				forecast.CrossesInDays = secondsToLimit / 86400
+				// Not half-open, unlike the cycle itself: a crossing judged to land exactly on the cycle's
+				// end is still a crossing this cycle, and being strict about the boundary would turn the
+				// most marginal case — the node that exactly fills its plan — into the one case that is not
+				// reported. An earlier version used `Before` and failed its own test on precisely that
+				// scenario, which is the kind of off-by-one that only ever hides a warning.
+				forecast.CrossesInCycle = !crossesAt.After(cycleEnd)
+			}
+		}
 	}
 
 	threshold := request.Threshold
@@ -316,6 +334,27 @@ func Compute(now time.Time, request Request) Forecast {
 	return forecast
 }
 
+// projectedGrowth rounds delta*remaining/span without losing low bytes of a large counter or
+// overflowing the intermediate product. Its inputs are nonnegative, with span strictly positive.
+func projectedGrowth(delta int64, remaining, span time.Duration) (int64, bool) {
+	high, low := bits.Mul64(uint64(delta), uint64(remaining))
+	divisor := uint64(span)
+	if high >= divisor {
+		return 0, false
+	}
+	quotient, remainder := bits.Div64(high, low, divisor)
+	if quotient > math.MaxInt64 {
+		return 0, false
+	}
+	if remainder >= (divisor+1)/2 {
+		quotient++
+	}
+	if quotient > math.MaxInt64 {
+		return 0, false
+	}
+	return int64(quotient), true
+}
+
 // rateUncertainty estimates the projection's relative error from the scatter of the observed rate.
 //
 // Measured over the consecutive intervals of the samples rather than from a fitted line, so a node
@@ -334,11 +373,6 @@ func rateUncertainty(samples []Sample, meanBytesPerSecond float64) float64 {
 			continue
 		}
 		delta := float64(samples[index].Total - samples[index-1].Total)
-		if delta < 0 {
-			// A single resetting interval poisons the scatter; the average-rate check above is what
-			// rejects a series that reset, and here the interval is simply not evidence.
-			continue
-		}
 		rates = append(rates, delta/gap)
 	}
 	if len(rates) < 2 {
