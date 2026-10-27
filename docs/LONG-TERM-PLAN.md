@@ -102,6 +102,11 @@ scheduler or production RPO/RTO/SLO acceptance is implied.
    installed service and initial automatic health-timer trigger pass. Later
    recurring checks, first nightly backup and live Telegram delivery remain
    separate. See [`BACKUP-HEALTH.md`](./BACKUP-HEALTH.md).
+   The next bounded candidate is v1.7.4 SLA task-generation normalization:
+   unique chronological task buckets before loss/latency/incidents/maintenance,
+   without changing the separate span-based coverage definition. Exact CI,
+   publication, OVH release-binary acceptance and OC424 deployment remain gates.
+   See [`SLA-GENERATIONS.md`](./SLA-GENERATIONS.md).
 
 v1.7 is released/deployed, **not unconditionally exit-complete**: owner
 acceptance, remaining caller inventory, independent-media recovery and the
