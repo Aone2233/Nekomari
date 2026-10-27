@@ -62,11 +62,12 @@ the Agents alone, as most releases do. Start with the source diff, then review
 Agent dependency/compiler/packaging changes separately before planning rollout:
 
 ```bash
-git diff --stat <previous-tag>..<tag> -- 'agent/**/*.go' protocol/
+git diff --stat <previous-tag>..<tag> -- ':(glob)agent/**/*.go' protocol/
 ```
 
 This filters Agent Go source and the shared root protocol, not server-only
 `pkg/`: the Agent has its own module and does not import root `pkg/rpc`.
+Explicit Git glob magic includes `agent/main.go` as well as nested packages.
 Review Agent module/dependency, packaging and install changes separately;
 not every source change requires deployment, and an empty source diff is not
 proof that no Agent dependency/compiler/packaging change exists. In v1.7.0,
