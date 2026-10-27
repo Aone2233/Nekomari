@@ -1,11 +1,12 @@
 # Scoped API keys (v1.7.0)
 
 Named, expiring keys replace the global `configs.api_key` credential.
-**Published/deployed:** OC424 serves v1.7.0/8eb711e after exact-source/release/
+**Published/deployed:** OC424 serves v1.7.1/3b7e300 after exact-source/release/
 native image verification. One old key is migrated to 30-day `nodes:read`, with
 the plaintext settings row removed. Existing Agent tokens are unchanged.
-Owner-created Hermes read/write key, private handoff and authenticated UI/live
-consumer acceptance remain pending. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md)
+Owner-configured Hermes read/write key, private handoff and actual disposable
+CLI write acceptance pass; owner authenticated UI and other-caller inventory
+remain separate. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md)
 for actual migration evidence and paired old-binary/DB rollback; public checks
 are not authenticated acceptance. This feature does not add user roles.
 
@@ -102,8 +103,8 @@ no production credentials):
 | `deploy/deploy-verify.sh` | Optional live smoke uses the preceding read-only key; isolated first-run install/node creation uses its synthetic session, not that production key |
 | `deploy/nekomari_auth.py` | Generic helper, not a fixed scope: explicit token or `NEKOMARI_API_KEY` only; database/SQLite fallback is removed; `data_dir` argument retained but ignored |
 | Browser smoke/install scripts | Synthetic sessions; no legacy key required |
-| Hermes on MAC-WAN (owner confirmed2026-10-27) | Gateway paused/resumed at cutover; 3 known references redirected, old key now read-only. Dedicated key and actual active-workflow/write acceptance remain pending; follow the transition below |
-| `deploy/hermes_nodes.py` (staged replacement, not yet active) | `nodes:read` + `nodes:write`; stable-v1.7+ HTTPS guard, metadata-only REST CLI, owner-TTY exclusive key handoff. No Agent token/install/exec/update access; see [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md) |
+| Hermes on MAC-WAN (owner confirmed2026-10-27) | Gateway paused/resumed at cutover; 3 known references redirected, old key now read-only. Owner-configured dedicated key and disposable CLI writes pass; complete runtime inventory remains open |
+| `deploy/hermes_nodes.py` (reviewed live-accepted consumer) | `nodes:read` + `nodes:write`; stable-v1.7+ HTTPS guard, metadata-only REST CLI, owner-TTY exclusive key handoff. No Agent token/install/exec/update access; see [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md) |
 | Other out-of-repository operator jobs/CI/hosts | No exhaustive inventory is claimed by the owner's identification of the main consumer |
 
 Production preparation must not read keys from SQLite, backups or Agent files.
@@ -119,18 +120,25 @@ During cutover the gateway is explicitly stopped, three known node/install
 references are backed up and prepended with reviewed-client/no-legacy-fallback
 rules, then the gateway is resumed (PID922780/restart0). AgentPID976/restart0 is
 unchanged. Reference edits are not proof that every runtime task is migrated.
-The old key is now server-enforced read-only; node writes await the owner-issued
-key and disposable live acceptance. No environment, process args, raw headers,
+The old key is server-enforced read-only. The owner privately configures the
+new key, metadata matching verifies only the intended scopes/private modes, and
+actual MAC-WAN create/read/edit/read/remove passes at13:49:10 Asia/Shanghai. The
+disposable node is deleted and original13 metadata is unchanged. Reviewed CLI
+writes may resume; three reference overrides/marker record that acceptance,
+without service restart or a complete-caller-inventory claim. No environment, process args, raw headers,
 history, sessions or stored credential values are extracted.
 
 The metadata-only CLI and hidden owner-TTY provisioning path are installed on
-MAC-WAN without a production key. Stable v1.7 now passes the version gate, but no
+MAC-WAN; the owner supplies the one-time key through its hidden prompt. Stable
+v1.7 passes the version gate, but no
 credential fallback exists; missing credentials stop the operation. See
 [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md). Host identification and
 reference edits do not approve installer token access or command grants.
 
-Proposed dedicated key: `hermes-node-management`, default 90-day expiry and
-`nodes:read` + `nodes:write`. Confirm the actual REST/RPC methods before issuance.
+Actual dedicated key: `hermes-node-management`, only `nodes:read` + `nodes:write`,
+owner-selected365days, expiring2027-10-27 13:38:02 Asia/Shanghai (not the suggested90).
+No silent shortening/rotation or broader grant. The original transition procedure
+below is retained as a template, not an instruction to issue another key.
 The write scope includes node removal as well as create/edit/order/bulk metadata;
 there is **no create-only or per-node scope** in v1.7. Do not describe this key
 as limited to adding nodes or as an untrusted-agent sandbox. Do not grant

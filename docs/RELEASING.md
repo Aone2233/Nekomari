@@ -2,14 +2,23 @@
 
 ## Cut a release
 
+**v1.7.1 patch delivered (2026-10-27):** immutable3b7e300, exactCI40458344881
+7/7, release40459059246 10/10 and Docker40459610734 2/2. OC424 healthy/restart0,
+upgrade9/9,public23/23 and actual scoped-key forecast13/13 pass. Fresh encrypted
+pre/post archives recover on MAC-WAN using pinned v1.7.0/v1.7.1. No schema/auth,
+Agent/protocol/frontend/module dependency change or fleet rollout. Roll back
+this patch to pinned v1.7.0 by image while preserving the current DB; do not use
+that rule across the earlier v1.7 auth migration. Owner UI remains separate.
+
 **v1.7.0 delivered checkpoint (2026-10-27):** immutable tag/source 8eb711e,
 exact CI 40446315166 7/7, release40450095088 10/10 and Docker40450707458 2/2.
 OC424 migration/upgrade 9/9 and actual encrypted old/new-image recovery pass.
 The maintenance guidance below describes why earlier 1.6 patches were separated;
 it is not a statement that v1.7 is still unpublished. After auth migration,
 rollback needs old binary **and pre-migration DB**; never use image-only
-maintenance rollback instructions. Owner UI and Hermes key/live handoff remain
-pending. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+maintenance rollback instructions. Owner UI remains pending; subsequent Hermes private-key/disposable CLI write
+acceptance passes. A no-schema v1.7.1->v1.7.0 patch rollback may use only the
+pinned prior image, unlike a downgrade across the earlier auth migration. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
 Maintenance releases may use `codex/v1.6-maintenance` when main contains an
 intentional authentication/schema compatibility change whose production gates

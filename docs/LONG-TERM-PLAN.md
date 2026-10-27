@@ -45,7 +45,7 @@ correctness batches. The full v1.8-v2.1 roadmap is not one continuous task.
 All 200-node work remains deferred, preserving its original limits and 26 failed
 reports. Publication is not proof that every roadmap exit criterion passed.
 
-**Delivered:** OC424 serves v1.7.0/8eb711e at `nekomari.orderly2233.org`, healthy/
+**Delivered:** OC424 serves v1.7.1/3b7e300 at `nekomari.orderly2233.org`, healthy/
 restart0, after exact-source CI 7/7, release 10/10, Docker 2/2 and upgrade check 9/9.
 Both Linux assets pass checksums/tag/source/workflow attestations; both image
 architectures identify exact source. Public checks 23/23 pass. The owner-approved
@@ -84,8 +84,8 @@ scheduler or production RPO/RTO/SLO acceptance is implied.
    deletion policy. Automated restore harness/real manual restores exist, but
    scheduled decryption, freshness alerts and measured RPO/RTO remain separate.
 3. Continue one bounded correctness or observability change at a time, with
-   exact candidate CI, safe backups and OC424 acceptance. The first candidate
-   is a compatible v1.7.1 forecast-boundary patch, not a full v1.8 feature release
+   exact candidate CI, safe backups and OC424 acceptance. The first completed
+   batch is the compatible v1.7.1 forecast-boundary patch, not a full v1.8 feature release
    or a declaration that the pending owner UI acceptance has passed.
    Do not bundle fleet privilege/platform changes or 200-node work.
 
@@ -93,8 +93,9 @@ v1.7 is released/deployed, **not unconditionally exit-complete**: owner
 acceptance, remaining caller inventory, independent-media recovery and the
 stronger automated freshness/drill policy remain truthfully open in
 [`OPEN-WORK.md`](./OPEN-WORK.md#v17-release-readiness-2026-10-27).
-After credential migration, rollback needs the old binary and pre-upgrade DB,
-not an image-only downgrade; frozen-writer/failure-preservation instructions
+v1.7.1->v1.7.0 needs only the pinned prior image, preserving current DB data.
+Across credential migration to v1.6, rollback needs the old binary and pre-upgrade
+DB, not an image-only downgrade; frozen-writer/failure-preservation instructions
 are retained with the paired local snapshots.
 
 The earlier application-level goal was observed paused. The owner's continue

@@ -15,14 +15,16 @@ What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit 
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
 **Current checkpoint (2026-10-27, Asia/Shanghai):** OC424 serves
-**v1.7.0/8eb711e** at `nekomari.orderly2233.org`, healthy/restart0. Immutable
-release/source, exact CI 7/7, release 10/10, Docker 2/2, checksums/provenance,
+**v1.7.1/3b7e300** at `nekomari.orderly2233.org`, healthy/restart0. Immutable
+patch/source, exact CI40458344881 7/7, release40459059246 10/10,
+Docker40459610734 2/2, checksums/provenance,
 upgrade check9/9 and bounded public checks23/23 pass. The five tools remain
 in the admin shell. The owner deliberately removed one client: use 13 registered
 clients as the approved baseline, not the old 14. All 12 previously fresh
 CPU-reporting nodes remain fresh; existing UUIDs/tokens and Agent services are
 unchanged. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for immutable artifacts,
-actual evidence and paired old-binary/DB rollback.
+actual evidence and patch rollback to v1.7.0. The earlier v1.7.0->v1.6
+auth-migration rollback still requires the paired old binary and DB.
 
 **Adjusted active objective:** close the bounded v1.7 delivery/handoff, then
 continue small v1.8 observability/correctness batches. Do not mark the entire
@@ -34,13 +36,13 @@ source-batch checks; no redundant broad local frontend/Go/capacity rerun.
 
 | Gate | Current state | Required next evidence/action |
 |---|---|---|
-| Source/publication/deployment | All bounded security batches published as v1.7.0; exact 8eb711e CI 40446315166 7/7, release 40450095088 10/10 and Docker 40450707458 2/2; native image/source/binary and OC424 9/9 pass | Retain immutable tag/assets and truthful release evidence; do not rebuild them for documentation |
+| Source/publication/deployment | Security batches shipped in v1.7.0; compatible forecast patch v1.7.1/3b7e300 exactCI40458344881 7/7, release40459059246 10/10, Docker40459610734 2/2, OC4249/9 and public23/23 pass | Retain immutable tag/assets and truthful release evidence; do not rebuild them for documentation |
 | Legacy API consumers | Owner-configured `hermes-node-management` matches exactly `nodes:read` + `nodes:write`, active365days until2027-10-27 13:38:02 Asia/Shanghai; actual MAC-WAN disposable create/edit/read/remove passes and original13 metadata is unchanged | Reviewed CLI writes may resume; no token/exec/update grant or key rotation. Other callers/runtime rewiring are not inferred from three reference edits; old30-day read-only key remains |
 | Token recovery/edit/import | Owner accepts restrictions and requests no rotation; 13 existing UUIDs/tokens and all Agent services unchanged | No rotation canary now; future rotation requires independent SSH/console and per-node consent |
 | D12 custody/recovery | OC424 public recipient only, OVH ciphertext, MAC-WAN online identity/recovery runner; fresh 13-node pre/post backups restore with pinned old/new images | Owner reports offline copy downloaded and authorizes switch; independent-media restore is still unverified. Same-UID Hermes/root/Docker exposure remains explicit |
 | Nightly schedule/retention | OVH encrypted service succeeds; enabled daily 03:30 UTC timer replaces only old cron row, keep 14 ciphertext pairs; pre/post release copies retained outside pruning | Observe subsequent scheduled success; backup-freshness alert is a later bounded task. No old plaintext/manual/local rollback copy is deleted; deletion needs an explicit policy |
 | OC424 authenticated acceptance | Owner elects self-run history/audit/API-key UI checks after deployment | Await owner's actual result. Public shells/401 and synthetic checks are not authenticated live acceptance |
-| Rollback | Fresh local paired pre-migration DBs/old image/assets/compose retained; off-host old/new recovery passes | After auth migration never downgrade image alone. Freeze writers, preserve failure state, restore old DB + old binary with explicit awareness of lost newer changes and old permissions |
+| Rollback | Fresh paired pre-patch DBs/compose + v1.7.0 image retained; earlier pre-migration DB/assets/old image retained separately; actual off-host recovery passes | v1.7.1->v1.7.0 is image-only (no schema/auth change), preserving current data. Across the v1.7 auth migration to v1.6, freeze writers and restore paired old DB + binary; newer data/permissions would be lost |
 
 **Hermes handoff:** the gateway is active again (PID922780/restart0); AgentPID976/
 restart0 is unchanged. The metadata-only CLI stays checksum-matched on MAC-WAN;
@@ -49,20 +51,23 @@ Old-key writes are server-denied. Dedicated-key metadata/private storage and
 actual disposable CLI writes pass; three reference overrides/marker now permit
 that reviewed workflow without a service restart. This is not a complete task
 inventory or owner UI acceptance; no key/session is recovered from SQLite,
-backups, process args or
-Hermes history. Installation is owner-UI only; no token-read/exec/update grant is
+backups, process args or Hermes history. Installation is owner-UI only; no token-read/exec/update grant is
 silently added. See [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md).
 
-**Backup handoff:** the first installed encrypted service run receives
-182862307 bytes and the exact ciphertext passes MAC-WAN isolated v1.7.0 recovery;
-the fresh pre-cutover archive passes v1.6.29 recovery. Both DB integrity checks,
-13 clients, migration-state metadata, source/version and cleanup pass. Temporary
-plaintext/containers are removed; all recovery copies remain. The owner-reported
-offline download is not independently exercised escrow recovery. See
+**Backup handoff:** fresh v1.7.1 pre/post encrypted archives from the installed
+OVH service pass actual isolated MAC-WAN recovery with pinned v1.7.0/v1.7.1
+images, both DBs,13 clients/current auth metadata and cleanup. Independent
+regular release copies stay outside14-pair pruning; earlier migration recovery
+copies remain. The owner-reported offline download is not independently
+exercised escrow recovery. Two pre-switch CDN latency excursions have0.002s
+origin and5/5HTTP200; post-switch explicit probe passes at1.011s public. Do not
+relax thresholds or claim measured SLOs. See
 [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
 
-**Verification scope:** this operational batch reuses prior query, scoped-key,
-report/queue, rotation, backup and Hermes source regressions and exact release CI.
+**Verification scope:** focused Go1.27.3 forecast/notifier race tests and forecast
+vet pass; exact release CI covers the full source. Unchanged query, scoped-key,
+report/queue, rotation, backup and Hermes source checks are reused, not broadly
+rerun locally.
 It does not claim native fleet upgrades, capacity/SLO measurements, owner login
 or unattended decrypted production recovery. OC424 remains the real acceptance
 host; OVH handles off-host ciphertext and suitable isolated tests. Only owned
@@ -153,7 +158,6 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | A task's series from different tag generations are concatenated before the SLA/percentile maths | `internal/sla/query.go` | The metric path got `dedupe()` in v0.1.34; this path still merges by task id |
 | `Presence.Coverage` is a span, not a window coverage | `internal/sla/availability.go` | The field's own documentation disagrees with it; `batch_test.go` pins the current behaviour |
-| Forecast boundary fix release | `internal/forecast/forecast.go` | v1.7.1 candidate rejects every chronological reset/negative total, uses checked integer projection and omits unrepresentable crossing dates. Focused regressions precede exact CI/publication/OC424 acceptance; not yet deployed |
 | `PriceTags` has no "no expiry" state | `frontend/src/components/PriceTags.tsx` | Only checks `undefined`, so a `null` expiry reads as "expires in 30 days" |
 | Dragging under a filter reorders only the visible subset | `frontend/src/pages/admin/index.tsx` | Needs a decision about what reordering a filtered list should mean |
 | No uptime / restart-count metric exists | `internal/metricstore/definitions.go` | A capability gap: the panel cannot state "how long was this node up" |

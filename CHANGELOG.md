@@ -8,10 +8,20 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- Record the v1.7.0 production cutover and installed OVH encrypted-backup
-  service/timer. No runtime or published artifact is rebuilt by this record.
+- No additional runtime change after the delivered v1.7.1 patch; delivery
+  records do not rebuild immutable release artifacts.
 
 ## [v1.7.1] - 2026-10-27
+
+- **Published and deployed on OC424.** Immutable source3b7e300, exactCI40458344881
+  passes7/7, release40459059246 passes10/10 and Docker40459610734 passes2/2.
+  Native arm64 binary/source/checksums/attestation match; healthy/restart0,
+  upgrade9/9, public23/23 and actual scoped-key forecast read13/13 pass. Both DB
+  schemas/integrity,13 registered clients,12 previously fresh reporting nodes,
+  Agent tokens/services and key scopes/expiry remain unchanged. Fresh encrypted
+  pre/post archives pass actual MAC-WAN old/new-image recovery and remain
+  retained; patch rollback is pinned v1.7.0 by
+  image, not a v1.6 auth downgrade. Owner UI acceptance remains separate.
 
 - **Bounded traffic-forecast correctness patch.** Reject a counter reset in any
   chronological interval, even when later usage recovers above the initial

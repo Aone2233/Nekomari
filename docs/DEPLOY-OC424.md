@@ -5,7 +5,7 @@ restored, and the two hostname/TLS traps that cost the most time.
 
 ## Current checkpoint (2026-10-27, Asia/Shanghai)
 
-OC424 serves **v1.7.0 / 8eb711e** at
+OC424 serves **v1.7.1 / 3b7e300** at
 `https://nekomari.orderly2233.org`. Scoped-key migration and session-only token
 rotation are deployed; no existing Agent token is rotated. OVH now receives
 nightly ciphertext, with MAC-WAN as the online identity/recovery runner. The
@@ -15,12 +15,58 @@ Older rollout sections are dated evidence, not the current version/node count.
 
 | Item | Observed evidence |
 |---|---|
-| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.0/8eb711e; upgrade 9/9 and public 23/23 |
+| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.1/3b7e300; upgrade 9/9,public23/23,scoped-key forecast13/13 |
 | Nodes | Owner deliberately removed one;13 registered clients retained, all 12 previously fresh CPU nodes remain fresh; UUIDs/tokens unchanged |
 | Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2, unchanged; generic `nekomari-agent` is not the reporter |
 | OVH | Alias `KSLE`, encrypted receiver + daily 03:30 UTC timer; AgentPID495903/restart0 unchanged |
 | MAC-WAN | Linux x86_64 user `macos`; online identity/isolated recovery, AgentPID976/restart0 unchanged; Hermes gateway briefly stopped/resumed, nowPID922780/restart0 |
-| Acceptance | Owner login/history/audit/API-key UI and dedicated Hermes key/live write handoff still pending; public401 is not authenticated acceptance |
+| Acceptance | Hermes private-key/disposable CLI writes pass; owner login/history/audit/API-key UI and complete caller inventory remain separate; public401 is not authenticated acceptance |
+
+## v1.7.1 rollout (2026-10-27 14:15:34 Asia/Shanghai)
+
+Panel-only forecast correctness patch PR92. Detect every chronological counter
+reset/negative total; checked integer byte growth preserves precision and refuses
+overflow. Distant duration/JSON-year crossing dates are omitted, not wrapped.
+No auth/schema/frontend/Agent/protocol/dependency change or fleet rollout.
+
+| Item | Evidence |
+|---|---|
+| Immutable source/publication | `v1.7.1` -> `3b7e30037307bcd1007b7725d0ea2386747880e0`; exactCI40458344881 7/7, release40459059246 10/10 including native amd64/arm64 deploy verification, Docker40459610734 2/2. Merge3d85255 has the identical tested tree |
+| OC424 pinned image | `ghcr.io/aone2233/nekomari:v1.7.1@sha256:ea6e2238f4c800ec34851e4c1e81ca603f1c2d7d70121730f5099fe967d1bfdd`; Panel index `sha256:72ff8626bf499745a2f33874d445a7af98308ea320a9a4e193cba6f48f8b021e` |
+| Source/binary identity | Anonymous Panel/Agent amd64/arm64 configs identify full3b7e300 and version1.7.1. Native/live arm64 SHA256 `fcbbbd07abde8cce9241133faf0ea48772cd76da96683d2660dcf4073fb3a07c` matches release checksums and source/tag/workflow attestation; native help passes without production data. amd64 recovery image `sha256:01a54d45778ea14d2034a8a93bc948c7fb4595c026af7ef0cea43efa1ac95e8e`, binary `3079b5c0a7085dbe54ab4c9892541032c56dd54cc78894a5e0d72e698c50d80a` likewise matches |
+| Pre-patch encrypted backup | OVH `oc424-20261027T055914268507Z-ecec43bb9a1b.tar.gz.age`,182954387bytes, SHA256 `24a05c81377abb05f7894c16bff4ff6532bf79e8e5f54fb0d586a5842d218ec5`. Installed encrypted service succeeds; same pair copied to MAC-WAN and regular-copied under `/srv/backups/oc424-encrypted/manual-v1.7.1-20261027` outside pruning. Actual isolated pinned-v1.7.0 recovery checks both DBs,13 clients/current scoped-key schema and cleanup in69.23s |
+| Local paired recovery | `/opt/nekomari/rollbacks/v1.7.1-20261027T061510Z-08dfe24e` retains per-DB WAL-safe snapshots, schemas, before/after compose, image refs, checksums and rollback instructions; old native v1.7.0 image stays installed. These are per-DB snapshots, not a cross-DB transaction |
+| Actual continuity | Both DB quick_check pass and full schemas are unchanged;13 registered UUIDs and existing Agent tokens are identical. All12 previously fresh CPU-reporting nodes remain fresh. Key scopes/expiry,zero rollout targets,nginx,recipients and public-probe override unchanged; OC424 AgentPID499631/restarts2 unchanged |
+| Bounded acceptance | Healthy/restart0,upgrade9/9,public23/23;0 new ERROR in bounded log window. Actual MAC-WAN scoped-key `admin:getTrafficForecast` returns13rows:9linear_rate and4insufficient with reasons, no invalid projections/dates. This is an authenticated API read, not owner-session UI/history/audit acceptance |
+| Post-patch encrypted backup | OVH `oc424-20261027T061543363125Z-7ac8520fc4a2.tar.gz.age`,183122373bytes,SHA256 `4da6cfa20eea2150de22612716c408d4120d8ae2083f145fe22504114ee0bf8b`; installed service succeeds and regular manual release copy is retained outside14-pair pruning. Same ciphertext copied to MAC-WAN; exact new-image isolated recovery passes in107.10s, both DBs/13 clients/current auth metadata and no plaintext/container remaining |
+| Hermes handoff | Owner-private key matches only nodes:read + nodes:write;365-day owner-selected expiry2027-10-27 13:38:02 Asia/Shanghai. Actual disposable create/read/edit/read/remove at13:49:10 passes and original13 metadata remains unchanged. Three reference overrides/marker/README permit reviewed CLI writes; no gateway/Agent restart,key rotation or token/install/exec/update grant. Not a complete runtime-caller inventory |
+
+### Patch rollback to v1.7.0 (no database downgrade)
+
+This patch changes no schema or credentials. If needed, preserve failure evidence,
+verify `docker-compose.before.yml` against the private recovery checksums, then
+restore that compose file and run `docker compose config --quiet` and
+`docker compose up -d --no-deps nekomari` under `/opt/nekomari`. Expect pinned
+v1.7.0/8eb711e,healthy/restart0; keep the current DBs so newer measurements and
+owner-configured keys are not discarded. This image rollback is prepared, not
+exercised on live production. Do not confuse it with the older v1.7.0->v1.6.29
+auth-migration rollback below, which requires paired pre-migration DB + old binary
+and would lose newer changes/restore old permissions.
+
+The first pre-patch isolated restore readiness check times out; a clean retry
+with bounded180s startup allowance passes in69.23s. Retained diagnostic pattern
+counts are not evidence of production errors. The backup metadata helper first
+misuses a context manager after creating/copying the ciphertext; inspecting and
+verifying the same pair finalizes evidence without another receive. A later
+post-patch MAC-WAN SSH banner timeout via OC424 happens before transfer; OVH
+reachability works, destination inspection confirms no partial/final file, and
+the same pinned-key SSH route via OVH transfers successfully. Two pre-switch
+scheduled public probes at06:03/06:13 UTC report3.740/10.903s edge latency above
+the3s threshold, while origin stays0.002s and all5/5samples return200. A post-switch
+explicit probe at06:19:52 UTC passes: origin0.002s/public1.011s/5of5; no threshold
+is relaxed. This is transient edge-path evidence, not a production SLO claim.
+No gate is weakened,failed attempt counted as success,
+backup deleted or private identity exported.
 
 ## v1.7.0 rollout (2026-10-27, Asia/Shanghai)
 

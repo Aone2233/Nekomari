@@ -1,12 +1,28 @@
 # MAC-WAN backup custody and recovery (2026-10-27, Asia/Shanghai)
 
 MAC-WAN is the owner-selected Hermes and online identity/recovery host (Linux
-x86_64, user `macos`). OC424 now serves v1.7.0/8eb711e; OVH (`KSLE`) stores
+x86_64, user `macos`). OC424 now serves v1.7.1/3b7e300; OVH (`KSLE`) stores
 nightly ciphertext. Actual fresh 13-node pre/post-cutover old/new-image recovery
 passes. The owner reports downloading the offline identity copy and authorizes
 cutover; **independent-media recovery is not claimed**. All existing readable
 plaintext/manual/local rollback copies are retained; no deletion policy is
 inferred from downloading a key.
+
+## v1.7.1 patch recovery (2026-10-27)
+
+Fresh installed-service pre/post ciphertext is retained on OVH and MAC-WAN,
+with independent regular release copies under OVH
+`/srv/backups/oc424-encrypted/manual-v1.7.1-20261027`, outside14-pair pruning.
+Actual isolated pinned-v1.7.0 pre-patch recovery passes in69.23s after a retained
+initial readiness timeout; pinned-v1.7.1 post-patch recovery passes in107.10s.
+Both DB integrity checks,13 clients,current scoped-key schema/marker,exact
+source/version and cleanup pass. Native packaged amd64 binaries match verified
+release checksums/attestations. Private identity stays on MAC-WAN; no decrypted
+scratch or restore container remains. Post-patch transfer switches from a
+timed-out OC424 proxy to strict pinned SSH via OVH after confirming destination
+absence. Exact archive/hash/image references are in [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+No backup or old image is pruned by this release batch. This does not establish
+independent-media recovery, unattended drills or measured production RPO/RTO.
 
 ## Custody and access boundary
 
@@ -173,8 +189,9 @@ deletion/longer-term retention still needs approval. Reverting the scheduler
 or removing a recipient does not decrypt/revoke old archives. Observe later
 scheduled success; freshness alerts/periodic drill policy are separate work.
 
-The release is deployed, with authenticated owner UI acceptance and Hermes's
-actual dedicated-key/live workflow handoff still pending. Agent-token read is
+The release is deployed. Hermes's owner-configured dedicated key/private
+handoff and actual disposable CLI writes now pass; owner authenticated UI and
+complete runtime caller inventory remain separate. Agent-token read is
 a separate unapproved fleet-wide grant; existing Agent tokens/services remain
 unchanged. See [`API-KEYS.md`](./API-KEYS.md) and
 [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md).
