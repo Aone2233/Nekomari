@@ -39,6 +39,20 @@ its exit criteria are met, not when the calendar says so.
 
 ## Current Delivery Checkpoint (2026-10-27)
 
+**v1.7.5 delivery (2026-10-27 20:15 Asia/Shanghai):** the boot-time coarse-rollup
+recovery scan was bounded and deployed. The statement constrained the tier
+through a join on the resolutions table, so stale statistics drove it from the
+resolution index and re-read every series' rows once per metric; it now binds the
+tier id and forces the series-leading index on SQLite. Released binaries against
+a production-shaped restored store with no statistics: 1,653 ms versus
+`context deadline exceeded` after 31,458 ms for v1.7.4. Exact CI 7/7, release
+10/10, Docker 2/2, OC424 upgrade9/9 with 14 clients / 2 API keys / Agent PID and
+restarts unchanged, and MAC-WAN pinned v1.7.5 recovery passes on fresh pre- and
+post-upgrade ciphertext. v1.7 is released and deployed; the owner's UI acceptance
+is closed on the owner's report, while independent-media restore, first-nightly
+observation and the remaining owner decisions stay open. No 200-node work
+resumed.
+
 **Adjusted active objective (owner-authorized):** close v1.7's actual handoff and
 owner acceptance, then continue independently verified v1.8 observability/
 correctness batches. The full v1.8-v2.1 roadmap is not one continuous task.

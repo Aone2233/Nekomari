@@ -2476,3 +2476,56 @@ The five-minute panel log sample had no panic or agent RPC 401 lines.
 Theme store: official submission script accepted the published v0.3.0 ZIP and
 preview in read-only preflight. No official Issue or PR has been submitted;
 the full application in the theme repository remains pending author review.
+
+### v1.7.5 — recovery-startup fix (2026-10-27)
+
+Source change `2d71cbe`; release tag `v1.7.5` points at `c84c3cc` (the same
+runtime source plus the changelog). Exact CI for `c84c3cc`
+[40497025299](https://github.com/Aone2233/Nekomari/actions/runs/40497025299) 7/7;
+release [40498907426](https://github.com/Aone2233/Nekomari/actions/runs/40498907426)
+10/10 including both `verify the release deploys` jobs; Docker
+[40499760158](https://github.com/Aone2233/Nekomari/actions/runs/40499760158) 2/2.
+Image index `sha256:57b89f1601013a215b9afd9062c6612d12e1c158a5f0a2e9b373458ae4d097e8`,
+arm64 `sha256:ed162ac2cd13b4571eb449a38c6a81b573d10e13d22ef9b5b59b135f4eadff48`,
+amd64 `sha256:19403992cdd2442f891661188201a95f0d5094e1bc74a258378f7eef3e455ecf`.
+Downloaded assets match `SHA256SUMS.txt`, `gh attestation verify` passes (gh
+2.103.2, checksum-verified download), and the image labels report version 1.7.5
+with revision `c84c3cc`.
+
+**Isolated acceptance, released binaries, no source tree.** A production-shaped
+metrics store was built from the live store's shape (27 definitions, 594 series,
+498,960 rollups, 345 MB, real t-digests) with its planner statistics never
+built, then driven through a first-run install on OVH: **v1.7.5 opened the
+metric store in 1,653 ms; v1.7.4 hit `context deadline exceeded` after
+31,458 ms on the same data.** The old binary's failure is the production
+symptom reproduced on a disposable host, not a new defect.
+
+**Recovery.** Fresh pre-upgrade ciphertext
+`oc424-20261027T115913389020Z-817b652f1340.tar.gz.age`
+(SHA256 `5343a1f621ac5d3dc180c4ad2c949e622026d3f8ec665bc4745e4334a55fb515`,
+183,505,524 bytes) restored on MAC-WAN with the pinned v1.7.5 amd64 image
+(`drill-passed`, `network=none`). The pinned v1.7.4 image failed the same
+archive with `operation timed out` — the rollback caveat below follows from
+that, and the scratch-`ANALYZE` workaround remains the only path for that image.
+
+**OC424 switch.** Rollback anchor
+`/opt/nekomari/rollbacks/v1.7.4-20261027T120831Z-88d828b2`: WAL-folded
+`komari.db` and `metrics.db` (both `quick_check=ok`), before/after compose,
+old image digest, `ROLLBACK.txt`, `SHA256SUMS`. Pre-switch v1.7.4/b0ea917
+healthy, restarts 0, 14 clients, `komari-agent-oc424-original-node.service`
+MainPID 499631 / NRestarts 2. Post-switch v1.7.5/c84c3cc healthy, restarts 0,
+`panel-upgrade-check` 9/9 (0 ERROR lines in 5 minutes, 3 upgrade archives),
+14 clients and 2 API keys unchanged, Agent PID and restart count unchanged, and
+task series resumed within two minutes (task 1 rows 19,100 -> 19,125 across the
+restart). Post-upgrade ciphertext
+`oc424-20261027T121042891907Z-2cbbe93e4e8a.tar.gz.age`
+(SHA256 `c0d5e3c9ff911bfc0383d3c0baa964c68ae96675f27c5bb8133cdca36f2ab94b`,
+183,560,017 bytes) also restores with the pinned v1.7.5 image.
+
+**Rollback caveat.** Reverting to the pinned v1.7.4 image keeps the current
+databases, nodes and tokens (v1.7.5 changes no schema and no auth), but that
+image cannot restore a fresh archive on its own: on the same ciphertext it
+exceeds the startup deadline until the scratch copy is `ANALYZE`d. Restoring an
+off-host copy of this period therefore needs the v1.7.5 image, or that
+documented workaround — and neither replaces the still-unverified
+independent-media restore.

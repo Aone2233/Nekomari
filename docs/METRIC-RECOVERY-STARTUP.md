@@ -1,6 +1,6 @@
 # Recovery startup: the boot-time coarse-rollup scan
 
-Status: source fix in review. Date: 2026-10-27. Applies to the metric store
+Status: fixed and delivered in v1.7.5 (see `DEPLOY-OC424.md`). Date: 2026-10-27. Applies to the metric store
 opened by `internal/metricstore.InitializeStore`.
 
 This document records an investigation, not a deployment. Nothing here ran
