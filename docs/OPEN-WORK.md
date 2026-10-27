@@ -14,25 +14,48 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**Current checkpoint (2026-10-26):** OC424 serves v1.6.27/12ad73a at
-`nekomari.orderly2233.org`; the five tools now open inside the admin shell.
-The owner confirms the current result is fine and requests next-stage development.
-The bounded v1.7 batches start from the exact live source and build on reviewed
-main, not the separate accumulated v1.7+ workspace. Production remains v1.6.27
-until a version passes its release gates.
+**Current checkpoint (2026-10-26):** OC424 serves **v1.6.28/502a269** at
+`nekomari.orderly2233.org`; the five tools still open inside the admin shell.
+The first v1.7 query-hardening batch ships early as a compatible 1.6 patch,
+not the accumulated v1.7+ workspace or current main. Exact-source CI passes
+7/7, release 10/10 (including native amd64/arm64 deployment verification),
+both Docker jobs and OC424 upgrade check 9/9. Both DB schemas are unchanged;
+14 registered clients and 12 fresh CPU-reporting nodes match the pre-upgrade
+baseline. OVH holds a verified paired backup and passed an isolated old-image
+restore drill. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for digests, rollback,
+public asset/private-site checks and retained refusals. Authenticated live
+history/audit UI acceptance remains pending explicit credentials or the owner;
+401 responses are not evidence that authenticated query caps passed live.
 
 **Adjusted active target (owner authorization, 2026-10-26):** complete bounded
 v1.7 security batches with explicit verification and release gates, rather than
 trying to finish every long-term version in one continuous run. Query hardening
 PR78 is merged as 502a269 with merge CI40275930537 successful (7/7).
 Scoped-key PR79/5b005d5 is merged as 3dd20fb with an identical tree and merge
-CI40280921167 successful (7/7). Report/queue PR80/41dda98 is merged as fc84915;
-exact merge CI40298579581 is successful (7/7). All three remain unreleased.
-The scoped-key contract is in [`API-KEYS.md`](./API-KEYS.md); its local/UI/migration evidence is retained,
-not rerun in every backend-only batch.
+CI40280921167 successful (7/7). Report/queue PR80 is merged as fc84915 with exact
+merge CI40298579581 successful (7/7). Only query hardening is released; scoped
+keys and report/queue changes remain unreleased. Client-token rotation PR81's
+original 13cdcc5 passes exact-source CI40313616989 (7/7); this is original
+evidence, not CI for its subsequent main integration. It is not included in
+this deployment. The scoped-key contract is in [`API-KEYS.md`](./API-KEYS.md);
+its local/UI/migration evidence is retained, not rerun in every backend-only batch.
 
-The merged report/queue batch clamps only non-negative, in-range RAM/Swap/disk
-`used > total` snapshots after all other validation succeeds. Accepted uploads record a
+**Continuation checkpoint (2026-10-27):** release-image source identity PR83 is
+merged as e234385 after exact-source CI40324022778 passes 7/7. It verifies the
+resolved release checkout and labels both images with that source; actual
+publication acceptance waits for the next release, without republishing v1.6.28.
+PR81 is integrated with that main for review and new exact-candidate CI; only
+workflow/checker/docs change from its original 13cdcc5, not runtime or the
+embedded theme. Next, prepare gated v1.7 cutover or independent engineering
+while its external gates remain open. The full roadmap is not the active single
+batch. Source delivery and production acceptance remain separate; no API-consumer
+migration, token rotation or backup-key custody is silently approved. See the
+post-v1.6.28 target in
+[`LONG-TERM-PLAN.md`](./LONG-TERM-PLAN.md).
+
+The merged isolated report/queue batch starts from 3dd20fb. It clamps only
+non-negative, in-range RAM/Swap/disk `used > total`
+snapshots after all other validation succeeds. Accepted uploads record a
 resource-set warning once per anomaly episode; healthy samples reset it.
 Invalid uploads and failed persistence do not update runtime/anomaly state.
 Queue entries are retired after successful node removal, or by the existing
@@ -40,23 +63,27 @@ minute scheduler once empty and idle for five minutes. Deleted-queue polls wake
 without recreating state or reading a replacement generation. Acknowledgement,
 expiry, coalescing, overflow and removal clear discarded payload references;
 the newest-128 limit, command TTLs and ordinary reconnect behavior stay intact.
-That third batch is not itself a transport credential-revocation fence; the
-fourth independent candidate below adds that boundary.
+This is not a transport credential-revocation fence: authenticated in-flight
+requests/connections are not redesigned here. Client-token rotation remains a
+separate unreleased PR, not authorization to rotate live credentials.
 
-The two former data-safety findings are merged but remain unreleased. Their
-targeted ordinary/race checks cover the affected packages, real HTTP/WebSocket
-ingest and REST removal, queue lifecycle
+The two former data-safety findings are merged in this bounded source batch
+and remain unreleased. Targeted ordinary/race checks cover the
+affected packages, real HTTP/WebSocket ingest and REST removal, queue lifecycle
 and scheduler wiring. Final affected checks pass 211 top-level tests (524 with
 subtests) across six packages ordinarily/race, using retained final runs per
 package rather than claiming one run. The Linux CI race gate now includes the
 four report/queue/runtime packages. OVH's exact prebuilt race executables pass
 nine top-level groups (13 with visible subtests) in private fixtures, with
 Agent495903/restart0 unchanged. This is not a remote-native build or production
-acceptance. No Agent/protocol, dependency, frontend, later metrics/history or
-backup-policy change was part of that third batch.
+acceptance. No Agent/protocol, dependency,
+frontend, later metrics/history or backup-policy change is part of this batch.
 
-**Current fourth batch:** `codex/v1.7-client-token-rotation`, based on fc84915,
-adds session-only `admin:rotateClientToken` and a same-page node-table dialog.
+**Fourth source batch (original evidence, 2026-10-26):**
+`codex/v1.7-client-token-rotation`, originally based on fc84915 and now integrated
+with main e234385, adds session-only `admin:rotateClientToken` and a same-page
+node-table dialog. Integration preserves the original runtime/frontend bytes;
+the retained checks below are dated evidence, not new integration-CI results.
 Existing account TOTP policy applies; API keys cannot rotate. A per-node gate
 orders credential retirement with short Agent mutations; old credentials,
 delayed handshakes, sockets, queues, POST presence, terminals and file relays
@@ -81,24 +108,20 @@ one required-module-only advisory remains. This is not a full-suite/native
 platform, production, SLO or capacity claim. No release tag, live credential
 rotation, Agent/protocol/dependency/schema change or OC424 app upgrade occurs.
 
-**Process check:** OC424 Panel is healthy/restart0; its actual Agent is
-`komari-agent-oc424-original-node.service`, active PID499631/restarts2. Only
-`panel-probe.service` was failing against the stale hostname. An explicit
-`PANEL_URL=https://nekomari.orderly2233.org` systemd drop-in restores a successful
-5/5 probe (10:51:13Z); no Panel/Agent restart. Root disk: OC424 42%, OVH 7%.
-
-The application-level all-roadmap goal was still observed paused, and this
-session exposes no objective/resume control. The repository target is updated
-and development continues under owner authorization; this is not a claim that
-the application's stored goal has been edited, resumed or completed.
+The application-level all-roadmap goal still reports paused. The owner explicitly
+requests that it be revised and work continue, revoking the earlier pause as a
+work instruction, but the available goal interface cannot edit the objective or
+resume app state. The repository target above is updated and development
+continues; the stored app goal has not been edited, resumed or marked complete.
 
 The repository's key-consuming scripts are inventoried; no helper reads a key
 from SQLite. Out-of-repository live consumers and secure replacement provisioning
 remain a **release/cutover gate**, not proof supplied by source tests. Legacy keys
 become30-day `nodes:read` credentials; this intentional security compatibility
-change needs an explicit migration arrangement under the v1.x policy. No tag or
-OC424 credential/schema update occurs in this preparation batch. A downgrade needs
-the old binary **and pre-upgrade DB**, not the existing image-only rollback.
+change needs an explicit migration arrangement under the v1.x policy. No scoped-key
+tag or OC424 credential/schema migration has occurred. A downgrade **after that
+migration** needs the old binary **and pre-upgrade DB**; the query-only v1.6.28
+patch still supports image-only rollback without discarding newer data.
 
 **Current priorities:** 200-node work remains deferred, with its original limits
 and all26 failed reports preserved. Use OC424 for bounded real-environment
@@ -111,9 +134,11 @@ backup key custody and other account/privilege/SLO policies are separate gates.
 ordinarily/race (379 including subtests); real HTTP/WebSocket and REST controls,
 vet, module verification, Panel build and reachable binary scan pass. OVH's exact
 prebuilt race executable passes12 focused groups in private fixtures without
-Agent restart. This is not remote-native/arm64/Windows CI or a production update.
-Initial baseline and fixture failures are retained; no full-suite/frontend/
-capacity rerun or legacy-credential/configuration change occurs.
+Agent restart. That earlier source/OVH preparation was not native-platform CI or
+production acceptance; the subsequent v1.6.28 release and deployment evidence is
+recorded separately above. Initial baseline and fixture failures are retained;
+no redundant local full-suite/frontend/capacity rerun or legacy-credential/
+configuration change occurs.
 
 **Updated 2026-10-19, after the `2026-10-18` review** (`docs/audits/2026-10-18/SUMMARY.md`). Three
 batches shipped: the low-risk one (sensitive-operation gate on credential export and fleet rollout,
@@ -153,7 +178,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | D9 | **Authentication policy, as a group** | (a) `sso_id` after a password change; (b) the scoped-key candidate replaces blanket exemption with exact grants, but live consumer migration/compatibility acceptance is still required; (c) OIDC + 2FA challenge flow; (d) globally invalidated sessions | Scoped-key source work does not silently decide the other account policies or authorize the compatibility cutover |
 | D10 | **How much of the remaining frontend polish to do at once** | Three known batches: ~33 unconverted `toLocaleString*` sites (the helper now exists), ~24 re-implementations of the mutation-envelope check, and 8 `dangerouslySetInnerHTML` sites fed by locale strings | Each is mechanical but wide; they are the kind of change that is safe alone and risky mixed with a release |
 | D11 | **Agent privilege and platform footprint** | Non-root agents are still the exception (MAC-WAN); ICMP tasks force root on hosts without `setcap`. Windows/macOS agent footprint and peak memory are unmeasured. Ping precision shipped in v1.6.24, so it is no longer part of this decision | Moving agents between users/init systems is a fleet-wide change; the footprint gaps are measurements, not code |
-| D12 | **Encrypted-backup key custody and restore authorization** | Recommend source-side age public recipients, ciphertext-only OVH storage, independent recovery escrow and a separately approved restore runner. Decide custodians/unlock and old plaintext-copy retention before cutover. | Source tooling in the separate development workspace does not establish production encryption or a custody/restore drill; the bounded v1.7 candidates change no backup policy |
+| D12 | **Encrypted-backup key custody and restore authorization** | Recommend source-side age public recipients, ciphertext-only OVH storage, independent recovery escrow and a separately approved restore runner. Decide custodians/unlock and old plaintext-copy retention before cutover. | Source tooling in the separate development workspace does not establish production encryption or a custody/restore drill; v1.6.28 changes no backup policy |
 
 ## How to read this
 
@@ -172,10 +197,10 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 
 | Item | Where | Why it is still here |
 |---|---|---|
-| History query hardening release/acceptance | `web/rpc/jsonrpc/common.record.go`; `web/rpc/jsonrpc/budget.go` | Implemented in the bounded v1.7 candidate: 366-day ceiling, shared historical pool/budgets/cancellation and guest hidden/deleted-history filtering. Not released/deployed; API-key migration and unrelated roadmap work are excluded |
-| Client-token rotation release/acceptance | `docs/CLIENT-TOKEN-ROTATION.md`, `web/rpc/jsonrpc/admin.client.go`, `frontend/src/pages/admin/nodeTable/RotateTokenButton.tsx` | Implemented/verified in the fourth bounded candidate: session/step-up-only API/UI and old-credential runtime retirement. Not released; independent SSH/console recovery, edit/import compatibility and bounded live acceptance are still gates |
+| History query hardening owner acceptance | `web/rpc/jsonrpc/common.record.go`; `web/rpc/jsonrpc/budget.go` | Released/deployed as v1.6.28/502a269: 366-day ceiling, shared budgets/cancellation and guest visibility filtering. Release/platform and OC424 health/data checks pass; authenticated live history UI acceptance remains pending |
+| Client-token rotation release/acceptance | PR81, `docs/CLIENT-TOKEN-ROTATION.md` on `codex/v1.7-client-token-rotation` | Original 13cdcc5 passes CI7/7; integration with e234385 requires its own exact-candidate CI before merge. Not deployed. Session/step-up-only API/UI with old-credential retirement; independent recovery, edit/import compatibility and bounded live acceptance remain gates. Never patch live SQLite to rotate |
 | Scoped API-key release and consumer migration | `internal/apikeys/`, `pkg/rpc/apikey_scopes.go`, `docs/API-KEYS.md` | PR79 merged as 3dd20fb; exact PR and merge CI each pass 7/7. Not released: OC424 still has the old global credential policy. Inventory/provision actual legacy consumers before the intentional read-only migration |
-| Audit-log pagination hardening release/acceptance | `web/rpc/jsonrpc/admin.system.go` | Implemented in the bounded v1.7 candidate: 1-1000 rows, checked offset, strict field binding, no fetch beyond total and SQL cancellation. REST filtering/CSV compatibility retained; not released/deployed |
+| Audit-log pagination hardening owner acceptance | `web/rpc/jsonrpc/admin.system.go` | Released/deployed as v1.6.28: 1-1000 rows, checked offsets, strict binding and cancellation. REST/filter/CSV compatibility verified in exact-source CI; authenticated live audit UI acceptance remains pending |
 | `/plugin/*` is still owned by the installed theme | `web/public/public.go` | **Accepted**: the panel took back only its own pages. Tightening it would break installed themes |
 | An installed theme that renders "no data" as 0 | outside this repository (SAO) | **Accepted**: the default document is the panel's own now; the remaining risk is a third-party bundle |
 
@@ -218,7 +243,8 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | Most agents still run as root; only MAC is non-root | `docs/DEPLOY-OC424.md` | The NOSLA pattern (unprivileged user + `AmbientCapabilities=CAP_NET_RAW`) works; Alpine has no `setcap`. OpenRC install support shipped in v1.6.25, but moving users is still a fleet-wide change |
 | Windows local builds can fail on a locked esbuild temp file | Windows dev environment | The build itself is deterministic on Windows: two builds with a project-local `TEMP`/`TMP` were byte-identical (819 files, diff 0). With the system `%TEMP%`, esbuild sometimes cannot delete its temp file ("Access is denied"); CI's Windows runner is unaffected. Not a source change — a dev-environment workaround until the temp cleaner/AV exclusion is settled |
-| Off-host backups are not encrypted | `docs/DEPLOY-OC424.md` Off-host backup | v1.6.25's backup now includes the three upgrade archives (~160 MB) and was successfully restored into a scratch panel (v1.6.24 served `/api/public` 200). The remaining decision is encryption at rest (`age`/`gpg`); 14 copies need ~2.2 GB of the 366 GB free |
+| Off-host backups are not encrypted | `docs/DEPLOY-OC424.md` v1.6.28 rollout | Fresh paired pre-v1.6.28 backup is retained separately on OVH (164 MB); checksum/zstd/isolated v1.6.27 restore pass. Nightly 14-copy retention is unchanged. D12 key custody/restore authorization still blocks encryption cutover; this is not an encrypted restore |
+| Release-image source identity publication acceptance | `.github/workflows/docker.yml`, `deploy/docker-workflow-check.py` | Source fix verifies checkout HEAD against the resolved local release tag before asset download and uses its commit in both image labels. Nine existing policy cases and eight real-Git identity cases cover defaults, annotated tags, mismatch/missing/injection refusals. Actual image-publication acceptance awaits the next eligible release; immutable v1.6.28 retains its disclosed old label |
 | OIDC + 2FA makes SSO login fail-closed with no way for the browser to answer the challenge | `docs/ROADMAP.md` §F12 | Deliberately shipped as a gate, not half a state machine. Needs a one-time pending token plus a code prompt; production impact is zero while OIDC is off |
 | `sso_id` survives a password change, and `DeleteAllSessions()` is global | `database/accounts/` | Policy questions now that the SSO path requires TOTP; recommendation was (b)+(c) in the audit report |
 | A committed admin password from the SECRETS incident still has to be changed | `docs/SECRETS.md` incident 4 | An ops action on the live panel, not a repository change |

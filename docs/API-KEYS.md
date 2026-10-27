@@ -2,8 +2,9 @@
 
 This bounded batch replaces the global `configs.api_key` credential with named,
 expiring keys. It does not add user roles, client-token rotation, metrics/history
-features, encrypted backups or a production deployment. OC424 remains v1.6.27
-until the compatibility and release gates below pass.
+features, encrypted backups or a production deployment. OC424 serves the
+query-only v1.6.28/502a269 patch; scoped-key migration is not deployed until
+the compatibility and release gates below pass.
 
 ## Credential contract
 

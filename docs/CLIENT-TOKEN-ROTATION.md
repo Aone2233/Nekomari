@@ -3,7 +3,15 @@
 This is the fourth bounded v1.7 source batch, based on report/queue merge
 `fc84915`. It adds a supported replacement operation instead of editing live
 SQLite. It does not rotate any production credential, update an Agent binary,
-change the protocol/schema or deploy the panel. OC424 remains v1.6.27/12ad73a.
+change the protocol/schema or deploy the panel. OC424 remains v1.6.28/502a269,
+which contains query hardening but none of this token-rotation batch.
+
+**Integration checkpoint (2026-10-27):** the original 13cdcc5 passes exact-source
+CI40313616989 (7/7). Integration with main e234385 changes only delivery
+workflow/checker/docs, retaining its runtime/frontend and embedded-theme bytes.
+The verification below remains dated original evidence; the integrated
+candidate requires its own exact-source CI before merge. Source merge does not
+authorize production credential rotation or waive the release gates below.
 
 ## Authorization and credential contract
 

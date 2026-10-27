@@ -3,23 +3,24 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
-## Current process and hostname checkpoint (2026-10-26)
+## Current checkpoint (2026-10-26)
 
-OC424 still serves **v1.6.27 / 12ad73a** at
-`https://nekomari.orderly2233.org`. The v1.7 source batches are not deployed.
-Older rollout sections below are dated evidence, not the current host/version.
+OC424 serves **v1.6.28 / 502a269** at
+`https://nekomari.orderly2233.org`. Only the first bounded v1.7 query-hardening
+batch ships early as this compatible patch; scoped keys, report/queue changes,
+client-token rotation and backup encryption are not deployed. Older rollout
+sections are dated evidence, not the current host/version or fleet count.
 
 | Item | Observed evidence |
 |---|---|
-| Panel | Docker `nekomari`, running/healthy, restart0; public endpoint HTTP200 |
-| Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2; unchanged during this work |
-| Unused unit | Generic `nekomari-agent` is inactive; that is not the reporting Agent or evidence of an outage |
+| Panel | Docker `nekomari`, running/healthy, restart0; public version/config HTTP200 |
+| Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2; unchanged during this deployment |
+| Unused unit | Generic `nekomari-agent` is inactive; it is not the reporting Agent |
 | OC424 disk | Root filesystem 42% used |
-| OVH isolated checks | SSH alias `KSLE`; root filesystem 7% used, about 365 G free; existing Agent PID495903/restart0 unchanged |
+| OVH | SSH alias `KSLE`; root filesystem 7% used, about 365 G free; Agent PID495903/restart0 unchanged |
 
-The failed process was **`panel-probe.service`**, which was still using the old
-`https://komari.orderly2233.org` default and repeatedly reporting curl DNS errors.
-Only this previously absent systemd drop-in was added:
+The earlier failing process was `panel-probe.service`, still using the old
+`https://komari.orderly2233.org` default. Preserve the explicit deployed override:
 
 ```ini
 # /etc/systemd/system/panel-probe.service.d/10-public-url.conf
@@ -27,17 +28,56 @@ Only this previously absent systemd drop-in was added:
 Environment=PANEL_URL=https://nekomari.orderly2233.org
 ```
 
-After `systemctl daemon-reload` and a single start of the oneshot probe, the
-2026-10-26T10:51:13Z check reports `Result=success`, `ExecMainStatus=0`,
-`origin=0.002s public_max=0.267s pop=HKG cache=DYNAMIC samples=5/5`.
-No Panel/Agent restart, token rotation, DB write or application update occurred.
+The probe-only repair did not restart the Panel/Agent. A separate, explicit
+post-upgrade probe succeeds at 12:12:20Z, `Result=success`, exit0.
 `deploy/panel-probe.sh` retains its historical fallback URL; deployed units must
-set `PANEL_URL` explicitly. Preserve this override on future script updates.
+set `PANEL_URL` explicitly.
 
-The fourth v1.7 candidate's OVH race tests use private synthetic fixtures, not
-`/srv/backups/oc424` or production credentials. Logs/checksums are retained before
-removing this batch's disposable test executables/fixtures. This is not an
-encrypted-backup restore drill or OC424 v1.7 acceptance.
+## v1.6.28 rollout (2026-10-26)
+
+Panel-only query hardening from exact source
+`502a269e7282d2db50bc3d28a023c787b0ff028e` (PR78), not current main or the
+unreleased token-rotation branch. Compared with v1.6.27, there is no Agent,
+protocol, dependency, frontend source/archive, database/schema or credential
+behavior change. The five tools retain their in-panel routes and shared theme.
+History is bounded to 366 days with shared admission/read budgets and
+cancellation; guests cannot read hidden/deleted history. Audit pagination is
+bounded to 1000 rows with checked offsets, strict binding and cancellation.
+
+| Item | Evidence |
+|---|---|
+| Release | Immutable tag `v1.6.28` on `502a269`; exact-source CI `40275930537` passes 7/7; release `40318142810` passes 10/10, including native amd64/arm64 deployment verification; Docker `40319017219` passes both jobs |
+| Pinned panel image | `ghcr.io/aone2233/nekomari:v1.6.28@sha256:dccebe2e87518f78aba8e918de9d3553878f3ddc4a7ecade5114e89af6d3c102` (arm64 manifest; anonymously pullable) |
+| Binary provenance | Checksum and release-workflow attestation verified for tag/source/run; extracted image binary SHA-256 `3118261e9a4df31faeb6a01a9c5a0d4b85ba43b80c41e41bda55c3ea791e2e0c` matches the arm64 release asset; native image `--help` reports v1.6.28/502a269 |
+| Off-host recovery | OVH `/srv/backups/oc424/manual-pre-v1.6.28-20261026T115500Z/oc424-pre-v1.6.28.tar.zst`, mode600, 163727209 bytes; SHA-256 `3ac66ba822087ef3450b1bf65596d8dc26374899eea297f0f3bce479d6994df4`; checksum and zstd integrity pass. Both WAL-safe SQLite snapshots, compose, INFO and three upgrade archives are included; separate from nightly 14-copy retention |
+| Restore drill | OVH restored both current snapshots into disposable clones and the old amd64 v1.6.27 image; both DBs pass `quick_check` before/after, 14 clients, version/hash correct, `/api/public` 200, restart0. Network `none`, no host ports; scratch data/container removed, original backup retained. Not arm64/fleet acceptance or an encrypted restore |
+| Local recovery | Root-private `/opt/nekomari/rollbacks/v1.6.28-20261026T120727Z-5e33b1bc`: both SQLite online snapshots, checksums, old/new compose and image references, logs and `ROLLBACK.txt`. Snapshots are WAL-safe per DB, not an atomic cross-DB transaction |
+| Switch | Only the compose image line changes; `docker compose up -d --no-deps nekomari`. Container starts at 12:09:17Z; upgrade check finishes 12:09:43Z. Agents, nginx, backup policy and probe hostname override remain unchanged |
+| Upgrade check | **9 passed, 0 failed, 0 skipped**: healthy/restart0, exact version/hash, public config and HTML, read-only main DB integrity, three upgrade archives (53.3 MB), zero ERROR lines |
+| Additional acceptance | Public version/config, homepage, admin and all five child-route HTML shells plus ten referenced JS/CSS assets return 200 with correct MIME types. Private-site client/log/RPC calls without credentials return 401. Both live DBs pass `quick_check` and match pre-upgrade schema fingerprints |
+| Node reports | 14 registered clients; 12 have CPU rollups within 120 s before and after the switch. NOSLA Gen2 and Windows-WAN already lack fresh CPU data in the pre-upgrade snapshot; no claim that 14/14 are online. OC424/OVH Agent PIDs/restarts are unchanged |
+| Authenticated acceptance | **Pending**, not passed: no explicit production test credential is provisioned. No credential/session is recovered from SQLite, Agent files or backups. Synthetic authenticated release verification does not replace the owner's live history/audit UI acceptance |
+| Rollback | Restore `docker-compose.before.yml` from the local recovery directory and recreate only `nekomari`; expect v1.6.27/12ad73a. No schema migration means image-only rollback is sufficient; do not restore DB snapshots unnecessarily and discard newer measurements |
+
+**Known provenance metadata caveat:** the Docker workflow-run's OCI revision
+label reports default-branch `fc84915`, despite checkout and packaged assets
+being from `502a269`. The verified release attestation, extracted binary hash
+and `/api/version` establish the deployed source; the label does not. Keep this
+published image immutable. Source-identity PR83 is merged as e234385 on
+2026-10-27 after exact-source CI40324022778 passes 7/7: verify the resolved
+release checkout before asset download and explicitly label both images from
+that commit. Actual registry publication/label acceptance waits for the next
+release; this source fix does not rebuild v1.6.28 or change the running image.
+
+**Retained non-production refusals:** the original local `gh` lacked attestation
+support; a temporary checksum-verified modern CLI verified the signature and
+workflow/source identity. The first restore pull selected the old arm64 image
+on amd64 OVH; inspection rejected it before execution and the correct amd64
+digest was used. The first local preflight compared different fingerprint
+normalizations (NULL-SQL auto indexes omitted); it stopped before compose
+changed. Comparing all ordered `sqlite_master` rows proved both schemas
+unchanged, and the verified existing recovery point was reused. Initial
+evidence is retained; none is counted as a successful run.
 
 ## After every panel upgrade
 
@@ -46,7 +86,7 @@ minutes of the upgrade — the log window is the last `LOG_WINDOW` measured from
 from the moment the container started:
 
 ```bash
-EXPECTED_VERSION=v1.6.20 EXPECTED_HASH=01be2cf sudo -E bash deploy/panel-upgrade-check.sh
+sudo env EXPECTED_VERSION=v1.6.28 EXPECTED_HASH=502a269 bash deploy/panel-upgrade-check.sh
 ```
 
 It prints one `PASS` / `FAIL` / `SKIP` line per check and exits `0` (all passed, SKIP is not a
@@ -69,11 +109,10 @@ counted — they are the rollback path. If `docker` or `sqlite3` is missing, the
 corresponding checks are `SKIP`ped and named rather than reported as failures.
 
 A `FAIL` is a reason to stop and assess rollback rather than to keep going: the
-previous compose line is in that rollout's **Rollback** row below. An image-only
-rollback does not restore authentication state after the v1.7 scoped-key migration;
-use the old binary/image **and paired pre-upgrade DB snapshots**, accounting for
-credential resurrection and newer data. The counted upgrade archive deliberately
-excludes `metrics.db` and is not a full paired backup. `deploy/panel-upgrade-check.test.sh`
+previous image and paired DB snapshots belong in that rollout's **Rollback** row.
+The upgrade archive excludes `metrics.db` and is not a full backup. Image-only
+rollback is safe for v1.6.28's query-only patch, not for a future authentication
+migration that rewrites persistent credentials. `deploy/panel-upgrade-check.test.sh`
 is the offline test for the script (fake panel + `docker`/`sqlite3` stubs; no host involved).
 
 The rollout sections below predate the script; their **Verification** rows are what it prints,
