@@ -8,6 +8,17 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **Encrypted off-host backup tooling (bounded v1.7 preparation).** Add opt-in
+  native-age producer/receiver, WAL-safe local SQLite snapshots bound to captured
+  metrics configuration, encrypted selected assets/manifest, exclusive publication
+  and exact-prefix retention that preserves the just-received copy. Verification
+  bounds paths/size and checks full authentication, hashes and both DBs; recovery
+  targets only new directories or a local-only, digest-pinned, offline Docker
+  container. Real-age/WAL regressions and synthetic restore drills run locally,
+  on OVH and in CI. No production keys, schedule, plaintext retention, credentials,
+  app deployment or 200-node work changes; custody/escrow and actual production
+  recovery remain D12 release gates. See `docs/ENCRYPTED-BACKUPS.md`.
+
 - **Session-only Agent-token rotation (bounded v1.7 preparation).** A dedicated
   REST/RPC/WebSocket operation and in-panel node dialog replace credentials with
   256-bit random tokens after session/optional existing TOTP authorization. Old

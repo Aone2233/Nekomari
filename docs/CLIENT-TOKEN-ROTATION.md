@@ -9,9 +9,10 @@ which contains query hardening but none of this token-rotation batch.
 **Integration checkpoint (2026-10-27):** the original 13cdcc5 passes exact-source
 CI40313616989 (7/7). Integration with main e234385 changes only delivery
 workflow/checker/docs, retaining its runtime/frontend and embedded-theme bytes.
-The verification below remains dated original evidence; the integrated
-candidate requires its own exact-source CI before merge. Source merge does not
-authorize production credential rotation or waive the release gates below.
+The verification below remains dated original evidence; integrated6a3b7eb
+passes its own exact-source CI40425302716 (7/7) and is merged as31a5b43.
+Source merge does not authorize production credential rotation or waive the
+release gates below.
 
 ## Authorization and credential contract
 

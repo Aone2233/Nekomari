@@ -79,6 +79,41 @@ counts from the JSON formatter rather than the default `stylish` output, which
 interleaves each finding's primary and related locations and so overstates the
 total by roughly 5%.
 
+## Encrypted-backup tooling (Linux, opt-in)
+
+The new backup format is tested with temporary keys/accounts/SQLite data only.
+Python 3.10+ uses its standard library; install native `age` / `age-keygen`
+(tested with 1.2.1). Missing encryption tools fail instead of skipping.
+
+```bash
+python3 -W error::ResourceWarning deploy/encrypted_backup_test.py
+```
+
+The 22 groups cover real WAL snapshots/config binding, multi-recipient recovery,
+authentication/hash/path/type/size refusals, no overwrite, locks/termination,
+safe retention under clock/nonce ordering and remote-Docker refusal before
+decryption. They need neither production access nor Docker: Docker contracts
+in this harness use stubs. CI's `deploy-scripts` job installs age and runs them.
+
+For a real synthetic restore use a compatible prebuilt Panel and a trusted,
+already-installed digest-pinned image containing `/app/nekomari` and `curl`:
+
+```bash
+python3 -W error::ResourceWarning deploy/encrypted_backup_drill_test.py \
+  --panel-binary /private/tools/nekomari \
+  --panel-image 'sha256:<installed-image-id>'
+```
+
+This installs a new synthetic Panel, encrypts/receives/verifies its backup,
+restores into a network-disabled/no-host-port container, tests a wrong-version
+refusal and cleans up owned data/containers. It cannot target an existing panel
+URL/account/DB. Local Unix-socket Docker is required; Docker is privileged.
+CI's `panel-smoke` job reuses its existing candidate binary to build the scratch
+image and performs this drill without a second Go/frontend build. Local/OVH
+preexisting-image results are synthetic backward-compatibility evidence, not
+current-candidate/platform or production escrow-path acceptance. See
+[`ENCRYPTED-BACKUPS.md`](./ENCRYPTED-BACKUPS.md) for the D12 rollout gates.
+
 ## Environment-dependent tests
 
 Some upstream tests exercise the real network and therefore depend on the host
