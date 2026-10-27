@@ -14,7 +14,7 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**Current checkpoint (2026-10-26):** OC424 serves **v1.6.28/502a269** at
+**Current checkpoint (rechecked 2026-10-27):** OC424 serves **v1.6.28/502a269** at
 `nekomari.orderly2233.org`; the five tools still open inside the admin shell.
 The first v1.7 query-hardening batch ships early as a compatible 1.6 patch,
 not the accumulated v1.7+ workspace or current main. Exact-source CI passes
@@ -46,11 +46,12 @@ resolved release checkout and labels both images with that source; actual
 publication acceptance waits for the next release, without republishing v1.6.28.
 PR81 is merged as 31a5b43 after integrated-candidate CI passes 7/7; only
 workflow/checker/docs change from its original 13cdcc5, not runtime or the
-embedded theme. The fifth batch prepares opt-in encrypted-backup source tooling
-and synthetic recovery, without adopting a production custody policy. Next,
-prepare gated v1.7 cutover while its external gates remain open. The full
-roadmap is not the active single
-batch. Source delivery and production acceptance remain separate; no API-consumer
+embedded theme. Encrypted-backup PR84 is merged as f567128 after exact5899614
+CI40426994745 passes7/7, including the candidate-built real synthetic restore
+and wrong-version cleanup. This delivers opt-in tooling, not production custody.
+Next, prepare gated v1.7 cutover while its external gates remain open. The full
+roadmap is not the active single batch. Source delivery and production acceptance
+remain separate; no API-consumer
 migration, token rotation or backup-key custody is silently approved. See the
 post-v1.6.28 target in
 [`LONG-TERM-PLAN.md`](./LONG-TERM-PLAN.md).
@@ -66,8 +67,8 @@ without recreating state or reading a replacement generation. Acknowledgement,
 expiry, coalescing, overflow and removal clear discarded payload references;
 the newest-128 limit, command TTLs and ordinary reconnect behavior stay intact.
 This is not a transport credential-revocation fence: authenticated in-flight
-requests/connections are not redesigned here. Client-token rotation remains a
-separate unreleased PR, not authorization to rotate live credentials.
+requests/connections are not redesigned here. Client-token rotation is a
+separate source-merged, unreleased batch, not authorization to rotate live credentials.
 
 The two former data-safety findings are merged in this bounded source batch
 and remain unreleased. Targeted ordinary/race checks cover the
@@ -111,7 +112,7 @@ one required-module-only advisory remains. This is not a full-suite/native
 platform, production, SLO or capacity claim. No release tag, live credential
 rotation, Agent/protocol/dependency/schema change or OC424 app upgrade occurs.
 
-**Fifth source batch (2026-10-27, unreleased):**
+**Fifth source batch (2026-10-27, merged/unreleased):**
 `codex/v1.7-encrypted-backup-tools` starts from exact 31a5b43, not the accumulated
 development workspace. Opt-in native-age tooling creates WAL-safe SQLite
 snapshots bound to captured metrics configuration, encrypts selected assets and
@@ -128,11 +129,34 @@ refusal pass on both hosts using preexisting images, not new candidate release
 images. OVH receives checksum-matched scripts and temporary age tools only;
 Agent495903/restart0 stays unchanged. Throwaway keys/data/workspaces/containers
 are removed, and source/failure evidence is retained. CI adds targeted backup
-checks and reuses the existing Panel smoke build for its actual restore drill;
-exact-candidate CI is required before merge. No local broad Go/frontend rebuild,
+checks and reuses the existing Panel smoke build for its actual restore drill.
+Exact5899614 CI40426994745 passes7/7, including22/22 real-age groups and the
+candidate-built restore/wrong-version drill; PR84 is merged asf567128.
+No local broad Go/frontend rebuild,
 production keys/schedule/retention changes, plaintext-backup deletion, app upgrade
 or 200-node work occurs. D12 custody, actual escrow-path canary/restore and
 API-consumer/recovery compatibility remain production/release gates.
+
+### v1.7 release readiness (2026-10-27)
+
+The bounded engineering batches are source-merged; v1.7 is **not released or
+deployed**. OC424 remains healthy/restart0 onv1.6.28; its actual Agent remains
+PID499631/restarts2. Development/OC424/OVH disk use is62%/42%/7%; this batch
+removes only owned temporary fixtures/tools, not backups or shared caches.
+
+| Gate | Current state | Required next evidence/action |
+|---|---|---|
+| Source and tests | Query PR78, scoped-key PR79, report/queue PR80, token PR81 and backup PR84 merged; exact candidate CI passes | Preserve exact commit/artifact evidence; no redundant local broad rerun |
+| Legacy API consumers | Repository helpers inventoried; actual external consumers/replacements unconfirmed | Owner inventory or explicit confirmation of none; required methods, minimum grants and secure provisioning before30-day read-only migration |
+| Token recovery/edit/import | Source/synthetic checks pass; no live rotation | Confirm independent SSH/console and compatibility restrictions; do not rotate the fleet automatically |
+| D12 backup custody | Tooling and synthetic local/OVH/candidate-CI restores pass; production remains plaintext | Name custodians/escrow/unlock and approved restore runner; verify recipients, actual off-host encrypted canary/escrow-path restore and old-copy retention before schedule cutover |
+| OC424 authenticated acceptance | Public health/assets/private401 checks pass; authenticated history/audit UI remains open | Owner-run bounded acceptance or explicitly provisioned test credentials, never recover credentials from DB/backups |
+| Release/rollback | No v1.7 tag or registry publication; v1.6.28 is immutable | After gates pass, pin exact source, CI/release assets/checksums/provenance and new source labels; fresh paired pre-migration backup, old binary/DB rollback and bounded OC424 upgrade checks |
+
+General development/deploy authorization does not supply the missing external
+inventory/custody facts. These are production gates, not a reason to repeat
+unchanged tests or claim all later roadmap versions are finished. Continue only
+independent engineering while awaiting the required arrangements.
 
 The application-level all-roadmap goal still reports paused. The owner explicitly
 requests that it be revised and work continue, revoking the earlier pause as a
@@ -269,7 +293,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | Most agents still run as root; only MAC is non-root | `docs/DEPLOY-OC424.md` | The NOSLA pattern (unprivileged user + `AmbientCapabilities=CAP_NET_RAW`) works; Alpine has no `setcap`. OpenRC install support shipped in v1.6.25, but moving users is still a fleet-wide change |
 | Windows local builds can fail on a locked esbuild temp file | Windows dev environment | The build itself is deterministic on Windows: two builds with a project-local `TEMP`/`TMP` were byte-identical (819 files, diff 0). With the system `%TEMP%`, esbuild sometimes cannot delete its temp file ("Access is denied"); CI's Windows runner is unaffected. Not a source change — a dev-environment workaround until the temp cleaner/AV exclusion is settled |
-| Off-host backups are not encrypted | `docs/ENCRYPTED-BACKUPS.md`; `docs/DEPLOY-OC424.md` v1.6.28 rollout | Opt-in source tooling and synthetic local/OVH encrypted restores pass; exact-candidate CI/source merge pending. Fresh paired pre-v1.6.28 plaintext backup and nightly 14-copy retention remain unchanged. D12 custody, actual escrow-path canary/restore and legacy-retention authorization still block production encryption |
+| Off-host backups are not encrypted | `docs/ENCRYPTED-BACKUPS.md`; `docs/DEPLOY-OC424.md` v1.6.28 rollout | PR84 merged asf567128 after exact5899614 CI40426994745 passes7/7, including real candidate-built restore. Production paired plaintext backup and nightly14-copy retention remain unchanged. D12 custody, actual escrow-path canary/restore and legacy-retention authorization still block encryption cutover |
 | Release-image source identity publication acceptance | `.github/workflows/docker.yml`, `deploy/docker-workflow-check.py` | Source fix verifies checkout HEAD against the resolved local release tag before asset download and uses its commit in both image labels. Nine existing policy cases and eight real-Git identity cases cover defaults, annotated tags, mismatch/missing/injection refusals. Actual image-publication acceptance awaits the next eligible release; immutable v1.6.28 retains its disclosed old label |
 | OIDC + 2FA makes SSO login fail-closed with no way for the browser to answer the challenge | `docs/ROADMAP.md` §F12 | Deliberately shipped as a gate, not half a state machine. Needs a one-time pending token plus a code prompt; production impact is zero while OIDC is off |
 | `sso_id` survives a password change, and `DeleteAllSessions()` is global | `database/accounts/` | Policy questions now that the SSO path requires TOTP; recommendation was (b)+(c) in the audit report |

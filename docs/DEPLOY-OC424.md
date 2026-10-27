@@ -3,7 +3,7 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
-## Current checkpoint (2026-10-26)
+## Current checkpoint (rechecked 2026-10-27)
 
 OC424 serves **v1.6.28 / 502a269** at
 `https://nekomari.orderly2233.org`. Only the first bounded v1.7 query-hardening
@@ -83,7 +83,8 @@ evidence is retained; none is counted as a successful run.
 
 **Unreleased backup tooling (2026-10-27):**
 [`ENCRYPTED-BACKUPS.md`](./ENCRYPTED-BACKUPS.md) documents the opt-in source
-candidate and synthetic local/OVH encrypted restores. It has not replaced the
+batch (PR84/f567128, exact candidate CI40426994745 passes7/7) and synthetic
+local/OVH/candidate-built CI restores. It has not replaced the
 plaintext backup schedule, provisioned production keys or changed retention.
 D12 custody/escrow/actual restore/legacy-copy approval remains open; retain all
 recovery copies recorded above. Token-rotation PR81 is merged as31a5b43 after

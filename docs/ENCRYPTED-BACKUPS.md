@@ -1,6 +1,8 @@
 # Encrypted off-host backups (v1.7 preparation, unreleased)
 
 This is a bounded, opt-in tooling batch on token-rotation merge `31a5b43`.
+PR84 is source-merged as `f567128` after exact candidate `5899614` passes
+CI40426994745 (7/7). Source delivery is not production rollout.
 **The OC424/OVH backup schedule still writes the existing plaintext archives.**
 No production key, forced command, scheduler, retention setting, credential or
 Panel/Agent service is changed by this source work. OC424 remains v1.6.28/502a269.
@@ -219,9 +221,11 @@ See [`API-KEYS.md`](./API-KEYS.md) and
   PID495903/restart0 remains unchanged, no restore containers remain, and the
   owned workspace/tools are removed. This is not remote-native compilation,
   current-candidate platform acceptance or production custody acceptance.
-- CI adds the offline harness to `deploy-scripts` and the real synthetic drill
-  to `panel-smoke`, reusing its candidate binary without another Go/frontend
-  build. Exact-candidate CI is still required before source merge.
+- Exact candidate `5899614` CI40426994745 passes **7/7 jobs**, including
+  **22/22** real-age groups in `deploy-scripts` and the real synthetic restore /
+  wrong-version cleanup in `panel-smoke`, using its **candidate-built** binary
+  and image. The existing smoke build is reused, not rebuilt for this drill.
+  PR84 is merged as `f567128`; this is not production escrow-path recovery.
 
 No local broad Go/frontend rebuild, fleet update, 200-node run, production
 encryption cutover or legacy-copy deletion occurs. D12 decisions, restricted
