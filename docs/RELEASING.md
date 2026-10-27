@@ -2,6 +2,15 @@
 
 ## Cut a release
 
+**Latest delivery: v1.7.6 (2026-10-27).** Immutable `f8c6ae1`, exactCI40506697515
+8/8 including actual MySQL/PostgreSQL recovery, release40507767971 10/10,
+Docker40511319737 2/2, attested published-binary SQL/OVH acceptance and fresh
+MAC-WAN pinned-old/new encrypted recovery pass. OC424healthy/restart0,
+upgrade9/9,public23/23,forecast14rows,14freshreporters; no schema/auth/Agent
+or credential change. Previous pinned-v1.7.5 compose/image is the rollback,
+preserving current DBs/health state. Earlier checkpoints below are dated history;
+the actual current facts and digests belong to `DEPLOY-OC424.md`.
+
 **v1.7.1 patch delivered (2026-10-27):** immutable3b7e300, exactCI40458344881
 7/7, release40459059246 10/10 and Docker40459610734 2/2. OC424 healthy/restart0,
 upgrade9/9,public23/23 and actual scoped-key forecast13/13 pass. Fresh encrypted

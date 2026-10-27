@@ -1,12 +1,39 @@
 # MAC-WAN backup custody and recovery (2026-10-27, Asia/Shanghai)
 
 MAC-WAN is the owner-selected Hermes and online identity/recovery host (Linux
-x86_64, user `macos`). OC424 now serves v1.7.4/b0ea917; OVH (`KSLE`) stores
-nightly ciphertext. Actual fresh14-node v1.7.4 pre/post old/new-image recovery
+x86_64, user `macos`). OC424 now serves v1.7.6/f8c6ae1; OVH (`KSLE`) stores
+nightly ciphertext. Actual fresh14-node v1.7.6 pre/post old/new-image recovery
 passes. The owner reports downloading the offline identity copy and authorizes
 cutover; **independent-media recovery is not claimed**. All existing readable
 plaintext/manual/local rollback copies are retained; no deletion policy is
 inferred from downloading a key.
+
+## v1.7.6 recovery (2026-10-27 21:25:17 Asia/Shanghai)
+
+Fresh pre archive `oc424-20261027T125459717197Z-ebf7524b9279.tar.gz.age`
+boots pinned-v1.7.5 in8.41s and exact-v1.7.6 in9.74s; fresh post
+`oc424-20261027T132555571297Z-8cddff3f7a74.tar.gz.age` boots exact-v1.7.6
+in8.71s. No scratch `ANALYZE` is used. Authenticated age contents,
+manifest/file hashes, both DB checks,14clients/current scoped-key schema and
+exact source/version pass;636696/pre and626242/post rollups exist before boot.
+These are point-in-time counts, not a cross-backup equality assertion. Temporary
+notifications/GeoIP/OAuth are disabled only in scratch; networknone/nohostports,
+no identity in the Panel, no remaining plaintext/container. Drill durations
+are not production RTO.
+
+Exact image/binary identities and ciphertext hashes are in `DEPLOY-OC424.md`.
+Same-hash copies are kept on MAC-WAN and as independent regular OVH copies
+under `/srv/backups/oc424-encrypted/manual-v1.7.6-20261027`, outside14-pair
+pruning. Both dsh v1.7.5 archives and initial canary now also have verified
+independent copies outside pruning before new backups rotate the top-level set.
+No legacy plaintext/manual/local rollback copy is removed.
+
+Identity/credential0700/0600 metadata, Agents and Hermes remain unchanged;
+strict host checking/direct pinned route transfers ciphertext only. Quiet
+health state and restricted reporting survive the image switch. First nightly
+scheduled success, real live incident delivery, independent-media restore and
+measured SLO/RPO/RTO remain separate; user UI acceptance from dsh's earlier
+record is not repeated or extended by this drill.
 
 ## v1.7.4 SLA recovery (2026-10-27 17:23:20 Asia/Shanghai)
 

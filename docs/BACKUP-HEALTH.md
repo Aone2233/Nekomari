@@ -111,3 +111,15 @@ backup is due 2026-10-28 11:30 Asia/Shanghai, not yet observed; manual release s
 runs are not scheduled-success evidence. No fake production outage/test Telegram
 is sent. Actual incident delivery, external Panel-independent monitoring, owner UI,
 independent-media recovery and measured SLO/RPO/RTO remain separate.
+
+## v1.7.6 continuity observation (2026-10-27 21:25:17 Asia/Shanghai)
+
+The exact prior restricted SSH authorization, fixed sudo receiver, installed
+tool/unit hashes, nightly schedule and 15-minute health timer are preserved.
+The Panel's health opt-in, fresh `ok` report and quiet persisted
+`observed=ok`, `notified=""` state survive the image switch. Both fresh release
+backups and recurring health checks succeed; manual release backups do not
+prove the first nightly trigger, still due 2026-10-28 11:30 Asia/Shanghai.
+No live incident or test Telegram is induced. Actual incident delivery,
+independent-media restore and measured SLO/RPO/RTO remain open. No credential,
+grant, Agent/Hermes service or encrypted-backup custody change is made.
