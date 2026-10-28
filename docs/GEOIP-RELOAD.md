@@ -20,7 +20,7 @@ frontend, schema, authentication, API-key permission or token change.
 This is asynchronous reload, not an instantaneous settings transaction. An
 in-flight lookup or MMDB download may delay replacement/shutdown within the
 existing provider timeouts (HTTP lookup 5 seconds; MMDB download 60 seconds).
-It does not revise the ipinfo empty-country caching policy, make external GeoIP
+That release did not revise the ipinfo empty-country caching policy, make external GeoIP
 services reliable, or fix malformed settings globally.
 
 ## Focused verification

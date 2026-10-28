@@ -18,6 +18,10 @@ var providerMu sync.RWMutex
 var reloadMu sync.Mutex
 var stopped bool
 
+// Retain empty results briefly to limit upstream traffic while allowing a
+// temporary missing country to recover sooner than the 48-hour positive TTL.
+const emptyCountryCacheTTL = time.Hour
+
 type GeoInfo struct {
 	ISOCode string
 	Name    string
@@ -169,7 +173,12 @@ func GetGeoInfo(ip net.IP) (*GeoInfo, error) {
 
 	info, err := CurrentProvider.GetGeoInfo(ip)
 	if err == nil && info != nil {
-		geoCache.Set(cacheKey, info, cache.DefaultExpiration)
+		if strings.TrimSpace(info.ISOCode) == "" && strings.TrimSpace(info.Name) == "" {
+			// An in-flight empty lookup must not overwrite or extend a concurrent result.
+			_ = geoCache.Add(cacheKey, info, emptyCountryCacheTTL)
+		} else {
+			geoCache.Set(cacheKey, info, cache.DefaultExpiration)
+		}
 	}
 	return info, err
 }

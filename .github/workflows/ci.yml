@@ -123,6 +123,8 @@ jobs:
             --output ../smoke/admin-tools-navigation.json
       - name: Check actual GeoIP settings reload in a synthetic Panel
         run: python3 deploy/geoip-reload-smoke.py --panel-binary ./nekomari
+      - name: Check empty-country GeoIP cache in a synthetic Panel
+        run: python3 -W error::ResourceWarning deploy/geoip-empty-cache-smoke.py --panel-binary ./nekomari
       - name: Check backup freshness notifications in a synthetic Panel
         run: python3 -W error::ResourceWarning deploy/backup-health-smoke.py --panel-binary ./nekomari
       - name: Check overlapping SLA task generations in a synthetic Panel
