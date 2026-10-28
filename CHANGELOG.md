@@ -8,8 +8,23 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- **Candidate v1.7.8, not yet published or deployed:** record node uptime
-  history from existing Agent reports and expose a same-shell admin view. Each
+- No changes yet.
+
+## [v1.7.8] - 2026-10-28
+
+- **Published and deployed on OC424 at 15:42:01 Asia/Shanghai.** Immutable
+  `75168d5b0fe7053b0d65eda71fffb7b0a0acc072`, PR109; exact CI40649551718
+  8/8, identical-tree merge CI40650299520 8/8, release40650315129 10/10 and
+  Docker40651006736 2/2. Release checksums/attestations, both image architectures
+  and native image binaries verify. OVH's isolated published binary passes real
+  report, restart, permission and desktop-light/mobile-dark embedded UI checks.
+  OC424 upgrade9/9, public24/24 and scoped forecast14rows pass; 14 nodes have
+  fresh CPU and uptime reports. Both DBs, identities, scopes and Agent services
+  remain intact. New and old pinned images restore fresh pre and post encrypted
+  backups on MAC-WAN; post-upgrade uptime rollups survive both boots without
+  metric reclaim. Owner UI login and independent-media restore are not claimed.
+- Record node uptime history from existing Agent reports and expose a same-shell
+  admin view. Each
   historical bucket displays its last accepted sample; missing, zero and
   explicitly bad-quality values are unknown. Coarse buckets can hide drops and
   neither a drop nor its absence proves a reboot count. The new definition
