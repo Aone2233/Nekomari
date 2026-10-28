@@ -313,6 +313,8 @@
     "execute": "Eksekusi",
     "expired": "Kedaluwarsa",
     "expired_in": "Kedaluwarsa dalam {{days}} hari",
+    "expiry_not_set": "Masa berlaku belum diatur",
+    "expiry_unknown": "Masa berlaku tidak diketahui",
     "free": "Gratis",
     "generate": "Buat",
     "group": "Grup",

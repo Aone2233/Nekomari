@@ -65,7 +65,28 @@ test('price labels and urgency color use one clock snapshot at expiry boundaries
   assert.match(render(8), /data-color="orange"[^>]*>.*common.expired_in:8/);
   assert.match(render(16), /data-color="green"[^>]*>.*common.expired_in:16/);
   assert.match(render(0), /common.expired/);
-  assert.match(renderToStaticMarkup(React.createElement(PriceTags, { price: 10 })), /common.expired_in:30/);
+  assert.match(render(36501), /common.long_term/);
+  assert.match(renderToStaticMarkup(React.createElement(PriceTags, { price: 10, expired_at: 0 })), /common.expired</);
+});
+
+test('missing or malformed price expiry never invents a countdown or an expired state', () => {
+  const PriceTags = loadComponent('PriceTags');
+  const render = expiry => renderToStaticMarkup(
+    React.createElement(PriceTags, { price: 10, expired_at: expiry, tags: 'Keep me', ip4: 'present' }),
+  );
+  for (const value of [undefined, null, '', '  ']) {
+    const html = render(value);
+    assert.match(html, /data-color="gray"[^>]*>.*common.expiry_not_set/);
+    assert.doesNotMatch(html, /common.expired(?:_in|<)|NaN/);
+    assert.match(html, /Keep me/);
+    assert.match(html, /V4/);
+  }
+  for (const value of ['not-a-date', '2026-99-99', NaN, Infinity]) {
+    const html = render(value);
+    assert.match(html, /data-color="gray"[^>]*>.*common.expiry_unknown/);
+    assert.doesNotMatch(html, /common.expired(?:_in|<)|NaN/);
+  }
+  assert.doesNotMatch(renderToStaticMarkup(React.createElement(PriceTags, { price: 0, expired_at: null })), /common.expiry/);
 });
 
 test('custom OAuth trigger responds to Enter and Space as well as pointer activation', () => {

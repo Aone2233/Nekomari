@@ -313,6 +313,8 @@
     "execute": "執行",
     "expired": "已到期",
     "expired_in": "餘{{days}}天",
+    "expiry_not_set": "未設定到期時間",
+    "expiry_unknown": "到期時間未知",
     "free": "免費",
     "generate": "生成",
     "group": "分組",

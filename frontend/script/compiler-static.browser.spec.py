@@ -97,14 +97,45 @@ class PriceTagsBrowserTest(unittest.TestCase):
             """)
             page.goto(self.url)
             page.get_by_role("button", name="Set paid").wait_for()
-            self.assertEqual(page.locator("#price-tags .rt-Badge").count(), 0)
+            self.assertEqual(page.locator("#price-tags .rt-Badge").count(), 1)
             page.evaluate("window.__fixtureNow += 45 * 24 * 60 * 60 * 1000")
             page.get_by_role("button", name="Set paid").click()
-            badge = page.locator("#price-tags .rt-Badge").last
+            badge = page.locator("#price-tags .rt-Badge").nth(1)
             self.assertEqual(badge.inner_text(), "Expires in 8 days")
             self.assertEqual(badge.get_attribute("data-accent-color"), "orange")
         finally:
             page.close()
+
+    def test_missing_invalid_and_renewed_expiry_stay_in_sync(self):
+        for width, appearance in [(1280, "light"), (390, "dark")]:
+            with self.subTest(width=width, appearance=appearance):
+                page = self.browser.new_page(viewport={"width": width, "height": 900}, color_scheme=appearance)
+                try:
+                    page.clock.install(time=1780000000000)
+                    errors = []
+                    page.on("pageerror", lambda error: errors.append(str(error)))
+                    page.goto(self.url)
+                    page.get_by_role("button", name="Set paid").click()
+                    badge = page.locator("#price-tags .rt-Badge").nth(1)
+                    for action in ("Clear expiry", "Omit expiry", "Empty expiry"):
+                        page.get_by_role("button", name=action).click()
+                        self.assertEqual(badge.inner_text(), "No expiry set")
+                        self.assertEqual(badge.get_attribute("data-accent-color"), "gray")
+                        page.clock.fast_forward(60000)
+                        self.assertEqual(badge.inner_text(), "No expiry set")
+                    page.get_by_role("button", name="Invalid expiry").click()
+                    self.assertEqual(badge.inner_text(), "Expiry unknown")
+                    self.assertEqual(badge.get_attribute("data-accent-color"), "gray")
+                    page.get_by_role("button", name="Renew expiry").click()
+                    self.assertEqual(badge.inner_text(), "Expires in 8 days")
+                    self.assertEqual(badge.get_attribute("data-accent-color"), "orange")
+                    page.clock.fast_forward(24 * 60 * 60 * 1000)
+                    self.assertEqual(badge.inner_text(), "Expires in 7 days")
+                    self.assertEqual(badge.get_attribute("data-accent-color"), "red")
+                    self.assertIn("Keep me", page.locator("#price-tags").inner_text())
+                    self.assertEqual(errors, [])
+                finally:
+                    page.close()
 
 
 if __name__ == "__main__":

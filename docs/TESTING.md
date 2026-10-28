@@ -46,7 +46,7 @@ python script/client-token.browser.spec.py
 | Spec | Fixture mounts | Covers |
 |---|---|---|
 | `chart-a11y.spec.py` | `components/ui/chart` | keyboard focus name/outline/tooltip, the live region updating on a keyboard tooltip, theme-resolved series and legend colors, a decorative legend icon, series labels naming the chart, and an animated series update reaching new data |
-| `compiler-static.browser.spec.py` | `components/PriceTags` | a free-to-paid transition reads the clock on the paid mount |
+| `compiler-static.browser.spec.py` | `components/PriceTags` | free-to-paid mount reads the clock; missing/invalid expiry stays neutral, renewal and minute ticks update urgency on desktop-light/mobile-dark |
 | `admin-clock.browser.spec.py` | `pages/admin/sessions`, `pages/admin/dashboard` | time-dependent labels sharing one live clock without refetching, expiry boundaries and renewed exclusion, and a mounted dashboard moving its expiry window and urgency |
 | `file-manager.browser.spec.py` | `pages/terminal/FileManagerPanel`, `pages/terminal/FileEditorDialog` | rename/delete refreshing the real directory, ctrl-deselect keeping only the remaining file selected, a stale directory response not replacing a newer node, a delayed read updating its own tab, and a post-reconnect refresh ignoring a prior connection's response |
 | `selector-state.browser.spec.py` | `components/SelectorDialog`, `components/NodeSelectorDialog` | cancel/confirm and external value updates, an uncontrolled node dialog's open/cancel/confirm, and a parent-controlled open without a trigger |
@@ -78,6 +78,24 @@ release gate; the configured `npm run lint` has zero allowed warnings. Read its
 counts from the JSON formatter rather than the default `stylish` output, which
 interleaves each finding's primary and related locations and so overstates the
 total by roughly 5%.
+
+## Nullable expiry in the embedded Panel
+
+The panel-smoke CI job also runs a loopback-only installed Panel against its
+actual embedded admin assets, not a Vite fixture or an external asset proxy:
+
+```sh
+python frontend/script/price-expiry.spec.py --panel-binary ./nekomari
+```
+
+Playwright and Chromium must already be installed. Optional `--output report.json`
+retains a sanitized report and Chinese desktop/mobile screenshots. A temporary
+account and one priced node exercise real API null -> renewed -> null expiry
+across all five locales, desktop-light and mobile-dark; checks include the label,
+accent color, custom tag and absence of page errors. The account, databases and
+process are removed on exit. No production credentials or nodes are involved.
+Malformed/omitted/blank component inputs and minute-driven renewal boundaries
+are separately covered by the focused static and mounted tests.
 
 ## Cross-backend recovery (bounded integration)
 

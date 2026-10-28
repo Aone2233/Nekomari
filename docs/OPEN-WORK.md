@@ -57,12 +57,22 @@ No history rewrite, coverage-definition, Agent/token/scope/backup-health change.
 See [`SLA-GENERATIONS.md`](./SLA-GENERATIONS.md).
 
 Existing v1.7.3 health service/timer and quiet persisted state remain unchanged;
-recurring 15-minute checks are now observed successful. First nightly backup,
-live incident delivery and independent media remain open. dsh records owner
+recurring 15-minute checks are observed successful. The first scheduled nightly
+backup is verified on 2026-10-28: timer11:30:23 -> service11:31:04
+Asia/Shanghai, success/exit0, matching ciphertext/checksum pair. This closes the
+first-trigger gate, not an independent-media restore or a measured RPO guarantee.
+Live incident delivery and independent media remain open. dsh records owner
 history/audit/API-key UI acceptance; no new owner session is exercised here.
 v1.7.5 provides the SQLite source startup fix; v1.7.6 cross-backend corrections
 are released/recovered/live-accepted. No stored history rewrite or production ANALYZE.
 Continue one bounded correctness/observability item, with 200-node work deferred.
+
+**Next bounded candidate (2026-10-28):** v1.7.7 fixes missing/invalid `PriceTags`
+expiry and the test-only fetch-abort arrival race. Focused regressions and actual
+embedded-admin browser checks pass (five locales, desktop-light/mobile-dark).
+No API/schema/Agent/auth/dependency change. Exact CI/publication, fresh encrypted
+pre/post recovery and OC424 acceptance are still separate pending gates; production
+remains v1.7.6 until these pass. No whole-roadmap app goal change is claimed.
 
 ### v1.7 release readiness (2026-10-27)
 
@@ -72,7 +82,7 @@ Continue one bounded correctness/observability item, with 200-node work deferred
 | Legacy API consumers | Owner-configured `hermes-node-management` matches exactly `nodes:read` + `nodes:write`, active365days until2027-10-27 13:38:02 Asia/Shanghai; actual MAC-WAN disposable create/edit/read/remove passes and original13 metadata is unchanged | Reviewed CLI writes may resume; no token/exec/update grant or key rotation. Other callers/runtime rewiring are not inferred from three reference edits; old30-day read-only key remains |
 | Token recovery/edit/import | Owner accepts restrictions and requests no rotation; 14 current UUIDs/tokens and all Agent services unchanged | No rotation canary now; future rotation requires independent SSH/console and per-node consent |
 | D12 custody/recovery | OC424 public recipient only, OVH ciphertext, MAC-WAN online identity/recovery runner; fresh14-node v1.7.6 pre/post backups restore with pinned v1.7.5/v1.7.6, no ANALYZE | Owner reports offline copy downloaded; independent-media restore is still unverified. Same-UID Hermes/root/Docker exposure remains explicit |
-| Nightly schedule/retention | OVH encrypted service succeeds; enabled daily 03:30 UTC timer replaces only old cron row, keep 14 ciphertext pairs; pre/post release copies retained outside pruning | v1.7.3 adds health/heartbeat alerting via restricted SSH and existing notifications; initial and later recurring health checks succeed;observe first nightly backup and actual incident delivery. No old plaintext/manual/local rollback copy is deleted; deletion needs an explicit policy |
+| Nightly schedule/retention | Enabled daily03:30UTC OVH timer, keep14 ciphertext pairs; first actual scheduled trigger2026-10-28 11:30:23Asia/Shanghai and service11:31:04success/exit0 verified, with matching archive/checksum; release copies remain outside pruning | Initial/later recurring health checks pass; actual incident delivery remains unverified. No independent-media or measured RPO claim. No old plaintext/manual/local rollback copy is deleted; deletion needs an explicit policy |
 | OC424 authenticated acceptance | Owner elects self-run history/audit/API-key UI checks after deployment | **Closed in dsh's 2026-10-27 record**: the owner reported the post-deployment history/audit/API-key pages check out. This review does not repeat an owner session. Public shells, 401 responses and synthetic checks cannot substitute for it; acceptance does not extend to other surfaces or future releases |
 | Rollback | Fresh per-DB WAL-safe snapshots/compose + v1.7.5 image in `rollbacks/v1.7.6-20261027T132515Z-5045e5f7`; no schema/auth change, keep current data | v1.7.6->v1.7.5 uses prior compose/image, keeping14nodes and health env/state; v1.7.5 would reintroduce cross-backend bugs, while OC424 uses SQLite. Across v1.7->v1.6 freeze writers and restore paired old DB + binary, losing newer data/permissions |
 
@@ -93,7 +103,8 @@ copies stay outside14-pair pruning; all older copies remain. Earlier13-client
 release backups are historical; never use them to overwrite Pi's added node.
 Owner-reported offline download is not independently exercised media recovery.
 The daily timer is unchanged; health reporting/alerts and initial/later recurring
-checks pass. First nightly backup and measured SLO/RPO/RTO remain separate. See
+checks pass. First scheduled nightly backup is verified2026-10-28; measured
+SLO/RPO/RTO and independent-media restore remain separate. See
 [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
 
 **Verification scope:** focused Go1.27.3 recovery/index/restart races and vet;
@@ -190,7 +201,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Item | Where | Why it is still here |
 |---|---|---|
 | `Presence.Coverage` is a span, not a window coverage | `internal/sla/availability.go`; `docs/SLA-COVERAGE.md` | Clarified 2026-10-27 without changing behaviour: coverage is observed/expected over the observed span, capped by the requested window, so a series that reports only the last ten minutes of an hour reads 1 (window fraction 1/6). The field comment, worked examples, correct reading for freshness and the compatibility rules are now stated; `batch_test.go` still pins the value. Still open: the owner decision on adding a separate window-coverage field (which must also report the inferred cadence) — an in-place redefinition would move every stored figure and is not done |
-| `PriceTags` has no "no expiry" state | `frontend/src/components/PriceTags.tsx` | Only checks `undefined`, so a `null` expiry reads as "expires in 30 days" |
+| `PriceTags` missing/invalid expiry | `frontend/src/components/PriceTags.tsx` | v1.7.7 candidate shows neutral localized unset/unknown labels, preserving real dates and tags. Focused and embedded-browser checks pass; publication/live delivery pending |
 | Dragging under a filter reorders only the visible subset | `frontend/src/pages/admin/index.tsx` | Needs a decision about what reordering a filtered list should mean |
 | No uptime / restart-count metric exists | `internal/metricstore/definitions.go` | A capability gap: the panel cannot state "how long was this node up" |
 | One bad metric parameter fails a whole batch query | `web/rpc/jsonrpc/public.metric.go` | Should report per-key rather than all-or-nothing |

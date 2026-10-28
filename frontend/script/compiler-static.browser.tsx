@@ -12,15 +12,23 @@ await i18n.init({
   resources: { en: { translation: {
     "common.expired_in": "Expires in {{days}} days",
     "common.expired": "Expired",
+    "common.expiry_not_set": "No expiry set",
+    "common.expiry_unknown": "Expiry unknown",
   } } },
 });
 
 export function Fixture() {
   const [price, setPrice] = useState(0);
+  const [expiresAt, setExpiresAt] = useState<number | string | null | undefined>(expiry);
   return (
     <I18nextProvider i18n={i18n}>
       <button type="button" onClick={() => setPrice(10)}>Set paid</button>
-      <div id="price-tags"><PriceTags price={price} expired_at={expiry} /></div>
+      <button type="button" onClick={() => setExpiresAt(null)}>Clear expiry</button>
+      <button type="button" onClick={() => setExpiresAt(undefined)}>Omit expiry</button>
+      <button type="button" onClick={() => setExpiresAt("")}>Empty expiry</button>
+      <button type="button" onClick={() => setExpiresAt("not-a-date")}>Invalid expiry</button>
+      <button type="button" onClick={() => setExpiresAt(Date.now() + 7.5 * 24 * 60 * 60 * 1000)}>Renew expiry</button>
+      <div id="price-tags"><PriceTags price={price} expired_at={expiresAt} tags="Keep me" /></div>
     </I18nextProvider>
   );
 }

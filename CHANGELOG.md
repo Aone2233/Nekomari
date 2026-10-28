@@ -11,6 +11,24 @@ Nekomari's own.
 - No other unreleased runtime change; delivery records do not rebuild
   immutable artifacts.
 
+## [v1.7.7] - 2026-10-28
+
+### Fixed
+
+- Show a neutral **No expiry set** badge for absent, null or blank paid-node
+  expiry, and **Expiry unknown** for invalid dates. Do not fabricate a 30-day
+  countdown, show `NaN` or imply lifetime service. Preserve valid countdowns,
+  urgency colors, long-term dates, price/custom/IP tags and the shared theme.
+  Add all five locale strings and regenerate the embedded frontend archive.
+- Synchronize the AbortController server-cancellation test with actual handler
+  arrival rather than a fixed 10 ms delay. Check deliberately delayed dispatch
+  and a separately pre-aborted fetch; no fetch runtime behavior changes.
+- Add focused missing/invalid/renewed-expiry fixtures and a real embedded-binary
+  browser gate: five locales, desktop-light/mobile-dark, nullable API expiry,
+  renewal and clearing. All data/accounts are synthetic and loopback-only.
+  No schema, API, Agent, dependency, token or grant change. Publication and live
+  deployment are recorded only after their separate gates pass.
+
 ## [v1.7.6] - 2026-10-27
 
 - **Published and deployed on OC424 at 21:25:17 Asia/Shanghai.** Immutable

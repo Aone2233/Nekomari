@@ -313,6 +313,8 @@
     "execute": "実行",
     "expired": "期限切れ",
     "expired_in": "残り{{days}}日",
+    "expiry_not_set": "有効期限未設定",
+    "expiry_unknown": "有効期限不明",
     "free": "無料",
     "generate": "生成",
     "group": "グループ",
