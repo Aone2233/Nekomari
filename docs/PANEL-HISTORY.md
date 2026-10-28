@@ -1,7 +1,9 @@
 # Panel process history
 
-Candidate for v1.7.11; deployment is not yet claimed. This is one bounded part
-of v1.8 observability, not a complete v1.8 release or an SLO measurement.
+Published and deployed as v1.7.11 on OC424 on 2026-10-28. This is one bounded
+part of v1.8 observability, not a complete v1.8 release or an SLO measurement.
+See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for source, publication, isolated
+recovery, live acceptance and the exact rollback boundary.
 
 The existing Performance profiles page shows the panel process's RSS, Go heap
 allocation and goroutine readings as a selectable 1-hour or 24-hour trend.
@@ -51,5 +53,5 @@ definitions and this history**. Preserve a fresh verified encrypted
 post-upgrade backup before any downgrade or reclaim. Do not restore an older
 13-node database over the current fleet. The earlier authentication migration
 across v1.7 to v1.6 still needs its paired database and binary with writers
-frozen. Isolated restore, actual publication, production acceptance, owner UI
-acceptance and independent-media recovery are separate evidence gates.
+frozen. Isolated restore and production continuity are verified as documented;
+owner UI acceptance and independent-media recovery remain separate gates.
