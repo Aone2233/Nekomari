@@ -39,7 +39,18 @@ its exit criteria are met, not when the calendar says so.
 
 ## Current Delivery Checkpoint (2026-10-28)
 
-**Latest delivery: v1.7.11 (2026-10-28 22:19:47 Asia/Shanghai).** The existing
+**Latest delivery: v1.7.12 (2026-10-28 23:10:34 Asia/Shanghai).** Container
+mount logging no longer claims persistence based on a mountinfo path and warns
+on anonymous-volume-like paths under custom roots. Exact CI40708356223 8/8,
+same-tree main CI40709676910 8/8, release40710985497 10/10 and
+Docker40712289115 2/2 pass. OVH verifies four isolated published-image mount
+cases; MAC-WAN recovers pre ciphertext with v1.7.11/v1.7.12 and post with
+v1.7.12, retaining uptime and panel history. OC424 upgrade9/9,public27/27,
+scoped forecast14rows and all14 fresh CPU/uptime reporters pass. Independent
+media and owner-session acceptance are not claimed. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+**Prior delivery: v1.7.11 (2026-10-28 22:19:47 Asia/Shanghai).** The existing
 session-only Performance profiles page adds RSS, heap and goroutine history,
 one bounded part of v1.8, with independently configurable one-day defaults and
 unknown gaps. Exact CI40668605937 8/8, same-tree merge CI40669574427 8/8,
@@ -112,12 +123,12 @@ correctness batches. The full v1.8-v2.1 roadmap is not one continuous task.
 All 200-node work remains deferred, preserving its original limits and 26 failed
 reports. Publication is not proof that every roadmap exit criterion passed.
 
-**Delivered:** OC424 serves v1.7.11/8754747 at `nekomari.orderly2233.org`, healthy/
+**Delivered:** OC424 serves v1.7.12/b4591d6 at `nekomari.orderly2233.org`, healthy/
 restart0, after exact-source CI 8/8, release 10/10, Docker 2/2 and upgrade check 9/9.
 Both Linux assets pass checksums/tag/source/workflow attestations; both image
 architectures identify exact source. Public checks27/27 and scoped forecast14rows
 pass; the earlier v1.7.4 bounded live SLA reads are dated evidence, not rerun
-for v1.7.11. The owner-approved
+for v1.7.12. The owner-approved
 baseline now includes Pi's explicitly owner-authorized addition: 14 clients and
 14 currently fresh reporting nodes, not the earlier 13-client release snapshot.
 UUIDs/tokens/Agent services are unchanged. The existing tools and new uptime page
@@ -133,12 +144,12 @@ and passes actual disposable CLI create/edit/read/remove. Original13 metadata is
 unchanged at that handoff; Pi's later authorized addition is preserved in the
 current14-node baseline. The owner selects365days to2027-10-27 13:38:02
 Asia/Shanghai, not the suggested90; no silent rotation. Other runtime callers
-are not fully inventoried. v1.7.11 does not restart Hermes or any Agent.
+are not fully inventoried. v1.7.12 does not restart Hermes or any Agent.
 
 **Backup delivery:** OC424 has only public recipients; OVH's encrypted daily
 03:30 UTC timer replaces only the old plaintext cron row, with 14 ciphertext-pair
 retention. The installed service succeeds; fresh pre archives pass isolated
-MAC-WAN pinned-v1.7.10/v1.7.11 recovery, and post archives pass v1.7.11 recovery,
+MAC-WAN pinned-v1.7.11/v1.7.12 recovery, and post archives pass v1.7.12 recovery,
 with both DBs,14 clients, uptime/panel rollups and cleanup, without refreshing
 planner statistics or reclaim. Release recovery copies are outside automatic
 retention, and all old plaintext/local
@@ -206,14 +217,17 @@ copy outside pruning. This closes first-trigger observation only.
    v1.7.11 adds private panel RSS/heap/goroutine trends with independent
    retention; pool-wait and theme-cache history, restart counting and full v1.8
    remain separate. See [`PANEL-HISTORY.md`](./PANEL-HISTORY.md).
+   v1.7.12 corrects misleading container data-mount persistence logs with
+   custom-root published-image and real OC424 bind-mount verification; see
+   [`DATA-MOUNT-WARNING.md`](./DATA-MOUNT-WARNING.md).
 
 v1.7 is released/deployed, **not unconditionally exit-complete**: remaining
 caller inventory, independent-media recovery, live incident delivery and
 stronger restore-drill policy remain open in
 [`OPEN-WORK.md`](./OPEN-WORK.md#v17-release-readiness-2026-10-28).
-v1.7.11->v1.7.10 needs the pinned prior compose/image (keeping the health opt-in/state),
+v1.7.12->v1.7.11 needs the pinned prior compose/image (keeping the health opt-in/state),
 preserving current DB data and all14nodes. Fresh per-DB WAL-safe snapshots/compose
-are retained in `rollbacks/v1.7.11-20261028T141945Z-eb9f7c50`; they do not claim
+are retained in `rollbacks/v1.7.12-20261028T151032Z-6f9d9034`; they do not claim
 cross-DB atomicity. Manual reclaim on v1.7.10 and older deletes panel history;
 v1.7.7 and older also deletes uptime history, so
 retain and verify the fresh post-upgrade ciphertext before downgrade or reclaim.
