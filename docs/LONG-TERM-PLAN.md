@@ -39,7 +39,18 @@ its exit criteria are met, not when the calendar says so.
 
 ## Current Delivery Checkpoint (2026-10-28)
 
-**Latest delivery: v1.7.10 (2026-10-28 17:23:20 Asia/Shanghai).** Completely
+**Latest delivery: v1.7.11 (2026-10-28 22:19:47 Asia/Shanghai).** The existing
+session-only Performance profiles page adds RSS, heap and goroutine history,
+one bounded part of v1.8, with independently configurable one-day defaults and
+unknown gaps. Exact CI40668605937 8/8, same-tree merge CI40669574427 8/8,
+release40670453345 10/10 and Docker40671399212 2/2 pass. OVH verifies the
+published binary in isolated browser/auth/restart checks; MAC-WAN recovers
+fresh pre ciphertext with v1.7.10/v1.7.11 and post with v1.7.11, preserving
+uptime and panel rollups. OC424 upgrade9/9,public27/27,scoped forecast14rows
+and all14 fresh CPU/uptime reporters pass. No owner-session or independent-media
+restore is claimed. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+**Prior delivery: v1.7.10 (2026-10-28 17:23:20 Asia/Shanghai).** Completely
 empty GeoIP country results use a one-hour rather than 48-hour process cache;
 valid or partial results, errors and providers are unchanged. Exact CI40660304364
 8/8, same-tree merge CI40661304807 8/8, release40661328099 10/10 and
@@ -101,12 +112,12 @@ correctness batches. The full v1.8-v2.1 roadmap is not one continuous task.
 All 200-node work remains deferred, preserving its original limits and 26 failed
 reports. Publication is not proof that every roadmap exit criterion passed.
 
-**Delivered:** OC424 serves v1.7.10/a2fd46a at `nekomari.orderly2233.org`, healthy/
+**Delivered:** OC424 serves v1.7.11/8754747 at `nekomari.orderly2233.org`, healthy/
 restart0, after exact-source CI 8/8, release 10/10, Docker 2/2 and upgrade check 9/9.
 Both Linux assets pass checksums/tag/source/workflow attestations; both image
-architectures identify exact source. Public checks26/26 and scoped forecast14rows
+architectures identify exact source. Public checks27/27 and scoped forecast14rows
 pass; the earlier v1.7.4 bounded live SLA reads are dated evidence, not rerun
-for v1.7.10. The owner-approved
+for v1.7.11. The owner-approved
 baseline now includes Pi's explicitly owner-authorized addition: 14 clients and
 14 currently fresh reporting nodes, not the earlier 13-client release snapshot.
 UUIDs/tokens/Agent services are unchanged. The existing tools and new uptime page
@@ -122,14 +133,15 @@ and passes actual disposable CLI create/edit/read/remove. Original13 metadata is
 unchanged at that handoff; Pi's later authorized addition is preserved in the
 current14-node baseline. The owner selects365days to2027-10-27 13:38:02
 Asia/Shanghai, not the suggested90; no silent rotation. Other runtime callers
-are not fully inventoried. v1.7.10 does not restart Hermes or any Agent.
+are not fully inventoried. v1.7.11 does not restart Hermes or any Agent.
 
 **Backup delivery:** OC424 has only public recipients; OVH's encrypted daily
 03:30 UTC timer replaces only the old plaintext cron row, with 14 ciphertext-pair
 retention. The installed service succeeds; fresh pre archives pass isolated
-MAC-WAN pinned-v1.7.9/v1.7.10 recovery, and post archives pass v1.7.10 recovery,
-with both DBs,14 clients and cleanup, without refreshing planner statistics or reclaim. Release
-recovery copies are outside automatic retention, and all old plaintext/local
+MAC-WAN pinned-v1.7.10/v1.7.11 recovery, and post archives pass v1.7.11 recovery,
+with both DBs,14 clients, uptime/panel rollups and cleanup, without refreshing
+planner statistics or reclaim. Release recovery copies are outside automatic
+retention, and all old plaintext/local
 rollback assets are kept. The owner reports downloading the offline identity
 copy and authorizes cutover; independent-media restore is not claimed. Online
 same-UID Hermes/root/Docker exposure remains explicit. No unattended decrypt
@@ -191,15 +203,19 @@ copy outside pruning. This closes first-trigger observation only.
    v1.7.10 fixes the empty-country GeoIP cache lifetime with bounded upstream
    retries and no stored data or provider changes; see
    [`GEOIP-EMPTY-COUNTRY.md`](./GEOIP-EMPTY-COUNTRY.md).
+   v1.7.11 adds private panel RSS/heap/goroutine trends with independent
+   retention; pool-wait and theme-cache history, restart counting and full v1.8
+   remain separate. See [`PANEL-HISTORY.md`](./PANEL-HISTORY.md).
 
 v1.7 is released/deployed, **not unconditionally exit-complete**: remaining
 caller inventory, independent-media recovery, live incident delivery and
 stronger restore-drill policy remain open in
 [`OPEN-WORK.md`](./OPEN-WORK.md#v17-release-readiness-2026-10-28).
-v1.7.10->v1.7.9 needs the pinned prior compose/image (keeping the health opt-in/state),
+v1.7.11->v1.7.10 needs the pinned prior compose/image (keeping the health opt-in/state),
 preserving current DB data and all14nodes. Fresh per-DB WAL-safe snapshots/compose
-are retained in `rollbacks/v1.7.10-20261028T092318Z-d845625f`; they do not claim
-cross-DB atomicity. v1.7.7 and older manual metric reclaim deletes uptime history, so
+are retained in `rollbacks/v1.7.11-20261028T141945Z-eb9f7c50`; they do not claim
+cross-DB atomicity. Manual reclaim on v1.7.10 and older deletes panel history;
+v1.7.7 and older also deletes uptime history, so
 retain and verify the fresh post-upgrade ciphertext before downgrade or reclaim.
 Across credential migration to v1.6, rollback needs the old binary and pre-upgrade
 DB, not an image-only downgrade; frozen-writer/failure-preservation instructions

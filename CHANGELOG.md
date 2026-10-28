@@ -8,6 +8,18 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.7.11] - 2026-10-28
+
+- **Published and deployed on OC424 at 22:19:47 Asia/Shanghai.** Immutable
+  `8754747f8be7dd248b23b4305f77f00bd1d165b8`, PR115; exact CI40668605937
+  8/8, same-tree merge CI40669574427 8/8, release40670453345 10/10 and
+  Docker40671399212 2/2. Linux checksums/source attestations and both image
+  architectures verify. The published binary passes isolated OVH browser,
+  authorization, retention and restart checks. OC424 upgrade9/9, public27/27,
+  scoped forecast14rows and 14 fresh CPU/uptime reporters pass. Fresh pre
+  ciphertext restores under v1.7.10/v1.7.11; post restores under v1.7.11 on
+  MAC-WAN with uptime and all three panel rollups retained. No owner UI login,
+  independent-media restore or complete v1.8 acceptance is claimed.
 - Add session-only, bounded panel RSS/heap/goroutine history to the existing
   Performance profiles page. Samples use independent configurable retention,
   preserve unknown gaps and do not expose panel readings through public node
