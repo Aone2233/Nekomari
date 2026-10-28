@@ -139,3 +139,17 @@ func TestPprofMetricDatabasePoolJSONContract(t *testing.T) {
 		t.Fatalf("metrics_db.read has fields %v, want exactly five", readFields)
 	}
 }
+
+func TestPprofThemeCacheSummaryHasOnlySafeStatusFields(t *testing.T) {
+	runtimeValues := runtimeBlock(t, pprofSummaryData(t))
+	cache, ok := runtimeValues["theme_cache"].(map[string]any)
+	if !ok || len(cache) != 2 {
+		t.Fatalf("theme_cache = %#v", runtimeValues["theme_cache"])
+	}
+	if _, ok := cache["disk"].(string); !ok {
+		t.Fatalf("invalid disk state: %#v", cache)
+	}
+	if _, ok := cache["memory_loaded"].(bool); !ok {
+		t.Fatalf("invalid memory state: %#v", cache)
+	}
+}

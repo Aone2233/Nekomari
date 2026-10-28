@@ -8,7 +8,13 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- No changes yet.
+- **Candidate v1.7.9 (not yet deployed):** show built-in theme cache disk state
+  and whether its in-memory fallback was loaded in the existing administrator
+  Performance profiles page. State is last-observed, not continuous filesystem
+  verification; it is not a historical metric. No Agent, database, retention,
+  credential or scoped-key change. See `docs/THEME-CACHE-DIAGNOSTICS.md`.
+- Synchronize lazy fallback archive initialization so concurrent first requests
+  cannot race on the in-memory map.
 
 ## [v1.7.8] - 2026-10-28
 

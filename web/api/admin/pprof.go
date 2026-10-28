@@ -20,6 +20,7 @@ import (
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/web/api"
+	"github.com/Aone2233/nekomari/web/public"
 	"github.com/gin-gonic/gin"
 )
 
@@ -183,7 +184,8 @@ type pprofSummary struct {
 		// when configured, the dedicated read pool under "read". Omitted when the store is
 		// not initialized (or is closed), because a field of zeroes would read as "the pool
 		// is empty" instead of "there is no pool".
-		MetricsDB *pprofMetricDatabasePool `json:"metrics_db,omitempty"`
+		MetricsDB  *pprofMetricDatabasePool         `json:"metrics_db,omitempty"`
+		ThemeCache public.DefaultThemeCacheSnapshot `json:"theme_cache"`
 	} `json:"runtime"`
 	Duration struct {
 		DefaultSeconds int `json:"default_seconds"`
@@ -358,6 +360,7 @@ func pprofSummaryHandler(c *gin.Context) {
 	response.Runtime.UptimeSeconds = int64(time.Since(processStartTime) / time.Second)
 	response.Runtime.DBPool = mainDatabasePool()
 	response.Runtime.MetricsDB = metricDatabasePools()
+	response.Runtime.ThemeCache = public.ThemeCacheSnapshot()
 	response.Runtime.Memory = pprofMemorySummary{
 		HeapAlloc:   mem.HeapAlloc,
 		HeapInuse:   mem.HeapInuse,

@@ -114,6 +114,20 @@ func TestScopedAPIKeysAcrossHTTPAndWebSocket(t *testing.T) {
 	}
 	_, readToken := newKey(rpc.ScopeNodesRead)
 	_, allToken := newKey(rpc.APIKeyScopes()...)
+	t.Run("PprofSummaryRemainsSessionOnly", func(t *testing.T) {
+		const path = "/api/admin/pprof/summary"
+		if status, _, _ := request("GET", path, "", nil, false); status != http.StatusUnauthorized {
+			t.Fatalf("guest status = %d", status)
+		}
+		if status, data, _ := request("GET", path, "", nil, true); status != http.StatusOK || data["data"] == nil {
+			t.Fatalf("admin session status = %d", status)
+		}
+		for _, token := range []string{readToken, allToken, node.Token} {
+			if status, _, _ := request("GET", path, token, nil, true); status == http.StatusOK {
+				t.Fatal("bearer credential inherited the administrator session")
+			}
+		}
+	})
 
 	t.Run("NoEscapeViaRPCOrDirectREST", func(t *testing.T) {
 		for _, method := range []string{"admin:getSettings", "admin:editSettings", "admin:getSessions", "admin:dbQuery", "admin:dbExec",
