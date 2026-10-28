@@ -159,6 +159,9 @@ func publicListMetricDefinitions(ctx context.Context, _ *rpc.JsonRpcRequest) (an
 	}
 	out := make([]metricDefinitionResponse, 0, len(defs))
 	for _, def := range defs {
+		if metricstore.IsPanelMetric(def.Name) {
+			continue
+		}
 		out = append(out, metricDefinitionResponse{
 			Name:          def.Name,
 			Description:   metricDescriptionValue(def.Description),
@@ -202,6 +205,11 @@ func publicQueryMetricsWithStore(ctx context.Context, params publicMetricQueryPa
 	}
 	if len(metricKeys) == 0 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "metric_keys is required", nil)
+	}
+	for _, key := range metricKeys {
+		if metricstore.IsPanelMetric(key) {
+			return nil, rpc.MakeError(rpc.InvalidParams, "unknown metric key: "+key, nil)
+		}
 	}
 
 	queryNow := time.Now().UTC()

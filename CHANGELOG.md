@@ -8,7 +8,11 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- No changes yet.
+- Add session-only, bounded panel RSS/heap/goroutine history to the existing
+  Performance profiles page. Samples use independent configurable retention,
+  preserve unknown gaps and do not expose panel readings through public node
+  metrics. This is not a completed v1.8 observability release. See
+  `docs/PANEL-HISTORY.md` for semantics and the older-image reclaim boundary.
 
 ## [v1.7.10] - 2026-10-28
 

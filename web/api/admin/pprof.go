@@ -8,17 +8,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"runtime"
 	runtimepprof "runtime/pprof"
 	"runtime/trace"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/internal/panelhistory"
 	"github.com/Aone2233/nekomari/web/api"
 	"github.com/Aone2233/nekomari/web/public"
 	"github.com/gin-gonic/gin"
@@ -210,6 +209,7 @@ var runtimeProfileNames = []string{
 func RegisterPprofRoutes(group *gin.RouterGroup) {
 	pprofGroup := group.Group("/pprof")
 	pprofGroup.GET("/summary", pprofSummaryHandler)
+	pprofGroup.GET("/history", pprofHistoryHandler)
 	pprofGroup.GET("/profile", downloadCPUProfile)
 	pprofGroup.GET("/trace", downloadTrace)
 	for _, name := range runtimeProfileNames {
@@ -231,19 +231,7 @@ var processStartTime = time.Now()
 // the response that 0 therefore means **unknown**, not zero bytes (see the field comment and the
 // frontend contract in the task); the panel hides the reading instead of showing a false zero.
 func processRSSBytes() uint64 {
-	raw, err := os.ReadFile("/proc/self/statm")
-	if err != nil {
-		return 0
-	}
-	fields := strings.Fields(string(raw))
-	if len(fields) < 2 {
-		return 0
-	}
-	pages, err := strconv.ParseUint(fields[1], 10, 64)
-	if err != nil {
-		return 0
-	}
-	return pages * uint64(os.Getpagesize())
+	return panelhistory.RSSBytes()
 }
 
 // databasePoolSnapshot turns sql.DBStats into the shape the diagnostic page renders.

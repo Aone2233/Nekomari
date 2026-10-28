@@ -13,6 +13,7 @@ import { z } from "zod";
 import { SettingCard, SettingCardLabel } from "@/components/admin/SettingCard";
 import { formatBytes } from "@/utils/unitHelper";
 import { formatUptime } from "@/utils/timeFormat";
+import PanelHistory from "@/pages/admin/PanelHistory";
 
 const pprofProfileNameSchema = z.enum([
   "cpu",
@@ -590,6 +591,8 @@ export default function PprofPage() {
           </Text>
         )}
       </SettingCard>
+
+      <PanelHistory />
 
       {summary ? (
         <SettingCard

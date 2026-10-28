@@ -19,6 +19,7 @@ import (
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/internal/lifecycle"
 	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/internal/panelhistory"
 	"github.com/Aone2233/nekomari/internal/plugin"
 	"github.com/Aone2233/nekomari/internal/scheduler"
 	"github.com/Aone2233/nekomari/utils/geoip"
@@ -232,6 +233,16 @@ func (a *App) runCleanups(ctx context.Context) error {
 
 func registerScheduledWork() {
 	registerBackupHealthWatch()
+	sampler := &panelhistory.Sampler{}
+	if err := scheduler.AddContextFunc("metrics:panelSelf", "@every 1m", true, func(ctx context.Context) {
+		sampleCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if err := sampler.Collect(sampleCtx); err != nil && ctx.Err() == nil {
+			logger.Errorf("server", "Failed to sample panel history: %s", redactMetricStoreError(err))
+		}
+	}); err != nil {
+		logger.ErrorArgs("server", "Failed to add panel history sampling task:", err)
+	}
 	if err := tasks.ReloadPingSchedule(); err != nil {
 		logger.ErrorArgs("server", "Failed to reload ping schedule:", err)
 	}

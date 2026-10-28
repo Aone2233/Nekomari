@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/internal/apikeys"
 	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 	agentruntime "github.com/Aone2233/nekomari/web/agent"
@@ -115,16 +117,49 @@ func TestScopedAPIKeysAcrossHTTPAndWebSocket(t *testing.T) {
 	_, readToken := newKey(rpc.ScopeNodesRead)
 	_, allToken := newKey(rpc.APIKeyScopes()...)
 	t.Run("PprofSummaryRemainsSessionOnly", func(t *testing.T) {
-		const path = "/api/admin/pprof/summary"
-		if status, _, _ := request("GET", path, "", nil, false); status != http.StatusUnauthorized {
-			t.Fatalf("guest status = %d", status)
+		for _, path := range []string{"/api/admin/pprof/summary", "/api/admin/pprof/history"} {
+			if status, _, _ := request("GET", path, "", nil, false); status != http.StatusUnauthorized {
+				t.Fatalf("guest %s status = %d", path, status)
+			}
+			status, data, _ := request("GET", path, "", nil, true)
+			if path == "/api/admin/pprof/summary" && (status != http.StatusOK || data["data"] == nil) {
+				t.Fatalf("admin summary status = %d", status)
+			}
+			// The history route is authorized but returns 503 without a metric store.
+			if path == "/api/admin/pprof/history" && status != http.StatusServiceUnavailable {
+				t.Fatalf("admin history status = %d", status)
+			}
+			for _, token := range []string{readToken, allToken, node.Token} {
+				if status, _, _ := request("GET", path, token, nil, true); status != http.StatusForbidden && status != http.StatusUnauthorized {
+					t.Fatalf("bearer credential reached %s: %d", path, status)
+				}
+			}
 		}
-		if status, data, _ := request("GET", path, "", nil, true); status != http.StatusOK || data["data"] == nil {
-			t.Fatalf("admin session status = %d", status)
+	})
+	t.Run("PanelHistoryIsNotPublicMetricData", func(t *testing.T) {
+		const name = "panel.self.heap_alloc_bytes"
+		if err := config.Set(metricstore.MetricDBDSNKey, filepath.Join(t.TempDir(), "metrics.db")); err != nil {
+			t.Fatal(err)
 		}
-		for _, token := range []string{readToken, allToken, node.Token} {
-			if status, _, _ := request("GET", path, token, nil, true); status == http.StatusOK {
-				t.Fatal("bearer credential inherited the administrator session")
+		if err := metricstore.InitializeStore(); err != nil {
+			t.Fatal(err)
+		}
+		defer metricstore.CloseStoreContext(context.Background())
+		if err := metricstore.WritePanelSample(context.Background(), metricstore.PanelSample{At: time.Now(), RSSBytes: 400, HeapBytes: 300, Goroutines: 5}); err != nil {
+			t.Fatal(err)
+		}
+		if status, data, _ := request("GET", "/api/admin/pprof/history?hours=1", "", nil, true); status != http.StatusOK || data["data"] == nil {
+			t.Fatalf("admin session could not read history: %d", status)
+		}
+		for _, token := range []string{"", readToken, allToken} {
+			definitions := rpcCall("public:listMetricDefinitions", token, nil, false)
+			raw, _ := json.Marshal(definitions)
+			if _, ok := definitions["result"]; !ok || !strings.Contains(string(raw), metricstore.MetricCPU) || strings.Contains(string(raw), name) {
+				t.Fatal("public definitions exposed panel history")
+			}
+			result := rpcCall("public:queryMetrics", token, map[string]any{"metric_key": name, "entity_id": node.UUID, "hours": 1}, false)
+			if _, ok := result["error"]; !ok {
+				t.Fatal("public query accepted a panel history metric")
 			}
 		}
 	})

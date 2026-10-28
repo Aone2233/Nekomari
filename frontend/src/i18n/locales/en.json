@@ -879,6 +879,15 @@
     "zip_files_only": "Only .zip files are supported"
   },
   "pprof": {
+    "history_title": "Panel history",
+    "history_description": "Recent process readings stored in the monitoring database.",
+    "history_metric": "Metric",
+    "history_last_bucket": "Last observed bucket",
+    "history_error": "Panel history is unavailable. Try again later.",
+    "history_disabled": "History for this metric is disabled in metric retention settings.",
+    "history_empty": "No observations in this window.",
+    "history_note": "Sampled approximately once per minute. Each bucket shows its last observation; gaps are unknown, not zero. History begins after this feature is enabled and may contain gaps after a restart.",
+    "history_retention": "Configured retention: {{days}} days. Change it under monitoring database settings.",
     "capture_duration": "CPU and trace capture duration",
     "download": "Download",
     "duration_option": "{{seconds}} s",
