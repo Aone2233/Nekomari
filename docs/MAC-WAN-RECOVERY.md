@@ -1,12 +1,37 @@
-# MAC-WAN backup custody and recovery (2026-10-27, Asia/Shanghai)
+# MAC-WAN backup custody and recovery (2026-10-28, Asia/Shanghai)
 
 MAC-WAN is the owner-selected Hermes and online identity/recovery host (Linux
-x86_64, user `macos`). OC424 now serves v1.7.6/f8c6ae1; OVH (`KSLE`) stores
-nightly ciphertext. Actual fresh14-node v1.7.6 pre/post old/new-image recovery
+x86_64, user `macos`). OC424 now serves v1.7.7/8e1dafa; OVH (`KSLE`) stores
+nightly ciphertext. Actual fresh14-node v1.7.7 pre/post old/new-image recovery
 passes. The owner reports downloading the offline identity copy and authorizes
 cutover; **independent-media recovery is not claimed**. All existing readable
 plaintext/manual/local rollback copies are retained; no deletion policy is
 inferred from downloading a key.
+
+## v1.7.7 recovery (2026-10-28 14:30:19 Asia/Shanghai)
+
+Fresh pre `oc424-20261028T061435663773Z-14c4b3b7c4e1.tar.gz.age`
+boots pinned-v1.7.6 in8.25s and exact-v1.7.7 in9.42s; fresh post
+`oc424-20261028T063031841225Z-78a4084fdca9.tar.gz.age` boots exact-v1.7.7
+in7.81s. These isolated elapsed times are not RTO. Authenticated age manifest/
+hashes, both DBs,14clients/current scoped-key schema and exact source/version
+pass;667488/pre and646865/post rollups exist before boot (not a cross-backup
+equality assertion). No `ANALYZE`, notifications, network or exposed ports; no
+remaining plaintext/container. Custody/private metadata and Agent/Hermes remain.
+
+Exact hashes/images/local rollback are in `DEPLOY-OC424.md`. Independent regular
+OVH copies stay in `manual-v1.7.7-20261028` outside14-pair pruning; same-hash
+MAC-WAN incoming copies remain. All prior backups/rollback images are retained.
+After a slow executor relay, MAC-WAN pulls ciphertext through its existing strictly
+trusted `OVH` alias. Later executor->MAC direct timeouts use strictly verified
+OC424 TCP forwarding; no private key export, agent forwarding or trust bypass.
+
+First actual nightly timer2026-10-28 11:30:23 -> service11:31:04Asia/Shanghai
+and ciphertext pair are verified, with a separate regular copy under
+`manual-first-nightly-20261028`. That specific nightly archive is not restored
+in this round; fresh release pre/post archives are. Independent-media recovery,
+live incident delivery and measured SLO/RPO/RTO remain unverified; no new owner
+session or production-node expiry mutation is used for these drills.
 
 ## v1.7.6 recovery (2026-10-27 21:25:17 Asia/Shanghai)
 

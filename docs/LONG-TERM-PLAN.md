@@ -37,9 +37,21 @@ its exit criteria are met, not when the calendar says so.
 | `v2.0.0` | 2027-Q2 | Agent and platform v2 | non-root agent default with capability/ICMP strategy; Windows/macOS agent support and footprint measurement; single protocol source (remove root/agent duplication); agent updater/rollback hardening; secrets at rest (session/2FA) with key management; optional DB encryption; 200-node capacity | Migration guide; protocol compatibility policy (two-minor deprecation); 200-node benchmark; no plaintext session/2FA secrets on new installs |
 | `v2.1.0` | 2027-Q3 | Scale and ecosystem | HA/read-replica evaluation, plugin/theme marketplace signing, multi-region backup, optional external metrics export | Scale/HA runbook; marketplace signature verification; backup across two providers |
 
-## Current Delivery Checkpoint (2026-10-27)
+## Current Delivery Checkpoint (2026-10-28)
 
-**Latest delivery: v1.7.6 (2026-10-27 21:25:17 Asia/Shanghai).** The dsh review
+**Latest delivery: v1.7.7 (2026-10-28 14:30:19 Asia/Shanghai).** Missing/invalid
+paid-node expiry is neutral and localized, preserving actual countdowns and the
+shared theme. The fetch-abort test synchronizes with handler arrival; no runtime
+fetch change. Exact CI40642445800 passes8/8, release40643116847 10/10 and
+Docker40643699302 2/2. Ten actual embedded-admin scenarios pass on the attested
+published binary on OVH. Fresh MAC-WAN pre pinned-v1.7.6/v1.7.7 recovery takes
+8.25/9.42s and post-v1.7.7 takes7.81s without `ANALYZE`. OC424 upgrade9/9,
+public23/23,scoped forecast14rows and all14fresh reporters pass. No schema/API,
+auth/Agent/dependency/credential change. First actual scheduled nightly backup
+is independently observed today; independent-media and real incident delivery
+remain open. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+**Prior delivery: v1.7.6 (2026-10-27 21:25:17 Asia/Shanghai).** The dsh review
 finds three recovery placeholders supplied with five arguments, rejected by
 actual MySQL/PostgreSQL, and a preexisting MySQL fractional parent-division
 defect. Both are fixed while preserving v1.7.5's series-driven SQLite startup
@@ -56,12 +68,12 @@ correctness batches. The full v1.8-v2.1 roadmap is not one continuous task.
 All 200-node work remains deferred, preserving its original limits and 26 failed
 reports. Publication is not proof that every roadmap exit criterion passed.
 
-**Delivered:** OC424 serves v1.7.6/f8c6ae1 at `nekomari.orderly2233.org`, healthy/
+**Delivered:** OC424 serves v1.7.7/8e1dafa at `nekomari.orderly2233.org`, healthy/
 restart0, after exact-source CI 8/8, release 10/10, Docker 2/2 and upgrade check 9/9.
 Both Linux assets pass checksums/tag/source/workflow attestations; both image
 architectures identify exact source. Public checks23/23 and scoped forecast14rows
 pass; the earlier v1.7.4 bounded live SLA reads are dated evidence, not rerun
-for v1.7.6. The owner-approved
+for v1.7.7. The owner-approved
 baseline now includes Pi's explicitly owner-authorized addition: 14 clients and
 14 currently fresh reporting nodes, not the earlier 13-client release snapshot.
 UUIDs/tokens/Agent services are unchanged. The five tools retain
@@ -77,18 +89,21 @@ and passes actual disposable CLI create/edit/read/remove. Original13 metadata is
 unchanged at that handoff; Pi's later authorized addition is preserved in the
 current14-node baseline. The owner selects365days to2027-10-27 13:38:02
 Asia/Shanghai, not the suggested90; no silent rotation. Other runtime callers
-are not fully inventoried. v1.7.6 does not restart Hermes or any Agent.
+are not fully inventoried. v1.7.7 does not restart Hermes or any Agent.
 
 **Backup delivery:** OC424 has only public recipients; OVH's encrypted daily
 03:30 UTC timer replaces only the old plaintext cron row, with 14 ciphertext-pair
 retention. The installed service succeeds; fresh pre/post archives pass isolated
-MAC-WAN pinned-v1.7.5/v1.7.6 recovery with both DBs,14 clients and cleanup,
+MAC-WAN pinned-v1.7.6/v1.7.7 recovery with both DBs,14 clients and cleanup,
 without refreshing planner statistics. Release
 recovery copies are outside automatic retention, and all old plaintext/local
 rollback assets are kept. The owner reports downloading the offline identity
 copy and authorizes cutover; independent-media restore is not claimed. Online
 same-UID Hermes/root/Docker exposure remains explicit. No unattended decrypt
 scheduler or production RPO/RTO/SLO acceptance is implied.
+The first actual nightly timer2026-10-28 11:30:23 -> service11:31:04
+Asia/Shanghai succeeds with a verified ciphertext pair and independent regular
+copy outside pruning. This closes first-trigger observation only.
 
 **Next bounded actions:**
 
@@ -114,8 +129,8 @@ scheduler or production RPO/RTO/SLO acceptance is implied.
    v1.7.3 backup freshness/heartbeat alerts are delivered with restricted
    metadata-only SSH reporting and existing Panel notification delivery. Exact
    CI/publication, six real OVH synthetic groups, 14-node recovery/continuity,
-   installed service and initial/later recurring health checks pass. First nightly
-   backup and live Telegram delivery remain separate. See
+   installed service and initial/later recurring health checks pass. First actual
+   nightly backup is now verified2026-10-28; live Telegram delivery is separate. See
    [`BACKUP-HEALTH.md`](./BACKUP-HEALTH.md).
    v1.7.4 SLA task-generation normalization is delivered: unique chronological
    measured buckets before loss/latency/incidents/maintenance; focused races,
@@ -125,22 +140,23 @@ scheduler or production RPO/RTO/SLO acceptance is implied.
    task in that selected live window. Synthetic fixtures verify the overlap case.
    The separate span-based
    coverage definition remains open. Existing backup-health recurring checks now
-   succeed; first nightly backup/live incident delivery remain unclaimed.
+   succeed; first nightly backup is now observed, live incident delivery is not.
    The subsequent v1.7.5 SQLite recovery-startup fix removes the need for
    scratch `ANALYZE`; v1.7.6 fixes SQL backend compatibility and adds real
    MySQL/PostgreSQL CI. Actual published binaries and fresh encrypted restores
    pass. Old v1.7.4 restores still need the documented workaround. See
    [`METRIC-RECOVERY-STARTUP.md`](./METRIC-RECOVERY-STARTUP.md) and
    [`SLA-GENERATIONS.md`](./SLA-GENERATIONS.md).
+   v1.7.7 closes the small nullable-expiry UI gap and test arrival race. Do not
+   combine another runtime feature batch with release documentation closeout.
 
 v1.7 is released/deployed, **not unconditionally exit-complete**: remaining
-caller inventory, independent-media recovery and the
-recurring schedule observation and stronger restore-drill policy remain open in
-[`OPEN-WORK.md`](./OPEN-WORK.md#v17-release-readiness-2026-10-27).
-v1.7.6->v1.7.5 needs the pinned prior compose/image (keeping the health opt-in/state),
-preserving current DB data and all14nodes. This reintroduces the SQL backend
-defects, but OC424 uses SQLite. The fresh per-DB WAL-safe snapshots/compose are
-retained in `rollbacks/v1.7.6-20261027T132515Z-5045e5f7`; they do not claim
+caller inventory, independent-media recovery, live incident delivery and
+stronger restore-drill policy remain open in
+[`OPEN-WORK.md`](./OPEN-WORK.md#v17-release-readiness-2026-10-28).
+v1.7.7->v1.7.6 needs the pinned prior compose/image (keeping the health opt-in/state),
+preserving current DB data and all14nodes. Fresh per-DB WAL-safe snapshots/compose
+are retained in `rollbacks/v1.7.7-20261028T063016Z-64133ab0`; they do not claim
 cross-DB atomicity.
 Across credential migration to v1.6, rollback needs the old binary and pre-upgrade
 DB, not an image-only downgrade; frozen-writer/failure-preservation instructions

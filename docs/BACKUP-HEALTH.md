@@ -123,3 +123,22 @@ prove the first nightly trigger, still due 2026-10-28 11:30 Asia/Shanghai.
 No live incident or test Telegram is induced. Actual incident delivery,
 independent-media restore and measured SLO/RPO/RTO remain open. No credential,
 grant, Agent/Hermes service or encrypted-backup custody change is made.
+
+## First nightly and v1.7.7 continuity (2026-10-28, Asia/Shanghai)
+
+The first actual scheduled encrypted backup is now verified: timer11:30:23,
+service11:30:23 ->11:31:04, `Result=success`, `ExecMainStatus=0`. The actual
+pair `oc424-20261028T033023877322Z-e06d4505678e.tar.gz.age` is184348120bytes,
+SHA256 `7014f3794ed42f7e4babe011536fb3c9bd9daff77eb768bf5c9c004980c85fb3`;
+root0600/singlelink/checksum verify. A separate regular OVH copy under
+`manual-first-nightly-20261028` protects it from top-level14-pair rotation.
+This closes first-trigger observation, not restore of that particular archive,
+independent-media recovery or an RPO guarantee.
+
+The subsequent v1.7.7 image switch preserves exact restricted authorization,
+sudo/tool/unit hashes, schedule/retention, health env opt-in and quiet persisted
+`observed=ok`, `notified=""` state. Fresh reports and recurring health succeed;
+actual encrypted pre old/new and post new recovery passes on MAC-WAN without
+`ANALYZE`, all14clients retained. No fake outage or live Telegram is induced.
+Real incident delivery, Panel-independent alerting, independent-media restore
+and measured SLO/RPO/RTO remain separate. No Agent/Hermes restart or grant change.

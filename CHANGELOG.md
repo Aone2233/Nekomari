@@ -13,6 +13,19 @@ Nekomari's own.
 
 ## [v1.7.7] - 2026-10-28
 
+- **Published and deployed on OC424 at 14:30:19 Asia/Shanghai.** Immutable
+  `8e1dafa68e201830ec8df48b46eb60a2aa3b8332`, PR107; exact CI40642445800
+  8/8, merge CI40643111878 8/8, release40643116847 10/10, Docker40643699302
+  2/2. Both Linux checksums/source attestations and both image architectures
+  verify. The attested published binary passes ten embedded-admin browser
+  scenarios on OVH (five locales, desktop-light/mobile-dark). OC424 is
+  healthy/restart0, upgrade9/9, public23/23 and scoped forecast14rows; all14
+  UUIDs/tokens/reporters, schemas, grants/expiry, GeoIP and quiet backup-health
+  state remain. Fresh pre ciphertext restores with pinned v1.7.6/v1.7.7 in
+  8.25/9.42s and post ciphertext restores v1.7.7 in7.81s, all without `ANALYZE`.
+  Agents/Hermes are not restarted. First actual scheduled nightly backup is
+  verified separately at11:30:23 ->11:31:04; no independent-media/SLO claim.
+
 ### Fixed
 
 - Show a neutral **No expiry set** badge for absent, null or blank paid-node

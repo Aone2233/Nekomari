@@ -3,9 +3,9 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
-## Current checkpoint (2026-10-27, Asia/Shanghai)
+## Current checkpoint (2026-10-28, Asia/Shanghai)
 
-OC424 serves **v1.7.6 / f8c6ae1** at
+OC424 serves **v1.7.7 / 8e1dafa** at
 `https://nekomari.orderly2233.org`. Scoped-key migration and session-only token
 rotation are deployed; no existing Agent token is rotated. OVH now receives
 nightly ciphertext, with MAC-WAN as the online identity/recovery runner. The
@@ -16,16 +16,66 @@ Older rollout sections are dated evidence, not the current version/node count.
 
 | Item | Observed evidence |
 |---|---|
-| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.6/f8c6ae1; upgrade9/9,public23/23,scoped forecast14rows and14fresh CPU reporters |
+| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.7/8e1dafa; upgrade9/9,public23/23,scoped forecast14rows and14fresh CPU reporters |
 | Nodes | Owner confirms Pi's later addition;current approved baseline14registered clients,14fresh CPU reporters. Preserve the new node; earlier13-client release snapshots are historical |
 | Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2, unchanged; generic `nekomari-agent` is not the reporter |
 | OVH | Alias `KSLE`, encrypted receiver + daily 03:30 UTC timer; AgentPID495903/restart0 unchanged |
 | MAC-WAN | Linux x86_64 user `macos`; online identity/isolated recovery, AgentPID976/restart0 unchanged; Hermes gateway briefly stopped/resumed, nowPID922780/restart0 |
 | Acceptance | Hermes private-key/disposable CLI writes pass; dsh records owner history/audit/API-key acceptance; complete caller inventory remains separate; public401 is not authenticated acceptance |
 
-Latest delivery: v1.7.6 cross-backend recovery correction, following dsh's
-v1.7.5 SQLite startup optimization. See
-[`DSH-REVIEW-2026-10-27.md`](./DSH-REVIEW-2026-10-27.md).
+Latest delivery: v1.7.7 nullable price-expiry labels and test-only fetch-abort
+arrival synchronization. v1.7.6 cross-backend recovery and dsh's v1.7.5 SQLite
+startup optimization remain intact. The first scheduled nightly archive is now
+verified; independent-media restore and real incident delivery remain separate.
+
+## v1.7.7 rollout (2026-10-28 14:30:19 Asia/Shanghai)
+
+PR107 fixes paid-node unset/invalid expiry labels without inventing a countdown
+or lifetime entitlement. Five locales and the existing shared admin theme remain;
+valid expiry/color rules and tags are unchanged. The fetch-abort change is test
+only. No backend/schema/API/Agent/dependency, credential, scope or schedule change.
+
+| Item | Evidence |
+|---|---|
+| Immutable publication | `v1.7.7` -> `8e1dafa68e201830ec8df48b46eb60a2aa3b8332`; exact CI40642445800 8/8, identical-tree merge79910ca CI40643111878 8/8, release40643116847 10/10, Docker40643699302 2/2. The initial candidate's registry-contract failure is corrected by classifying the installed-binary spec as `.spec.py`; no gate disabled |
+| OC424 arm64 | `ghcr.io/aone2233/nekomari:v1.7.7@sha256:c064f192fa97d1376f14295ea086802c98dff9b7d4b803bcebbced4471e0810b`; index `sha256:3bfc05f0b58e95494587b8e8e842a53bc23cc8695a875d4d530e6661b5d55702`; extracted/live binary SHA256 `28b3ad6e706277478cc8e755dbe86a1788e47a68539e64bbf88d267938d024d7` |
+| MAC-WAN amd64 | `ghcr.io/aone2233/nekomari:v1.7.7@sha256:de822905be37d06da8b74de7de2f0ed8a008065525562ed80f5e14617746c62b`; binary SHA256 `ca0f172f322407cee1956ce0b94be5b15468737c022d788a2f6f3fd03813d5d0`. Both Linux checksums/tag/source/workflow attestations and Panel/Agent dual-architecture OCI identities verify; native packaged binaries match. Agents are not deployed |
+| Focused/source verification | Previous component fails the new missing-expiry regression; fixed static5/5, TypeScript/ESLint, mounted desktop-light/mobile-dark and actual embedded candidate10scenarios pass. AbortController race10repeats and vet pass. No unrelated broad local SQL/capacity rerun; all mandatory CI gates remain |
+| OVH published acceptance | Exact attested binary passes10/10 installed embedded-admin scenarios: five locales x desktop-light1280/mobile-dark390, real API null -> renewal -> null, neutral/orange labels, custom tag and no page errors. Temporary credentials/nodes only, loopback; no asset proxy. Browser dependencies are extracted into this batch's private disposable directory, not installed system-wide; existing OVH Agent unchanged |
+| Pre encrypted backup/recovery | Installed OVH service creates `oc424-20261028T061435663773Z-14c4b3b7c4e1.tar.gz.age`,184572617bytes,SHA256 `0d0e81f9e9e8e64bc1446c75ae3a17b7db3fa493dc15bff0a125f5e51ac14571`; pinned-v1.7.6 recovery8.25s and exact-v1.7.7 recovery9.42s,667488rollups before boot,both DBs/14clients/current auth pass, no `ANALYZE` |
+| Post encrypted backup/recovery | `oc424-20261028T063031841225Z-78a4084fdca9.tar.gz.age`,184595561bytes,SHA256 `7ce994f5f393a36f1f4e334a48bdee0ddf64a650037fc62f76862471e99ab952`; exact-v1.7.7 MAC-WAN recovery7.81s,646865rollups before boot,both DBs/14clients/current auth pass,networknone/noports,no `ANALYZE` or remaining plaintext/container. Drill times are not RTO |
+| Local rollback | `/opt/nekomari/rollbacks/v1.7.7-20261028T063016Z-64133ab0` retains prior/new compose, image pins, per-DB WAL-safe snapshots/checksums/instructions. Not a cross-DB atomic snapshot; prior v1.7.6 image remains |
+| Actual continuity | Started14:30:19,healthy/restart0,upgrade9/9,public23/23,scoped forecast14rows,14registered/fresh CPU reporters. Both DB checks/schemas, UUIDs/tokens, grants/expiry, GeoIP, zero update targets, nginx/recipient/probe override and quiet backup health unchanged. Prior hashed admin entry assets remain byte-identical. OC424/OVH/MAC-WAN Agents and Hermes not restarted |
+| Copies and transport | Independent regular OVH release copies stay under `/srv/backups/oc424-encrypted/manual-v1.7.7-20261028`, outside14-pair pruning, with same-hash MAC-WAN copies. Initial slow relay is stopped without publishing a partial archive; MAC-WAN pulls ciphertext through its existing strictly trusted OVH alias. Later executor->MAC direct timeouts use strictly verified OC424 TCP proxy; no key/trust/custody change, identity never exported |
+| First actual scheduled nightly | Timer2026-10-28 11:30:23 -> service11:31:04Asia/Shanghai,success/exit0; `oc424-20261028T033023877322Z-e06d4505678e.tar.gz.age`,184348120bytes,SHA256 `7014f3794ed42f7e4babe011536fb3c9bd9daff77eb768bf5c9c004980c85fb3`. Verified pair and independent regular copy under `manual-first-nightly-20261028`; closes first-trigger observation, not a restore of that specific archive or RPO guarantee |
+
+### v1.7.7 rollback and boundaries
+
+Verify this rollback directory's checksums; restore `docker-compose.before.yml`
+as `/opt/nekomari/docker-compose.yml`, validate `docker compose config --quiet`,
+then `docker compose up -d --no-deps nekomari`. Expect v1.7.6/f8c6ae1:
+`ghcr.io/aone2233/nekomari:v1.7.6@sha256:0a3316d1f58ecd9016b150175cf3aa509bbb1a49e83da78b802adb62b7ded279`.
+Keep current DBs/14nodes and backup-health env/report/state; do not restore
+older DBs just for this no-schema patch. This image rollback is prepared, not
+exercised; actual isolated old/new-image recovery is separately verified.
+Across the earlier v1.7->v1.6 auth migration use the paired old DB and binary
+with frozen writers, never an image-only downgrade.
+
+No new owner-session admin acceptance, production nullable-node mutation,
+zero-downtime/SLO/RPO/RTO, independent-media restore, live incident delivery or
+200-node result is claimed. Failure logs and private evidence stay under the
+local text pointer `.runtest/release-v1.7.7-current`. Shared caches, all backups,
+identity/private credentials and prior rollback images are not cleanup targets.
+
+Final read-only14:39Asia/Shanghai checks retain exact live version/image,
+both DB checks,14fresh reporters,unchanged Agent/Hermes service identities,
+private-file metadata and quiet fresh backup health. v1.7.5/v1.7.6/v1.7.7 tags
+and every release's10asset identities/sizes/digests/timestamps remain unchanged.
+Cleanup removes only this batch's checksum-verified OC424 tool stage, OVH
+private browser/runtime/test directory (470139481bytes) and local build/test/
+download outputs (386197341bytes). Logs, screenshots, attestations/manifests,
+shared caches and all recovery copies/images remain. Final `df -P /` use:
+OC42444%,OVH9%,MAC-WAN26%,development64%; no broad cache/image purge.
 
 ## v1.7.6 rollout (2026-10-27 21:25:17 Asia/Shanghai)
 

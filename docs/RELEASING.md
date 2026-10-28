@@ -2,12 +2,13 @@
 
 ## Cut a release
 
-**Latest delivery: v1.7.6 (2026-10-27).** Immutable `f8c6ae1`, exactCI40506697515
-8/8 including actual MySQL/PostgreSQL recovery, release40507767971 10/10,
-Docker40511319737 2/2, attested published-binary SQL/OVH acceptance and fresh
-MAC-WAN pinned-old/new encrypted recovery pass. OC424healthy/restart0,
-upgrade9/9,public23/23,forecast14rows,14freshreporters; no schema/auth/Agent
-or credential change. Previous pinned-v1.7.5 compose/image is the rollback,
+**Latest delivery: v1.7.7 (2026-10-28).** Immutable `8e1dafa`, exactCI40642445800
+8/8, mergeCI40643111878 8/8, release40643116847 10/10, Docker40643699302
+2/2. Linux checksums/attestations, native images, ten actual published-binary
+embedded-admin browser scenarios on OVH and fresh MAC-WAN pinned-old/new
+encrypted recovery pass. OC424healthy/restart0,upgrade9/9,public23/23,
+forecast14rows,14freshreporters; no schema/auth/Agent/dependency or credential
+change. Previous pinned-v1.7.6 compose/image is the rollback,
 preserving current DBs/health state. Earlier checkpoints below are dated history;
 the actual current facts and digests belong to `DEPLOY-OC424.md`.
 
