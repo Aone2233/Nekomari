@@ -85,7 +85,7 @@ The panel-smoke CI job also runs a loopback-only installed Panel against its
 actual embedded admin assets, not a Vite fixture or an external asset proxy:
 
 ```sh
-python frontend/script/price-expiry.browser.spec.py --panel-binary ./nekomari
+python frontend/script/price-expiry.spec.py --panel-binary ./nekomari
 ```
 
 Playwright and Chromium must already be installed. Optional `--output report.json`
