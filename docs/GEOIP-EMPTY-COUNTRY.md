@@ -1,8 +1,9 @@
 # GeoIP empty-country cache
 
-This small correctness patch changes only in-process GeoIP cache expiry; it
-does not change the provider, Agent protocol, configuration or stored node
-regions. The pending release has not yet been deployed.
+Published and deployed as v1.7.10 on OC424. This small correctness patch changes
+only in-process GeoIP cache expiry; it does not change the provider, Agent
+protocol, configuration or stored node regions. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for release and recovery evidence.
 
 Previously a successful but completely empty country result (for example an
 ipinfo response without `country`) was cached for 48 hours. Such responses can

@@ -8,6 +8,19 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- No changes yet.
+
+## [v1.7.10] - 2026-10-28
+
+- **Published and deployed on OC424 at 17:23:20 Asia/Shanghai.** Immutable
+  `a2fd46a3205b0a8de7babced44880e4b9703b69f`, PR113; exact CI40660304364
+  8/8, same-tree merge CI40661304807 8/8, release40661328099 10/10 and
+  Docker40662206501 2/2. Checksums/source attestations and native image
+  identity pass. OVH's isolated published Panel passes fake-upstream caching
+  and reload checks. OC424 upgrade9/9, public26/26, scoped forecast14rows,
+  both DB quick checks and14 fresh CPU/uptime reporters pass. Pre ciphertext
+  recovers on MAC-WAN under v1.7.9/v1.7.10, post under v1.7.10; no production
+  owner UI login or independent-media restore is claimed.
 - **GeoIP empty-country cache.** Cache successful results with neither a
   country code nor name for one hour rather than 48 hours, allowing a later
   lookup to observe recovery while limiting repeated upstream traffic.
