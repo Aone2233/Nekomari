@@ -1,6 +1,7 @@
 # Default-theme cache diagnostics
 
-Candidate v1.7.9, not a completed v1.8 observability/history release. The
+Published and deployed as v1.7.9 on OC424; not a completed v1.8
+observability/history release. The
 existing in-panel Performance profiles page gains a small current-process view
 of the built-in default theme cache, alongside RSS/heap and database pools.
 It does not monitor third-party themes or change cache policy.
@@ -37,9 +38,11 @@ states to an unknown label rather than failing the entire diagnostic page.
 Unit/race coverage checks cold, in-progress, success, failure, disabled,
 deleted-at-runtime, ordinary-miss and fallback states. A synthetic installed
 binary verifies real session/key authorization and embedded desktop-light and
-mobile-dark UI with the cache enabled and disabled. Publication, release-image
-verification, backups, isolated restoration and live acceptance must be recorded
-separately before calling the candidate deployed.
+mobile-dark UI with the cache enabled and disabled. The exact published binary
+passes this isolated check on OVH. Production version/health, public denial,
+encrypted backup recovery and node continuity pass; see
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for evidence. No owner-authenticated UI
+session was performed.
 
 No schema or stored history is added. With the normal fresh encrypted backup and
 pinned prior image, an image-only rollback to v1.7.8 keeps current data; do not

@@ -39,7 +39,18 @@ its exit criteria are met, not when the calendar says so.
 
 ## Current Delivery Checkpoint (2026-10-28)
 
-**Latest delivery: v1.7.8 (2026-10-28 15:42:01 Asia/Shanghai).** The new
+**Latest delivery: v1.7.9 (2026-10-28 16:34:31 Asia/Shanghai).** The existing
+session-only performance page reports last-observed built-in theme disk-cache
+state and whether the memory fallback loaded; no historical sampling is
+claimed. Exact CI40655268852 8/8, merge CI40656067694 8/8,
+release40656102364 10/10 and Docker40656768684 2/2 pass. The published binary
+passes isolated OVH browser/auth checks; fresh encrypted pre recovery passes
+under v1.7.8/v1.7.9 and post recovery under v1.7.9 on MAC-WAN. OC424
+upgrade9/9, public26/26, scoped forecast14rows and 14 fresh CPU/uptime reporters
+pass. Owner UI acceptance and independent-media recovery remain separate. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+**Prior delivery: v1.7.8 (2026-10-28 15:42:01 Asia/Shanghai).** The new
 same-shell node uptime history records last positive valid readings with a
 one-day default retention, no backfill and no reboot inference. Exact
 CI40649551718 passes8/8, release40650315129 10/10, Docker40651006736 2/2;
@@ -80,12 +91,12 @@ correctness batches. The full v1.8-v2.1 roadmap is not one continuous task.
 All 200-node work remains deferred, preserving its original limits and 26 failed
 reports. Publication is not proof that every roadmap exit criterion passed.
 
-**Delivered:** OC424 serves v1.7.8/75168d5 at `nekomari.orderly2233.org`, healthy/
+**Delivered:** OC424 serves v1.7.9/4e6c4d2 at `nekomari.orderly2233.org`, healthy/
 restart0, after exact-source CI 8/8, release 10/10, Docker 2/2 and upgrade check 9/9.
 Both Linux assets pass checksums/tag/source/workflow attestations; both image
-architectures identify exact source. Public checks24/24 and scoped forecast14rows
+architectures identify exact source. Public checks26/26 and scoped forecast14rows
 pass; the earlier v1.7.4 bounded live SLA reads are dated evidence, not rerun
-for v1.7.8. The owner-approved
+for v1.7.9. The owner-approved
 baseline now includes Pi's explicitly owner-authorized addition: 14 clients and
 14 currently fresh reporting nodes, not the earlier 13-client release snapshot.
 UUIDs/tokens/Agent services are unchanged. The existing tools and new uptime page
@@ -101,13 +112,13 @@ and passes actual disposable CLI create/edit/read/remove. Original13 metadata is
 unchanged at that handoff; Pi's later authorized addition is preserved in the
 current14-node baseline. The owner selects365days to2027-10-27 13:38:02
 Asia/Shanghai, not the suggested90; no silent rotation. Other runtime callers
-are not fully inventoried. v1.7.8 does not restart Hermes or any Agent.
+are not fully inventoried. v1.7.9 does not restart Hermes or any Agent.
 
 **Backup delivery:** OC424 has only public recipients; OVH's encrypted daily
 03:30 UTC timer replaces only the old plaintext cron row, with 14 ciphertext-pair
-retention. The installed service succeeds; fresh pre/post release archives pass
-isolated MAC-WAN pinned-v1.7.7/v1.7.8 recovery with both DBs,14 clients and
-cleanup, without refreshing planner statistics or reclaim. Release
+retention. The installed service succeeds; fresh pre archives pass isolated
+MAC-WAN pinned-v1.7.8/v1.7.9 recovery, and post archives pass v1.7.9 recovery,
+with both DBs,14 clients and cleanup, without refreshing planner statistics or reclaim. Release
 recovery copies are outside automatic retention, and all old plaintext/local
 rollback assets are kept. The owner reports downloading the offline identity
 copy and authorizes cutover; independent-media restore is not claimed. Online
@@ -164,15 +175,18 @@ copy outside pruning. This closes first-trigger observation only.
    milestone, not reboot counts or a completed v1.8 release. Release, encrypted
    recovery and OC424 continuity gates pass; owner UI acceptance remains
    separate. See [`UPTIME-HISTORY.md`](./UPTIME-HISTORY.md).
+   v1.7.9 adds session-only current theme-cache/fallback diagnostics; this is
+   not self-metrics history or a complete v1.8 observability release. See
+   [`THEME-CACHE-DIAGNOSTICS.md`](./THEME-CACHE-DIAGNOSTICS.md).
 
 v1.7 is released/deployed, **not unconditionally exit-complete**: remaining
 caller inventory, independent-media recovery, live incident delivery and
 stronger restore-drill policy remain open in
 [`OPEN-WORK.md`](./OPEN-WORK.md#v17-release-readiness-2026-10-28).
-v1.7.8->v1.7.7 needs the pinned prior compose/image (keeping the health opt-in/state),
+v1.7.9->v1.7.8 needs the pinned prior compose/image (keeping the health opt-in/state),
 preserving current DB data and all14nodes. Fresh per-DB WAL-safe snapshots/compose
-are retained in `rollbacks/v1.7.8-20261028T074158Z-6e323629`; they do not claim
-cross-DB atomicity. Old-image manual metric reclaim deletes uptime history, so
+are retained in `rollbacks/v1.7.9-20261028T083428Z-2956a078`; they do not claim
+cross-DB atomicity. v1.7.7 and older manual metric reclaim deletes uptime history, so
 retain and verify the fresh post-upgrade ciphertext before downgrade or reclaim.
 Across credential migration to v1.6, rollback needs the old binary and pre-upgrade
 DB, not an image-only downgrade; frozen-writer/failure-preservation instructions
