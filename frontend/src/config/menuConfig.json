@@ -27,6 +27,11 @@
           "icon": "Activity"
         },
         {
+          "labelKey": "uptimeHistory.title",
+          "path": "/admin/uptime-history",
+          "icon": "Activity"
+        },
+        {
           "labelKey": "exec.title",
           "path": "/admin/exec",
           "icon": "Code"

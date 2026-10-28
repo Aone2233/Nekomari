@@ -228,6 +228,7 @@
       "p99": "第 99 百分位",
       "stddev": "標準差"
     },
+    "uptimeHistoryNote": "歷史時間區間顯示最後一次取樣；缺失資料不代表零，數值下降也不能確定發生重啟。歷史從啟用此功能後開始。",
     "samplingAlgorithm": "取樣演算法",
     "samplingAlgorithmTips": "<b>降取樣說明</b><br/>查詢歷史時間範圍時，後端會依照請求的時間間隔把資料點歸入對齊後的固定時間桶，再用目前選擇的演算法為每個時間桶計算一個值。<br/><br/>平均值/最小值/最大值/第一個值/最後一個值/標準差和百分位都會在每個時間桶內部計算。空時間桶會保持為空，所以圖表上的斷點仍然表示該時間段沒有資料。",
     "saveGlobalTemplate": "儲存為全域範本",
@@ -963,6 +964,18 @@
     "yes": "是的"
   },
   "region_overview": "點亮地區",
+  "uptimeHistory": {
+    "title": "節點運作時間歷史",
+    "description": "在管理面板中查看單個節點記錄的運作時間。",
+    "node": "節點",
+    "range": "時間範圍",
+    "refresh": "重新整理",
+    "latestAt": "最新時間區間：{{time}}",
+    "noData": "此時間範圍內沒有運作時間記錄",
+    "error": "無法載入運作時間歷史",
+    "loading": "正在載入運作時間歷史…",
+    "retention": "指標保留 {{days}} 天；較早的歷史使用較粗的時間區間。"
+  },
   "rpc2": {
     "automatic_connection_failed": "自動連線失敗:",
     "batch_request_failed": "批次請求失敗",

@@ -55,6 +55,12 @@ func reportMetricPoints(report v2.Report) []metric.Point {
 		filtered = append(filtered, point)
 	}
 	points = filtered
+	// The wire decoder cannot distinguish an omitted uptime field from zero,
+	// even if a malformed report claims quality=ok. Treat both as unknown.
+	quality, hasQuality := report.Quality["uptime"]
+	if report.Uptime > 0 && (!hasQuality || quality == "ok") {
+		points = append(points, metric.Point{MetricName: MetricUptime, EntityID: entityID, Timestamp: ts, Value: float64(report.Uptime)})
+	}
 	// 备份新鲜度：仅在 agent 配置了状态文件时上报，避免给未使用该功能的
 	// 部署凭空写入零值序列（那样会让图表显示成「备份一直是 0 秒前」）。
 	if report.Backup != nil {

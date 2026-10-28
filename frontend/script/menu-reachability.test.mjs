@@ -12,9 +12,8 @@ const menuConfig = JSON.parse(
   readFileSync(new URL('../src/config/menuConfig.json', import.meta.url), 'utf8'),
 );
 
-// Kept in step with `standalone-pages.test.mjs`, which holds the build-side contract. A page in
-// that table and not in this one is not checked here at all.
-const PAGES = ['sla', 'bulk', 'maintenance', 'config', 'forecast'];
+// Includes all pages in `standalone-pages.test.mjs` plus panel-only operator pages.
+const PAGES = ['sla', 'bulk', 'maintenance', 'config', 'forecast', 'uptime-history'];
 
 const operations = menuConfig.menu.find((item) => item.labelKey === 'operations.title');
 

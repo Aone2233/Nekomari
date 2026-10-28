@@ -87,6 +87,7 @@ import {
   type MetricChartRow,
 } from "@/utils/metricSeries";
 import { formatBytes } from "@/utils/unitHelper";
+import { formatUptime } from "@/utils/timeFormat";
 import type { RecordFormat } from "@/utils/RecordHelper";
 
 type LoadChartProps = {
@@ -113,6 +114,7 @@ type MetricKind =
   | "temperature"
   | "load"
   | "milliseconds"
+  | "seconds"
   | "raw";
 
 type DashboardChart = {
@@ -195,6 +197,7 @@ const MAX_REALTIME_POINTS = 30 * 5;
 const HISTORY_MAX_POINTS = 700;
 const DASHBOARD_TEMPLATE_KEY = "chartDashboardTemplate";
 const CUSTOM_RANGE_DEFAULT_DAYS = 24;
+const UPTIME_METRIC = "system.uptime_seconds";
 
 const AGGREGATIONS: Array<{ value: Aggregation; labelKey: string }> = [
   { value: "avg", labelKey: "chart.avg" },
@@ -431,6 +434,13 @@ const fallbackCatalog: MetricCatalogItem[] = [
     realtimeValue: (record) => record.connections_udp,
   },
   {
+    key: UPTIME_METRIC,
+    label: "Uptime",
+    kind: "seconds",
+    unit: "s",
+    realtimeValue: (record) => record.uptime,
+  },
+  {
     key: PING_LATENCY_METRIC,
     label: "Ping",
     kind: "milliseconds",
@@ -485,7 +495,7 @@ const formatSeriesLabel = (
 ) => {
   const tagLabel = formatTags(metricKey, tags, pingTaskMap, t);
   if (metricKey === PING_LATENCY_METRIC && tagLabel) return tagLabel;
-  const metricLabel = getMetricLabel(metricKey, definitions);
+  const metricLabel = getMetricLabel(metricKey, definitions, t);
   return tagLabel ? `${metricLabel} ${tagLabel}` : metricLabel;
 };
 
@@ -494,7 +504,7 @@ const asMetricValue = (value: number | null | undefined) => {
   return value;
 };
 
-const formatValue = (value: unknown, kind: MetricKind) => {
+const formatValue = (value: unknown, kind: MetricKind, t: ReturnType<typeof useTranslation>["t"]) => {
   if (typeof value !== "number" || !Number.isFinite(value)) return "-";
   switch (kind) {
     case "percent":
@@ -509,6 +519,8 @@ const formatValue = (value: unknown, kind: MetricKind) => {
       return `${value.toFixed(1)}°C`;
     case "milliseconds":
       return `${Math.round(value)} ms`;
+    case "seconds":
+      return formatUptime(value, t);
     case "load":
       return value.toFixed(2);
     default:
@@ -532,7 +544,9 @@ const getMetricKind = (metricKey: string, unit?: string): MetricKind => {
 const getMetricLabel = (
   metricKey: string,
   definitions: Map<string, MetricDefinition>,
+  t: ReturnType<typeof useTranslation>["t"],
 ) => {
+  if (metricKey === UPTIME_METRIC) return t("nodeCard.uptime");
   const fallback = fallbackCatalogMap.get(metricKey);
   if (fallback) return fallback.label;
   const def = definitions.get(metricKey);
@@ -876,6 +890,7 @@ const labelFormatter = (hours: number | undefined) => {
 const getLatestText = (
   rows: Array<Record<string, string | number | null>>,
   series: RenderSeries[],
+  t: ReturnType<typeof useTranslation>["t"],
 ) => {
   for (let rowIndex = rows.length - 1; rowIndex >= 0; rowIndex--) {
     const row = rows[rowIndex];
@@ -883,7 +898,7 @@ const getLatestText = (
       const item = series[seriesIndex];
       const value = row[item.dataKey];
       if (typeof value === "number" && Number.isFinite(value)) {
-        return `${item.label}: ${formatValue(value, item.kind)}`;
+        return `${item.label}: ${formatValue(value, item.kind, t)}`;
       }
     }
   }
@@ -1082,7 +1097,12 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
 
   const metricOptions = useMemo(() => {
     const merged = new Map<string, MetricCatalogItem>();
-    for (const item of fallbackCatalog) merged.set(item.key, item);
+    for (const item of fallbackCatalog) {
+      // Do not offer the new metric on an older or unreachable backend: one
+      // unknown key would fail the entire historical query.
+      if (item.key === UPTIME_METRIC && !definitions.some((def) => def.name === item.key)) continue;
+      merged.set(item.key, item.key === UPTIME_METRIC ? { ...item, label: t("nodeCard.uptime") } : item);
+    }
     for (const def of definitions) {
       if (!merged.has(def.name)) {
         merged.set(def.name, {
@@ -1094,7 +1114,7 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
       }
     }
     return Array.from(merged.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [definitions]);
+  }, [definitions, t]);
 
   const customQuery = useMemo(
     () => toQueryRange(customQueryRange),
@@ -1119,16 +1139,18 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
         : { hours: queryHours ?? 1 },
     [queryEnd, queryHours, queryRangeSignature, queryStart],
   );
+  const uptimeAvailable = charts.some((chart) => chart.metrics.includes(UPTIME_METRIC)) && definitionMap.has(UPTIME_METRIC);
   const metricKeys = useMemo(() => {
     const keys = charts.flatMap((chart) =>
       chart.metrics.filter((metricKey) => {
+        if (metricKey === UPTIME_METRIC && !uptimeAvailable) return false;
         if (!isRealtime) return true;
         const metric = fallbackCatalogMap.get(metricKey);
         return !metric?.realtimeValue && !metric?.realtimeTaggedValues;
       }),
     );
     return Array.from(new Set(keys)).sort();
-  }, [charts, isRealtime]);
+  }, [charts, isRealtime, uptimeAvailable]);
 
   // 必须与 metricRangeParams 的 useMemo 依赖完全一致：它依赖 queryRangeSignature
   // （= start|end|customQueryRevision），而 customQueryRevision 会在重新应用同一区间时
@@ -1168,6 +1190,7 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
         ...metricRangeParams,
         max_points: HISTORY_MAX_POINTS,
         aggregation,
+        aggregation_by_metric: { [UPTIME_METRIC]: "last" },
         fill_empty: true,
       },
       { timeout: 30000 },
@@ -1266,7 +1289,7 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
     setDashboard((current) => {
       const normalized = normalizeDashboard(current);
       const nextIndex = normalized.length + 1;
-      const title = getMetricLabel(metricKey, definitionMap);
+      const title = getMetricLabel(metricKey, definitionMap, t);
       return [
         ...normalized,
         {
@@ -1563,12 +1586,12 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
             : metricBuilt;
           const built = prepareChartData(rawBuilt, chart.metrics, pingTaskMap);
           const chartRows = trimMetricChartBoundaryRows(
-            applyMetricEwma(built.rows, built.series, ewmaEnabled),
+            applyMetricEwma(built.rows, built.series.filter((item) => item.metricKey !== UPTIME_METRIC), ewmaEnabled),
             built.series.map((item) => item.dataKey),
           );
           const chartTicks = metricChartBoundaryTicks(chartRows);
           const chartConfig = toChartConfig(built.series);
-          const latestText = getLatestText(chartRows, built.series);
+          const latestText = getLatestText(chartRows, built.series, t);
           const allHidden = built.series.length > 0 && built.series.every((item) => isSeriesHidden(chart.id, item));
 
           return (
@@ -1692,7 +1715,7 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
                           className="size-2 shrink-0 rounded-[2px]"
                           style={{ backgroundColor: metricSeriesColor(index) }}
                         />
-                        <span className="truncate">{getMetricLabel(metricKey, definitionMap)}</span>
+                        <span className="truncate">{getMetricLabel(metricKey, definitionMap, t)}</span>
                         <button
                           type="button"
                           title={t("chart.removeMetric", "Remove metric")}
@@ -1719,6 +1742,12 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
                   </Select.Content>
                 </Select.Root>
               </div>
+
+              {chart.metrics.includes(UPTIME_METRIC) && (
+                <p className="text-xs text-muted-foreground" data-testid="uptime-history-note">
+                  {t("chart.uptimeHistoryNote")}
+                </p>
+              )}
 
               {chartRows.length === 0 || built.series.length === 0 ? (
                 <div className="flex h-44 items-center justify-center text-sm text-muted-foreground">
@@ -1751,7 +1780,7 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
                         axisLine={false}
                         domain={axis.kind === "percent" ? [0, 100] : undefined}
                         tickFormatter={(value) =>
-                          formatValue(Number(value), axis.kind).replace(
+                          formatValue(Number(value), axis.kind, t).replace(
                             / /g,
                             "\u00a0",
                           )
@@ -1767,7 +1796,7 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
                       cursor={false}
                       formatter={(value, name) => {
                         const item = built.series.find((series) => series.dataKey === name);
-                        return formatValue(value, item?.kind ?? "raw");
+                        return formatValue(value, item?.kind ?? "raw", t);
                       }}
                       content={
                         <ChartTooltipContent
@@ -1787,7 +1816,7 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
                         isAnimationActive={false}
                         strokeWidth={2}
                         connectNulls={false}
-                        type="linear"
+                        type={item.metricKey === UPTIME_METRIC ? "stepAfter" : "linear"}
                         hide={isSeriesHidden(chart.id, item)}
                       />
                     ))}

@@ -15,6 +15,7 @@ import {
 import { RPC2Context } from "../src/contexts/RPC2Context";
 import type { RPC2Client } from "../src/lib/rpc2";
 import LoadChart from "../src/pages/instance/LoadChart";
+import { liveDataToRecords } from "../src/utils/RecordHelper";
 import "@radix-ui/themes/styles.css";
 import "../src/global.css";
 
@@ -39,6 +40,12 @@ await i18n.init({
         "chart.sampling.p70": "P70",
         "chart.sampling.p95": "P95",
         "chart.sampling.p99": "P99",
+        "nodeCard.uptime": "Uptime",
+        "nodeCard.time_day": "d",
+        "nodeCard.time_hour": "h",
+        "nodeCard.time_minute": "m",
+        "nodeCard.time_second": "s",
+        "chart.uptimeHistoryNote": "Missing data is unknown. A drop is not proof of a reboot.",
       },
     },
   },
@@ -64,12 +71,18 @@ const fallbacks: Record<string, unknown> = {
   "public:getPublicPingTasks": [],
 };
 
-const seeded = (window as any).__loadChartSeed;
+const fixtureState = JSON.parse(sessionStorage.getItem("loadChartFixtureState") ?? "null") ?? {};
+const seeded = fixtureState.seed ?? (window as any).__loadChartSeed;
 if (Array.isArray(seeded)) {
   for (const entry of seeded as Array<Queued & { method: string }>) {
     pushQueue(entry.method, entry);
   }
 }
+const initialTemplate = fixtureState.template ?? (window as any).__loadChartTemplate;
+const inputReports = fixtureState.reports ?? (window as any).__loadChartReports;
+const liveReports = Array.isArray(inputReports)
+  ? liveDataToRecords("node-1", inputReports)
+  : [];
 
 const client = {
   call: (method: string, params?: Record<string, unknown>) => {
@@ -111,7 +124,7 @@ const publicInfo: PublicInfo = {
   private_site: false,
   theme: "default",
   theme_settings: {
-    chartDashboardTemplate: JSON.stringify([
+    chartDashboardTemplate: JSON.stringify(initialTemplate ?? [
       { id: "traffic", title: "Traffic", metrics: ["traffic.up"], size: "small" },
     ]),
   },
@@ -156,7 +169,7 @@ export function FixtureRoutes() {
         Back to instance
       </button>
       <Routes>
-        <Route path="/node/:uuid" element={<LoadChart />} />
+        <Route path="/node/:uuid" element={<LoadChart data={liveReports} />} />
         <Route
           path="/away"
           element={<div data-testid="away">away from the instance</div>}

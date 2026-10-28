@@ -58,6 +58,10 @@ export const routes: RouteObject[] = [
         element: React.createElement(Admin),
       },
       {
+        path: "uptime-history",
+        element: React.createElement(lazy(() => import("./pages/admin/uptime-history"))),
+      },
+      {
         path: "sla",
         element: React.createElement(lazy(() => import("./pages/admin/sla"))),
       },

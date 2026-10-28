@@ -8,8 +8,17 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- No other unreleased runtime change; delivery records do not rebuild
-  immutable artifacts.
+- **Candidate v1.7.8, not yet published or deployed:** record node uptime
+  history from existing Agent reports and expose a same-shell admin view. Each
+  historical bucket displays its last accepted sample; missing, zero and
+  explicitly bad-quality values are unknown. Coarse buckets can hide drops and
+  neither a drop nor its absence proves a reboot count. The new definition
+  defaults to one day of retention without changing existing policies; there is
+  no backfill. See `docs/UPTIME-HISTORY.md` for permissions and rollback limits.
+- Default-theme node charts can optionally add uptime with last-value sampling;
+  the new admin view also works when a third-party public theme is installed.
+  Focused Agent-ingest, authorization, restart and embedded UI checks use only
+  disposable synthetic nodes. No Agent/protocol, token or schema change.
 
 ## [v1.7.7] - 2026-10-28
 

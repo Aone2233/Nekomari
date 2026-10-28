@@ -129,6 +129,8 @@ jobs:
         run: python3 -W error::ResourceWarning deploy/sla-generations-smoke.py --panel-binary ./nekomari
       - name: Check nullable price expiry in the embedded admin UI
         run: python frontend/script/price-expiry.spec.py --panel-binary ./nekomari
+      - name: Check uptime history ingestion and embedded admin UI
+        run: python -W error::ResourceWarning frontend/script/uptime-history.spec.py --panel-binary ./nekomari
       - name: Restore a synthetic encrypted backup into an offline panel container
         run: |
           sudo apt-get update -qq

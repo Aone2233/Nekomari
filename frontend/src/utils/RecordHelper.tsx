@@ -33,6 +33,7 @@ export interface RecordFormat {
   process: number | null;
   connections: number | null;
   connections_udp: number | null;
+  uptime: number | null;
 }
 
 export function liveDataToRecords(
@@ -87,6 +88,14 @@ export function liveDataToRecords(
     process: data.process,
     connections: data.connections.tcp !== null && data.connections.udp !== null ? data.connections.tcp + data.connections.udp : null,
     connections_udp: data.connections.udp,
+    // The recent endpoint returns agent reports while subsequent data comes
+    // from the normalized live feed; both may carry an explicit failure.
+    uptime: typeof data.uptime === "number" && Number.isFinite(data.uptime) && data.uptime > 0 &&
+        (data.quality && Object.hasOwn(data.quality, "uptime")
+          ? data.quality.uptime === "ok"
+          : true)
+      ? data.uptime
+      : null,
   }));
 }
 
