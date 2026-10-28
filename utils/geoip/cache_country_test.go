@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/patrickmn/go-cache"
 )
 
 type countryCacheProvider struct {
@@ -29,9 +31,10 @@ func (p *countryCacheProvider) Close() error          { return nil }
 func withCountryCacheProvider(t *testing.T, provider GeoIPService) {
 	t.Helper()
 	old := CurrentProvider
+	oldCache := geoCache
 	CurrentProvider = provider
 	geoCache.Flush()
-	t.Cleanup(func() { CurrentProvider = old; geoCache.Flush() })
+	t.Cleanup(func() { CurrentProvider = old; geoCache = oldCache; geoCache.Flush() })
 }
 
 func assertCountryCacheExpiry(t *testing.T, key string, ttl time.Duration) {
@@ -70,8 +73,10 @@ func TestGeoIPEmptyCountryCacheTTLAndRecovery(t *testing.T) {
 			if info, err := GetGeoInfo(ip); err != nil || info != test.info || provider.calls != 1 {
 				t.Fatalf("cached lookup = %#v, %v, provider calls %d", info, err, provider.calls)
 			}
-			// Expire the entry directly instead of waiting on wall-clock time.
-			geoCache.Set(key, test.info, time.Nanosecond)
+			// Model an expired entry without relying on clock precision or sleeps.
+			geoCache = cache.NewFrom(48*time.Hour, 0, map[string]cache.Item{
+				key: {Object: test.info, Expiration: time.Now().Add(-time.Minute).UnixNano()},
+			})
 			if info, err := GetGeoInfo(ip); err != nil || info == nil || info.ISOCode != "SG" || provider.calls != 2 {
 				t.Fatalf("lookup after expiry = %#v, %v, provider calls %d", info, err, provider.calls)
 			}
@@ -141,7 +146,9 @@ func TestGeoIPIPInfoEmptyResponseRetriesAfterExpiry(t *testing.T) {
 	if err != nil || info == nil || info.ISOCode != "" || calls != 1 {
 		t.Fatalf("cached ipinfo response = %#v, %v, upstream calls %d", info, err, calls)
 	}
-	geoCache.Set(key, info, time.Nanosecond)
+	geoCache = cache.NewFrom(48*time.Hour, 0, map[string]cache.Item{
+		key: {Object: info, Expiration: time.Now().Add(-time.Minute).UnixNano()},
+	})
 	info, err = GetGeoInfo(ip)
 	if err != nil || info == nil || info.ISOCode != "US" || info.Name != "US" || calls != 2 {
 		t.Fatalf("recovered ipinfo response = %#v, %v, upstream calls %d", info, err, calls)
