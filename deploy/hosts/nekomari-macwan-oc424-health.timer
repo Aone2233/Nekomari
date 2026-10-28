@@ -1,0 +1,11 @@
+[Unit]
+Description=Check encrypted OC424 backup freshness every 15 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+AccuracySec=30s
+Unit=nekomari-macwan-oc424-health.service
+
+[Install]
+WantedBy=timers.target

@@ -32,6 +32,12 @@ const (
 	MetricPanelRSS             = "panel.self.rss_bytes"
 	MetricPanelHeap            = "panel.self.heap_alloc_bytes"
 	MetricPanelGoroutines      = "panel.self.goroutines"
+	MetricPanelMainWaitCount   = "panel.pool.main.wait_count"
+	MetricPanelMainWaitMS      = "panel.pool.main.wait_ms"
+	MetricPanelWriteWaitCount  = "panel.pool.metrics_write.wait_count"
+	MetricPanelWriteWaitMS     = "panel.pool.metrics_write.wait_ms"
+	MetricPanelReadWaitCount   = "panel.pool.metrics_read.wait_count"
+	MetricPanelReadWaitMS      = "panel.pool.metrics_read.wait_ms"
 )
 
 // loadRecordMetricNames are the entity-level metrics used to reconstruct the
@@ -54,13 +60,28 @@ var recordMetricNames = joinMetricNames(loadRecordMetricNames, gpuDeviceRecordMe
 // Ping has an independent retention and cleanup boundary.
 var pingMetricNames = []string{MetricPingLatency, MetricPingLoss, MetricPingSuccessLatency}
 
-var panelMetricNames = []string{MetricPanelRSS, MetricPanelHeap, MetricPanelGoroutines}
+var panelPoolMetricNames = []string{
+	MetricPanelMainWaitCount, MetricPanelMainWaitMS,
+	MetricPanelWriteWaitCount, MetricPanelWriteWaitMS,
+	MetricPanelReadWaitCount, MetricPanelReadWaitMS,
+}
+
+var panelMetricNames = joinMetricNames([]string{MetricPanelRSS, MetricPanelHeap, MetricPanelGoroutines}, panelPoolMetricNames)
 
 var builtinMetricNames = joinMetricNames(recordMetricNames, pingMetricNames, panelMetricNames)
 
 // Panel metrics are private even when requested through the public node API.
 func IsPanelMetric(name string) bool {
 	for _, metricName := range panelMetricNames {
+		if name == metricName {
+			return true
+		}
+	}
+	return false
+}
+
+func IsPanelPoolMetric(name string) bool {
+	for _, metricName := range panelPoolMetricNames {
 		if name == metricName {
 			return true
 		}

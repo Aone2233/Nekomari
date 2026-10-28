@@ -137,7 +137,9 @@ func TestScopedAPIKeysAcrossHTTPAndWebSocket(t *testing.T) {
 		}
 	})
 	t.Run("PanelHistoryIsNotPublicMetricData", func(t *testing.T) {
-		const name = "panel.self.heap_alloc_bytes"
+		names := []string{metricstore.MetricPanelHeap, metricstore.MetricPanelMainWaitCount,
+			metricstore.MetricPanelMainWaitMS, metricstore.MetricPanelWriteWaitCount,
+			metricstore.MetricPanelWriteWaitMS, metricstore.MetricPanelReadWaitCount, metricstore.MetricPanelReadWaitMS}
 		if err := config.Set(metricstore.MetricDBDSNKey, filepath.Join(t.TempDir(), "metrics.db")); err != nil {
 			t.Fatal(err)
 		}
@@ -154,12 +156,17 @@ func TestScopedAPIKeysAcrossHTTPAndWebSocket(t *testing.T) {
 		for _, token := range []string{"", readToken, allToken} {
 			definitions := rpcCall("public:listMetricDefinitions", token, nil, false)
 			raw, _ := json.Marshal(definitions)
-			if _, ok := definitions["result"]; !ok || !strings.Contains(string(raw), metricstore.MetricCPU) || strings.Contains(string(raw), name) {
+			if _, ok := definitions["result"]; !ok || !strings.Contains(string(raw), metricstore.MetricCPU) {
 				t.Fatal("public definitions exposed panel history")
 			}
-			result := rpcCall("public:queryMetrics", token, map[string]any{"metric_key": name, "entity_id": node.UUID, "hours": 1}, false)
-			if _, ok := result["error"]; !ok {
-				t.Fatal("public query accepted a panel history metric")
+			for _, name := range names {
+				if strings.Contains(string(raw), name) {
+					t.Fatalf("public definitions exposed %s", name)
+				}
+				result := rpcCall("public:queryMetrics", token, map[string]any{"metric_key": name, "entity_id": node.UUID, "hours": 1}, false)
+				if _, ok := result["error"]; !ok {
+					t.Fatalf("public query accepted %s", name)
+				}
 			}
 		}
 	})

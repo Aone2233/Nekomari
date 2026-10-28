@@ -8,6 +8,21 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Add private, session-only main database and metric write/read pool wait
+  histories to the existing Performance profiles page. A reading is the delta
+  over the last validated sampling interval, not a cumulative counter or a
+  sum over the display bucket. Restart, pool replacement, missing/failed
+  samples and absent read pools remain unknown. Six new metrics default to
+  independent one-day retention; old-version manual reclaim can delete them.
+  Not yet published or deployed; see `docs/PANEL-POOL-HISTORY.md`.
+- After the owner relinquishes OVH and confirms removal of its node, replace
+  the old backup receiver with restricted MAC-WAN encrypted backup and health
+  user services. Initial current-13-node recovery, independent online-host
+  ciphertext copy and health-timer trigger pass; the first new daily trigger
+  and independent-media recovery are still pending. Retire three OVH backup/
+  health SSH authorizations. Historical unencrypted OVH backups may contain
+  credentials; disk sanitization remains unverified. See `docs/MAC-WAN-BACKUP.md`.
+
 ## [v1.7.12] - 2026-10-28
 
 - **Published and deployed on OC424 at 23:10:34 Asia/Shanghai.** Immutable

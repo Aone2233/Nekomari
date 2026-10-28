@@ -1,5 +1,11 @@
 # Encrypted off-host backups (v1.7.0)
 
+**2026-10-28 supersession:** OVH is relinquished and the OVH schedule/receiver
+described below is no longer a trusted current backup path. Earlier plaintext
+archives contained panel secrets. See [`OVH-RETIREMENT-2026-10-28.md`](./OVH-RETIREMENT-2026-10-28.md)
+for containment and [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md) for the new
+receiver, initial 13-node recovery and still-pending scheduled trigger.
+
 `deploy/encrypted_backup.py` ships in v1.7.0. OC424 has only public recipients,
 OVH stores ciphertext, and MAC-WAN holds the online age identity/recovery runner.
 **The nightly production schedule is now encrypted:** enabled persistent OVH

@@ -3,24 +3,37 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+**Security/backup supersession, 2026-10-28 23:53 Asia/Shanghai:** the owner reports OVH
+has been relinquished. OVH is not a current trusted receiver or test host;
+historical plaintext backup exposure and replacement backup/health gates are
+recorded in [`OVH-RETIREMENT-2026-10-28.md`](./OVH-RETIREMENT-2026-10-28.md).
+Three identified OVH SSH authorizations are revoked on OC424. MAC-WAN's latest
+v1.7.12 pre/post ciphertext hashes still match; OC424 is healthy v1.7.12. The
+owner confirms the intentional OVH node removal (current baseline 13). MAC-WAN
+now receives scheduled encrypted backups and reports actual health; the first
+new archive passes isolated recovery and has a second online-host copy. The
+first scheduled daily trigger and offline-media recovery remain unverified.
+See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
+schedule and 14-node acceptance statements below are history.
+
 ## Current checkpoint (2026-10-28, Asia/Shanghai)
 
 OC424 serves **v1.7.12 / b4591d6** at
 `https://nekomari.orderly2233.org`. Scoped-key migration and session-only token
-rotation are deployed; no existing Agent token is rotated. OVH now receives
-nightly ciphertext, with MAC-WAN as the online identity/recovery runner. The
-owner reports downloading an offline identity copy and authorizes the switch;
+rotation are deployed; no existing Agent token is rotated. MAC-WAN receives
+encrypted backups and holds the online identity/recovery runner. The owner
+reports downloading an offline identity copy and authorizes the switch;
 independent-media recovery remains unverified. dsh records the owner's
 authenticated history/audit/API-key acceptance; this review does not repeat it.
 Older rollout sections are dated evidence, not the current version/node count.
 
 | Item | Observed evidence |
 |---|---|
-| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.12/b4591d6; upgrade9/9,public27/27,scoped forecast14rows and14fresh CPU/uptime reporters |
-| Nodes | Owner confirms Pi's later addition; current baseline14registered clients,14fresh CPU and uptime reporters. Preserve the new node; earlier13-client release snapshots are historical |
+| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.12/b4591d6. The earlier v1.7.12 upgrade9/9,public27/27,scoped forecast14rows and14fresh reporters are dated release evidence |
+| Nodes | Owner confirms intentional removal of the OVH node; current baseline is 13 registered clients. Preserve all remaining clients and their tokens; do not restore the removed node |
 | Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2, unchanged; generic `nekomari-agent` is not the reporter |
-| OVH | Alias `KSLE`, encrypted receiver + daily 03:30 UTC timer; AgentPID495903/restart0 unchanged |
-| MAC-WAN | Linux x86_64 user `macos`; online identity/isolated recovery, AgentPID976/restart0 unchanged; Hermes gateway briefly stopped/resumed, nowPID922780/restart0 |
+| OVH | Relinquished and no longer trusted; three identified OC424 backup/health SSH authorizations revoked. Plaintext archive exposure and disk sanitization remain unresolved |
+| MAC-WAN | Linux x86_64 user `macos`; encrypted receiver, health timer, online identity/isolated recovery. First scheduled daily trigger remains pending; Agent/Hermes are not restarted by this work |
 | Acceptance | Prior Hermes disposable CLI writes pass; dsh records earlier owner history/audit/API-key acceptance. No new owner UI session for v1.7.12; public401 is not authenticated acceptance. Complete caller inventory remains separate |
 
 Latest delivery: v1.7.12 corrects data-mount persistence warnings; see
@@ -33,8 +46,9 @@ default-theme cache state remains in the existing Performance profiles page; see
 [`THEME-CACHE-DIAGNOSTICS.md`](./THEME-CACHE-DIAGNOSTICS.md).
 The prior v1.7.8 node uptime history remains; see
 [`UPTIME-HISTORY.md`](./UPTIME-HISTORY.md) for data/retention and rollback limits.
-The first scheduled nightly archive is verified; independent-media restore and
-real incident delivery remain separate.
+The previous OVH scheduled archive is historical; the replacement MAC-WAN
+first scheduled nightly trigger, independent-media restore and real incident
+delivery remain unverified.
 
 ## v1.7.12 rollout (2026-10-28 23:10:34 Asia/Shanghai)
 

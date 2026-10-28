@@ -1,0 +1,14 @@
+[Unit]
+Description=Check OC424 encrypted backup freshness on MAC-WAN
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/timeout --signal=KILL 115s /home/macos/.local/share/nekomari-recovery/scripts/check-oc424-backup-health
+TimeoutStartSec=120
+Nice=10
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal

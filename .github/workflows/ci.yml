@@ -227,6 +227,7 @@ jobs:
       - name: Check the installed encrypted backup schedule contract (offline)
         run: |
           python3 deploy/encrypted_backup_schedule_test.py
+          python3 deploy/macwan_backup_schedule_test.py
           systemd-analyze verify deploy/hosts/nekomari-oc424-encrypted-backup.service deploy/hosts/nekomari-oc424-encrypted-backup.timer
       - name: Check encrypted backup health and bounded reporting (offline)
         run: |

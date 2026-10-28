@@ -39,6 +39,15 @@ its exit criteria are met, not when the calendar says so.
 
 ## Current Delivery Checkpoint (2026-10-28)
 
+**Operational supersession:** OVH is relinquished; the owner intentionally
+removed its node, leaving a 13-node baseline. MAC-WAN now receives encrypted
+backups and sends health reports; one fresh archive passes isolated 13-node
+recovery and has a second online-host copy. The first scheduled daily trigger,
+independent-media recovery, actual incident delivery and OVH plaintext-disk
+sanitization remain unverified. See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md)
+and [`OVH-RETIREMENT-2026-10-28.md`](./OVH-RETIREMENT-2026-10-28.md).
+The OVH/14-node release records below describe their original dates.
+
 **Latest delivery: v1.7.12 (2026-10-28 23:10:34 Asia/Shanghai).** Container
 mount logging no longer claims persistence based on a mountinfo path and warns
 on anonymous-volume-like paths under custom roots. Exact CI40708356223 8/8,
