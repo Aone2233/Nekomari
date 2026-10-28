@@ -228,6 +228,7 @@
       "p99": "Persentil ke-99",
       "stddev": "StdDev"
     },
+    "uptimeHistoryNote": "Setiap interval riwayat menampilkan sampel terakhir; data yang hilang bukan nol dan penurunan bukan bukti reboot. Riwayat dimulai setelah fitur ini diaktifkan.",
     "samplingAlgorithm": "Algoritma sampling",
     "samplingAlgorithmTips": "<b>Downsampling</b><br/>Untuk rentang historis, backend mengelompokkan titik data ke bucket waktu tetap yang disejajarkan dengan interval query, lalu menghitung satu nilai per bucket dengan algoritma yang dipilih.<br/><br/>Rata-rata/Min/Maks/Pertama/Terakhir/StdDev dan opsi persentil dihitung dari nilai di dalam setiap bucket. Bucket kosong tetap kosong, sehingga celah pada grafik tetap berarti data hilang.",
     "saveGlobalTemplate": "Simpan sebagai templat global",
@@ -963,6 +964,18 @@
     "yes": "Ya"
   },
   "region_overview": "Wilayah",
+  "uptimeHistory": {
+    "title": "Riwayat waktu aktif node",
+    "description": "Lihat waktu aktif satu node di panel admin.",
+    "node": "Node",
+    "range": "Rentang",
+    "refresh": "Muat ulang",
+    "latestAt": "Interval terbaru: {{time}}",
+    "noData": "Tidak ada riwayat waktu aktif pada rentang ini",
+    "error": "Riwayat waktu aktif tidak dapat dimuat",
+    "loading": "Memuat riwayat waktu aktif…",
+    "retention": "Retensi metrik: {{days}} hari; riwayat lama memakai interval yang lebih besar."
+  },
   "rpc2": {
     "automatic_connection_failed": "Koneksi otomatis gagal:",
     "batch_request_failed": "Permintaan batch gagal",

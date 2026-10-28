@@ -228,6 +228,7 @@
       "p99": "99th percentile",
       "stddev": "StdDev"
     },
+    "uptimeHistoryNote": "Last sample in each historical bucket; missing data is unknown. A drop is not proof of a reboot. Available since this feature was enabled.",
     "samplingAlgorithm": "Sampling algorithm",
     "samplingAlgorithmTips": "<b>Downsampling</b><br/>For historical ranges, the backend groups points into fixed time buckets aligned to the query interval, then calculates one value per bucket with the selected algorithm.<br/><br/>Average/Min/Max/First/Last/StdDev and percentile options all run on the values inside each bucket. Empty buckets stay empty, so gaps in the chart still mean missing data.",
     "saveGlobalTemplate": "Save as global template",
@@ -963,6 +964,18 @@
     "yes": "Yes"
   },
   "region_overview": "Region",
+  "uptimeHistory": {
+    "title": "Node uptime history",
+    "description": "View recorded uptime for one node without leaving the admin panel.",
+    "node": "Node",
+    "range": "Range",
+    "refresh": "Refresh",
+    "latestAt": "Latest bucket: {{time}}",
+    "noData": "No recorded uptime in this range",
+    "error": "Unable to load uptime history",
+    "loading": "Loading uptime history...",
+    "retention": "Metric retention: {{days}} days; older history uses coarser buckets."
+  },
   "rpc2": {
     "automatic_connection_failed": "Automatic connection failed:",
     "batch_request_failed": "Batch request failed",

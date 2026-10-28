@@ -37,6 +37,16 @@ roadmap or every v1.7 exit criterion complete. All 200-node experiments/benchmar
 and their 26 failed reports remain deferred. Reuse exact-source and unchanged
 source-batch checks; no redundant broad local frontend/Go/capacity rerun.
 
+**Current candidate, not deployed:** v1.7.8 adds node uptime history and an
+in-panel admin view, one bounded part of v1.8 observability. Historical buckets
+retain the last positive valid reading, not reboot events; zero/absent/invalid
+readings remain unknown and old history is not backfilled. The new metric has
+its own default one-day retention. Publication, OVH published-artifact checks,
+encrypted backup/old-new recovery and OC424 acceptance remain required. Old
+versions can delete the new metric on manual storage reclaim after rollback;
+preserve a post-upgrade encrypted backup before any downgrade or reclaim. See
+[`UPTIME-HISTORY.md`](./UPTIME-HISTORY.md).
+
 **Latest bounded delivery:** v1.7.7 fixes missing/invalid paid-node expiry:
 neutral localized unset/unknown labels replace fabricated countdowns/NaN,
 without claiming lifetime service or changing valid dates. Focused static/mounted
@@ -79,9 +89,8 @@ v1.7.5 provides the SQLite source startup fix; v1.7.6 cross-backend corrections
 are released/recovered/live-accepted. No stored history rewrite or production ANALYZE.
 Continue one bounded correctness/observability item, with 200-node work deferred.
 
-**Next bounded work:** keep200-node work deferred. Continue one independently
-verified correctness/observability item after this delivery, not a second feature
-batch during release closeout. Independent-media recovery, real incident delivery,
+**Next bounded work:** verify and deliver the v1.7.8 candidate above before
+choosing another batch; keep 200-node work deferred. Independent-media recovery, real incident delivery,
 complete API-caller inventory and the span/window-coverage decision remain open.
 No whole-roadmap app goal change or new owner-session UI acceptance is claimed.
 
@@ -214,7 +223,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | `Presence.Coverage` is a span, not a window coverage | `internal/sla/availability.go`; `docs/SLA-COVERAGE.md` | Clarified 2026-10-27 without changing behaviour: coverage is observed/expected over the observed span, capped by the requested window, so a series that reports only the last ten minutes of an hour reads 1 (window fraction 1/6). The field comment, worked examples, correct reading for freshness and the compatibility rules are now stated; `batch_test.go` still pins the value. Still open: the owner decision on adding a separate window-coverage field (which must also report the inferred cadence) — an in-place redefinition would move every stored figure and is not done |
 | `PriceTags` missing/invalid expiry | `frontend/src/components/PriceTags.tsx` | **Fixed/deployed v1.7.7**: neutral localized unset/unknown labels preserve real dates/tags; focused, real embedded-browser, publication and OC424 continuity pass |
 | Dragging under a filter reorders only the visible subset | `frontend/src/pages/admin/index.tsx` | Needs a decision about what reordering a filtered list should mean |
-| No uptime / restart-count metric exists | `internal/metricstore/definitions.go` | A capability gap: the panel cannot state "how long was this node up" |
+| Uptime history / restart count | `docs/UPTIME-HISTORY.md` | Uptime history is a v1.7.8 candidate, not yet deployed. It records bucketed positive readings, not reboot events; trustworthy restart counting remains open |
 | One bad metric parameter fails a whole batch query | `web/rpc/jsonrpc/public.metric.go` | Should report per-key rather than all-or-nothing |
 | Non-root ICMP and Windows/macOS agent footprint | `agent/` | netstatic, ping precision and the Linux footprint measurement shipped (v1.6.22–v1.6.25). Still open: non-root agents without `CAP_NET_RAW` cannot probe, and Windows/macOS peak memory/disk growth are unmeasured |
 | Legacy ping quantiles are unknown across the migration window | `web/rpc/jsonrpc/public.metric.go` | **Accepted**: the report says so itself |

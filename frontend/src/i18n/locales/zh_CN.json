@@ -228,6 +228,7 @@
       "p99": "第 99 百分位",
       "stddev": "标准差"
     },
+    "uptimeHistoryNote": "历史时间桶显示最后一次采样；缺失数据不代表零，数值下降也不能确定发生重启。历史从启用此功能后开始。",
     "samplingAlgorithm": "采样算法",
     "samplingAlgorithmTips": "<b>降采样说明</b><br/>查询历史时间范围时，后端会按照请求的时间间隔把数据点归入对齐后的固定时间桶，再用当前选择的算法为每个时间桶计算一个值。<br/><br/>平均值/最小值/最大值/第一个值/最后一个值/标准差和百分位都会在每个时间桶内部计算。空时间桶会保持为空，所以图表上的断点仍然表示该时间段没有数据。",
     "saveGlobalTemplate": "保存为全局模板",
@@ -963,6 +964,18 @@
     "yes": "是的"
   },
   "region_overview": "点亮地区",
+  "uptimeHistory": {
+    "title": "节点运行时间历史",
+    "description": "在管理面板中查看单个节点记录的运行时间。",
+    "node": "节点",
+    "range": "时间范围",
+    "refresh": "刷新",
+    "latestAt": "最新时间桶：{{time}}",
+    "noData": "此时间范围内没有运行时间记录",
+    "error": "无法加载运行时间历史",
+    "loading": "正在加载运行时间历史…",
+    "retention": "指标保留 {{days}} 天；较早的历史使用更粗的时间桶。"
+  },
   "rpc2": {
     "automatic_connection_failed": "自动连接失败:",
     "batch_request_failed": "批量请求失败",

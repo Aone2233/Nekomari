@@ -393,6 +393,9 @@ func publicQueryMetricsWithStore(ctx context.Context, params publicMetricQueryPa
 			item.Quality = "validated_intervals_only;legacy_history_unknown"
 		} else if _, ok := trafficCumulativeMetrics[spec.metricKey]; ok {
 			item.Semantics = "billing_cycle_cumulative"
+		} else if spec.storageKey == metricstore.MetricUptime {
+			item.Semantics = "node_uptime_seconds;not_reboot_count"
+			item.Quality = "positive_ok_or_legacy;zero_missing_unknown"
 		}
 		if specRaw {
 			points := rawValues[spec.storageKey]
@@ -1272,6 +1275,9 @@ func resolveMetricAggregation(metricKey string, params publicMetricQueryParams) 
 	if raw == "" {
 		if _, ok := trafficCumulativeMetrics[metricKey]; ok {
 			return metric.AggSum
+		}
+		if metricKey == metricstore.MetricUptime {
+			return metric.AggLast
 		}
 		raw = string(metric.AggAvg)
 	}

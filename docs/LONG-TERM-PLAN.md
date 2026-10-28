@@ -147,8 +147,11 @@ copy outside pruning. This closes first-trigger observation only.
    pass. Old v1.7.4 restores still need the documented workaround. See
    [`METRIC-RECOVERY-STARTUP.md`](./METRIC-RECOVERY-STARTUP.md) and
    [`SLA-GENERATIONS.md`](./SLA-GENERATIONS.md).
-   v1.7.7 closes the small nullable-expiry UI gap and test arrival race. Do not
-   combine another runtime feature batch with release documentation closeout.
+   v1.7.7 closes the small nullable-expiry UI gap and test arrival race.
+   Candidate v1.7.8 adds node uptime history as a partial v1.8 observability
+   milestone, not reboot counts or a completed v1.8 release. It remains
+   unpublished and undeployed until the separate release, encrypted recovery and
+   OC424 acceptance gates pass; see [`UPTIME-HISTORY.md`](./UPTIME-HISTORY.md).
 
 v1.7 is released/deployed, **not unconditionally exit-complete**: remaining
 caller inventory, independent-media recovery, live incident delivery and
@@ -203,7 +206,8 @@ changelog and retained exact-source CI.
 - Secrets-at-rest plan (session token / 2FA secret); implement by v2.0.
 
 ### P1 — observability and correctness (v1.8)
-- uptime/restart-count metric; panel self-metrics history and export.
+- uptime/restart-count metric (uptime history is a v1.7.8 candidate; reboot
+  counting remains open); panel self-metrics history and export.
 - Backup freshness/agent-offline alerts with a test button.
 - SLA tag-generation dedupe, coverage definition, forecast boundary fixes.
 - Automated restore drill (monthly), second backup destination.

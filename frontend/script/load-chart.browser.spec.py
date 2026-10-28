@@ -198,6 +198,35 @@ class LoadChartBrowserTest(unittest.TestCase):
         )
         self.assertEqual(self.page.get_by_text(STALE_TEXT).count(), 0)
 
+    def test_uptime_history_is_available_only_on_supporting_servers(self):
+        template = [{"id": "uptime", "title": "Uptime", "metrics": ["system.uptime_seconds"], "size": "small"}]
+        definitions = [{"name": "system.uptime_seconds", "type": "gauge", "unit": "s", "retention_days": 1}]
+        live = [{"updated_at": "2026-10-28T00:00:00Z", "cpu": {}, "ram": {}, "swap": {},
+                 "load": {}, "disk": {}, "network": {}, "connections": {}, "uptime": 123,
+                 "quality": {"uptime": "ok"}}]
+        state = {"template": template, "reports": live,
+                 "seed": [{"method": "public:listMetricDefinitions", "value": definitions}]}
+        self.page.evaluate("state => sessionStorage.setItem('loadChartFixtureState', JSON.stringify(state))", state)
+        self.page.reload()
+        expect(self.page.get_by_text("Uptime: 2 m 3 s")).to_be_visible()
+        expect(self.page.get_by_test_id("uptime-history-note")).to_contain_text("not proof of a reboot")
+        self.assertEqual(self.page.evaluate("loadChartFixture.requests('public:queryMetrics')"), 0)
+        history = {"series": [{"metric_key": "system.uptime_seconds", "entity_id": "node-1", "unit": "s", "count": 1,
+                               "points": [{"time": "2026-10-28T00:00:00Z", "value": 5}]}]}
+        self.page.evaluate("value => loadChartFixture.respond('public:queryMetrics', value)", history)
+        self.page.locator('[role="radio"]').filter(has_text="1 h").click()
+        expect(self.page.get_by_text("Uptime: 5 s")).to_be_visible()
+        params = self.page.evaluate("loadChartFixture.calls().filter(c => c.method === 'public:queryMetrics')[0].params")
+        self.assertEqual(params["aggregation_by_metric"], {"system.uptime_seconds": "last"})
+
+        # Older panels must not query an unknown key even if a saved dashboard uses it.
+        state["seed"] = []
+        state["reports"] = []
+        self.page.evaluate("state => sessionStorage.setItem('loadChartFixtureState', JSON.stringify(state))", state)
+        self.page.reload()
+        self.page.locator('[role="radio"]').filter(has_text="1 h").click()
+        self.assertEqual(self.page.evaluate("loadChartFixture.requests('public:queryMetrics')"), 0)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

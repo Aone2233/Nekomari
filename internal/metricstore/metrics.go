@@ -23,6 +23,7 @@ const (
 	MetricProcess              = "process.count"
 	MetricConnections          = "connections.tcp"
 	MetricConnectionsUDP       = "connections.udp"
+	MetricUptime               = "system.uptime_seconds"
 	MetricPingLatency          = "ping.latency_ms"
 	MetricPingSuccessLatency   = "ping.success_latency_ms"
 	MetricPingLoss             = "ping.loss"
@@ -45,7 +46,7 @@ var gpuDeviceRecordMetricNames = []string{
 	MetricGPUDeviceUsage, MetricGPUMem, MetricGPUMemTotal, MetricGPUTemp,
 }
 
-var recordMetricNames = joinMetricNames(loadRecordMetricNames, gpuDeviceRecordMetricNames, []string{MetricTrafficIntervalUp, MetricTrafficIntervalDown, MetricTrafficIntervalValid})
+var recordMetricNames = joinMetricNames(loadRecordMetricNames, gpuDeviceRecordMetricNames, []string{MetricTrafficIntervalUp, MetricTrafficIntervalDown, MetricTrafficIntervalValid, MetricUptime})
 
 // Ping has an independent retention and cleanup boundary.
 var pingMetricNames = []string{MetricPingLatency, MetricPingLoss, MetricPingSuccessLatency}
