@@ -14,11 +14,13 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**Current checkpoint (2026-10-27, Asia/Shanghai):** OC424 serves
-**v1.7.6/f8c6ae1** at `nekomari.orderly2233.org`, healthy/restart0. Exact
-CI40506697515 8/8, release40507767971 10/10, Docker40511319737 2/2,
-Linux checksums/provenance, dual-architecture image identity, published-binary
-SQL recovery, OVH6/6, OC424upgrade9/9,public23/23 and scoped forecast14rows pass.
+**Current checkpoint (2026-10-28, Asia/Shanghai):** OC424 serves
+**v1.7.7/8e1dafa** at `nekomari.orderly2233.org`, healthy/restart0. Exact
+CI40642445800 8/8, release40643116847 10/10, Docker40643699302 2/2,
+Linux checksums/provenance, dual-architecture image identity, ten published-binary
+embedded-admin scenarios on OVH, OC424upgrade9/9,public23/23 and scoped
+forecast14rows pass. Prior v1.7.6 actual SQL recovery is dated evidence; no
+unrelated broad local SQL/capacity rerun.
 Earlier v1.7.4 SLA14nodes/58tasks remains dated evidence, not a newly rerun
 SLA live comparison. The five tools remain
 in the admin shell. After the earlier removal, Pi adds a node with the owner's
@@ -26,7 +28,7 @@ explicit authorization: the current approved baseline is 14 registered clients
 and 14 currently fresh CPU-reporting nodes. Preserve that addition; the earlier
 13-client release records are historical. Existing UUIDs/tokens and Agent services are
 unchanged. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for immutable artifacts,
-actual evidence and patch rollback to v1.7.5. The earlier v1.7.0->v1.6
+actual evidence and patch rollback to v1.7.6. The earlier v1.7.0->v1.6
 auth-migration rollback still requires the paired old binary and DB.
 
 **Adjusted active objective:** close the bounded v1.7 delivery/handoff, then
@@ -35,7 +37,17 @@ roadmap or every v1.7 exit criterion complete. All 200-node experiments/benchmar
 and their 26 failed reports remain deferred. Reuse exact-source and unchanged
 source-batch checks; no redundant broad local frontend/Go/capacity rerun.
 
-**Latest bounded delivery:** v1.7.6 closes the dsh review's MySQL/PostgreSQL
+**Latest bounded delivery:** v1.7.7 fixes missing/invalid paid-node expiry:
+neutral localized unset/unknown labels replace fabricated countdowns/NaN,
+without claiming lifetime service or changing valid dates. Focused static/mounted
+checks and ten real published-binary admin scenarios pass across five locales
+and desktop-light/mobile-dark. The test-only AbortController arrival race is
+closed without changing fetch runtime. Pre encrypted recovery boots pinned
+v1.7.6/v1.7.7 in8.25/9.42s, both DBs/14clients/current auth, no `ANALYZE`.
+Post ciphertext boots exact-v1.7.7 in7.81s with the same checks and cleanup.
+No schema/API/auth/Agent/dependency/credential change. See the deployment runbook.
+
+**Prior bounded delivery:** v1.7.6 closes the dsh review's MySQL/PostgreSQL
 recovery argument mismatch and MySQL parent-division defect, preserving the
 v1.7.5 series-driven SQLite optimization. Real SQL old-source failures, fixed
 races, dedicated CI and actual released-binary install/recovery pass. Fresh
@@ -67,24 +79,23 @@ v1.7.5 provides the SQLite source startup fix; v1.7.6 cross-backend corrections
 are released/recovered/live-accepted. No stored history rewrite or production ANALYZE.
 Continue one bounded correctness/observability item, with 200-node work deferred.
 
-**Next bounded candidate (2026-10-28):** v1.7.7 fixes missing/invalid `PriceTags`
-expiry and the test-only fetch-abort arrival race. Focused regressions and actual
-embedded-admin browser checks pass (five locales, desktop-light/mobile-dark).
-No API/schema/Agent/auth/dependency change. Exact CI/publication, fresh encrypted
-pre/post recovery and OC424 acceptance are still separate pending gates; production
-remains v1.7.6 until these pass. No whole-roadmap app goal change is claimed.
+**Next bounded work:** keep200-node work deferred. Continue one independently
+verified correctness/observability item after this delivery, not a second feature
+batch during release closeout. Independent-media recovery, real incident delivery,
+complete API-caller inventory and the span/window-coverage decision remain open.
+No whole-roadmap app goal change or new owner-session UI acceptance is claimed.
 
-### v1.7 release readiness (2026-10-27)
+### v1.7 release readiness (2026-10-28)
 
 | Gate | Current state | Required next evidence/action |
 |---|---|---|
-| Source/publication/deployment | Through recovery compatibility v1.7.6/`f8c6ae1`; exact CI40506697515 8/8, release40507767971 10/10, Docker40511319737 2/2, OC4249/9,public23/23,scoped forecast14rows and14-client/auth continuity pass | Retain immutable tags/assets and truthful release evidence; do not rebuild them for documentation |
+| Source/publication/deployment | Through nullable expiry v1.7.7/`8e1dafa`; exact CI40642445800 8/8, release40643116847 10/10, Docker40643699302 2/2,OVH10scenarios,OC4249/9,public23/23,scoped forecast14rows and14-client/auth continuity pass | Retain immutable tags/assets and truthful release evidence; do not rebuild them for documentation |
 | Legacy API consumers | Owner-configured `hermes-node-management` matches exactly `nodes:read` + `nodes:write`, active365days until2027-10-27 13:38:02 Asia/Shanghai; actual MAC-WAN disposable create/edit/read/remove passes and original13 metadata is unchanged | Reviewed CLI writes may resume; no token/exec/update grant or key rotation. Other callers/runtime rewiring are not inferred from three reference edits; old30-day read-only key remains |
 | Token recovery/edit/import | Owner accepts restrictions and requests no rotation; 14 current UUIDs/tokens and all Agent services unchanged | No rotation canary now; future rotation requires independent SSH/console and per-node consent |
-| D12 custody/recovery | OC424 public recipient only, OVH ciphertext, MAC-WAN online identity/recovery runner; fresh14-node v1.7.6 pre/post backups restore with pinned v1.7.5/v1.7.6, no ANALYZE | Owner reports offline copy downloaded; independent-media restore is still unverified. Same-UID Hermes/root/Docker exposure remains explicit |
+| D12 custody/recovery | OC424 public recipient only, OVH ciphertext, MAC-WAN online identity/recovery runner; fresh14-node v1.7.7 backups and pinned v1.7.6/v1.7.7 recovery, no ANALYZE; exact pre/post evidence in runbook | Owner reports offline copy downloaded; independent-media restore is still unverified. Same-UID Hermes/root/Docker exposure remains explicit |
 | Nightly schedule/retention | Enabled daily03:30UTC OVH timer, keep14 ciphertext pairs; first actual scheduled trigger2026-10-28 11:30:23Asia/Shanghai and service11:31:04success/exit0 verified, with matching archive/checksum; release copies remain outside pruning | Initial/later recurring health checks pass; actual incident delivery remains unverified. No independent-media or measured RPO claim. No old plaintext/manual/local rollback copy is deleted; deletion needs an explicit policy |
 | OC424 authenticated acceptance | Owner elects self-run history/audit/API-key UI checks after deployment | **Closed in dsh's 2026-10-27 record**: the owner reported the post-deployment history/audit/API-key pages check out. This review does not repeat an owner session. Public shells, 401 responses and synthetic checks cannot substitute for it; acceptance does not extend to other surfaces or future releases |
-| Rollback | Fresh per-DB WAL-safe snapshots/compose + v1.7.5 image in `rollbacks/v1.7.6-20261027T132515Z-5045e5f7`; no schema/auth change, keep current data | v1.7.6->v1.7.5 uses prior compose/image, keeping14nodes and health env/state; v1.7.5 would reintroduce cross-backend bugs, while OC424 uses SQLite. Across v1.7->v1.6 freeze writers and restore paired old DB + binary, losing newer data/permissions |
+| Rollback | Fresh per-DB WAL-safe snapshots/compose + v1.7.6 image in `rollbacks/v1.7.7-20261028T063016Z-64133ab0`; no schema/auth change, keep current data | v1.7.7->v1.7.6 uses prior compose/image, keeping14nodes and health env/state. Across v1.7->v1.6 freeze writers and restore paired old DB + binary, losing newer data/permissions |
 
 **Hermes handoff:** the gateway is active again (PID922780/restart0); AgentPID976/
 restart0 is unchanged. The metadata-only CLI stays checksum-matched on MAC-WAN;
@@ -96,8 +107,8 @@ inventory or owner UI acceptance; no key/session is recovered from SQLite,
 backups, process args or Hermes history. Installation is owner-UI only; no token-read/exec/update grant is
 silently added. See [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md).
 
-**Backup handoff:** fresh v1.7.6 pre/post archives from the installed OVH service
-pass actual isolated MAC-WAN recovery with pinned v1.7.5/v1.7.6 images,both
+**Backup handoff:** fresh v1.7.7 pre/post archives from the installed OVH service
+pass actual isolated MAC-WAN recovery with pinned v1.7.6/v1.7.7 images,both
 DBs,14 clients/current auth metadata and cleanup. Independent regular release
 copies stay outside14-pair pruning; all older copies remain. Earlier13-client
 release backups are historical; never use them to overwrite Pi's added node.
@@ -107,10 +118,10 @@ checks pass. First scheduled nightly backup is verified2026-10-28; measured
 SLO/RPO/RTO and independent-media restore remain separate. See
 [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
 
-**Verification scope:** focused Go1.27.3 recovery/index/restart races and vet;
-actual MySQL/PostgreSQL source and published-binary regressions; required
-exact-source CI/publication; attested six-group installed synthetic-Panel OVH
-acceptance; scoped forecast and live continuity. Prior live SLA evidence is reused.
+**Verification scope:** focused Go1.27.3 AbortController races/vet, expiry static,
+type/lint/mounted and real embedded-browser checks; required exact-source
+CI/publication; attested ten-scenario installed-Panel OVH acceptance; encrypted
+recovery, scoped forecast and live continuity. Prior SQL/live SLA evidence is reused.
 Unchanged backup-health/query/scoped-key/report/queue/rotation/Hermes source
 checks are reused, not broadly rerun locally. Only owned disposables are cleaned;
 all backups,rollback images and shared caches remain. No fleet upgrade,owner
@@ -201,7 +212,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Item | Where | Why it is still here |
 |---|---|---|
 | `Presence.Coverage` is a span, not a window coverage | `internal/sla/availability.go`; `docs/SLA-COVERAGE.md` | Clarified 2026-10-27 without changing behaviour: coverage is observed/expected over the observed span, capped by the requested window, so a series that reports only the last ten minutes of an hour reads 1 (window fraction 1/6). The field comment, worked examples, correct reading for freshness and the compatibility rules are now stated; `batch_test.go` still pins the value. Still open: the owner decision on adding a separate window-coverage field (which must also report the inferred cadence) — an in-place redefinition would move every stored figure and is not done |
-| `PriceTags` missing/invalid expiry | `frontend/src/components/PriceTags.tsx` | v1.7.7 candidate shows neutral localized unset/unknown labels, preserving real dates and tags. Focused and embedded-browser checks pass; publication/live delivery pending |
+| `PriceTags` missing/invalid expiry | `frontend/src/components/PriceTags.tsx` | **Fixed/deployed v1.7.7**: neutral localized unset/unknown labels preserve real dates/tags; focused, real embedded-browser, publication and OC424 continuity pass |
 | Dragging under a filter reorders only the visible subset | `frontend/src/pages/admin/index.tsx` | Needs a decision about what reordering a filtered list should mean |
 | No uptime / restart-count metric exists | `internal/metricstore/definitions.go` | A capability gap: the panel cannot state "how long was this node up" |
 | One bad metric parameter fails a whole batch query | `web/rpc/jsonrpc/public.metric.go` | Should report per-key rather than all-or-nothing |
@@ -221,7 +232,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | Most agents still run as root; only MAC is non-root | `docs/DEPLOY-OC424.md` | The NOSLA pattern (unprivileged user + `AmbientCapabilities=CAP_NET_RAW`) works; Alpine has no `setcap`. OpenRC install support shipped in v1.6.25, but moving users is still a fleet-wide change |
 | Windows local builds can fail on a locked esbuild temp file | Windows dev environment | The build itself is deterministic on Windows: two builds with a project-local `TEMP`/`TMP` were byte-identical (819 files, diff 0). With the system `%TEMP%`, esbuild sometimes cannot delete its temp file ("Access is denied"); CI's Windows runner is unaffected. Not a source change — a dev-environment workaround until the temp cleaner/AV exclusion is settled |
-| Encrypted backup follow-up | `docs/ENCRYPTED-BACKUPS.md`; `docs/MAC-WAN-RECOVERY.md` | Encrypted nightly timer/service delivered; first service-run ciphertext passes actual MAC-WAN v1.7.0 recovery. Owner-reported offline download is not independent-media restore. Health freshness/heartbeat alerts installed in v1.7.3;recurring checks succeed;observe first nightly success and keep all old plaintext/manual rollback copies until explicit deletion approval |
+| Encrypted backup follow-up | `docs/ENCRYPTED-BACKUPS.md`; `docs/MAC-WAN-RECOVERY.md` | Encrypted nightly timer/service and v1.7.3 freshness/heartbeat alerts delivered; recurring health and first scheduled nightly2026-10-28success verified. Owner-reported offline download is not independent-media restore. Live incident delivery/stronger drill policy remain open; keep all old plaintext/manual rollback copies until explicit deletion approval |
 | OIDC + 2FA makes SSO login fail-closed with no way for the browser to answer the challenge | `docs/ROADMAP.md` §F12 | Deliberately shipped as a gate, not half a state machine. Needs a one-time pending token plus a code prompt; production impact is zero while OIDC is off |
 | `sso_id` survives a password change, and `DeleteAllSessions()` is global | `database/accounts/` | Policy questions now that the SSO path requires TOTP; recommendation was (b)+(c) in the audit report |
 | A committed admin password from the SECRETS incident still has to be changed | `docs/SECRETS.md` incident 4 | An ops action on the live panel, not a repository change |
