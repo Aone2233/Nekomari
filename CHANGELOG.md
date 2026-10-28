@@ -8,7 +8,21 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- **Candidate v1.7.9 (not yet deployed):** show built-in theme cache disk state
+- No changes yet.
+
+## [v1.7.9] - 2026-10-28
+
+- **Published and deployed on OC424 at 16:34:31 Asia/Shanghai.** Immutable
+  `4e6c4d2b467b5815db656d1bf88746279cf5eee0`, PR111; exact CI40655268852
+  8/8, identical-tree merge CI40656067694 8/8, release40656102364 10/10 and
+  Docker40656768684 2/2. Both Linux checksums/source attestations and both
+  image architectures verify. OVH's isolated published binary passes four
+  embedded browser scenarios and guest/scoped-key denial. OC424 upgrade9/9,
+  public26/26, scoped forecast14rows, 14 fresh CPU/uptime reporters and both
+  database quick checks pass. Pre encrypted backup restores under v1.7.8 and
+  v1.7.9; post backup restores under v1.7.9 on MAC-WAN with retained uptime
+  rollups. Owner UI login and independent-media restore are not claimed.
+- Show built-in theme cache disk state
   and whether its in-memory fallback was loaded in the existing administrator
   Performance profiles page. State is last-observed, not continuous filesystem
   verification; it is not a historical metric. No Agent, database, retention,
