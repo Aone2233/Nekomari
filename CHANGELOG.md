@@ -8,6 +8,17 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.7.12] - 2026-10-28
+
+- **Published and deployed on OC424 at 23:10:34 Asia/Shanghai.** Immutable
+  `b4591d64b6f2916963ffa4f6812cfa984ab397fb`, PR117; exact CI40708356223
+  8/8, same-tree main CI40709676910 8/8, release40710985497 10/10 and
+  Docker40712289115 2/2. Both Linux assets and OCI platforms verify. The
+  published image passes four isolated OVH mount cases; OC424 upgrade9/9,
+  public27/27, scoped forecast14rows and 14 fresh reporters pass. Fresh
+  pre ciphertext restores under v1.7.11/v1.7.12, post under v1.7.12 with
+  uptime and panel rollups retained. Independent-media and owner-session UI
+  acceptance are not claimed. See `docs/DEPLOY-OC424.md`.
 - Avoid claiming that a container data mount is persistent based solely on its
   mount path. Warn on anonymous-volume-like paths under custom Docker roots,
   and direct operators to verify that the configured mount is reused.
