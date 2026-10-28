@@ -15,10 +15,10 @@ What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit 
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
 **Current checkpoint (2026-10-28, Asia/Shanghai):** OC424 serves
-**v1.7.9/4e6c4d2** at `nekomari.orderly2233.org`, healthy/restart0. Exact
-CI40655268852 8/8, release40656102364 10/10, Docker40656768684 2/2,
+**v1.7.10/a2fd46a** at `nekomari.orderly2233.org`, healthy/restart0. Exact
+CI40660304364 8/8, release40661328099 10/10, Docker40662206501 2/2,
 Linux checksums/provenance, dual-architecture image identity, isolated OVH
-published-binary diagnostic/permission/browser checks, OC424upgrade9/9,public26/26
+published-binary GeoIP fake-upstream checks, OC424upgrade9/9,public26/26
 and scoped forecast14rows pass. Prior v1.7.6 actual SQL recovery is dated
 evidence; no unrelated broad local SQL/capacity rerun.
 Earlier v1.7.4 SLA14nodes/58tasks remains dated evidence, not a newly rerun
@@ -28,7 +28,7 @@ explicit authorization: the current approved baseline is 14 registered clients
 and 14 currently fresh CPU/uptime-reporting nodes. Preserve that addition; the earlier
 13-client release records are historical. Existing UUIDs/tokens and Agent services are
 unchanged. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for immutable artifacts,
-actual evidence and patch rollback to v1.7.8. The earlier v1.7.0->v1.6
+actual evidence and patch rollback to v1.7.9. The earlier v1.7.0->v1.6
 auth-migration rollback still requires the paired old binary and DB.
 
 **Adjusted active objective:** close the bounded v1.7 delivery/handoff, then
@@ -37,7 +37,13 @@ roadmap or every v1.7 exit criterion complete. All 200-node experiments/benchmar
 and their 26 failed reports remain deferred. Reuse exact-source and unchanged
 source-batch checks; no redundant broad local frontend/Go/capacity rerun.
 
-**Latest bounded delivery:** v1.7.9 adds last-observed built-in theme disk-cache
+**Latest bounded delivery:** v1.7.10 bounds a successful but completely empty
+GeoIP country result to one hour, without changing positive/error results or
+provider configuration. Exact CI/publication, OVH synthetic published-binary
+checks, encrypted pre/post recovery and OC424 continuity pass. See
+[`GEOIP-EMPTY-COUNTRY.md`](./GEOIP-EMPTY-COUNTRY.md).
+
+**Prior bounded delivery:** v1.7.9 adds last-observed built-in theme disk-cache
 and in-memory fallback state to the session-only in-panel Performance profiles
 page. It is not continuous disk verification, byte usage or historical sampling.
 Exact CI/publication, OVH isolated browser/authorization, encrypted pre/post
@@ -96,9 +102,8 @@ v1.7.5 provides the SQLite source startup fix; v1.7.6 cross-backend corrections
 are released/recovered/live-accepted. No stored history rewrite or production ANALYZE.
 Continue one bounded correctness/observability item, with 200-node work deferred.
 
-**Next bounded work:** the GeoIP empty-country cache correctness patch is under
-development; see [`GEOIP-EMPTY-COUNTRY.md`](./GEOIP-EMPTY-COUNTRY.md). It is
-not yet published or deployed. Keep 200-node work deferred. Independent-media recovery, real incident delivery,
+**Next bounded work:** select another independently verifiable observability or
+correctness batch. Keep 200-node work deferred. Independent-media recovery, real incident delivery,
 complete API-caller inventory and the span/window-coverage decision remain open.
 No whole-roadmap app goal change or new owner-session UI acceptance is claimed.
 
@@ -106,13 +111,13 @@ No whole-roadmap app goal change or new owner-session UI acceptance is claimed.
 
 | Gate | Current state | Required next evidence/action |
 |---|---|---|
-| Source/publication/deployment | Theme-cache diagnostics v1.7.9/`4e6c4d2`; exact CI40655268852 8/8, release40656102364 10/10, Docker40656768684 2/2, OVH installed-binary checks, OC4249/9,public26/26,scoped forecast14rows and14-client/auth continuity pass | Retain immutable tags/assets and truthful release evidence; do not rebuild them for documentation |
+| Source/publication/deployment | GeoIP cache v1.7.10/`a2fd46a`; exact CI40660304364 8/8, release40661328099 10/10, Docker40662206501 2/2, OVH installed-binary checks, OC4249/9,public26/26,scoped forecast14rows and14-client/auth continuity pass | Retain immutable tags/assets and truthful release evidence; do not rebuild them for documentation |
 | Legacy API consumers | Owner-configured `hermes-node-management` matches exactly `nodes:read` + `nodes:write`, active365days until2027-10-27 13:38:02 Asia/Shanghai; actual MAC-WAN disposable create/edit/read/remove passes and original13 metadata is unchanged | Reviewed CLI writes may resume; no token/exec/update grant or key rotation. Other callers/runtime rewiring are not inferred from three reference edits; old30-day read-only key remains |
 | Token recovery/edit/import | Owner accepts restrictions and requests no rotation; 14 current UUIDs/tokens and all Agent services unchanged | No rotation canary now; future rotation requires independent SSH/console and per-node consent |
-| D12 custody/recovery | OC424 public recipient only, OVH ciphertext, MAC-WAN online identity/recovery runner; fresh14-node v1.7.9 pre/post backups and pinned v1.7.8/v1.7.9 recovery, no ANALYZE or metric reclaim; exact evidence in runbook | Owner reports offline copy downloaded; independent-media restore is still unverified. Same-UID Hermes/root/Docker exposure remains explicit |
+| D12 custody/recovery | OC424 public recipient only, OVH ciphertext, MAC-WAN online identity/recovery runner; fresh14-node v1.7.10 pre/post backups and pinned v1.7.9/v1.7.10 recovery, no ANALYZE or metric reclaim; exact evidence in runbook | Owner reports offline copy downloaded; independent-media restore is still unverified. Same-UID Hermes/root/Docker exposure remains explicit |
 | Nightly schedule/retention | Enabled daily03:30UTC OVH timer, keep14 ciphertext pairs; first actual scheduled trigger2026-10-28 11:30:23Asia/Shanghai and service11:31:04success/exit0 verified, with matching archive/checksum; release copies remain outside pruning | Initial/later recurring health checks pass; actual incident delivery remains unverified. No independent-media or measured RPO claim. No old plaintext/manual/local rollback copy is deleted; deletion needs an explicit policy |
 | OC424 authenticated acceptance | Owner elects self-run history/audit/API-key UI checks after deployment | **Closed in dsh's 2026-10-27 record**: the owner reported the post-deployment history/audit/API-key pages check out. This review does not repeat an owner session. Public shells, 401 responses and synthetic checks cannot substitute for it; acceptance does not extend to other surfaces or future releases |
-| Rollback | Fresh per-DB WAL-safe snapshots/compose + v1.7.8 image in `rollbacks/v1.7.9-20261028T083428Z-2956a078`; no schema/auth change, keep current data | v1.7.9->v1.7.8 uses prior compose/image, keeping14nodes and health env/state. v1.7.7 and older manual metric reclaim deletes uptime history; preserve/verify post backup. Across v1.7->v1.6 freeze writers and restore paired old DB + binary, losing newer data/permissions |
+| Rollback | Fresh per-DB WAL-safe snapshots/compose + v1.7.9 image in `rollbacks/v1.7.10-20261028T092318Z-d845625f`; no schema/auth change, keep current data | v1.7.10->v1.7.9 uses prior compose/image, keeping14nodes and health env/state. v1.7.7 and older manual metric reclaim deletes uptime history; preserve/verify post backup. Across v1.7->v1.6 freeze writers and restore paired old DB + binary, losing newer data/permissions |
 
 **Hermes handoff:** the gateway is active again (PID922780/restart0); AgentPID976/
 restart0 is unchanged. The metadata-only CLI stays checksum-matched on MAC-WAN;
@@ -124,10 +129,10 @@ inventory or owner UI acceptance; no key/session is recovered from SQLite,
 backups, process args or Hermes history. Installation is owner-UI only; no token-read/exec/update grant is
 silently added. See [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md).
 
-**Backup handoff:** fresh v1.7.9 pre/post archives from the pinned installed OVH
-receiver pass actual isolated MAC-WAN recovery with pinned v1.7.8/v1.7.9 images
-for pre and v1.7.9 for post, both DBs,14 clients/current auth metadata and
-cleanup. Post-backup uptime rollups survive the v1.7.9 boot without reclaim.
+**Backup handoff:** fresh v1.7.10 pre/post archives from the pinned installed OVH
+receiver pass actual isolated MAC-WAN recovery with pinned v1.7.9/v1.7.10 images
+for pre and v1.7.10 for post, both DBs,14 clients/current auth metadata and
+cleanup. Post-backup uptime rollups survive the v1.7.10 boot without reclaim.
 Independent regular release
 copies stay outside14-pair pruning; all older copies remain. Earlier13-client
 release backups are historical; never use them to overwrite Pi's added node.
@@ -137,9 +142,9 @@ checks pass. First scheduled nightly backup is verified2026-10-28; measured
 SLO/RPO/RTO and independent-media restore remain separate. See
 [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
 
-**Verification scope:** focused Go races/vet, cache-state/authorization,
-type/lint and real embedded-browser checks; required exact-source
-CI/publication; attested installed-Panel OVH acceptance; encrypted recovery,
+**Verification scope:** focused Go races/vet and synthetic local-upstream
+installed-Panel tests; required exact-source CI/publication; attested
+installed-Panel OVH acceptance; encrypted recovery,
 scoped forecast and live continuity. Prior SQL/live SLA evidence is reused.
 Unchanged backup-health/query/scoped-key/report/queue/rotation/Hermes source
 checks are reused, not broadly rerun locally. Only owned disposables are cleaned;
@@ -221,7 +226,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Restored metrics startup could exhaust connection deadlines with stale planner statistics | `pkg/metric/coarse_rollup.go`; `docs/METRIC-RECOVERY-STARTUP.md` | **Fixed and deployed in v1.7.5**: the recovery statement constrained the tier through a join, so stale statistics drove the scan from the resolution index and re-read every series' rows once per metric; it now binds the tier id and forces the series-leading index on SQLite. Released binaries on a production-shaped restored store: 1.7s vs 30s+ deadline-exceeded, and MAC-WAN pinned v1.7.5 recovery passes on fresh pre/post ciphertext. The pinned v1.7.4 image still cannot restore a fresh archive without the scratch `ANALYZE` workaround, which is a rollback caveat rather than an open defect. Independent-media restore remains unverified and no production database was ever analysed |
 | The legacy monitoring migration has no checkpoint, so a crash restarts it from the beginning | `internal/migrations/legacy_monitoring.go` | Re-running is idempotent (argued in the audit report), so the cost is time, not correctness |
 | The auto-upgrade archive excludes `metrics.db` by design | `database/dbcore/dbcore.go` | **Accepted**. The upgrade log already says the local metric store is excluded and left in place; the archive is not a full backup |
-| Empty-country GeoIP results can hide recovery | `utils/geoip/geoip.go`; `docs/GEOIP-EMPTY-COUNTRY.md` | A bounded one-hour negative-result cache is under development; not yet published or deployed. No incident has been traced to this cosmetic issue |
+| Empty-country GeoIP results can hide recovery | `utils/geoip/geoip.go`; `docs/GEOIP-EMPTY-COUNTRY.md` | Fixed/deployed in v1.7.10: successful completely empty results expire after one hour, positive/partial results retain 48 hours, and overlapping lookups cannot extend or overwrite a cached result. No incident had been traced to this cosmetic issue |
 | The "persistent data" warning is inverted under a custom docker data-root | `database/dbcore/dbcore.go` | The regex only matches the default volume path, so a custom root prints "persists" for something that does not |
 | Session tokens and the 2FA secret are stored unencrypted at rest | `docs/AUTH-HARDENING.md` §3 | Proposal only; needs a key-management decision before code |
 
