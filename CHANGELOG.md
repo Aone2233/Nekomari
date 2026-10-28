@@ -8,7 +8,12 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- No changes yet.
+- **GeoIP empty-country cache.** Cache successful results with neither a
+  country code nor name for one hour rather than 48 hours, allowing a later
+  lookup to observe recovery while limiting repeated upstream traffic.
+  Positive, partial and error results keep their existing behavior. Overlapping
+  empty lookups cannot replace or extend another cached result. No provider,
+  Agent, schema or permission change. See `docs/GEOIP-EMPTY-COUNTRY.md`.
 
 ## [v1.7.9] - 2026-10-28
 
