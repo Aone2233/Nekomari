@@ -333,8 +333,13 @@ func TestCreateMetricDefinitionsUsesLegacySpanOnlyForNewDefinitions(t *testing.T
 		t.Fatalf("list migration definitions: %v", err)
 	}
 	for _, def := range defs {
-		if def.RetentionDays != 10 {
-			t.Fatalf("%s retention = %d, want legacy span 10", def.Name, def.RetentionDays)
+		want := 10
+		if IsPanelMetric(def.Name) {
+			// Panel history has no legacy node data to preserve.
+			want = defaultBuiltinMetricRetentionDays
+		}
+		if def.RetentionDays != want {
+			t.Fatalf("%s retention = %d, want %d", def.Name, def.RetentionDays, want)
 		}
 	}
 
