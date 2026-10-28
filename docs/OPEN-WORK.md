@@ -15,20 +15,20 @@ What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit 
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
 **Current checkpoint (2026-10-28, Asia/Shanghai):** OC424 serves
-**v1.7.7/8e1dafa** at `nekomari.orderly2233.org`, healthy/restart0. Exact
-CI40642445800 8/8, release40643116847 10/10, Docker40643699302 2/2,
-Linux checksums/provenance, dual-architecture image identity, ten published-binary
-embedded-admin scenarios on OVH, OC424upgrade9/9,public23/23 and scoped
-forecast14rows pass. Prior v1.7.6 actual SQL recovery is dated evidence; no
-unrelated broad local SQL/capacity rerun.
+**v1.7.8/75168d5** at `nekomari.orderly2233.org`, healthy/restart0. Exact
+CI40649551718 8/8, release40650315129 10/10, Docker40651006736 2/2,
+Linux checksums/provenance, dual-architecture image identity, isolated OVH
+published-binary report/permission/browser checks, OC424upgrade9/9,public24/24
+and scoped forecast14rows pass. Prior v1.7.6 actual SQL recovery is dated
+evidence; no unrelated broad local SQL/capacity rerun.
 Earlier v1.7.4 SLA14nodes/58tasks remains dated evidence, not a newly rerun
-SLA live comparison. The five tools remain
+SLA live comparison. The existing tools and new uptime page remain
 in the admin shell. After the earlier removal, Pi adds a node with the owner's
 explicit authorization: the current approved baseline is 14 registered clients
-and 14 currently fresh CPU-reporting nodes. Preserve that addition; the earlier
+and 14 currently fresh CPU/uptime-reporting nodes. Preserve that addition; the earlier
 13-client release records are historical. Existing UUIDs/tokens and Agent services are
 unchanged. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for immutable artifacts,
-actual evidence and patch rollback to v1.7.6. The earlier v1.7.0->v1.6
+actual evidence and patch rollback to v1.7.7. The earlier v1.7.0->v1.6
 auth-migration rollback still requires the paired old binary and DB.
 
 **Adjusted active objective:** close the bounded v1.7 delivery/handoff, then
@@ -37,17 +37,17 @@ roadmap or every v1.7 exit criterion complete. All 200-node experiments/benchmar
 and their 26 failed reports remain deferred. Reuse exact-source and unchanged
 source-batch checks; no redundant broad local frontend/Go/capacity rerun.
 
-**Current candidate, not deployed:** v1.7.8 adds node uptime history and an
+**Latest bounded delivery:** v1.7.8 adds node uptime history and an
 in-panel admin view, one bounded part of v1.8 observability. Historical buckets
 retain the last positive valid reading, not reboot events; zero/absent/invalid
 readings remain unknown and old history is not backfilled. The new metric has
 its own default one-day retention. Publication, OVH published-artifact checks,
-encrypted backup/old-new recovery and OC424 acceptance remain required. Old
-versions can delete the new metric on manual storage reclaim after rollback;
+encrypted pre/post backup, old/new isolated recovery and OC424 acceptance pass.
+Old versions can delete the new metric on manual storage reclaim after rollback;
 preserve a post-upgrade encrypted backup before any downgrade or reclaim. See
 [`UPTIME-HISTORY.md`](./UPTIME-HISTORY.md).
 
-**Latest bounded delivery:** v1.7.7 fixes missing/invalid paid-node expiry:
+**Prior bounded delivery:** v1.7.7 fixes missing/invalid paid-node expiry:
 neutral localized unset/unknown labels replace fabricated countdowns/NaN,
 without claiming lifetime service or changing valid dates. Focused static/mounted
 checks and ten real published-binary admin scenarios pass across five locales
@@ -89,8 +89,8 @@ v1.7.5 provides the SQLite source startup fix; v1.7.6 cross-backend corrections
 are released/recovered/live-accepted. No stored history rewrite or production ANALYZE.
 Continue one bounded correctness/observability item, with 200-node work deferred.
 
-**Next bounded work:** verify and deliver the v1.7.8 candidate above before
-choosing another batch; keep 200-node work deferred. Independent-media recovery, real incident delivery,
+**Next bounded work:** choose one independently verifiable v1.8 observability or
+correctness batch; keep 200-node work deferred. Independent-media recovery, real incident delivery,
 complete API-caller inventory and the span/window-coverage decision remain open.
 No whole-roadmap app goal change or new owner-session UI acceptance is claimed.
 
@@ -98,13 +98,13 @@ No whole-roadmap app goal change or new owner-session UI acceptance is claimed.
 
 | Gate | Current state | Required next evidence/action |
 |---|---|---|
-| Source/publication/deployment | Through nullable expiry v1.7.7/`8e1dafa`; exact CI40642445800 8/8, release40643116847 10/10, Docker40643699302 2/2,OVH10scenarios,OC4249/9,public23/23,scoped forecast14rows and14-client/auth continuity pass | Retain immutable tags/assets and truthful release evidence; do not rebuild them for documentation |
+| Source/publication/deployment | Uptime history v1.7.8/`75168d5`; exact CI40649551718 8/8, release40650315129 10/10, Docker40651006736 2/2, OVH installed-binary checks, OC4249/9,public24/24,scoped forecast14rows and14-client/auth continuity pass | Retain immutable tags/assets and truthful release evidence; do not rebuild them for documentation |
 | Legacy API consumers | Owner-configured `hermes-node-management` matches exactly `nodes:read` + `nodes:write`, active365days until2027-10-27 13:38:02 Asia/Shanghai; actual MAC-WAN disposable create/edit/read/remove passes and original13 metadata is unchanged | Reviewed CLI writes may resume; no token/exec/update grant or key rotation. Other callers/runtime rewiring are not inferred from three reference edits; old30-day read-only key remains |
 | Token recovery/edit/import | Owner accepts restrictions and requests no rotation; 14 current UUIDs/tokens and all Agent services unchanged | No rotation canary now; future rotation requires independent SSH/console and per-node consent |
-| D12 custody/recovery | OC424 public recipient only, OVH ciphertext, MAC-WAN online identity/recovery runner; fresh14-node v1.7.7 backups and pinned v1.7.6/v1.7.7 recovery, no ANALYZE; exact pre/post evidence in runbook | Owner reports offline copy downloaded; independent-media restore is still unverified. Same-UID Hermes/root/Docker exposure remains explicit |
+| D12 custody/recovery | OC424 public recipient only, OVH ciphertext, MAC-WAN online identity/recovery runner; fresh14-node v1.7.8 pre/post backups and pinned v1.7.7/v1.7.8 recovery, no ANALYZE or metric reclaim; exact evidence in runbook | Owner reports offline copy downloaded; independent-media restore is still unverified. Same-UID Hermes/root/Docker exposure remains explicit |
 | Nightly schedule/retention | Enabled daily03:30UTC OVH timer, keep14 ciphertext pairs; first actual scheduled trigger2026-10-28 11:30:23Asia/Shanghai and service11:31:04success/exit0 verified, with matching archive/checksum; release copies remain outside pruning | Initial/later recurring health checks pass; actual incident delivery remains unverified. No independent-media or measured RPO claim. No old plaintext/manual/local rollback copy is deleted; deletion needs an explicit policy |
 | OC424 authenticated acceptance | Owner elects self-run history/audit/API-key UI checks after deployment | **Closed in dsh's 2026-10-27 record**: the owner reported the post-deployment history/audit/API-key pages check out. This review does not repeat an owner session. Public shells, 401 responses and synthetic checks cannot substitute for it; acceptance does not extend to other surfaces or future releases |
-| Rollback | Fresh per-DB WAL-safe snapshots/compose + v1.7.6 image in `rollbacks/v1.7.7-20261028T063016Z-64133ab0`; no schema/auth change, keep current data | v1.7.7->v1.7.6 uses prior compose/image, keeping14nodes and health env/state. Across v1.7->v1.6 freeze writers and restore paired old DB + binary, losing newer data/permissions |
+| Rollback | Fresh per-DB WAL-safe snapshots/compose + v1.7.7 image in `rollbacks/v1.7.8-20261028T074158Z-6e323629`; no schema/auth change, keep current data | v1.7.8->v1.7.7 uses prior compose/image, keeping14nodes and health env/state. Old-image manual metric reclaim deletes uptime history; preserve/verify post backup. Across v1.7->v1.6 freeze writers and restore paired old DB + binary, losing newer data/permissions |
 
 **Hermes handoff:** the gateway is active again (PID922780/restart0); AgentPID976/
 restart0 is unchanged. The metadata-only CLI stays checksum-matched on MAC-WAN;
@@ -116,9 +116,10 @@ inventory or owner UI acceptance; no key/session is recovered from SQLite,
 backups, process args or Hermes history. Installation is owner-UI only; no token-read/exec/update grant is
 silently added. See [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md).
 
-**Backup handoff:** fresh v1.7.7 pre/post archives from the installed OVH service
-pass actual isolated MAC-WAN recovery with pinned v1.7.6/v1.7.7 images,both
-DBs,14 clients/current auth metadata and cleanup. Independent regular release
+**Backup handoff:** fresh v1.7.8 pre/post archives from the pinned installed OVH
+receiver pass actual isolated MAC-WAN recovery with pinned v1.7.7/v1.7.8 images,
+both DBs,14 clients/current auth metadata and cleanup. Post-backup uptime
+rollups survive both images without reclaim. Independent regular release
 copies stay outside14-pair pruning; all older copies remain. Earlier13-client
 release backups are historical; never use them to overwrite Pi's added node.
 Owner-reported offline download is not independently exercised media recovery.
@@ -127,18 +128,17 @@ checks pass. First scheduled nightly backup is verified2026-10-28; measured
 SLO/RPO/RTO and independent-media restore remain separate. See
 [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
 
-**Verification scope:** focused Go1.27.3 AbortController races/vet, expiry static,
+**Verification scope:** focused Go races/vet, uptime quality/retention/visibility,
 type/lint/mounted and real embedded-browser checks; required exact-source
-CI/publication; attested ten-scenario installed-Panel OVH acceptance; encrypted
-recovery, scoped forecast and live continuity. Prior SQL/live SLA evidence is reused.
+CI/publication; attested installed-Panel OVH acceptance; encrypted recovery,
+scoped forecast and live continuity. Prior SQL/live SLA evidence is reused.
 Unchanged backup-health/query/scoped-key/report/queue/rotation/Hermes source
 checks are reused, not broadly rerun locally. Only owned disposables are cleaned;
 all backups,rollback images and shared caches remain. No fleet upgrade,owner
 login,capacity/SLO or unattended decrypted recovery is claimed.
 
-The application-level all-roadmap goal was previously observed paused. The owner
-revokes the pause and narrows repository work, but the available goal interface
-cannot edit the objective/resume app state; this is not a claim it was changed.
+The active app goal is to design the next bounded objective and continue version
+delivery; it does not imply that the entire roadmap is complete.
 Source-batch details remain in the dedicated guides/changelog and retained CI,
 not an open task to rerun unchanged checks.
 
@@ -223,7 +223,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | `Presence.Coverage` is a span, not a window coverage | `internal/sla/availability.go`; `docs/SLA-COVERAGE.md` | Clarified 2026-10-27 without changing behaviour: coverage is observed/expected over the observed span, capped by the requested window, so a series that reports only the last ten minutes of an hour reads 1 (window fraction 1/6). The field comment, worked examples, correct reading for freshness and the compatibility rules are now stated; `batch_test.go` still pins the value. Still open: the owner decision on adding a separate window-coverage field (which must also report the inferred cadence) — an in-place redefinition would move every stored figure and is not done |
 | `PriceTags` missing/invalid expiry | `frontend/src/components/PriceTags.tsx` | **Fixed/deployed v1.7.7**: neutral localized unset/unknown labels preserve real dates/tags; focused, real embedded-browser, publication and OC424 continuity pass |
 | Dragging under a filter reorders only the visible subset | `frontend/src/pages/admin/index.tsx` | Needs a decision about what reordering a filtered list should mean |
-| Uptime history / restart count | `docs/UPTIME-HISTORY.md` | Uptime history is a v1.7.8 candidate, not yet deployed. It records bucketed positive readings, not reboot events; trustworthy restart counting remains open |
+| Uptime history / restart count | `docs/UPTIME-HISTORY.md` | Uptime history is deployed in v1.7.8. It records bucketed positive readings, not reboot events; trustworthy restart counting remains open |
 | One bad metric parameter fails a whole batch query | `web/rpc/jsonrpc/public.metric.go` | Should report per-key rather than all-or-nothing |
 | Non-root ICMP and Windows/macOS agent footprint | `agent/` | netstatic, ping precision and the Linux footprint measurement shipped (v1.6.22–v1.6.25). Still open: non-root agents without `CAP_NET_RAW` cannot probe, and Windows/macOS peak memory/disk growth are unmeasured |
 | Legacy ping quantiles are unknown across the migration window | `web/rpc/jsonrpc/public.metric.go` | **Accepted**: the report says so itself |

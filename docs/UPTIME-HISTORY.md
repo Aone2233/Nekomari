@@ -1,7 +1,7 @@
 # Node uptime history
 
-Status: v1.7.8 candidate, not yet published or deployed. This is one bounded
-part of v1.8 observability, not reboot counting or v1.8 completion.
+Status: v1.7.8 published and deployed on OC424 on 2026-10-28. This is one
+bounded part of v1.8 observability, not reboot counting or v1.8 completion.
 
 ## Meaning and use
 
@@ -38,11 +38,15 @@ Cleanup and system-record deletion include this metric.
 Source tests cover quality/legacy inputs, retention and deletion, default last
 aggregation, scoped/hidden-node visibility, and restart durability. The
 installed-binary browser check uses synthetic loopback accounts and nodes,
-including hidden and empty nodes, desktop-light and mobile-dark. Production
-acceptance and published-artifact results must be documented separately.
+including hidden and empty nodes, desktop-light and mobile-dark. The attested
+published binary passes those checks on OVH; the OC424 cutover observes fresh
+natural uptime rollups from all 14 registered nodes and passes public shell and
+scoped read checks. No owner-authenticated production UI session is claimed.
 The local candidate -> published v1.7.7 -> local candidate synthetic binary
-restart preserves a recorded value without reclaim; it does not replace a
-post-upgrade production-backup restore drill.
+restart preserves a recorded value without reclaim. A fresh encrypted
+post-upgrade production backup separately restores on MAC-WAN under pinned
+v1.7.8 and v1.7.7: 15 uptime rollups exist before and after each boot, with no
+reclaim. This does not validate recovery from the owner's independent media.
 
 The metric uses existing tables, but **older images do not recognize its
 definition**. Rolling back to v1.7.7 can keep the current database and existing

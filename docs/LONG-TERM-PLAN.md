@@ -39,7 +39,19 @@ its exit criteria are met, not when the calendar says so.
 
 ## Current Delivery Checkpoint (2026-10-28)
 
-**Latest delivery: v1.7.7 (2026-10-28 14:30:19 Asia/Shanghai).** Missing/invalid
+**Latest delivery: v1.7.8 (2026-10-28 15:42:01 Asia/Shanghai).** The new
+same-shell node uptime history records last positive valid readings with a
+one-day default retention, no backfill and no reboot inference. Exact
+CI40649551718 passes8/8, release40650315129 10/10, Docker40651006736 2/2;
+OVH published-binary report/permission/browser tests pass. Fresh MAC-WAN pre
+and post ciphertext restores under both pinned v1.7.7/v1.7.8, preserving the
+post-upgrade uptime rollups without reclaim. OC424 upgrade9/9, public24/24,
+scoped forecast14rows and all14 fresh CPU/uptime reporters pass. No Agent,
+schema, credential, permission or schedule change. Independent-media restore,
+production owner UI acceptance and real incident delivery remain open. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+**Prior delivery: v1.7.7 (2026-10-28 14:30:19 Asia/Shanghai).** Missing/invalid
 paid-node expiry is neutral and localized, preserving actual countdowns and the
 shared theme. The fetch-abort test synchronizes with handler arrival; no runtime
 fetch change. Exact CI40642445800 passes8/8, release40643116847 10/10 and
@@ -68,16 +80,16 @@ correctness batches. The full v1.8-v2.1 roadmap is not one continuous task.
 All 200-node work remains deferred, preserving its original limits and 26 failed
 reports. Publication is not proof that every roadmap exit criterion passed.
 
-**Delivered:** OC424 serves v1.7.7/8e1dafa at `nekomari.orderly2233.org`, healthy/
+**Delivered:** OC424 serves v1.7.8/75168d5 at `nekomari.orderly2233.org`, healthy/
 restart0, after exact-source CI 8/8, release 10/10, Docker 2/2 and upgrade check 9/9.
 Both Linux assets pass checksums/tag/source/workflow attestations; both image
-architectures identify exact source. Public checks23/23 and scoped forecast14rows
+architectures identify exact source. Public checks24/24 and scoped forecast14rows
 pass; the earlier v1.7.4 bounded live SLA reads are dated evidence, not rerun
-for v1.7.7. The owner-approved
+for v1.7.8. The owner-approved
 baseline now includes Pi's explicitly owner-authorized addition: 14 clients and
 14 currently fresh reporting nodes, not the earlier 13-client release snapshot.
-UUIDs/tokens/Agent services are unchanged. The five tools retain
-shared in-panel navigation. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+UUIDs/tokens/Agent services are unchanged. The existing tools and new uptime page
+retain shared in-panel navigation. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
 Scoped keys, history/audit bounds, report/queue invariants, session-only token
 rotation and encrypted-backup tooling are published. The one old global key
@@ -89,13 +101,13 @@ and passes actual disposable CLI create/edit/read/remove. Original13 metadata is
 unchanged at that handoff; Pi's later authorized addition is preserved in the
 current14-node baseline. The owner selects365days to2027-10-27 13:38:02
 Asia/Shanghai, not the suggested90; no silent rotation. Other runtime callers
-are not fully inventoried. v1.7.7 does not restart Hermes or any Agent.
+are not fully inventoried. v1.7.8 does not restart Hermes or any Agent.
 
 **Backup delivery:** OC424 has only public recipients; OVH's encrypted daily
 03:30 UTC timer replaces only the old plaintext cron row, with 14 ciphertext-pair
-retention. The installed service succeeds; fresh pre/post archives pass isolated
-MAC-WAN pinned-v1.7.6/v1.7.7 recovery with both DBs,14 clients and cleanup,
-without refreshing planner statistics. Release
+retention. The installed service succeeds; fresh pre/post release archives pass
+isolated MAC-WAN pinned-v1.7.7/v1.7.8 recovery with both DBs,14 clients and
+cleanup, without refreshing planner statistics or reclaim. Release
 recovery copies are outside automatic retention, and all old plaintext/local
 rollback assets are kept. The owner reports downloading the offline identity
 copy and authorizes cutover; independent-media restore is not claimed. Online
@@ -148,27 +160,26 @@ copy outside pruning. This closes first-trigger observation only.
    [`METRIC-RECOVERY-STARTUP.md`](./METRIC-RECOVERY-STARTUP.md) and
    [`SLA-GENERATIONS.md`](./SLA-GENERATIONS.md).
    v1.7.7 closes the small nullable-expiry UI gap and test arrival race.
-   Candidate v1.7.8 adds node uptime history as a partial v1.8 observability
-   milestone, not reboot counts or a completed v1.8 release. It remains
-   unpublished and undeployed until the separate release, encrypted recovery and
-   OC424 acceptance gates pass; see [`UPTIME-HISTORY.md`](./UPTIME-HISTORY.md).
+   v1.7.8 adds and deploys node uptime history as a partial v1.8 observability
+   milestone, not reboot counts or a completed v1.8 release. Release, encrypted
+   recovery and OC424 continuity gates pass; owner UI acceptance remains
+   separate. See [`UPTIME-HISTORY.md`](./UPTIME-HISTORY.md).
 
 v1.7 is released/deployed, **not unconditionally exit-complete**: remaining
 caller inventory, independent-media recovery, live incident delivery and
 stronger restore-drill policy remain open in
 [`OPEN-WORK.md`](./OPEN-WORK.md#v17-release-readiness-2026-10-28).
-v1.7.7->v1.7.6 needs the pinned prior compose/image (keeping the health opt-in/state),
+v1.7.8->v1.7.7 needs the pinned prior compose/image (keeping the health opt-in/state),
 preserving current DB data and all14nodes. Fresh per-DB WAL-safe snapshots/compose
-are retained in `rollbacks/v1.7.7-20261028T063016Z-64133ab0`; they do not claim
-cross-DB atomicity.
+are retained in `rollbacks/v1.7.8-20261028T074158Z-6e323629`; they do not claim
+cross-DB atomicity. Old-image manual metric reclaim deletes uptime history, so
+retain and verify the fresh post-upgrade ciphertext before downgrade or reclaim.
 Across credential migration to v1.6, rollback needs the old binary and pre-upgrade
 DB, not an image-only downgrade; frozen-writer/failure-preservation instructions
 are retained with the paired local snapshots.
 
-The earlier application-level goal was observed paused. The owner's continue
-request revokes that work pause, but the available goal interface cannot edit
-its objective/resume app state. This updates repository scope only, not app
-state or a declaration that the long-term roadmap is done. OC424 remains the
+The active app goal covers selecting bounded work and continuing delivery, not
+a declaration that the long-term roadmap is done. OC424 remains the
 real acceptance host; OVH is the backup/appropriate isolated-test host. Only
 owned disposable downloads/fixtures are cleaned; unchanged broad local suites
 are not rerun. Earlier source-batch checks remain in their dedicated guides,
@@ -206,7 +217,7 @@ changelog and retained exact-source CI.
 - Secrets-at-rest plan (session token / 2FA secret); implement by v2.0.
 
 ### P1 — observability and correctness (v1.8)
-- uptime/restart-count metric (uptime history is a v1.7.8 candidate; reboot
+- uptime/restart-count metric (uptime history ships in v1.7.8; reboot
   counting remains open); panel self-metrics history and export.
 - Backup freshness/agent-offline alerts with a test button.
 - SLA tag-generation dedupe, coverage definition, forecast boundary fixes.
