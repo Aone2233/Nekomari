@@ -12,8 +12,17 @@ const METRICS = {
   rss_bytes: "panel.self.rss_bytes",
   heap_bytes: "panel.self.heap_alloc_bytes",
   goroutines: "panel.self.goroutines",
+  main_wait_count: "panel.pool.main.wait_count",
+  main_wait_ms: "panel.pool.main.wait_ms",
+  write_wait_count: "panel.pool.metrics_write.wait_count",
+  write_wait_ms: "panel.pool.metrics_write.wait_ms",
+  read_wait_count: "panel.pool.metrics_read.wait_count",
+  read_wait_ms: "panel.pool.metrics_read.wait_ms",
 } as const;
 type HistoryMetric = keyof typeof METRICS;
+
+// Older servers do not include pool readings. Treat absent fields as unknown.
+const poolReading = z.number().finite().nonnegative().nullable().optional().transform((value) => value ?? null);
 
 const historySchema = z.object({
   status: z.literal("success"),
@@ -25,6 +34,12 @@ const historySchema = z.object({
       rss_bytes: z.number().finite().nonnegative().nullable(),
       heap_bytes: z.number().finite().nonnegative().nullable(),
       goroutines: z.number().finite().nonnegative().nullable(),
+      main_wait_count: poolReading,
+      main_wait_ms: poolReading,
+      write_wait_count: poolReading,
+      write_wait_ms: poolReading,
+      read_wait_count: poolReading,
+      read_wait_ms: poolReading,
     })).max(500),
   }),
 });
@@ -65,8 +80,24 @@ export default function PanelHistory() {
   const measured = rows.filter((row) => row.value !== null);
   const latest = measured[measured.length - 1];
   const retention = current?.history?.retention_days[METRICS[metric]];
-  const formatValue = (value: number) => metric === "goroutines" ? Math.round(value).toLocaleString() : formatBytes(value);
-  const label = metric === "rss_bytes" ? "RSS" : t(metric === "heap_bytes" ? "pprof.heap_alloc" : "pprof.goroutines");
+  const poolMetric = metric.includes("_wait_");
+  const formatValue = (value: number) => {
+    if (metric.endsWith("_wait_ms")) return `${value.toLocaleString(undefined, { maximumFractionDigits: 3 })} ms`;
+    if (metric === "goroutines" || metric.endsWith("_wait_count")) return Math.round(value).toLocaleString();
+    return formatBytes(value);
+  };
+  const labels: Record<HistoryMetric, string> = {
+    rss_bytes: "RSS",
+    heap_bytes: t("pprof.heap_alloc"),
+    goroutines: t("pprof.goroutines"),
+    main_wait_count: t("pprof.pool_main_wait_count"),
+    main_wait_ms: t("pprof.pool_main_wait_ms"),
+    write_wait_count: t("pprof.pool_write_wait_count"),
+    write_wait_ms: t("pprof.pool_write_wait_ms"),
+    read_wait_count: t("pprof.pool_read_wait_count"),
+    read_wait_ms: t("pprof.pool_read_wait_ms"),
+  };
+  const label = labels[metric];
 
   return (
     <SettingCard title={t("pprof.history_title")} description={t("pprof.history_description")}>
@@ -78,9 +109,7 @@ export default function PanelHistory() {
               <Select.Root value={metric} onValueChange={(value) => setMetric(value as HistoryMetric)}>
                 <Select.Trigger aria-label={t("pprof.history_metric")} />
                 <Select.Content>
-                  <Select.Item value="rss_bytes">RSS</Select.Item>
-                  <Select.Item value="heap_bytes">{t("pprof.heap_alloc")}</Select.Item>
-                  <Select.Item value="goroutines">{t("pprof.goroutines")}</Select.Item>
+                  {(Object.keys(METRICS) as HistoryMetric[]).map((name) => <Select.Item key={name} value={name}>{labels[name]}</Select.Item>)}
                 </Select.Content>
               </Select.Root>
             </label>
@@ -122,6 +151,7 @@ export default function PanelHistory() {
           </ChartContainer>
         )}
         <Text as="p" size="2" color="gray">{t("pprof.history_note")}</Text>
+        {poolMetric && <Text as="p" size="2" color="gray" data-testid="panel-pool-note">{t("pprof.pool_history_note")}</Text>}
         {retention !== undefined && <Text as="p" size="1" color="gray">{t("pprof.history_retention", { days: retention })}</Text>}
       </Flex>
     </SettingCard>

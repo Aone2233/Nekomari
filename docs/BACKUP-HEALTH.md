@@ -1,5 +1,12 @@
 # Off-host backup health (v1.7.3)
 
+**2026-10-28 supersession:** OVH is relinquished; the former OVH receiver and
+heartbeat are not trusted/current. A new MAC-WAN receiver and health reporter
+are installed and an initial timer trigger passes; see [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
+The legacy report filename remains but now represents MAC-WAN. A future changed
+egress can result in stale-heartbeat alerts; never silence or forge them. See
+[`OVH-RETIREMENT-2026-10-28.md`](./OVH-RETIREMENT-2026-10-28.md) for containment.
+
 This optional Linux monitor checks encrypted backup freshness on OVH and missing
 reports on OC424. It does not decrypt backups, prove authenticated freshness,
 replace actual restore drills or establish production RPO/RTO/SLOs.

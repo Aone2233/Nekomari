@@ -2,6 +2,7 @@ package metricstore
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -20,16 +21,121 @@ type PanelSample struct {
 }
 
 type PanelHistoryPoint struct {
-	Time       time.Time `json:"time"`
-	RSSBytes   *float64  `json:"rss_bytes"`
-	HeapBytes  *float64  `json:"heap_bytes"`
-	Goroutines *float64  `json:"goroutines"`
+	Time           time.Time `json:"time"`
+	RSSBytes       *float64  `json:"rss_bytes"`
+	HeapBytes      *float64  `json:"heap_bytes"`
+	Goroutines     *float64  `json:"goroutines"`
+	MainWaitCount  *float64  `json:"main_wait_count"`
+	MainWaitMS     *float64  `json:"main_wait_ms"`
+	WriteWaitCount *float64  `json:"write_wait_count"`
+	WriteWaitMS    *float64  `json:"write_wait_ms"`
+	ReadWaitCount  *float64  `json:"read_wait_count"`
+	ReadWaitMS     *float64  `json:"read_wait_ms"`
 }
 
 type PanelHistory struct {
 	IntervalSeconds int                 `json:"interval_seconds"`
 	RetentionDays   map[string]int      `json:"retention_days"`
 	Points          []PanelHistoryPoint `json:"points"`
+}
+
+func clearPanelHistoryValue(point *PanelHistoryPoint, name string) {
+	switch name {
+	case MetricPanelRSS:
+		point.RSSBytes = nil
+	case MetricPanelHeap:
+		point.HeapBytes = nil
+	case MetricPanelGoroutines:
+		point.Goroutines = nil
+	case MetricPanelMainWaitCount:
+		point.MainWaitCount = nil
+	case MetricPanelMainWaitMS:
+		point.MainWaitMS = nil
+	case MetricPanelWriteWaitCount:
+		point.WriteWaitCount = nil
+	case MetricPanelWriteWaitMS:
+		point.WriteWaitMS = nil
+	case MetricPanelReadWaitCount:
+		point.ReadWaitCount = nil
+	case MetricPanelReadWaitMS:
+		point.ReadWaitMS = nil
+	}
+}
+
+// PanelPoolSampler remembers only the preceding successful sample. A new
+// process therefore never compares its counters with a previous process.
+// Collect is serialized by panelhistory.Sampler.
+type PanelPoolSampler struct {
+	previous poolSnapshot
+}
+
+type poolSnapshot struct {
+	at                time.Time
+	store             *metric.Store
+	mainDB            *sql.DB
+	main, write, read sql.DBStats
+	hasRead           bool
+}
+
+const panelPoolUnknown = -1.0
+
+// Reset prevents a cancelled or skipped collection from bridging its gap.
+// The caller must serialize Reset and Write.
+func (p *PanelPoolSampler) Reset() {
+	p.previous = poolSnapshot{}
+}
+
+// Write acquires one store lease for the pool snapshot and the write. Reload
+// cannot switch or close the store between those two operations.
+func (p *PanelPoolSampler) Write(ctx context.Context, sample PanelSample, mainDB *sql.DB) error {
+	if err := storeOperations.AcquireShared(ctx); err != nil {
+		p.previous = poolSnapshot{}
+		return err
+	}
+	defer storeOperations.ReleaseShared()
+	s := GetStore()
+	if s == nil {
+		p.previous = poolSnapshot{}
+		return ErrStoreNotInitialized
+	}
+	current := poolSnapshot{at: sample.At, store: s, mainDB: mainDB}
+	if current.mainDB != nil {
+		current.main = current.mainDB.Stats()
+	}
+	pools := s.PoolStats()
+	current.write, current.read, current.hasRead = pools.Write, pools.Read, pools.HasRead
+	points := p.points(current)
+	if err := writePanelSampleWithPools(ctx, s, sample, points); err != nil {
+		p.previous = poolSnapshot{}
+		return err
+	}
+	p.previous = current
+	return nil
+}
+
+func (p *PanelPoolSampler) points(current poolSnapshot) []metric.Point {
+	previous := p.previous
+	elapsed := current.at.Sub(previous.at)
+	// Monotonic time detects wall-clock changes; distinct consecutive minute
+	// buckets ensure no missing or duplicated minute is silently bridged.
+	continuous := !previous.at.IsZero() && elapsed >= 30*time.Second && elapsed <= 90*time.Second &&
+		current.at.UTC().Truncate(time.Minute).Sub(previous.at.UTC().Truncate(time.Minute)) == time.Minute
+	points := make([]metric.Point, 0, len(panelPoolMetricNames))
+	appendPool := func(countName, durationName string, same bool, before, after sql.DBStats) {
+		count, duration := panelPoolUnknown, panelPoolUnknown
+		if continuous && same && before.WaitCount >= 0 && before.WaitDuration >= 0 &&
+			after.WaitCount >= before.WaitCount && after.WaitDuration >= before.WaitDuration {
+			count = float64(after.WaitCount - before.WaitCount)
+			duration = float64(after.WaitDuration-before.WaitDuration) / float64(time.Millisecond)
+		}
+		points = append(points,
+			metric.Point{MetricName: countName, EntityID: panelHistoryEntity, Timestamp: current.at, Value: count},
+			metric.Point{MetricName: durationName, EntityID: panelHistoryEntity, Timestamp: current.at, Value: duration})
+	}
+	appendPool(MetricPanelMainWaitCount, MetricPanelMainWaitMS, current.mainDB != nil && current.mainDB == previous.mainDB, previous.main, current.main)
+	appendPool(MetricPanelWriteWaitCount, MetricPanelWriteWaitMS, current.store != nil && current.store == previous.store, previous.write, current.write)
+	appendPool(MetricPanelReadWaitCount, MetricPanelReadWaitMS, current.store != nil && current.store == previous.store && current.hasRead && previous.hasRead, previous.read, current.read)
+	return points
 }
 
 // WritePanelSample holds a shared store lease across the entire write, so a
@@ -47,6 +153,10 @@ func WritePanelSample(ctx context.Context, sample PanelSample) error {
 }
 
 func writePanelSample(ctx context.Context, s *metric.Store, sample PanelSample) error {
+	return writePanelSampleWithPools(ctx, s, sample, nil)
+}
+
+func writePanelSampleWithPools(ctx context.Context, s *metric.Store, sample PanelSample, poolPoints []metric.Point) error {
 	if sample.At.IsZero() || sample.Goroutines < 1 {
 		return fmt.Errorf("invalid panel sample")
 	}
@@ -57,6 +167,7 @@ func writePanelSample(ctx context.Context, s *metric.Store, sample PanelSample) 
 	if sample.RSSBytes > 0 {
 		points = append(points, metric.Point{MetricName: MetricPanelRSS, EntityID: panelHistoryEntity, Timestamp: sample.At, Value: float64(sample.RSSBytes)})
 	}
+	points = append(points, poolPoints...)
 	return s.WriteBatch(ctx, points)
 }
 
@@ -90,6 +201,31 @@ func readPanelHistory(ctx context.Context, s *metric.Store, hours int, now time.
 	interval = s.CompatibleSeriesInterval(start, now, interval)
 	start = now.Add(-time.Duration(hours) * time.Hour).Truncate(interval)
 	specs := make([]metric.BatchSeriesSpec, 0, len(panelMetricNames))
+	setValue := func(point *PanelHistoryPoint, name string, value float64) {
+		if IsPanelPoolMetric(name) && value < 0 {
+			return
+		}
+		switch name {
+		case MetricPanelRSS:
+			point.RSSBytes = &value
+		case MetricPanelHeap:
+			point.HeapBytes = &value
+		case MetricPanelGoroutines:
+			point.Goroutines = &value
+		case MetricPanelMainWaitCount:
+			point.MainWaitCount = &value
+		case MetricPanelMainWaitMS:
+			point.MainWaitMS = &value
+		case MetricPanelWriteWaitCount:
+			point.WriteWaitCount = &value
+		case MetricPanelWriteWaitMS:
+			point.WriteWaitMS = &value
+		case MetricPanelReadWaitCount:
+			point.ReadWaitCount = &value
+		case MetricPanelReadWaitMS:
+			point.ReadWaitMS = &value
+		}
+	}
 	for _, name := range panelMetricNames {
 		specs = append(specs, metric.BatchSeriesSpec{MetricName: name, Aggregations: []metric.Aggregation{metric.AggLast}, Interval: interval})
 	}
@@ -142,36 +278,19 @@ func readPanelHistory(ctx context.Context, s *metric.Store, hours int, now time.
 			if !ok || point.Count <= 0 {
 				continue
 			}
-			value := point.Value
-			switch name {
-			case MetricPanelRSS:
-				result.Points[index].RSSBytes = &value
-			case MetricPanelHeap:
-				result.Points[index].HeapBytes = &value
-			case MetricPanelGoroutines:
-				result.Points[index].Goroutines = &value
-			}
+			setValue(&result.Points[index], name, point.Value)
 		}
 		if interval > time.Minute {
 			index := positions[now.Truncate(interval).UnixMilli()]
-			replace := func(value *float64) {
-				switch name {
-				case MetricPanelRSS:
-					result.Points[index].RSSBytes = value
-				case MetricPanelHeap:
-					result.Points[index].HeapBytes = value
-				case MetricPanelGoroutines:
-					result.Points[index].Goroutines = value
-				}
-			}
 			// A fine observation supersedes a possibly stale coarse partial;
 			// otherwise a real coarse observation is still valid historical data.
 			for _, point := range recent.Values[name][metric.AggLast] {
 				if point.Count <= 0 {
 					continue
 				}
-				value := point.Value
-				replace(&value)
+				// Clear a stale coarse value when the latest fine sample is unknown.
+				clearPanelHistoryValue(&result.Points[index], name)
+				setValue(&result.Points[index], name, point.Value)
 			}
 		}
 	}

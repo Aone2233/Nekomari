@@ -1,0 +1,14 @@
+[Unit]
+Description=Receive encrypted OC424 Panel backup on MAC-WAN
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/timeout --signal=KILL 350s /home/macos/.local/share/nekomari-recovery/scripts/receive-oc424-encrypted-backup
+TimeoutStartSec=360
+Nice=10
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal

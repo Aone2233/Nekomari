@@ -1,5 +1,13 @@
 # MAC-WAN backup custody and recovery (2026-10-28, Asia/Shanghai)
 
+**Superseded operational state:** OVH is relinquished and no longer a trusted
+backup or test host. Historical plaintext backup exposure, revoked OVH SSH
+authorizations, MAC-WAN copy verification and replacement backup gates are in
+[`OVH-RETIREMENT-2026-10-28.md`](./OVH-RETIREMENT-2026-10-28.md). The OVH
+schedule and custody statements below are dated records, not current services.
+The new MAC-WAN receiver and fresh 13-node recovery are documented in
+[`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
+
 MAC-WAN is the owner-selected Hermes and online identity/recovery host (Linux
 x86_64, user `macos`). OC424 now serves v1.7.7/8e1dafa; OVH (`KSLE`) stores
 nightly ciphertext. Actual fresh14-node v1.7.7 pre/post old/new-image recovery

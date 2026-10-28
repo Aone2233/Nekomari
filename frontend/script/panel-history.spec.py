@@ -18,6 +18,11 @@ from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 METRICS = ["panel.self.rss_bytes", "panel.self.heap_alloc_bytes", "panel.self.goroutines"]
+POOL_METRICS = ["panel.pool.main.wait_count", "panel.pool.main.wait_ms",
+                "panel.pool.metrics_write.wait_count", "panel.pool.metrics_write.wait_ms",
+                "panel.pool.metrics_read.wait_count", "panel.pool.metrics_read.wait_ms"]
+POOL_FIELDS = ["main_wait_count", "main_wait_ms", "write_wait_count", "write_wait_ms",
+               "read_wait_count", "read_wait_ms"]
 
 
 def run(binary, output):
@@ -100,13 +105,16 @@ def run(binary, output):
                     denied(path, admin, key, 403)
                 for client, key in [(guest, None), (guest, keys[0]), (guest, keys[1])]:
                     definitions = rpc("public:listMetricDefinitions", {}, client, key)
-                    assert "result" in definitions and all(m not in json.dumps(definitions) for m in METRICS)
-                    for name in METRICS:
+                    assert "result" in definitions and all(m not in json.dumps(definitions) for m in METRICS + POOL_METRICS)
+                    for name in METRICS + POOL_METRICS:
                         assert "error" in rpc("public:queryMetrics", {"metric_key": name, "hours": 1}, client, key)
                 status, headers, data = call(path)
                 assert status == 200 and "no-store" in headers.get("Cache-Control", "")
                 history = data["data"]
                 assert all(history["retention_days"][name] == 1 for name in METRICS)
+                assert all(history["retention_days"][name] == 1 for name in POOL_METRICS)
+                assert all(field in point and (point[field] is None or point[field] >= 0)
+                           for point in history["points"] for field in POOL_FIELDS)
                 before = {point["time"]: point["heap_bytes"] for point in history["points"] if point["heap_bytes"] is not None}
                 assert before
                 stop()
@@ -151,6 +159,34 @@ def run(binary, output):
                                 expect(page.get_by_text(strings["history_title"], exact=True)).to_be_visible()
                                 expect(page.get_by_test_id("panel-history")).to_contain_text(strings["history_note"])
                                 expect(page.get_by_test_id("panel-history-latest")).not_to_have_text("-")
+                                # Intercept only a private test response so zero, missing and old-server
+                                # compatibility are deterministic without generating DB contention.
+                                for scenario in ("values", "older", "disabled"):
+                                    fixture = json.loads(json.dumps(data))
+                                    for point in fixture["data"]["points"]:
+                                        for field in POOL_FIELDS:
+                                            if scenario == "older":
+                                                point.pop(field, None)
+                                            else:
+                                                point[field] = None
+                                    if scenario == "values":
+                                        fixture["data"]["points"][-1]["write_wait_count"] = 0
+                                    if scenario == "disabled":
+                                        fixture["data"]["retention_days"][POOL_METRICS[2]] = 0
+                                    def respond_fixture(route):
+                                        route.fulfill(status=200, json=fixture)
+                                    page.route("**/api/admin/pprof/history?*", respond_fixture)
+                                    page.get_by_test_id("panel-history").get_by_role("button", name="Refresh" if code == "en" else "刷新").click()
+                                    page.get_by_label(strings["history_metric"]).click()
+                                    page.get_by_role("option", name=strings["pool_write_wait_count"]).click()
+                                    expect(page.get_by_test_id("panel-pool-note")).to_contain_text(strings["pool_history_note"])
+                                    if scenario == "values":
+                                        expect(page.get_by_test_id("panel-history-latest")).to_have_text("0")
+                                    else:
+                                        expect(page.get_by_test_id("panel-history-latest")).to_have_text("-")
+                                        expect(page.get_by_test_id("panel-history-empty")).to_contain_text(
+                                            strings["history_disabled"] if scenario == "disabled" else strings["history_empty"])
+                                    page.unroute("**/api/admin/pprof/history?*")
                                 assert page.url.endswith("/admin/pprof") and not errors, errors
                                 scenarios.append({"locale": code, "width": width, "appearance": appearance})
                             finally:

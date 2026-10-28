@@ -1,0 +1,65 @@
+# MAC-WAN backup receiver (2026-10-28)
+
+This replaces the relinquished OVH receiver, not the separate offline-media
+requirement. On MAC-WAN, the `macos` systemd user manager has lingering enabled.
+The daily `nekomari-macwan-oc424-backup.timer` starts the bounded encrypted
+receiver at 03:30 UTC (11:30 Asia/Shanghai), with persistent catch-up; its first
+scheduled trigger is still pending. A separate 15-minute health timer checks
+the newest ciphertext and pushes the non-secret status to the existing OC424
+watcher. The receiver keeps 14 scheduled pairs in a dedicated directory;
+`incoming/`, the initial executor copy and prior release copies are not in that
+retention set. The first scheduled trigger and actual incident delivery must be
+observed independently; a manual success is not proof of those events.
+
+## Initial evidence
+
+- 2026-10-28 23:44 Asia/Shanghai: the user service successfully pulls ciphertext
+  `oc424-20261028T154414282891Z-46156c63199b.tar.gz.age` (186863796 bytes,
+  SHA-256 `2275911a697d18b79741cfcc1bb3b592e2e588da92bf518ffc52ab0fcd8dad82`).
+- The separate regular MAC-WAN `incoming/` copy matches. After the owner confirms
+  intentional OVH node removal, isolated exact-v1.7.12 recovery passes both DB
+  integrity checks, current 13 UUID/token comparison, scoped-key schema,
+  uptime/panel rollups and networkless/no-host-port boot and cleanup. The prior
+  attempt with the obsolete 14-node assertion fails before boot and is retained.
+- The executor holds another hash-matching encrypted copy, outside automated
+  retention. It is a separate online host, not offline or independent-media
+  recovery. The age identity never leaves MAC-WAN during either copy or drill.
+- The first manual health push is denied because the MAC-WAN egress changed
+  from `218.102.124.1` to `82.152.161.202`. Both source addresses are independently
+  observed through the pinned OC424 connection before being added. Retry succeeds
+  and the enabled health timer fires automatically at 23:47 Asia/Shanghai. A
+  later NAT change deliberately fails closed; a missing report is an incident,
+  not a reason to silently widen source access or forge freshness.
+- Existing OC424 backup receiver/wrapper/age hashes match the established
+  installation. Each new SSH key is `restrict`, source-address-limited and
+  forced to exactly one sudo command with no caller-supplied arguments. The
+  health wrapper writes the existing `backup-health/ovh.json` path solely for
+  compatibility; it now represents MAC-WAN observations, not OVH availability.
+  Both keys are generated and stored on MAC-WAN; no private key is exported.
+- OC424's root-private authorization snapshots are
+  `/root/nekomari-macwan-backup-20261028-0mrz4m5q` and
+  `/root/nekomari-macwan-source-20261028-3wdpo4y0`. Before rollback, compare the
+  current exact authorization bytes and preserve unrelated edits. Never restore
+  previously revoked OVH entries or remove recovery material automatically.
+
+## Operations
+
+The installed scripts and user units correspond to `deploy/hosts/mac-wan-*`
+and `deploy/hosts/nekomari-macwan-oc424-*`; tests are
+`deploy/macwan_backup_schedule_test.py`. Check state with:
+
+```sh
+systemctl --user status nekomari-macwan-oc424-backup.timer nekomari-macwan-oc424-health.timer
+journalctl --user -u nekomari-macwan-oc424-backup.service -u nekomari-macwan-oc424-health.service --since '24 hours ago'
+```
+
+The report verifies ciphertext format/checksum and freshness, not age
+authentication, independent-media recovery or guaranteed RPO/RTO. Each release
+still needs a fresh verified pre/post backup, independent regular copy, isolated
+recovery and production continuity evidence. MAC-WAN combines ciphertext and
+an unencrypted online age identity under the same UID as Hermes; same-UID,
+root and Docker administrators are trusted. A lost/changed external address,
+home Internet outage, shutdown, full disk or broken user manager can interrupt
+the schedule. No OC424/Agent/Hermes service is restarted or token rotated here.
+Legacy OVH plaintext exposure remains unresolved until the owner confirms disk
+sanitization and decides on coordinated credential rotation.

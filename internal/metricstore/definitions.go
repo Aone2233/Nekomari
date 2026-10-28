@@ -100,6 +100,12 @@ func createMetricDefinitionsWithDefaultRetention(ctx context.Context, s *metric.
 		{Name: MetricPanelRSS, Type: metric.TypeGauge, Unit: "bytes", Description: "Panel process resident memory (unavailable readings omitted)", RetentionDays: defaultBuiltinMetricRetentionDays},
 		{Name: MetricPanelHeap, Type: metric.TypeGauge, Unit: "bytes", Description: "Panel process allocated Go heap", RetentionDays: defaultBuiltinMetricRetentionDays},
 		{Name: MetricPanelGoroutines, Type: metric.TypeGauge, Unit: "count", Description: "Panel process goroutines", RetentionDays: defaultBuiltinMetricRetentionDays},
+		{Name: MetricPanelMainWaitCount, Type: metric.TypeGauge, Unit: "count", Description: "Main pool waits per validated sample interval (-1 means unknown)", RetentionDays: defaultBuiltinMetricRetentionDays},
+		{Name: MetricPanelMainWaitMS, Type: metric.TypeGauge, Unit: "ms", Description: "Main pool wait time per validated sample interval (-1 means unknown)", RetentionDays: defaultBuiltinMetricRetentionDays},
+		{Name: MetricPanelWriteWaitCount, Type: metric.TypeGauge, Unit: "count", Description: "Metric write pool waits per validated sample interval (-1 means unknown)", RetentionDays: defaultBuiltinMetricRetentionDays},
+		{Name: MetricPanelWriteWaitMS, Type: metric.TypeGauge, Unit: "ms", Description: "Metric write pool wait time per validated sample interval (-1 means unknown)", RetentionDays: defaultBuiltinMetricRetentionDays},
+		{Name: MetricPanelReadWaitCount, Type: metric.TypeGauge, Unit: "count", Description: "Metric read pool waits per validated sample interval (-1 means unknown)", RetentionDays: defaultBuiltinMetricRetentionDays},
+		{Name: MetricPanelReadWaitMS, Type: metric.TypeGauge, Unit: "ms", Description: "Metric read pool wait time per validated sample interval (-1 means unknown)", RetentionDays: defaultBuiltinMetricRetentionDays},
 	}
 
 	for _, def := range definitions {

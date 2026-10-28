@@ -1,5 +1,10 @@
 # Panel process history
 
+The unreleased candidate extends this page with pool-wait interval history;
+its distinct semantics and rollback boundary are in
+[`PANEL-POOL-HISTORY.md`](./PANEL-POOL-HISTORY.md). Pool history is not yet
+published or deployed.
+
 Published and deployed as v1.7.11 on OC424 on 2026-10-28. This is one bounded
 part of v1.8 observability, not a complete v1.8 release or an SLO measurement.
 See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for source, publication, isolated

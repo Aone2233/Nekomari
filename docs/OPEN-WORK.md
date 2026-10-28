@@ -14,6 +14,21 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
+**Urgent superseding checkpoint (2026-10-28 23:53 Asia/Shanghai):** the owner reports
+OVH/KSLE has been relinquished. It is no longer a trusted backup/test host.
+Historical plaintext backups held panel secrets; disk sanitization and other
+credential exposure are unknown. Three specifically identified OVH backup/
+health SSH authorizations are revoked on OC424; other keys are unchanged.
+The owner confirms intentional deletion of the OVH node; 13 nodes now form the
+approved baseline. MAC-WAN's replacement backup and health timers are active;
+fresh 13-node encrypted recovery and an additional online-host ciphertext copy
+pass. First scheduled daily backup, independent-media recovery, real incident
+delivery and OVH disk sanitization remain unverified. Before each production
+rollout, take fresh pre/post backups and verify continuity/recovery. See
+[`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md) and
+[`OVH-RETIREMENT-2026-10-28.md`](./OVH-RETIREMENT-2026-10-28.md).
+All OVH availability/schedule statements below are historical, not current.
+
 **Current checkpoint (2026-10-28, Asia/Shanghai):** OC424 serves
 **v1.7.12/b4591d6** at `nekomari.orderly2233.org`, healthy/restart0. Exact
 CI40708356223 8/8, merge CI40709676910 8/8, release40710985497 10/10,
@@ -24,8 +39,9 @@ evidence; no unrelated broad local SQL/capacity rerun.
 Earlier v1.7.4 SLA14nodes/58tasks remains dated evidence, not a newly rerun
 SLA live comparison. The existing tools and new uptime page remain
 in the admin shell. After the earlier removal, Pi adds a node with the owner's
-explicit authorization: the current approved baseline is 14 registered clients
-and 14 currently fresh CPU/uptime-reporting nodes. Preserve that addition; the earlier
+explicit authorization: 14 registered clients were the earlier release baseline;
+the owner later intentionally removes OVH, so the current baseline is 13. Preserve
+all remaining nodes; the earlier
 13-client release records are historical. Existing UUIDs/tokens and Agent services are
 unchanged. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for immutable artifacts,
 actual evidence and patch rollback to v1.7.11. The earlier v1.7.0->v1.6
@@ -42,6 +58,12 @@ persistence claims. Custom-root anonymous-like paths warn, while other mounts
 require runtime configuration verification. Exact publication, four actual
 isolated OVH published-image mount scenarios, encrypted pre/post recovery and
 OC424 continuity pass. See [`DATA-MOUNT-WARNING.md`](./DATA-MOUNT-WARNING.md).
+
+**Candidate, not yet released:** the next bounded batch adds session-only
+connection-pool wait interval history to the existing Performance profiles
+page. Local focused and synthetic-browser tests are not publication or live
+acceptance. The six metrics have independent retention and older binaries can
+delete their history on manual reclaim. See [`PANEL-POOL-HISTORY.md`](./PANEL-POOL-HISTORY.md).
 
 **Prior bounded delivery:** v1.7.11 adds session-only panel RSS, heap and
 goroutine history in the existing Performance profiles page, with independent
@@ -109,15 +131,17 @@ Existing v1.7.3 health service/timer and quiet persisted state remain unchanged;
 recurring 15-minute checks are observed successful. The first scheduled nightly
 backup is verified on 2026-10-28: timer11:30:23 -> service11:31:04
 Asia/Shanghai, success/exit0, matching ciphertext/checksum pair. This closes the
-first-trigger gate, not an independent-media restore or a measured RPO guarantee.
+first-trigger gate for the former OVH receiver, not for MAC-WAN, an
+independent-media restore or a measured RPO guarantee.
 Live incident delivery and independent media remain open. dsh records owner
 history/audit/API-key UI acceptance; no new owner session is exercised here.
 v1.7.5 provides the SQLite source startup fix; v1.7.6 cross-backend corrections
 are released/recovered/live-accepted. No stored history rewrite or production ANALYZE.
 Continue one bounded correctness/observability item, with 200-node work deferred.
 
-**Next bounded work:** select another independently verifiable observability or
-correctness batch. Keep 200-node work deferred. Independent-media recovery, real incident delivery,
+**Next bounded work:** review and validate the pool-wait history candidate, then
+publish and deploy only after exact CI, fresh 13-node backup and isolated
+recovery gates pass. Keep 200-node work deferred. Independent-media recovery, real incident delivery,
 complete API-caller inventory and the span/window-coverage decision remain open.
 No whole-roadmap app goal change or new owner-session UI acceptance is claimed.
 
@@ -127,11 +151,11 @@ No whole-roadmap app goal change or new owner-session UI acceptance is claimed.
 |---|---|---|
 | Source/publication/deployment | Mount warning v1.7.12/`b4591d6`; exact CI40708356223 8/8, release40710985497 10/10, Docker40712289115 2/2, OVH published-image checks, OC4249/9,public27/27,scoped forecast14rows and14-client/auth continuity pass | Retain immutable tags/assets and truthful release evidence; do not rebuild them for documentation |
 | Legacy API consumers | Owner-configured `hermes-node-management` matches exactly `nodes:read` + `nodes:write`, active365days until2027-10-27 13:38:02 Asia/Shanghai; actual MAC-WAN disposable create/edit/read/remove passes and original13 metadata is unchanged | Reviewed CLI writes may resume; no token/exec/update grant or key rotation. Other callers/runtime rewiring are not inferred from three reference edits; old30-day read-only key remains |
-| Token recovery/edit/import | Owner accepts restrictions and requests no rotation; 14 current UUIDs/tokens and all Agent services unchanged | No rotation canary now; future rotation requires independent SSH/console and per-node consent |
-| D12 custody/recovery | OC424 public recipient only, OVH ciphertext, MAC-WAN online identity/recovery runner; fresh14-node v1.7.12 pre/post backups and pinned v1.7.11/v1.7.12 recovery, no ANALYZE or metric reclaim; exact evidence in runbook | Owner reports offline copy downloaded; independent-media restore is still unverified. Same-UID Hermes/root/Docker exposure remains explicit |
-| Nightly schedule/retention | Enabled daily03:30UTC OVH timer, keep14 ciphertext pairs; first actual scheduled trigger2026-10-28 11:30:23Asia/Shanghai and service11:31:04success/exit0 verified, with matching archive/checksum; release copies remain outside pruning | Initial/later recurring health checks pass; actual incident delivery remains unverified. No independent-media or measured RPO claim. No old plaintext/manual/local rollback copy is deleted; deletion needs an explicit policy |
+| Token recovery/edit/import | Owner accepts restrictions and requests no rotation; the remaining 13 UUIDs/tokens and Agent services are unchanged after the deliberate OVH node deletion | No rotation canary now; future rotation requires independent SSH/console and per-node consent |
+| D12 custody/recovery | OC424 public recipient only; MAC-WAN receiver and online identity/recovery runner. Fresh current13-node ciphertext, isolated v1.7.12 recovery and second online-host copy pass | Owner reports offline copy downloaded; independent-media restore is still unverified. Same-UID Hermes/root/Docker exposure remains explicit |
+| Nightly schedule/retention | Enabled daily03:30UTC MAC-WAN timer, keep14 scheduled pairs; initial manual backup and automatic 15-minute health trigger pass | First MAC-WAN scheduled daily trigger and actual incident delivery remain unverified; changed NAT source can block SSH. No independent-media or measured RPO claim. No old plaintext/manual/local rollback copy is deleted; deletion needs an explicit policy |
 | OC424 authenticated acceptance | Owner elects self-run history/audit/API-key UI checks after deployment | **Closed in dsh's 2026-10-27 record**: the owner reported the post-deployment history/audit/API-key pages check out. This review does not repeat an owner session. Public shells, 401 responses and synthetic checks cannot substitute for it; acceptance does not extend to other surfaces or future releases |
-| Rollback | Fresh per-DB WAL-safe snapshots/compose + v1.7.11 image in `rollbacks/v1.7.12-20261028T151032Z-6f9d9034`; no schema/auth change, keep current data | v1.7.12->v1.7.11 uses prior compose/image, keeping14nodes and health env/state. Manual reclaim on v1.7.10 and older deletes panel history; v1.7.7 and older also deletes uptime history. Preserve/verify post backup. Across v1.7->v1.6 freeze writers and restore paired old DB + binary, losing newer data/permissions |
+| Rollback | Historical per-DB WAL-safe snapshots/compose + v1.7.11 image in `rollbacks/v1.7.12-20261028T151032Z-6f9d9034`; those snapshots predate OVH node deletion | Patch rollback must keep current data and all 13 remaining nodes; never restore historical snapshots over the live fleet. Manual reclaim on v1.7.10 and older deletes panel history; v1.7.7 and older also deletes uptime history. Preserve/verify post backup. Across v1.7->v1.6 freeze writers and restore paired old DB + binary, losing newer data/permissions |
 
 **Hermes handoff:** the gateway is active again (PID922780/restart0); AgentPID976/
 restart0 is unchanged. The metadata-only CLI stays checksum-matched on MAC-WAN;
@@ -143,7 +167,7 @@ inventory or owner UI acceptance; no key/session is recovered from SQLite,
 backups, process args or Hermes history. Installation is owner-UI only; no token-read/exec/update grant is
 silently added. See [`HERMES-NODE-CLIENT.md`](./HERMES-NODE-CLIENT.md).
 
-**Backup handoff:** fresh v1.7.12 pre/post archives from the pinned installed OVH
+**Backup handoff (historical v1.7.12 release):** fresh v1.7.12 pre/post archives from the pinned installed OVH
 receiver pass actual isolated MAC-WAN recovery with pinned v1.7.11/v1.7.12 images
 for pre and v1.7.12 for post, both DBs,14 clients/current auth metadata and
 cleanup. Post-backup uptime and panel rollups survive the v1.7.12 boot without reclaim.
@@ -151,13 +175,14 @@ Independent regular release
 copies stay outside14-pair pruning; all older copies remain. Earlier13-client
 release backups are historical; never use them to overwrite Pi's added node.
 Owner-reported offline download is not independently exercised media recovery.
-The daily timer is unchanged; health reporting/alerts and initial/later recurring
-checks pass. First scheduled nightly backup is verified2026-10-28; measured
+The former OVH daily timer and its first scheduled backup are historical;
+MAC-WAN's replacement timer has not yet fired its first daily backup. Measured
 SLO/RPO/RTO and independent-media restore remain separate. See
 [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
 
 **Verification scope:** focused Go races/vet and synthetic browser/auth/restart
-tests; required exact-source CI/publication; attested installed-Panel OVH acceptance; encrypted recovery,
+tests; required exact-source CI/publication; attested installed-Panel acceptance
+on a still-trusted isolated host; encrypted recovery,
 scoped forecast and live continuity. Prior SQL/live SLA evidence is reused.
 Unchanged backup-health/query/scoped-key/report/queue/rotation/Hermes source
 checks are reused, not broadly rerun locally. Only owned disposables are cleaned;
