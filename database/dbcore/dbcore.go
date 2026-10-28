@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -564,83 +563,6 @@ func tableHasColumn(migrator gorm.Migrator, table, column string) bool {
 func writeVersionMarker() {
 	if err := config.Set(SystemVersionKey, versionID); err != nil {
 		logger.Errorf("dbcore", "[upgrade-backup] failed to persist version marker: %v", err)
-	}
-}
-
-// warnIfDataNotPersistent 在数据目录不会跨容器重建保留时发出明确警告。
-//
-// 为什么需要这个检查：Dockerfile 声明了 VOLUME ["/app/data"]，所以不带 -v 运行
-// 时 Docker 会创建一个【匿名卷】。用户按官方方式更新（拉新镜像 → 删除并重建容器）
-// 时，新容器拿到的是【另一个】匿名卷，于是面板以空数据目录启动、重新显示安装向导。
-// 从用户视角看，这就是「一升级设置就被初始化了」——而数据其实还在，只是成了
-// 一个没人引用的孤儿卷。
-//
-// 实测确认过这个行为：不带 -v 完成安装后重建容器，sitename 从 KEEP-ME 变回空、
-// 安装向导重新出现；用命名卷则设置完好。
-//
-// 判断依据是 /proc/self/mountinfo 里 /app/data 那一行的【第 4 段】（挂载在文件
-// 系统内的根路径），而不是 " - " 之后的 source —— source 是设备名（如 /dev/sda1），
-// 三种情况完全一样，拿它判断会让最危险的匿名卷也报「正常」：
-//
-//	id parent maj:min ROOT MOUNTPOINT opts - fstype SOURCE superopts
-//	1553 1544 8:1 /var/lib/docker/volumes/<64位十六进制>/_data /app/data ... - ext4 /dev/sda1 ...
-//	               ^^^ 这一段才区分得开
-//
-// 三种 ROOT：
-//   - 匿名卷：/var/lib/docker/volumes/<64位十六进制>/_data   ← 危险
-//   - 命名卷：/var/lib/docker/volumes/<名字>/_data           ← 安全
-//   - 绑定挂载：宿主路径（如 /opt/nekomari/data）             ← 安全
-//
-// 只在容器里检查：直接在宿主机跑二进制时 ./data 就是普通目录，本来就能持久化，
-// 对它报警是误报。容器判定用 /.dockerenv 与 /run/.containerenv。
-//
-// 只警告不阻止启动——数据通常仍可恢复，硬失败反而更糟。
-func warnIfDataNotPersistent() {
-	if !runningInContainer() {
-		return
-	}
-
-	raw, err := os.ReadFile("/proc/self/mountinfo")
-	if err != nil {
-		return // 非 Linux，无法判断
-	}
-
-	dataDir, err := filepath.Abs("./data")
-	if err != nil {
-		return
-	}
-
-	var root string
-	for _, line := range strings.Split(string(raw), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 5 || fields[4] != dataDir {
-			continue
-		}
-		root = fields[3] // 挂载在文件系统内的根路径，即卷/绑定来源
-		break
-	}
-
-	anonVolume := regexp.MustCompile(`^/var/lib/docker/volumes/[0-9a-f]{64}/_data$`)
-
-	switch {
-	case root == "":
-		logger.Warnf("dbcore",
-			"data directory %s is NOT a mount point inside this container. Everything "+
-				"in it lives in the container's writable layer and is LOST as soon as the "+
-				"container is removed -- including on a routine image update. Mount a "+
-				"named volume or a host directory at %s.", dataDir, dataDir)
-	case anonVolume.MatchString(root):
-		logger.Warnf("dbcore",
-			"data directory %s is on an ANONYMOUS docker volume (%s). Recreating the "+
-				"container -- which is what an image update does -- attaches a DIFFERENT "+
-				"anonymous volume, so the panel will come up with an empty data "+
-				"directory and show the install wizard again. The data is not deleted, "+
-				"it is orphaned. Re-run with a named volume or a bind mount, e.g. "+
-				"-v nekomari-data:/app/data, then copy the old volume's contents across.",
-			dataDir, root)
-	default:
-		logger.Infof("dbcore",
-			"data directory %s persists across container recreation (%s)", dataDir, root)
 	}
 }
 
