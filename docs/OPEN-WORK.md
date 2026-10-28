@@ -234,7 +234,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | The legacy monitoring migration has no checkpoint, so a crash restarts it from the beginning | `internal/migrations/legacy_monitoring.go` | Re-running is idempotent (argued in the audit report), so the cost is time, not correctness |
 | The auto-upgrade archive excludes `metrics.db` by design | `database/dbcore/dbcore.go` | **Accepted**. The upgrade log already says the local metric store is excluded and left in place; the archive is not a full backup |
 | Empty-country GeoIP results can hide recovery | `utils/geoip/geoip.go`; `docs/GEOIP-EMPTY-COUNTRY.md` | Fixed/deployed in v1.7.10: successful completely empty results expire after one hour, positive/partial results retain 48 hours, and overlapping lookups cannot extend or overwrite a cached result. No incident had been traced to this cosmetic issue |
-| The "persistent data" warning is inverted under a custom docker data-root | `database/dbcore/dbcore.go` | The regex only matches the default volume path, so a custom root prints "persists" for something that does not |
+| The "persistent data" warning is inverted under a custom docker data-root | `database/dbcore/data_mount.go` | Candidate fix: anonymous-volume-like paths are no longer tied to the default root and no mountinfo path is treated as proof of persistence. Candidate validation, release and OC424 deployment remain open |
 | Session tokens and the 2FA secret are stored unencrypted at rest | `docs/AUTH-HARDENING.md` §3 | Proposal only; needs a key-management decision before code |
 
 ## Numbers and correctness

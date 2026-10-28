@@ -8,6 +8,10 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Avoid claiming that a container data mount is persistent based solely on its
+  mount path. Warn on anonymous-volume-like paths under custom Docker roots,
+  and direct operators to verify that the configured mount is reused.
+
 ## [v1.7.11] - 2026-10-28
 
 - **Published and deployed on OC424 at 22:19:47 Asia/Shanghai.** Immutable

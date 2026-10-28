@@ -17,7 +17,7 @@ already has the answer.
 | `web/public` favicon | Served the old icon indefinitely with no indication that a replacement had not taken effect. |
 | `AdminPanelBar` version banner | Compared against upstream's releases, so it always offered an "update" to a version this fork is ahead of. |
 | `utils/pingSchedule` | Skipped address-family mismatches silently; now annotated in the task list. |
-| `dbcore.warnIfDataNotPersistent` | Added: says so at startup when the data directory will not survive a container update. |
+| `dbcore.warnIfDataNotPersistent` | Added a startup mount warning; mountinfo alone cannot prove persistence, so operators must verify the container configuration. |
 | `web/api/ipinfo` classification | Omitted a field the theme's schema requires. HTTP 200 throughout; the panel just never appeared. See below. |
 
 ## Fixed: the case that took four rounds
