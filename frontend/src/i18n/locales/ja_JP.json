@@ -879,6 +879,15 @@
     "zip_files_only": ".zip ファイルのみ対応しています"
   },
   "pprof": {
+    "history_title": "パネルの履歴",
+    "history_description": "監視データベースに保存されたパネルプロセスの最近の値。",
+    "history_metric": "指標",
+    "history_last_bucket": "最後に観測された区間",
+    "history_error": "パネル履歴を取得できません。後でもう一度お試しください。",
+    "history_disabled": "この指標の履歴は保持設定で無効になっています。",
+    "history_empty": "この期間の観測データはありません。",
+    "history_note": "約1分ごとにサンプリングし、各区間の最後の値を表示します。欠損はゼロではなく不明です。履歴は機能有効化後に始まり、再起動後に欠損する場合があります。",
+    "history_retention": "設定された保持期間：{{days}} 日。監視データベースの設定で変更できます。",
     "capture_duration": "CPU とトレースの取得時間",
     "download": "ダウンロード",
     "duration_option": "{{seconds}} 秒",

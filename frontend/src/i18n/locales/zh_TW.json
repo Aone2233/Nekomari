@@ -879,6 +879,15 @@
     "zip_files_only": "僅支援 .zip 檔案"
   },
   "pprof": {
+    "history_title": "面板歷史趨勢",
+    "history_description": "監控資料庫儲存的面板程序近期讀數。",
+    "history_metric": "指標",
+    "history_last_bucket": "最近有資料的時間區間",
+    "history_error": "面板歷史暫時無法使用，請稍後重試。",
+    "history_disabled": "此指標的歷史記錄已在指標保留設定中關閉。",
+    "history_empty": "此時間範圍內沒有觀測資料。",
+    "history_note": "約每分鐘取樣一次，每個時間區間顯示最後一次讀數；缺口代表未知，不是零。歷史從啟用此功能後開始，重啟後可能出現缺口。",
+    "history_retention": "設定的保留時間：{{days}} 天。可在監控資料庫設定中修改。",
     "capture_duration": "CPU 與 trace 擷取時長",
     "download": "下載",
     "duration_option": "{{seconds}} 秒",

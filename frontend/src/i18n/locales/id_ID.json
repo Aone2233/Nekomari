@@ -879,6 +879,15 @@
     "zip_files_only": "Hanya file .zip yang didukung"
   },
   "pprof": {
+    "history_title": "Riwayat panel",
+    "history_description": "Pembacaan proses panel terbaru yang disimpan di basis data pemantauan.",
+    "history_metric": "Metrik",
+    "history_last_bucket": "Interval terakhir yang teramati",
+    "history_error": "Riwayat panel tidak tersedia. Coba lagi nanti.",
+    "history_disabled": "Riwayat metrik ini dinonaktifkan dalam pengaturan retensi.",
+    "history_empty": "Tidak ada pengamatan dalam rentang ini.",
+    "history_note": "Sampel diambil sekitar sekali per menit; setiap interval menampilkan pembacaan terakhir. Celah berarti tidak diketahui, bukan nol. Riwayat dimulai setelah fitur ini aktif dan mungkin memiliki celah setelah restart.",
+    "history_retention": "Retensi yang diatur: {{days}} hari. Ubah di pengaturan basis data pemantauan.",
     "capture_duration": "Durasi pengambilan CPU dan trace",
     "download": "Unduh",
     "duration_option": "{{seconds}} dtk",

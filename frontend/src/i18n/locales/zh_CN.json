@@ -879,6 +879,15 @@
     "zip_files_only": "仅支持 .zip 文件"
   },
   "pprof": {
+    "history_title": "面板历史趋势",
+    "history_description": "监控数据库中保存的面板进程近期读数。",
+    "history_metric": "指标",
+    "history_last_bucket": "最近有数据的时间桶",
+    "history_error": "面板历史暂不可用，请稍后重试。",
+    "history_disabled": "该指标的历史记录已在指标保留设置中关闭。",
+    "history_empty": "此时间范围内没有观测数据。",
+    "history_note": "约每分钟采样一次，每个时间桶显示最后一次读数；缺口表示未知，不是零。历史从启用此功能后开始，重启后可能出现缺口。",
+    "history_retention": "设置的保留时间：{{days}} 天。可在监控数据库设置中修改。",
     "capture_duration": "CPU 与 trace 采集时长",
     "download": "下载",
     "duration_option": "{{seconds}} 秒",

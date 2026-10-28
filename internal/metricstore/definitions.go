@@ -10,14 +10,14 @@ import (
 
 const defaultBuiltinMetricRetentionDays = 1
 
-// RetentionSummary is the compatibility view of all persisted metric policies.
+// RetentionSummary is the compatibility view of node metric policies.
 type RetentionSummary struct {
 	AllPositive bool
 	MaxDays     int
 }
 
-// GetRetentionSummary aggregates the active store's metric definitions. An
-// empty definition set is not considered record-enabled.
+// GetRetentionSummary excludes panel-only definitions from node compatibility
+// settings. An empty node definition set is not considered record-enabled.
 func GetRetentionSummary(ctx context.Context) (RetentionSummary, error) {
 	s := GetStore()
 	if s == nil {
@@ -31,17 +31,24 @@ func GetRetentionSummary(ctx context.Context) (RetentionSummary, error) {
 }
 
 func summarizeRetentionDefinitions(defs []metric.Definition) RetentionSummary {
-	if len(defs) == 0 {
-		return RetentionSummary{}
-	}
 	summary := RetentionSummary{AllPositive: true}
+	count := 0
 	for _, def := range defs {
+		// Panel history is independently optional and must not change the
+		// compatibility status of node record retention.
+		if IsPanelMetric(def.Name) {
+			continue
+		}
+		count++
 		if def.RetentionDays <= 0 {
 			summary.AllPositive = false
 		}
 		if def.RetentionDays > summary.MaxDays {
 			summary.MaxDays = def.RetentionDays
 		}
+	}
+	if count == 0 {
+		return RetentionSummary{}
 	}
 	return summary
 }
@@ -90,6 +97,9 @@ func createMetricDefinitionsWithDefaultRetention(ctx context.Context, s *metric.
 		{Name: MetricPingLoss, Type: metric.TypeGauge, Unit: "ratio", Description: "Ping packet loss indicator", RetentionDays: defaultRetentionDays},
 		{Name: MetricBackupAge, Type: metric.TypeGauge, Unit: "s", Description: "Seconds since the last successful backup", RetentionDays: defaultRetentionDays},
 		{Name: MetricBackupOK, Type: metric.TypeGauge, Unit: "bool", Description: "Last backup succeeded (1) or not (0)", RetentionDays: defaultRetentionDays},
+		{Name: MetricPanelRSS, Type: metric.TypeGauge, Unit: "bytes", Description: "Panel process resident memory (unavailable readings omitted)", RetentionDays: defaultBuiltinMetricRetentionDays},
+		{Name: MetricPanelHeap, Type: metric.TypeGauge, Unit: "bytes", Description: "Panel process allocated Go heap", RetentionDays: defaultBuiltinMetricRetentionDays},
+		{Name: MetricPanelGoroutines, Type: metric.TypeGauge, Unit: "count", Description: "Panel process goroutines", RetentionDays: defaultBuiltinMetricRetentionDays},
 	}
 
 	for _, def := range definitions {
