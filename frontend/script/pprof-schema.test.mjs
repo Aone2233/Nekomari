@@ -152,3 +152,15 @@ test('a malformed read pool is rejected too', () => {
   broken.data.runtime.metrics_db.read = { open: 'many' };
   assert.equal(pprofSummaryResponseSchema.safeParse(broken).success, false);
 });
+
+test('theme-cache diagnostics are optional and validate their payload', () => {
+  const summary = withMetrics();
+  summary.data.runtime.theme_cache = { disk: 'ready', memory_loaded: false };
+  const parsed = pprofSummaryResponseSchema.safeParse(summary);
+  assert.ok(parsed.success);
+  assert.equal(parsed.data.data.runtime.theme_cache.disk, 'ready');
+  summary.data.runtime.theme_cache.disk = 'future-state';
+  assert.ok(pprofSummaryResponseSchema.safeParse(summary).success, 'future states must not break the entire diagnostics page');
+  summary.data.runtime.theme_cache.memory_loaded = 'yes';
+  assert.equal(pprofSummaryResponseSchema.safeParse(summary).success, false);
+});

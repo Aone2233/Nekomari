@@ -131,6 +131,8 @@ jobs:
         run: python frontend/script/price-expiry.spec.py --panel-binary ./nekomari
       - name: Check uptime history ingestion and embedded admin UI
         run: python -W error::ResourceWarning frontend/script/uptime-history.spec.py --panel-binary ./nekomari
+      - name: Check theme-cache diagnostics and authorization in the embedded admin UI
+        run: python -W error::ResourceWarning frontend/script/theme-cache-diagnostics.spec.py --panel-binary ./nekomari
       - name: Restore a synthetic encrypted backup into an offline panel container
         run: |
           sudo apt-get update -qq
@@ -418,6 +420,7 @@ jobs:
         run: |
           # Hermetic provider lifecycle/reload regressions, not third-party lookups.
           go test -race ./utils/geoip -count=1 -run 'TestGeoIP|TestUpdateDatabase'
+          go test -race ./web/public -count=1 -run 'TestThemeCacheSnapshot|TestThemeCacheDisabled|TestAnUnwritableCache'
           go test -race ./internal/backupwatch ./utils/messageSender/...
           go test -race ./internal/sla
           go test -race ./database/accounts ./web/api/public -count=10 -shuffle=on

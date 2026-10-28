@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -74,6 +75,50 @@ type themeCacheState struct {
 }
 
 var defaultThemeCache themeCacheState
+
+// These flags describe events in this process, not a live directory scan or an
+// estimate of the Go heap retained by the fallback archive.
+var defaultThemeMemoryLoaded atomic.Bool
+var defaultThemeDiskDegraded atomic.Bool
+
+// DefaultThemeCacheSnapshot is a non-invasive view of the built-in theme's
+// cache. Disk reports initialization and observed failures, not a continuous
+// filesystem health check. MemoryLoaded remains true once the fallback has
+// been successfully loaded, even if subsequent disk reads succeed.
+type DefaultThemeCacheSnapshot struct {
+	Disk         string `json:"disk"`
+	MemoryLoaded bool   `json:"memory_loaded"`
+}
+
+// ThemeCacheSnapshot never materializes the archive or waits for an in-flight
+// extraction, so it is safe to read from the diagnostic endpoint.
+func ThemeCacheSnapshot() DefaultThemeCacheSnapshot {
+	snapshot := DefaultThemeCacheSnapshot{MemoryLoaded: defaultThemeMemoryLoaded.Load()}
+	if !themeCacheAllowed() {
+		snapshot.Disk = "disabled"
+		return snapshot
+	}
+	defaultThemeCache.mu.Lock()
+	defer defaultThemeCache.mu.Unlock()
+	if defaultThemeCache.done == nil {
+		snapshot.Disk = "uninitialized"
+		return snapshot
+	}
+	select {
+	case <-defaultThemeCache.done:
+		switch {
+		case defaultThemeCache.err != nil || defaultThemeCache.dir == "":
+			snapshot.Disk = "failed"
+		case defaultThemeDiskDegraded.Load():
+			snapshot.Disk = "degraded"
+		default:
+			snapshot.Disk = "ready"
+		}
+	default:
+		snapshot.Disk = "initializing"
+	}
+	return snapshot
+}
 
 // themeCacheEnabled 是包级总开关。生产恒为 true；测试在 TestMain 里关掉它，好让既有
 // 用例继续走「缓存不可用 → 内存 map」这条路径（也就是线上只读文件系统时走的路径）。
@@ -545,10 +590,14 @@ func lookupDefaultThemeCachedAsset(name string) (assetSource, bool, bool) {
 	filePath := filepath.Join(dir, filepath.FromSlash(relative))
 	info, err := os.Stat(filePath)
 	if err != nil || info.IsDir() {
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			defaultThemeDiskDegraded.Store(true)
+		}
 		// 「归档里没有这个文件」与「整个缓存目录已经不在了」必须分开：前者是可靠的
 		// 404，后者说明缓存不再可信（运维手误、临时目录清理、磁盘被换掉）—— 那时
 		// 必须交回内存副本，否则一次运行期的删除会让默认主题的每个资源都变成 404。
 		if _, dirErr := os.Stat(dir); dirErr != nil {
+			defaultThemeDiskDegraded.Store(true)
 			return assetSource{}, false, false
 		}
 		return assetSource{}, false, true
@@ -556,6 +605,7 @@ func lookupDefaultThemeCachedAsset(name string) (assetSource, bool, bool) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		// 目录被外部清掉、权限变了、文件刚被删：这一次交回内存副本，宁可慢也不要 404。
+		defaultThemeDiskDegraded.Store(true)
 		return assetSource{}, false, false
 	}
 	return assetSource{
@@ -583,6 +633,7 @@ func themeCacheRelativeName(name string) (string, bool) {
 // 指向不同的地方。调用前必须确认没有在跑的物化（themeCacheSettled），否则后台那次
 // 物化会在重置之后把结果写回来 —— 不会崩，但会让后面的用例看到一个指向已删目录的状态。
 func resetThemeCache() {
+	defaultThemeDiskDegraded.Store(false)
 	defaultThemeCache = themeCacheState{}
 	themeCacheEnvOnce = sync.Once{}
 	themeCacheEnvDisabled = false

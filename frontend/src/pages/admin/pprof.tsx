@@ -52,6 +52,10 @@ const pprofDbPoolSchema = z.object({
 const pprofMetricsDbSchema = pprofDbPoolSchema.extend({
   read: pprofDbPoolSchema.optional(),
 });
+const pprofThemeCacheSchema = z.object({
+  disk: z.string(),
+  memory_loaded: z.boolean(),
+});
 const pprofSummarySchema = z.object({
   profiles: z.array(pprofProfileSchema),
   runtime: z.object({
@@ -70,6 +74,7 @@ const pprofSummarySchema = z.object({
     uptime_seconds: z.number().finite().nonnegative().optional(),
     db_pool: pprofDbPoolSchema.optional(),
     metrics_db: pprofMetricsDbSchema.optional(),
+    theme_cache: pprofThemeCacheSchema.optional(),
   }),
   duration: z.object({
     default_seconds: z.number().int().min(1).max(30),
@@ -89,6 +94,8 @@ type PprofPreview = {
   profile: PprofProfile;
   text: string;
 };
+
+const knownThemeCacheStates = new Set(["disabled", "uninitialized", "initializing", "ready", "failed", "degraded"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -443,6 +450,8 @@ export default function PprofPage() {
   // 指标库把写池的五个字段平铺，独立读池嵌在 read 下（契约见后端 pprofMetricDatabasePool）。
   // read 存在时两行都要有后缀：只标 read 会让另一行看起来是"全部"，而它只是写池。
   const metricsDb = summary?.runtime.metrics_db;
+  const themeCache = summary?.runtime.theme_cache;
+  const themeCacheState = themeCache && knownThemeCacheStates.has(themeCache.disk) ? themeCache.disk : "unknown";
 
   return (
     <Flex direction="column" gap="3" className="km-page-admin-pprof">
@@ -554,6 +563,24 @@ export default function PprofPage() {
                     testId="pprof-metrics-db-read-pool"
                   />
                 ) : null}
+              </div>
+            ) : null}
+            {themeCache ? (
+              <div>
+                <div className="grid w-full grid-cols-1 gap-x-6 sm:grid-cols-2">
+                  <OverviewMetric
+                    label={t("pprof.theme_cache_disk")}
+                    value={t(`pprof.theme_cache_disk_${themeCacheState}`)}
+                    tone={themeCacheState === "failed" || themeCacheState === "degraded" ? "amber" : undefined}
+                    testId="pprof-theme-cache-disk"
+                  />
+                  <OverviewMetric
+                    label={t("pprof.theme_cache_memory")}
+                    value={t(themeCache.memory_loaded ? "pprof.theme_cache_memory_loaded" : "pprof.theme_cache_memory_not_loaded")}
+                    testId="pprof-theme-cache-memory"
+                  />
+                </div>
+                <Text as="p" size="1" color="gray">{t("pprof.theme_cache_note")}</Text>
               </div>
             ) : null}
           </Flex>

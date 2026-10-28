@@ -47,13 +47,16 @@ func forgetEmbeddedDistForTest(t *testing.T) {
 	t.Helper()
 	previous := defaultDistFiles
 	previousErr := embeddedDistErr
+	previousLoaded := defaultThemeMemoryLoaded.Load()
 	embeddedDistOnce = sync.Once{}
 	embeddedDistErr = nil
 	defaultDistFiles = nil
+	defaultThemeMemoryLoaded.Store(false)
 	t.Cleanup(func() {
 		embeddedDistOnce = sync.Once{}
 		embeddedDistErr = previousErr
 		defaultDistFiles = previous
+		defaultThemeMemoryLoaded.Store(previousLoaded)
 	})
 }
 
@@ -344,6 +347,9 @@ func TestAnUnwritableCacheFallsBackToTheInMemoryArchive(t *testing.T) {
 
 	if dir, err := defaultThemeCacheDir(); err == nil || dir != "" {
 		t.Fatalf("defaultThemeCacheDir() = (%q, %v), want an error: the failure must be recorded and the fallback used", dir, err)
+	}
+	if got := ThemeCacheSnapshot(); got.Disk != "failed" || !got.MemoryLoaded {
+		t.Fatalf("cache failure snapshot = %+v", got)
 	}
 	// 这里不能断言「一定不存在」：data 现在是个普通文件，在 Windows 上 stat
 	// data/.theme-cache 的错误是 ERROR_DIRECTORY 而不是「文件不存在」。要守住的是

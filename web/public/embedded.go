@@ -33,16 +33,17 @@ var (
 //
 // 已经有人把 defaultDistFiles 换成别的（合成归档）时直接返回它，不再去解真归档。
 func embeddedDistFiles() map[string][]byte {
-	if defaultDistFiles != nil {
-		return defaultDistFiles
-	}
 	embeddedDistOnce.Do(func() {
+		if defaultDistFiles != nil {
+			return
+		}
 		files, err := loadEmbeddedDist()
 		if err != nil {
 			embeddedDistErr = err
 			return
 		}
 		defaultDistFiles = files
+		defaultThemeMemoryLoaded.Store(true)
 	})
 	return defaultDistFiles
 }
