@@ -475,6 +475,8 @@
     "execute": "Execute",
     "expired": "Expired",
     "expired_in": "{{days}} day",
+    "expiry_not_set": "No expiry set",
+    "expiry_unknown": "Expiry unknown",
     "free": "Free",
     "generate": "Generate",
     "group": "Group",

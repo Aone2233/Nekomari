@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 type PriceTagsProps = {
-  expired_at?: string | number;
+  expired_at?: string | number | null;
   price?: number;
   billing_cycle?: number;
   currency?: string;
@@ -44,8 +44,15 @@ const PaidPriceTags = ({
     return () => window.clearInterval(timer);
   }, []);
 
-  const expiry = expired_at === undefined ? now + 30 * DAY_MS : expired_at;
-  const diffDays = Math.ceil((new Date(expiry).getTime() - now) / DAY_MS);
+  const expiry =
+    expired_at == null ||
+    (typeof expired_at === "string" && expired_at.trim() === "")
+      ? null
+      : new Date(expired_at).getTime();
+  const diffDays =
+    expiry === null || !Number.isFinite(expiry)
+      ? null
+      : Math.ceil((expiry - now) / DAY_MS);
 
   return (
     <Flex gap="1" {...props} wrap="wrap" className="km-price-tags">
@@ -94,17 +101,27 @@ const PaidPriceTags = ({
         </label>
       </Badge>
       <Badge
-        color={diffDays <= 7 ? "red" : diffDays <= 15 ? "orange" : "green"}
+        color={
+          diffDays === null
+            ? "gray"
+            : diffDays <= 7
+              ? "red"
+              : diffDays <= 15
+                ? "orange"
+                : "green"
+        }
         size="1"
         variant="soft"
         className="text-sm"
       >
         <label className="text-xs">
-          {diffDays <= 0
-            ? t("common.expired")
-            : diffDays > 36500
-              ? t("common.long_term")
-              : t("common.expired_in", { days: diffDays })}
+          {diffDays === null
+            ? t(expiry === null ? "common.expiry_not_set" : "common.expiry_unknown")
+            : diffDays <= 0
+              ? t("common.expired")
+              : diffDays > 36500
+                ? t("common.long_term")
+                : t("common.expired_in", { days: diffDays })}
         </label>
       </Badge>
       <CustomTags tags={tags} />

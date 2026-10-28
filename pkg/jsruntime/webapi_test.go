@@ -152,38 +152,100 @@ func TestFetchFormDataAndResponseFormData(t *testing.T) {
 }
 
 func TestAbortControllerCancelsFetch(t *testing.T) {
-	requestCanceled := make(chan struct{}, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		select {
-		case <-request.Context().Done():
-			requestCanceled <- struct{}{}
-		case <-time.After(time.Second):
-			_, _ = io.WriteString(response, "late")
-		}
-	}))
-	defer server.Close()
+	for _, delay := range []time.Duration{0, 50 * time.Millisecond} {
+		t.Run(delay.String(), func(t *testing.T) {
+			requestStarted := make(chan struct{})
+			requestCanceled := make(chan struct{})
+			releaseHandler := make(chan struct{})
+			server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+				close(requestStarted)
+				select {
+				case <-request.Context().Done():
+					close(requestCanceled)
+				case <-releaseHandler:
+				}
+			}))
+			defer server.Close()
+			defer close(releaseHandler)
+			transport := http.DefaultTransport.(*http.Transport).Clone()
+			defer transport.CloseIdleConnections()
+			client := &http.Client{Transport: abortTestTransport(func(request *http.Request) (*http.Response, error) {
+				timer := time.NewTimer(delay)
+				defer timer.Stop()
+				select {
+				case <-request.Context().Done():
+					return nil, request.Context().Err()
+				case <-timer.C:
+					return transport.RoundTrip(request)
+				}
+			})}
+			runtime, err := New(`
+				async function verify(url, hasStarted) {
+					const controller = new AbortController();
+					const pending = fetch(url, { signal: controller.signal });
+					while (!hasStarted()) await new Promise(resolve => setTimeout(resolve, 1));
+					controller.abort();
+					try { await pending; return false; }
+					catch (error) { return controller.signal.aborted && error === controller.signal.reason && error.name === "AbortError"; }
+				}
+			`, Options{Console: io.Discard, Timeout: 5 * time.Second, HTTPClient: client})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer runtime.Close()
+			// An abort before handler arrival is valid but cannot cancel a server
+			// context that never existed, especially on a loaded Windows runner.
+			if err := runtime.Call("verify", server.URL, func() bool {
+				select {
+				case <-requestStarted:
+					return true
+				default:
+					return false
+				}
+			}); err != nil {
+				t.Fatalf("Fetch abort failed: %v", err)
+			}
+			select {
+			case <-requestCanceled:
+			case <-time.After(5 * time.Second):
+				t.Fatal("HTTP request context was not canceled")
+			}
+		})
+	}
+}
 
+type abortTestTransport func(*http.Request) (*http.Response, error)
+
+func (transport abortTestTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	return transport(request)
+}
+
+func TestAbortControllerPreAbortedFetchSkipsRequest(t *testing.T) {
+	called := make(chan struct{}, 1)
 	runtime, err := New(`
-		async function verify(url) {
+		async function verify() {
 			const controller = new AbortController();
-			const pending = fetch(url, { signal: controller.signal });
-			setTimeout(() => controller.abort(), 10);
-			try { await pending; return false; }
-			catch (error) { return controller.signal.aborted && error === controller.signal.reason && error.name === "AbortError"; }
+			controller.abort();
+			try { await fetch("http://127.0.0.1/unused", { signal: controller.signal }); return false; }
+			catch (error) { return error === controller.signal.reason && error.name === "AbortError"; }
 		}
-	`, Options{Console: io.Discard, Timeout: 2 * time.Second})
+	`, Options{Console: io.Discard, Timeout: 2 * time.Second, HTTPClient: &http.Client{
+		Transport: abortTestTransport(func(request *http.Request) (*http.Response, error) {
+			called <- struct{}{}
+			return nil, request.Context().Err()
+		}),
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer runtime.Close()
-
-	if err := runtime.Call("verify", server.URL); err != nil {
-		t.Fatalf("Fetch abort failed: %v", err)
+	if err := runtime.Call("verify"); err != nil {
+		t.Fatalf("Pre-aborted fetch failed: %v", err)
 	}
 	select {
-	case <-requestCanceled:
-	case <-time.After(time.Second):
-		t.Fatal("HTTP request context was not canceled")
+	case <-called:
+		t.Fatal("Pre-aborted fetch dispatched a request")
+	default:
 	}
 }
 
