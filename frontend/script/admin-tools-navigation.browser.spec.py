@@ -8,6 +8,7 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import http.cookiejar
+from http.client import RemoteDisconnected
 import json
 import os
 from pathlib import Path
@@ -52,6 +53,19 @@ def stop(process):
             process.wait(timeout=5)
 
 
+def ready(url, process, opener_factory=None, attempts=200):
+    opener_factory = opener_factory or (lambda: build_opener(ProxyHandler({})))
+    for _ in range(attempts):
+        assert process.poll() is None, "Owned process exited before readiness"
+        try:
+            with opener_factory().open(url, timeout=1) as response:
+                if response.status == 200:
+                    return
+        except (URLError, TimeoutError, RemoteDisconnected):
+            time.sleep(0.1)
+    raise TimeoutError("Owned process never became ready")
+
+
 def run(binary, dist, output):
     os.umask(0o077)
     scratch = Path(tempfile.mkdtemp(prefix="admin-tools-owned-", dir=output.parent))
@@ -69,17 +83,6 @@ def run(binary, dist, output):
         payload = None if data is None else json.dumps(data).encode()
         with opener.open(Request(backend + path, data=payload, headers={"Content-Type": "application/json"}), timeout=20) as response:
             return json.load(response)
-
-    def ready(url, process):
-        for _ in range(200):
-            assert process.poll() is None, "Owned process exited before readiness"
-            try:
-                with build_opener(ProxyHandler({})).open(url, timeout=1) as response:
-                    if response.status == 200:
-                        return
-            except (URLError, TimeoutError):
-                time.sleep(0.1)
-        raise TimeoutError("Owned process never became ready")
 
     try:
         with (scratch / "process.log").open("x") as log:
