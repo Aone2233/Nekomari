@@ -50,8 +50,9 @@ The OVH/14-node release records below describe their original dates.
 
 At 11:42 Asia/Shanghai, after the successful 13-node v1.7.14 rollout check,
 `VT01 | vps.taxi` is offline and the other 12 nodes are reporting. Its last
-persisted sample is 11:26:18.909; SSH banner checks time out. The cause is
-unknown and no node or Agent has been changed. See [`OPEN-WORK.md`](./OPEN-WORK.md).
+persisted sample is 11:26:18.909; SSH banner checks time out. By 12:15-12:16
+all 13 nodes report again without an action here. The cause is unknown and no
+node or Agent has been changed. See [`OPEN-WORK.md`](./OPEN-WORK.md).
 
 **Latest delivery: v1.7.14 (2026-10-29 approximately 11:12 Asia/Shanghai).**
 The session-only Performance profiles page adds sampled default-theme disk
@@ -165,7 +166,7 @@ architectures identify exact source. Public checks27/27 and scoped forecast13row
 pass; the earlier v1.7.4 bounded live SLA reads are dated evidence, not rerun
 for v1.7.14. The owner approved Pi's earlier addition and later intentionally
 removed OVH; the current baseline is 13 clients. All 13 reported during the
-upgrade acceptance; the later VT01 disconnect is recorded above.
+upgrade acceptance and again after the VT01 disconnect recorded above.
 UUIDs/tokens/Agent services are unchanged. The existing tools and new uptime page
 retain shared in-panel navigation. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 

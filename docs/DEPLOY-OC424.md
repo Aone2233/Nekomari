@@ -31,7 +31,7 @@ Older rollout sections are dated evidence, not the current version/node count.
 | Item | Observed evidence |
 |---|---|
 | Panel | Docker `nekomari`, healthy/restart0; exact v1.7.14/7f94561. OC424 upgrade9/9, public27/27, scoped forecast13rows and13 fresh CPU/uptime reporters pass |
-| Nodes | Owner confirms intentional removal of the OVH node; current baseline is 13 registered clients. The 11:12 upgrade acceptance saw 13 fresh reporters; at 11:42, VT01 is offline and 12 remain fresh. Preserve all clients and their tokens; do not restore the removed node |
+| Nodes | Owner confirms intentional removal of the OVH node; current baseline is 13 registered clients. VT01 is offline at 11:42 but resumes reporting by 12:15; at 12:16 all 13 are fresh. Preserve all clients and their tokens; do not restore the removed node |
 | Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2, unchanged; generic `nekomari-agent` is not the reporter |
 | OVH | Relinquished and no longer trusted; three identified OC424 backup/health SSH authorizations revoked. Plaintext archive exposure and disk sanitization remain unresolved |
 | MAC-WAN | Linux x86_64 user `macos`; encrypted receiver, health timer, online identity/isolated recovery. First scheduled daily backup succeeds at 11:30-11:31 Asia/Shanghai and its health report at 11:34; Agent/Hermes are not restarted by this work |
@@ -63,8 +63,10 @@ the configured VT01 SSH TCP endpoint but receives no SSH banner within 20
 seconds; the OC424 attempt also times out. These observations cannot identify
 whether the host, network, firewall, SSH daemon or Agent is responsible, nor
 prove a causal relationship to the panel upgrade. No node, token, Agent or
-server was modified or restarted. If it persists, use the provider console to
-inspect the host and Agent. The 13-node acceptance in the dated rollout row
+server was modified or restarted. At 12:15 and 12:16, VT01 again produces fresh
+CPU and uptime and all 13 nodes report; recovery was not caused by an action
+here and the root cause remains unknown. If it recurs, use the provider console
+to inspect the host and Agent. The 13-node acceptance in the dated rollout row
 below remains true only at the time it was observed.
 
 ## v1.7.14 rollout (2026-10-29 approximately 11:12 Asia/Shanghai)
