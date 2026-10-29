@@ -4,12 +4,12 @@ This replaces the relinquished OVH receiver, not the separate offline-media
 requirement. On MAC-WAN, the `macos` systemd user manager has lingering enabled.
 The daily `nekomari-macwan-oc424-backup.timer` starts the bounded encrypted
 receiver at 03:30 UTC (11:30 Asia/Shanghai), with persistent catch-up; its first
-scheduled trigger is still pending. A separate 15-minute health timer checks
+scheduled trigger succeeded on 2026-10-29. A separate 15-minute health timer checks
 the newest ciphertext and pushes the non-secret status to the existing OC424
 watcher. The receiver keeps 14 scheduled pairs in a dedicated directory;
 `incoming/`, the initial executor copy and prior release copies are not in that
-retention set. The first scheduled trigger and actual incident delivery must be
-observed independently; a manual success is not proof of those events.
+retention set. Actual incident delivery and independent-media restore remain
+separate; a manual success is not proof of a scheduled trigger.
 
 ## Initial evidence
 
@@ -64,9 +64,8 @@ observed independently; a manual success is not proof of those events.
   this executor is online and is not independent offline media. The MAC-WAN
   online age identity was not exported. See the rollout record for the first
   failed post-boot assertion and the scope of the subsequent comparisons.
-- The 09:47 manually started backup and 09:48 health report are not a daily
-  timer test. The first daily timer remains scheduled for 11:30 Asia/Shanghai
-  on 2026-10-29 and must be observed separately.
+- The 09:47 manually started backup and 09:48 health report were not a daily
+  timer test; the actual scheduled trigger is recorded below.
 
 ## v1.7.14 release backups (2026-10-29)
 
@@ -86,6 +85,23 @@ observed independently; a manual success is not proof of those events.
   the scheduled retention set and matching ciphertext copies on the online
   executor. The age identity remains on MAC-WAN; no independent-media restore
   is claimed. These are manual backups, not evidence of a scheduled trigger.
+
+## First scheduled daily backup (2026-10-29)
+
+- The MAC-WAN timer actually triggers at 11:30:23 Asia/Shanghai. Its backup
+  service starts at 11:30:23 and completes successfully at 11:31:00, exit 0.
+  The journal identifies `oc424-20261029T033023889469Z-1c83ce6b7922.tar.gz.age`
+  (187995679 bytes); its ciphertext header, checksum sidecar and independently
+  computed SHA-256 `28d7954ef6e3eee0161289c5db401c74dc388ee887b44165610d61156ccbe5a5`
+  match. This was the timer, not a manual service start.
+- Initial evidence collection had an assertion mismatch against systemd's
+  actual journal wording; the preserved log and corrected read-only check
+  verify the same trigger and file. This observes one scheduled backup, not a
+  restore of that archive, guaranteed RPO or independent-media recovery.
+- The separate health timer runs at 11:34:20 and finishes at 11:34:23,
+  exit 0. OC424 receives `ok` at 11:34:23 with `backup_at` matching the
+  scheduled archive's 11:30:23.889469 timestamp. This verifies actual success
+  reporting, not delivery of a real failure notification.
 
 ## Operations
 

@@ -22,8 +22,9 @@ health SSH authorizations are revoked on OC424; other keys are unchanged.
 The owner confirms intentional deletion of the OVH node; 13 nodes now form the
 approved baseline. MAC-WAN's replacement backup and health timers are active;
 fresh 13-node encrypted recovery and an additional online-host ciphertext copy
-pass. First scheduled daily backup, independent-media recovery, real incident
-delivery and OVH disk sanitization remain unverified. Before each production
+pass. The first scheduled MAC-WAN daily backup succeeds on 2026-10-29;
+independent-media recovery, real incident delivery and OVH disk sanitization
+remain unverified. Before each production
 rollout, take fresh pre/post backups and verify continuity/recovery. See
 [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md) and
 [`OVH-RETIREMENT-2026-10-28.md`](./OVH-RETIREMENT-2026-10-28.md).
@@ -141,17 +142,18 @@ Existing v1.7.3 health service/timer and quiet persisted state remain unchanged;
 recurring 15-minute checks are observed successful. The first scheduled nightly
 backup is verified on 2026-10-28: timer11:30:23 -> service11:31:04
 Asia/Shanghai, success/exit0, matching ciphertext/checksum pair. This closes the
-first-trigger gate for the former OVH receiver, not for MAC-WAN, an
-independent-media restore or a measured RPO guarantee.
+first-trigger gate for the former OVH receiver; MAC-WAN's replacement first
+daily trigger is separately verified on 2026-10-29. Neither proves an
+independent-media restore or measured RPO guarantee.
 Live incident delivery and independent media remain open. dsh records owner
 history/audit/API-key UI acceptance; no new owner session is exercised here.
 v1.7.5 provides the SQLite source startup fix; v1.7.6 cross-backend corrections
 are released/recovered/live-accepted. No stored history rewrite or production ANALYZE.
 Continue one bounded correctness/observability item, with 200-node work deferred.
 
-**Next bounded work:** observe the first scheduled MAC-WAN daily backup and
-its subsequent health report; preserve evidence and do not treat a manual run
-as a scheduled trigger. Investigate the earlier post-boot assertion if it
+**Next bounded work:** preserve the separately observed MAC-WAN first daily
+trigger and its subsequent health report; do not treat a manual run as a
+scheduled trigger. Investigate the earlier post-boot assertion if it
 recurs; the v1.7.14 drill separately observes retention cleanup, without
 establishing the cause of the earlier failure. The browser jobs passed on their
 pinned Ubuntu 24.04 runner in PR121 and exact merge CI. Then select a small correctness/observability batch, with fresh
@@ -168,7 +170,7 @@ No whole-roadmap app goal change or new owner-session UI acceptance is claimed.
 | Legacy API consumers | Owner-configured `hermes-node-management` matches exactly `nodes:read` + `nodes:write`, active365days until2027-10-27 13:38:02 Asia/Shanghai; actual MAC-WAN disposable create/edit/read/remove passes and original13 metadata is unchanged | Reviewed CLI writes may resume; no token/exec/update grant or key rotation. Other callers/runtime rewiring are not inferred from three reference edits; old30-day read-only key remains |
 | Token recovery/edit/import | Owner accepts restrictions and requests no rotation; the remaining 13 UUIDs/tokens and Agent services are unchanged after the deliberate OVH node deletion | No rotation canary now; future rotation requires independent SSH/console and per-node consent |
 | D12 custody/recovery | OC424 public recipient only; MAC-WAN receiver and online identity/recovery runner. Fresh current13-node pre/post ciphertext, isolated v1.7.13/v1.7.14 recovery and second online-host copies pass | Owner reports offline copy downloaded; independent-media restore is still unverified. Same-UID Hermes/root/Docker exposure remains explicit |
-| Nightly schedule/retention | Enabled daily03:30UTC MAC-WAN timer, keep14 scheduled pairs; initial manual backup and automatic 15-minute health trigger pass | First MAC-WAN scheduled daily trigger and actual incident delivery remain unverified; changed NAT source can block SSH. No independent-media or measured RPO claim. No old plaintext/manual/local rollback copy is deleted; deletion needs an explicit policy |
+| Nightly schedule/retention | Enabled daily03:30UTC MAC-WAN timer, keep14 scheduled pairs; first actual daily trigger succeeds 2026-10-29 11:30-11:31 Asia/Shanghai with matching ciphertext/checksum, and the 11:34 health report identifies it | Actual incident delivery remains unverified; changed NAT source can block SSH. No independent-media or measured RPO claim. No old plaintext/manual/local rollback copy is deleted; deletion needs an explicit policy |
 | OC424 authenticated acceptance | Owner elects self-run history/audit/API-key UI checks after deployment | **Closed in dsh's 2026-10-27 record**: the owner reported the post-deployment history/audit/API-key pages check out. This review does not repeat an owner session. Public shells, 401 responses and synthetic checks cannot substitute for it; acceptance does not extend to other surfaces or future releases |
 | Rollback | Per-DB WAL-safe snapshots/compose + v1.7.13 image in `rollbacks/v1.7.14-20261029T031202Z-ae0f955d` | Patch rollback must keep current data and all 13 remaining nodes; never restore historical snapshots over the live fleet. Manual reclaim on v1.7.13 and older deletes theme history; v1.7.12 and older also deletes pool history, v1.7.10 and older panel history, v1.7.7 and older uptime. Preserve/verify post backup. Across v1.7->v1.6 freeze writers and restore paired old DB + binary, losing newer data/permissions |
 
@@ -191,7 +193,7 @@ copies stay outside14-pair pruning; all older copies remain. Earlier13-client
 release backups are historical; never use them to overwrite Pi's added node.
 Owner-reported offline download is not independently exercised media recovery.
 The former OVH daily timer and its first scheduled backup are historical;
-MAC-WAN's replacement timer has not yet fired its first daily backup. Measured
+MAC-WAN's replacement timer has now completed its first daily backup. Measured
 SLO/RPO/RTO and independent-media restore remain separate. See
 [`MAC-WAN-RECOVERY.md`](./MAC-WAN-RECOVERY.md).
 
@@ -309,7 +311,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | Most agents still run as root; only MAC is non-root | `docs/DEPLOY-OC424.md` | The NOSLA pattern (unprivileged user + `AmbientCapabilities=CAP_NET_RAW`) works; Alpine has no `setcap`. OpenRC install support shipped in v1.6.25, but moving users is still a fleet-wide change |
 | Windows local builds can fail on a locked esbuild temp file | Windows dev environment | The build itself is deterministic on Windows: two builds with a project-local `TEMP`/`TMP` were byte-identical (819 files, diff 0). With the system `%TEMP%`, esbuild sometimes cannot delete its temp file ("Access is denied"); CI's Windows runner is unaffected. Not a source change — a dev-environment workaround until the temp cleaner/AV exclusion is settled |
-| Encrypted backup follow-up | `docs/ENCRYPTED-BACKUPS.md`; `docs/MAC-WAN-BACKUP.md` | MAC-WAN's encrypted daily timer and recurring health are enabled; the first scheduled MAC-WAN daily trigger is still pending. The 2026-10-28 scheduled success was on the former OVH receiver. Owner-reported offline download is not independent-media restore. Live incident delivery/stronger drill policy remain open; keep all old plaintext/manual rollback copies until explicit deletion approval |
+| Encrypted backup follow-up | `docs/ENCRYPTED-BACKUPS.md`; `docs/MAC-WAN-BACKUP.md` | MAC-WAN's encrypted daily timer completes its first scheduled backup on 2026-10-29 and the subsequent health report identifies it. The 2026-10-28 scheduled success was on the former OVH receiver. Owner-reported offline download is not independent-media restore. Live incident delivery/stronger drill policy remain open; keep all old plaintext/manual rollback copies until explicit deletion approval |
 | OIDC + 2FA makes SSO login fail-closed with no way for the browser to answer the challenge | `docs/ROADMAP.md` §F12 | Deliberately shipped as a gate, not half a state machine. Needs a one-time pending token plus a code prompt; production impact is zero while OIDC is off |
 | `sso_id` survives a password change, and `DeleteAllSessions()` is global | `database/accounts/` | Policy questions now that the SSO path requires TOTP; recommendation was (b)+(c) in the audit report |
 | A committed admin password from the SECRETS incident still has to be changed | `docs/SECRETS.md` incident 4 | An ops action on the live panel, not a repository change |
