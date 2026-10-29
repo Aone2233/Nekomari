@@ -60,6 +60,7 @@ type forecastRow struct {
 	Reason string `json:"reason,omitempty"`
 
 	UsedBytes      int64 `json:"used_bytes"`
+	UsedBytesKnown bool  `json:"used_bytes_known"`
 	ProjectedBytes int64 `json:"projected_bytes"`
 	LimitBytes     int64 `json:"limit_bytes"`
 	// LimitType is reported because it decides what the numbers mean: a `max` node's projection is not
@@ -138,11 +139,11 @@ func adminGetTrafficForecast(_ context.Context, req *rpc.JsonRpcRequest) (any, *
 // forecastRowFor projects one node, or reports why it could not be.
 func forecastRowFor(client models.Client, window cycle.Cycle, day int) forecastRow {
 	row := forecastRow{
-		UUID:      client.UUID,
-		Name:      client.Name,
+		UUID:       client.UUID,
+		Name:       client.Name,
 		LimitBytes: client.TrafficLimit,
-		LimitType: client.TrafficLimitType,
-		LimitSet:  client.TrafficLimit > 0,
+		LimitType:  client.TrafficLimitType,
+		LimitSet:   client.TrafficLimit > 0,
 	}
 	projection, err := notifier.ProjectClient(time.Now(), client, day)
 	if err != nil {
@@ -155,6 +156,7 @@ func forecastRowFor(client models.Client, window cycle.Cycle, day int) forecastR
 	row.Method = string(projection.Method)
 	row.Reason = projection.Reason
 	row.UsedBytes = projection.UsedBytes
+	row.UsedBytesKnown = projection.Basis.Samples > 0 && projection.UsedBytes >= 0
 	row.ProjectedBytes = projection.ProjectedBytes
 	row.LimitSet = projection.LimitSet
 	row.ProjectedFraction = projection.ProjectedFraction

@@ -113,13 +113,13 @@ def main():
                 wait("/api/public")
                 assert call("/api/login", {"username": "forecast-test", "password": password})["status"] == "success"
                 nodes = [(call("/api/admin/client/add", {"name": "Forecast " + kind})["uuid"], kind)
-                         for kind in ("complete", "gap", "reset", "up")]
+                         for kind in ("complete", "gap", "reset", "up", "empty")]
                 for uuid, kind in nodes:
                     assert call(f"/api/admin/client/{uuid}/edit", {"traffic_limit": 10000,
                         "traffic_limit_type": "up" if kind == "up" else "sum"})["status"] == "success"
                 stop()
                 now = dt.datetime.now(dt.timezone.utc)
-                seed_metrics(scratch / "data/metrics.db", nodes, now)
+                seed_metrics(scratch / "data/metrics.db", [(uuid, kind) for uuid, kind in nodes if kind != "empty"], now)
                 start()
                 wait("/api/public")
                 assert call("/api/login", {"username": "forecast-test", "password": password})["status"] == "success"
@@ -133,15 +133,17 @@ def main():
                 for uuid, kind in nodes:
                     row = rows[uuid]
                     if kind in ("complete", "up"):
-                        assert row["method"] == "linear_rate" and row["used_bytes"] == (900 if kind == "complete" else 600), row
+                        assert row["method"] == "linear_rate" and row["used_bytes_known"] and row["used_bytes"] == (900 if kind == "complete" else 600), row
+                    elif kind == "empty":
+                        assert row["method"] == "insufficient" and not row["used_bytes_known"] and row["projected_bytes"] == 0, row
                     else:
-                        assert row["method"] == "insufficient" and row["projected_bytes"] == 0 and not row.get("warning"), row
+                        assert row["method"] == "insufficient" and not row["used_bytes_known"] and row["projected_bytes"] == 0 and not row.get("warning"), row
                         assert ("missing" if kind == "gap" else "decreased") in row.get("reason", ""), row
                 version = call("/api/version")["data"]
         finally:
             stop()
     print(json.dumps({"status": "passed", "version": version, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
-                      "scenarios": ["complete sum", "missing direction", "masked direction reset", "single direction"],
+                      "scenarios": ["complete sum", "missing direction", "masked direction reset", "single direction", "no observations"],
                       "synthetic_only": True, "scratch_removed": True}))
     return 0
 

@@ -121,6 +121,22 @@ const ROWS: ForecastRow[] = [
     crosses_in_cycle: false,
     basis,
   },
+  {
+    uuid: "uuid-unknown",
+    name: "Unknown Node",
+    method: "insufficient",
+    reason: "traffic counter direction missing",
+    used_bytes: 0,
+    used_bytes_known: false,
+    projected_bytes: 0,
+    limit_bytes: 100 * GiB,
+    limit_type: "sum",
+    limit_set: true,
+    projected_fraction: 0,
+    would_exceed: false,
+    crosses_in_cycle: false,
+    basis: { ...basis, samples: 0 },
+  },
 ];
 
 const CYCLE: ForecastCycle = {

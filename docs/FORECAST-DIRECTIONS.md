@@ -22,7 +22,10 @@ repaired. It does not prove counter continuity within a bucket: using maxima
 can conceal a reset followed by recovery in the same bucket. It also does not
 prove the two directions were measured at precisely the same instant within a
 bucket. `UsedBytes` is unavailable when the input is refused; the zero in such
-a row must not be treated as observed usage.
+a row must not be treated as observed usage. The additive `used_bytes_known`
+field distinguishes unavailable from measured usage; the in-panel table
+renders unavailable usage as a dash. Older clients that ignore this field must
+not interpret a refused row's default zero as a measurement.
 
 Focused Go tests cover complete and one-way series, real store queries,
 missing/zero values, masked resets and numerical bounds. The isolated installed
