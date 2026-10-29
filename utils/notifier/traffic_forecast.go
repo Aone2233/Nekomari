@@ -3,6 +3,7 @@ package notifier
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -223,7 +224,10 @@ func projectClient(now time.Time, client models.Client, day int) (forecast.Forec
 // is the same quantity the limit is checked against — summing them for a `sum` node, taking up for an
 // `up` node, and so on. Getting that wrong would project a number the limit does not apply to.
 func cycleTrafficSamples(now time.Time, client models.Client, window cycle.Cycle) ([]forecast.Sample, error) {
-	store := metricstore.GetStore()
+	return cycleTrafficSamplesWithStore(now, client, window, metricstore.GetStore())
+}
+
+func cycleTrafficSamplesWithStore(now time.Time, client models.Client, window cycle.Cycle, store *metric.Store) ([]forecast.Sample, error) {
 	if store == nil {
 		return nil, fmt.Errorf("metric store is not available")
 	}
@@ -247,7 +251,7 @@ func cycleTrafficSamples(now time.Time, client models.Client, window cycle.Cycle
 		return nil, err
 	}
 
-	return cycleSamplesFromSeries(strings.ToLower(client.TrafficLimitType), result), nil
+	return cycleSamplesFromSeries(strings.ToLower(client.TrafficLimitType), result)
 }
 
 // cycleTrafficMetricNames are the two series the projection reads — and the only ones it
@@ -261,41 +265,65 @@ var cycleTrafficMetricNames = []string{metricstore.MetricTrafficUp, metricstore.
 
 // cycleSamplesFromSeries turns the queried series into the projection's samples.
 //
-// Pure, so the series it reads can be tested directly: hand it a result that carries
-// both the cycle series and the boot counter with different values, and the samples
-// must come from the cycle series.
-func cycleSamplesFromSeries(limitType string, result metric.BatchSeriesResult) []forecast.Sample {
-	ups := pointsByBucket(result, cycleTrafficMetricNames[0])
-	downs := pointsByBucket(result, cycleTrafficMetricNames[1])
-
-	// The union of both series' buckets, so a bucket present in only one of them still contributes.
-	// Taking the intersection instead would silently drop the first intervals of a node whose up counter
-	// and down counter are written in different batches, and a dropped prefix is a rate measured over a
-	// window that starts later than the caller believes.
-	buckets := make([]time.Time, 0, len(ups)+len(downs))
-	seen := make(map[int64]bool, len(ups)+len(downs))
-	for _, at := range append(append([]time.Time{}, ups...), downs...) {
-		if seen[at.Unix()] {
+// A missing direction is unknown, not zero. For a combined limit, refusing the
+// entire incomplete history also avoids masking a reset inside a skipped bucket.
+// Checking each direction before combining prevents one direction's growth from
+// concealing the other's decrease. Bucket maxima can still hide intra-bucket resets.
+func cycleSamplesFromSeries(limitType string, result metric.BatchSeriesResult) ([]forecast.Sample, error) {
+	needUp, needDown := limitType != "down", limitType != "up"
+	type bucketValues struct {
+		up, down       int64
+		hasUp, hasDown bool
+	}
+	buckets := make(map[time.Time]bucketValues)
+	for index, name := range cycleTrafficMetricNames {
+		if (index == 0 && !needUp) || (index == 1 && !needDown) {
 			continue
 		}
-		seen[at.Unix()] = true
-		buckets = append(buckets, at)
-	}
-	sort.Slice(buckets, func(i, j int) bool { return buckets[i].Before(buckets[j]) })
-
-	samples := make([]forecast.Sample, 0, len(buckets))
-	for _, at := range buckets {
-		up := valueAt(result, cycleTrafficMetricNames[0], at)
-		down := valueAt(result, cycleTrafficMetricNames[1], at)
-		total := combineByLimitType(limitType, int64(up), int64(down))
-		if total < 0 {
-			// A negative combined value means the counters are not comparable at this instant (one has
-			// been recorded and the other has not), so the bucket is not evidence about the cycle total.
-			continue
+		for _, point := range result.Values[name][metric.AggMax] {
+			if math.IsNaN(point.Value) || math.IsInf(point.Value, 0) || point.Value < 0 || point.Value >= math.Ldexp(1, 63) {
+				return nil, fmt.Errorf("invalid traffic counter in %s", name)
+			}
+			at := point.Bucket.UTC()
+			values := buckets[at]
+			if index == 0 {
+				if values.hasUp {
+					return nil, fmt.Errorf("duplicate traffic counter bucket in %s", name)
+				}
+				values.up, values.hasUp = int64(point.Value), true
+			} else {
+				if values.hasDown {
+					return nil, fmt.Errorf("duplicate traffic counter bucket in %s", name)
+				}
+				values.down, values.hasDown = int64(point.Value), true
+			}
+			buckets[at] = values
 		}
-		samples = append(samples, forecast.Sample{At: at, Total: total})
 	}
-	return samples
+
+	times := make([]time.Time, 0, len(buckets))
+	for at := range buckets {
+		times = append(times, at)
+	}
+	sort.Slice(times, func(i, j int) bool { return times[i].Before(times[j]) })
+	samples := make([]forecast.Sample, 0, len(times))
+	var previous bucketValues
+	for _, at := range times {
+		values := buckets[at]
+		if (needUp && !values.hasUp) || (needDown && !values.hasDown) {
+			return nil, fmt.Errorf("traffic counter direction missing at %s", at.Format(time.RFC3339Nano))
+		}
+		if (previous.hasUp && values.hasUp && values.up < previous.up) ||
+			(previous.hasDown && values.hasDown && values.down < previous.down) {
+			return nil, fmt.Errorf("traffic counter direction decreased at %s; the counter may have restarted", at.Format(time.RFC3339Nano))
+		}
+		if limitType == "sum" && values.up > math.MaxInt64-values.down {
+			return nil, fmt.Errorf("traffic counter sum overflow at %s", at.Format(time.RFC3339Nano))
+		}
+		samples = append(samples, forecast.Sample{At: at, Total: combineByLimitType(limitType, values.up, values.down)})
+		previous = values
+	}
+	return samples, nil
 }
 
 // combineByLimitType mirrors `computeUsedByType` in traffic.go, so the projected quantity is the one the
@@ -349,39 +377,4 @@ func sampleInterval(cycleLength time.Duration) time.Duration {
 		// cycle's offset.
 		return interval.Round(time.Hour)
 	}
-}
-
-// pointsByBucket returns the bucket instants a metric has values for.
-func pointsByBucket(result metric.BatchSeriesResult, metricName string) []time.Time {
-	byAggregation, ok := result.Values[metricName]
-	if !ok {
-		return nil
-	}
-	points, ok := byAggregation[metric.AggMax]
-	if !ok {
-		return nil
-	}
-	out := make([]time.Time, 0, len(points))
-	for _, point := range points {
-		out = append(out, point.Bucket.UTC())
-	}
-	return out
-}
-
-// valueAt reads one metric's value at a bucket instant, or 0 when it has none.
-func valueAt(result metric.BatchSeriesResult, metricName string, at time.Time) float64 {
-	byAggregation, ok := result.Values[metricName]
-	if !ok {
-		return 0
-	}
-	points, ok := byAggregation[metric.AggMax]
-	if !ok {
-		return 0
-	}
-	for _, point := range points {
-		if point.Bucket.UTC().Equal(at) {
-			return point.Value
-		}
-	}
-	return 0
 }

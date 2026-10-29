@@ -8,6 +8,11 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Refuse traffic forecasts when a required direction is absent, invalid,
+  overflows a combined total or decreases between selected buckets. One-way
+  limits use only their own direction. This avoids treating unknown values as
+  zero or allowing one direction's growth to hide another's reset; bucket
+  maxima can still hide resets within a bucket. Existing history is not rewritten.
 - Pin the two Playwright CI jobs to Ubuntu 24.04: the moving
   `ubuntu-latest` image reached Ubuntu 26.04, which the pinned Playwright
   1.58.0 cannot install browsers on. Test coverage remains enabled.
