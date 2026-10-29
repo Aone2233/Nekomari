@@ -47,16 +47,18 @@ unchanged. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for immutable artifacts,
 actual evidence and patch rollback to v1.7.13. The earlier v1.7.0->v1.6
 auth-migration rollback still requires the paired old binary and DB.
 
-**Operational follow-up (2026-10-29 11:42 Asia/Shanghai):** the panel remains
-healthy, but `VT01 | vps.taxi` is offline; 12 of 13 registered nodes have fresh
-CPU/uptime readings. Its last persisted sample is 11:26:18.909, after the
-11:12 panel switch and successful 13-node acceptance. The scoped live status
-reports it offline. Its configured SSH endpoint accepts a TCP connection from
-MAC-WAN but does not provide an SSH banner within 20 seconds; OC424's attempt
-also times out. This does not establish whether the host, network, firewall,
-SSH daemon or Agent is responsible. No node or Agent was modified or restarted.
-If it stays offline, check the provider console and host/Agent service; retain
-its registration and credentials. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+**Operational follow-up (2026-10-29, Asia/Shanghai):** `VT01 | vps.taxi`
+is observed offline at 11:42, with 12 of 13 nodes reporting. Its last persisted
+sample is 11:26:18.909, after the 11:12 panel switch and successful 13-node
+acceptance. The scoped live status reports it offline. Its configured SSH
+endpoint accepts a TCP connection from MAC-WAN but does not provide an SSH
+banner within 20 seconds; OC424's attempt also times out. At 12:15-12:17,
+VT01 resumes reporting and all 13 nodes have fresh CPU/uptime readings; at
+12:20 it is stale again, last sample 12:17:22.908, with 12 of 13 reporting.
+The intermittent cause remains unknown. No node or Agent was modified or
+restarted. Check the provider console and host/Agent service if it persists;
+retain its registration and credentials. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
 **Adjusted active objective:** close the bounded v1.7 delivery/handoff, then
 continue small v1.8 observability/correctness batches. Do not mark the entire
