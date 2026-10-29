@@ -19,7 +19,8 @@ permissions:
 jobs:
   frontend-browser:
     name: frontend browser (ubuntu)
-    runs-on: ubuntu-latest
+    # Keep this in step with the pinned Playwright release's supported hosts.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -71,7 +72,8 @@ jobs:
   # fixture stayed green, because nothing mounts that page.
   panel-smoke:
     name: panel smoke (ubuntu)
-    runs-on: ubuntu-latest
+    # This job installs the same pinned Chromium as frontend-browser.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
