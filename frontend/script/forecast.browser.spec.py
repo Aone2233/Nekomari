@@ -115,8 +115,8 @@ class ForecastBrowserTest(unittest.TestCase):
     def test_a_refusal_does_not_look_like_a_good_result(self):
         page = self.open("ready")
         try:
-            # Four rows: one over the limit, one fine, one refused, one with no allowance.
-            expect(page.locator('[data-testid="forecast-row"]')).to_have_count(4)
+            # Known usage on a refused forecast is distinct from unknown usage.
+            expect(page.locator('[data-testid="forecast-row"]')).to_have_count(5)
 
             refused = self.row(page, "uuid-young")
             expect(refused).to_have_attribute("data-method", "insufficient")
@@ -126,9 +126,12 @@ class ForecastBrowserTest(unittest.TestCase):
             expect(refused.locator('[data-testid="forecast-row-reason"]')).to_contain_text(
                 "a projection needs at least 5")
             expect(refused.locator('[data-testid="forecast-row-projected"]')).not_to_contain_text("GiB")
+            expect(refused.locator('[data-testid="forecast-row-used"]')).to_contain_text("GiB")
+            unknown = self.row(page, "uuid-unknown")
+            expect(unknown.locator('[data-testid="forecast-row-used"]')).to_have_text("—")
 
             # And the counts separate the two outcomes, so the summary cannot be read as "all fine".
-            expect(page.locator('[data-testid="forecast-refused"]')).to_have_attribute("data-count", "1")
+            expect(page.locator('[data-testid="forecast-refused"]')).to_have_attribute("data-count", "2")
             expect(page.locator('[data-testid="forecast-projected"]')).to_have_attribute("data-count", "3")
         finally:
             self.teardown_page(page)

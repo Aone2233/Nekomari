@@ -175,6 +175,13 @@ pinned Ubuntu 24.04 runner in PR121 and exact merge CI. Then select a small corr
 complete API-caller inventory and the span/window-coverage decision remain open.
 No whole-roadmap app goal change or new owner-session UI acceptance is claimed.
 
+**In development, not yet released:** refuse forecast inputs with missing or
+invalid required traffic directions, sum overflow or a direction decrease
+between selected buckets. This avoids combining an unknown value as zero or
+masking a direction reset with the other's growth. A zero in a refused row is
+not measured usage; intra-bucket resets remain undetectable with bucket maxima.
+See [`FORECAST-DIRECTIONS.md`](./FORECAST-DIRECTIONS.md).
+
 ### v1.7 release readiness (2026-10-28)
 
 | Gate | Current state | Required next evidence/action |

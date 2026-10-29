@@ -39,6 +39,8 @@ export interface ForecastRow {
   method: string;
   reason?: string;
   used_bytes: number;
+  /** Missing on older servers; false means no trustworthy usage observation. */
+  used_bytes_known?: boolean;
   projected_bytes: number;
   limit_bytes: number;
   limit_type: string;
@@ -230,7 +232,9 @@ export const TrafficForecastPage: React.FC<TrafficForecastPageProps> = ({
                         </Text>
                       ) : null}
                     </Table.Cell>
-                    <Table.Cell data-testid="forecast-row-used">{formatBytes(row.used_bytes)}</Table.Cell>
+                    <Table.Cell data-testid="forecast-row-used">
+                      {row.used_bytes_known === false ? "—" : formatBytes(row.used_bytes)}
+                    </Table.Cell>
                     <Table.Cell data-testid="forecast-row-projected">
                       {insufficient ? (
                         // The refusal, in the cell the number would have been in. A blank here would read as

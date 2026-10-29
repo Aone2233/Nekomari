@@ -132,6 +132,8 @@ jobs:
         run: python3 -W error::ResourceWarning deploy/backup-health-smoke.py --panel-binary ./nekomari
       - name: Check overlapping SLA task generations in a synthetic Panel
         run: python3 -W error::ResourceWarning deploy/sla-generations-smoke.py --panel-binary ./nekomari
+      - name: Check incomplete traffic forecast directions in a synthetic Panel
+        run: python3 -W error::ResourceWarning deploy/forecast-direction-smoke.py --panel-binary ./nekomari
       - name: Check nullable price expiry in the embedded admin UI
         run: python frontend/script/price-expiry.spec.py --panel-binary ./nekomari
       - name: Check uptime history ingestion and embedded admin UI
