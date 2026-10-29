@@ -8,11 +8,6 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- **Candidate, not yet deployed:** add session-only default-theme disk and
-  memory-cache observations to the existing panel history. Points show sampled
-  bucket values, not continuous disk checks or precise transition times. Two
-  independently retained definitions default to one day; old-image manual
-  reclaim can delete them. See `docs/THEME-CACHE-HISTORY.md`.
 - Pin the two Playwright CI jobs to Ubuntu 24.04: the moving
   `ubuntu-latest` image reached Ubuntu 26.04, which the pinned Playwright
   1.58.0 cannot install browsers on. Test coverage remains enabled.
@@ -27,6 +22,26 @@ Nekomari's own.
   egress address, without widening its forced-command SSH keys or disturbing
   the separate `bero-backup-pull` key confirmed by the owner. The first daily
   MAC-WAN backup trigger and an independent-media restore are still pending.
+
+## [v1.7.14] - 2026-10-29
+
+- **Published and deployed on OC424 at approximately 11:12 Asia/Shanghai.**
+  Immutable `7f945619e94a4e25b82cb7860c61b8cf68b22027`, PR121; candidate
+  CI40807334416 8/8, exact merge CI40808023833 8/8, release40808682926
+  10/10 and Docker40809339436 2/2. Published Linux checksums/attestations,
+  dual-architecture OCI identities and native image binaries verify. The
+  published binary passes isolated MAC-WAN browser checks; OC424 upgrade9/9,
+  public27/27, scoped forecast13rows and 13 fresh CPU/uptime reporters pass.
+  Fresh encrypted pre-backup restores under v1.7.13/v1.7.14 and post-backup
+  under v1.7.14; a retention-aware comparison of 12 metric series finds no
+  missing in-retention or changed archived rows. Both archives have matching
+  online-host copies. Owner-session UI and independent-media restore are not
+  claimed. See `docs/DEPLOY-OC424.md`.
+- Add session-only default-theme disk and memory-cache observations to panel
+  history. Points show sampled bucket values, not continuous disk checks or
+  precise transition times. Two independently retained definitions default to
+  one day; older-image manual reclaim can delete them. See
+  `docs/THEME-CACHE-HISTORY.md`.
 
 ## [v1.7.13] - 2026-10-29
 

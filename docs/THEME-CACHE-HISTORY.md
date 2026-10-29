@@ -1,9 +1,12 @@
 # Default-theme cache history
 
-**Candidate only:** this change is neither published nor deployed. It adds two
+Published as v1.7.14 and deployed on OC424 on 2026-10-29. This adds two
 independently retained observations to the session-only Performance profiles
 history. This is one bounded v1.8 observability increment, not an SLO, a
-continuous disk check or a complete v1.8 release.
+continuous disk check or a complete v1.8 release. The published binary passed
+isolated MAC-WAN browser checks; both series received natural OC424 samples,
+and a post-upgrade encrypted backup passed retention-aware recovery. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for the exact evidence and boundaries.
 
 The existing approximately one-minute sampler reads the non-invasive
 default-theme process snapshot, including on startup. The two metrics capture
