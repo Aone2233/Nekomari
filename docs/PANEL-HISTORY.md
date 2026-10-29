@@ -1,9 +1,10 @@
 # Panel process history
 
-The unreleased candidate extends this page with pool-wait interval history;
-its distinct semantics and rollback boundary are in
-[`PANEL-POOL-HISTORY.md`](./PANEL-POOL-HISTORY.md). Pool history is not yet
-published or deployed.
+Pool-wait interval history was published and deployed in v1.7.13; its
+distinct semantics and rollback boundary are in
+[`PANEL-POOL-HISTORY.md`](./PANEL-POOL-HISTORY.md). An unreleased candidate
+adds default-theme cache observations; see
+[`THEME-CACHE-HISTORY.md`](./THEME-CACHE-HISTORY.md).
 
 Published and deployed as v1.7.11 on OC424 on 2026-10-28. This is one bounded
 part of v1.8 observability, not a complete v1.8 release or an SLO measurement.
@@ -44,10 +45,10 @@ deadline and holds a shared store-operation lease across the write, as does the
 read, preventing replacement or maintenance from closing the store mid-call.
 No Agent, credential, key scope or external metrics endpoint is added.
 
-Only RSS, heap allocation and goroutines are covered. Theme-cache history,
-database wait counters, restart counting, real alerts and SLOs are separate
-work. In particular, pool waits are process-cumulative and must not be
-interpreted as continuous increments across restarts.
+This initial v1.7.11 release covers only RSS, heap allocation and goroutines.
+The later pool-wait extension records validated interval differences, not
+continuous increments across restarts. Theme-cache history remains a candidate;
+restart counting, real alerts and SLOs are separate work.
 
 ## Rollback boundary
 

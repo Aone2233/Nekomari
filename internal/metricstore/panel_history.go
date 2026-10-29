@@ -18,19 +18,28 @@ type PanelSample struct {
 	RSSBytes   uint64
 	HeapBytes  uint64
 	Goroutines int
+	ThemeCache *PanelThemeCacheSample
+}
+
+// Theme cache values are sampled process observations, not disk health probes.
+type PanelThemeCacheSample struct {
+	Disk         string
+	MemoryLoaded bool
 }
 
 type PanelHistoryPoint struct {
-	Time           time.Time `json:"time"`
-	RSSBytes       *float64  `json:"rss_bytes"`
-	HeapBytes      *float64  `json:"heap_bytes"`
-	Goroutines     *float64  `json:"goroutines"`
-	MainWaitCount  *float64  `json:"main_wait_count"`
-	MainWaitMS     *float64  `json:"main_wait_ms"`
-	WriteWaitCount *float64  `json:"write_wait_count"`
-	WriteWaitMS    *float64  `json:"write_wait_ms"`
-	ReadWaitCount  *float64  `json:"read_wait_count"`
-	ReadWaitMS     *float64  `json:"read_wait_ms"`
+	Time                   time.Time `json:"time"`
+	RSSBytes               *float64  `json:"rss_bytes"`
+	HeapBytes              *float64  `json:"heap_bytes"`
+	Goroutines             *float64  `json:"goroutines"`
+	MainWaitCount          *float64  `json:"main_wait_count"`
+	MainWaitMS             *float64  `json:"main_wait_ms"`
+	WriteWaitCount         *float64  `json:"write_wait_count"`
+	WriteWaitMS            *float64  `json:"write_wait_ms"`
+	ReadWaitCount          *float64  `json:"read_wait_count"`
+	ReadWaitMS             *float64  `json:"read_wait_ms"`
+	ThemeCacheDisk         *string   `json:"theme_cache_disk"`
+	ThemeCacheMemoryLoaded *bool     `json:"theme_cache_memory_loaded"`
 }
 
 type PanelHistory struct {
@@ -59,7 +68,24 @@ func clearPanelHistoryValue(point *PanelHistoryPoint, name string) {
 		point.ReadWaitCount = nil
 	case MetricPanelReadWaitMS:
 		point.ReadWaitMS = nil
+	case MetricPanelThemeDisk:
+		point.ThemeCacheDisk = nil
+	case MetricPanelThemeMemory:
+		point.ThemeCacheMemoryLoaded = nil
 	}
+}
+
+// These indexes are persisted as metric values. Never reorder or reuse them;
+// append new states and keep old codes readable across releases.
+var panelThemeDiskStates = [...]string{"disabled", "uninitialized", "initializing", "ready", "failed", "degraded"}
+
+func panelThemeDiskCode(state string) float64 {
+	for code, known := range panelThemeDiskStates {
+		if state == known {
+			return float64(code)
+		}
+	}
+	return -1
 }
 
 // PanelPoolSampler remembers only the preceding successful sample. A new
@@ -167,6 +193,15 @@ func writePanelSampleWithPools(ctx context.Context, s *metric.Store, sample Pane
 	if sample.RSSBytes > 0 {
 		points = append(points, metric.Point{MetricName: MetricPanelRSS, EntityID: panelHistoryEntity, Timestamp: sample.At, Value: float64(sample.RSSBytes)})
 	}
+	if sample.ThemeCache != nil {
+		memory := 0.0
+		if sample.ThemeCache.MemoryLoaded {
+			memory = 1
+		}
+		points = append(points,
+			metric.Point{MetricName: MetricPanelThemeDisk, EntityID: panelHistoryEntity, Timestamp: sample.At, Value: panelThemeDiskCode(sample.ThemeCache.Disk)},
+			metric.Point{MetricName: MetricPanelThemeMemory, EntityID: panelHistoryEntity, Timestamp: sample.At, Value: memory})
+	}
 	points = append(points, poolPoints...)
 	return s.WriteBatch(ctx, points)
 }
@@ -224,6 +259,18 @@ func readPanelHistory(ctx context.Context, s *metric.Store, hours int, now time.
 			point.ReadWaitCount = &value
 		case MetricPanelReadWaitMS:
 			point.ReadWaitMS = &value
+		case MetricPanelThemeDisk:
+			for code, state := range panelThemeDiskStates {
+				if value == float64(code) {
+					point.ThemeCacheDisk = &state
+					break
+				}
+			}
+		case MetricPanelThemeMemory:
+			if value == 0 || value == 1 {
+				loaded := value == 1
+				point.ThemeCacheMemoryLoaded = &loaded
+			}
 		}
 	}
 	for _, name := range panelMetricNames {

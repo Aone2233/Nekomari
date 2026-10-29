@@ -38,6 +38,8 @@ const (
 	MetricPanelWriteWaitMS     = "panel.pool.metrics_write.wait_ms"
 	MetricPanelReadWaitCount   = "panel.pool.metrics_read.wait_count"
 	MetricPanelReadWaitMS      = "panel.pool.metrics_read.wait_ms"
+	MetricPanelThemeDisk       = "panel.theme_cache.disk_state"
+	MetricPanelThemeMemory     = "panel.theme_cache.memory_loaded"
 )
 
 // loadRecordMetricNames are the entity-level metrics used to reconstruct the
@@ -66,7 +68,8 @@ var panelPoolMetricNames = []string{
 	MetricPanelReadWaitCount, MetricPanelReadWaitMS,
 }
 
-var panelMetricNames = joinMetricNames([]string{MetricPanelRSS, MetricPanelHeap, MetricPanelGoroutines}, panelPoolMetricNames)
+var panelMetricNames = joinMetricNames([]string{MetricPanelRSS, MetricPanelHeap, MetricPanelGoroutines}, panelPoolMetricNames,
+	[]string{MetricPanelThemeDisk, MetricPanelThemeMemory})
 
 var builtinMetricNames = joinMetricNames(recordMetricNames, pingMetricNames, panelMetricNames)
 

@@ -19,7 +19,14 @@ const METRICS = {
   read_wait_count: "panel.pool.metrics_read.wait_count",
   read_wait_ms: "panel.pool.metrics_read.wait_ms",
 } as const;
-type HistoryMetric = keyof typeof METRICS;
+const THEME_METRICS = {
+  theme_cache_disk: "panel.theme_cache.disk_state",
+  theme_cache_memory_loaded: "panel.theme_cache.memory_loaded",
+} as const;
+type NumericHistoryMetric = keyof typeof METRICS;
+type ThemeHistoryMetric = keyof typeof THEME_METRICS;
+type HistoryMetric = NumericHistoryMetric | ThemeHistoryMetric;
+const THEME_STATES = ["disabled", "uninitialized", "initializing", "ready", "failed", "degraded"] as const;
 
 // Older servers do not include pool readings. Treat absent fields as unknown.
 const poolReading = z.number().finite().nonnegative().nullable().optional().transform((value) => value ?? null);
@@ -40,6 +47,10 @@ const historySchema = z.object({
       write_wait_ms: poolReading,
       read_wait_count: poolReading,
       read_wait_ms: poolReading,
+      // Old servers and a newer, unknown disk state must remain unknown.
+      theme_cache_disk: z.string().nullable().optional().transform((value) =>
+        THEME_STATES.find((known) => known === value) ?? null),
+      theme_cache_memory_loaded: z.boolean().nullable().optional().transform((value) => value ?? null),
     })).max(500),
   }),
 });
@@ -73,15 +84,31 @@ export default function PanelHistory() {
   }, [hours, requestKey]);
 
   const current = loaded?.key === requestKey ? loaded : null;
+  const themeMetric = metric === "theme_cache_disk" || metric === "theme_cache_memory_loaded";
   const rows = (current?.history?.points ?? []).flatMap((point) => {
     const time = Date.parse(point.time);
-    return Number.isFinite(time) ? [{ time, value: point[metric] }] : [];
+    if (!Number.isFinite(time)) return [];
+    if (metric === "theme_cache_disk") {
+      const index = THEME_STATES.findIndex((state) => state === point.theme_cache_disk);
+      return [{ time, value: index < 0 ? null : index }];
+    }
+    if (metric === "theme_cache_memory_loaded") {
+      return [{ time, value: point.theme_cache_memory_loaded === null ? null : Number(point.theme_cache_memory_loaded) }];
+    }
+    return [{ time, value: point[metric] }];
   });
   const measured = rows.filter((row) => row.value !== null);
   const latest = measured[measured.length - 1];
-  const retention = current?.history?.retention_days[METRICS[metric]];
+  const retention = current?.history?.retention_days[themeMetric ? THEME_METRICS[metric as ThemeHistoryMetric] : METRICS[metric as NumericHistoryMetric]];
   const poolMetric = metric.includes("_wait_");
   const formatValue = (value: number) => {
+    if (metric === "theme_cache_disk") {
+      const state = THEME_STATES[value];
+      return state ? t(`pprof.theme_cache_disk_${state}`) : t("pprof.theme_cache_disk_unknown");
+    }
+    if (metric === "theme_cache_memory_loaded") {
+      return t(value === 1 ? "pprof.theme_cache_memory_loaded" : "pprof.theme_cache_memory_not_loaded");
+    }
     if (metric.endsWith("_wait_ms")) return `${value.toLocaleString(undefined, { maximumFractionDigits: 3 })} ms`;
     if (metric === "goroutines" || metric.endsWith("_wait_count")) return Math.round(value).toLocaleString();
     return formatBytes(value);
@@ -96,6 +123,8 @@ export default function PanelHistory() {
     write_wait_ms: t("pprof.pool_write_wait_ms"),
     read_wait_count: t("pprof.pool_read_wait_count"),
     read_wait_ms: t("pprof.pool_read_wait_ms"),
+    theme_cache_disk: t("pprof.theme_cache_disk"),
+    theme_cache_memory_loaded: t("pprof.theme_cache_memory"),
   };
   const label = labels[metric];
 
@@ -109,7 +138,7 @@ export default function PanelHistory() {
               <Select.Root value={metric} onValueChange={(value) => setMetric(value as HistoryMetric)}>
                 <Select.Trigger aria-label={t("pprof.history_metric")} />
                 <Select.Content>
-                  {(Object.keys(METRICS) as HistoryMetric[]).map((name) => <Select.Item key={name} value={name}>{labels[name]}</Select.Item>)}
+                  {([...Object.keys(METRICS), ...Object.keys(THEME_METRICS)] as HistoryMetric[]).map((name) => <Select.Item key={name} value={name}>{labels[name]}</Select.Item>)}
                 </Select.Content>
               </Select.Root>
             </label>
@@ -137,21 +166,28 @@ export default function PanelHistory() {
         ) : measured.length === 0 ? (
           <Text color="gray" data-testid="panel-history-empty">{t("pprof.history_empty")}</Text>
         ) : (
-          <ChartContainer config={{ value: { label, color: "var(--accent-9)" } }} className="h-[240px] w-full" style={{ aspectRatio: "auto" }}>
-            <LineChart data={rows} accessibilityLayer margin={{ top: 16, right: 16, bottom: 4, left: 8 }}>
+          <ChartContainer config={{ value: { label, color: "var(--accent-9)" } }} className="h-[240px] w-full" style={{ aspectRatio: "auto" }} data-testid="panel-history-chart">
+            <LineChart data={rows} accessibilityLayer margin={{ top: 16, right: 16, bottom: 4, left: themeMetric ? 0 : 8 }}>
               <CartesianGrid vertical={false} />
               <XAxis dataKey="time" type="number" domain={["dataMin", "dataMax"]} tickFormatter={(value: number) => new Date(value).toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} />
-              <YAxis width={1} mirror tick={{ dx: 8 }} tickFormatter={(value: number) => formatValue(value)} />
+              {themeMetric ? (
+                <YAxis width={130} type="number" domain={metric === "theme_cache_disk" ? [0, 5] : [0, 1]}
+                  ticks={metric === "theme_cache_disk" ? [0, 1, 2, 3, 4, 5] : [0, 1]}
+                  tickFormatter={(value: number) => formatValue(value)} />
+              ) : <YAxis width={1} mirror tick={{ dx: 8 }} tickFormatter={(value: number) => formatValue(value)} />}
               <ChartTooltip cursor={false} content={<ChartTooltipContent labelFormatter={(_value: unknown, payload: TooltipPayload) => {
                 const time = payload?.[0]?.payload?.time;
                 return typeof time === "number" ? new Date(time).toLocaleString() : "";
               }} formatter={(value: unknown) => typeof value === "number" ? formatValue(value) : "-"} />} />
-              <Line dataKey="value" stroke="var(--accent-9)" strokeWidth={2} dot={measured.length <= 30} connectNulls={false} isAnimationActive={false} />
+              <Line dataKey="value" stroke="var(--accent-9)" strokeWidth={2} strokeOpacity={themeMetric ? 0 : 1}
+                dot={themeMetric ? { r: 2, fill: "var(--accent-9)", stroke: "var(--accent-9)" } : measured.length <= 30}
+                connectNulls={false} isAnimationActive={false} />
             </LineChart>
           </ChartContainer>
         )}
         <Text as="p" size="2" color="gray">{t("pprof.history_note")}</Text>
         {poolMetric && <Text as="p" size="2" color="gray" data-testid="panel-pool-note">{t("pprof.pool_history_note")}</Text>}
+        {themeMetric && <Text as="p" size="2" color="gray" data-testid="panel-theme-note">{t("pprof.theme_history_note")}</Text>}
         {retention !== undefined && <Text as="p" size="1" color="gray">{t("pprof.history_retention", { days: retention })}</Text>}
       </Flex>
     </SettingCard>

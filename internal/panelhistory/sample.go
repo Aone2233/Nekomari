@@ -13,6 +13,7 @@ import (
 
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/web/public"
 )
 
 // RSSBytes returns zero when the platform cannot provide a reading.
@@ -59,7 +60,9 @@ func (s *Sampler) Collect(ctx context.Context) error {
 	if db := dbcore.ReadyDBInstance(); db != nil {
 		mainDB, _ = db.DB()
 	}
+	cache := public.ThemeCacheSnapshot()
 	return s.pools.Write(ctx, metricstore.PanelSample{
 		At: time.Now(), RSSBytes: RSSBytes(), HeapBytes: memory.HeapAlloc, Goroutines: runtime.NumGoroutine(),
+		ThemeCache: &metricstore.PanelThemeCacheSample{Disk: cache.Disk, MemoryLoaded: cache.MemoryLoaded},
 	}, mainDB)
 }

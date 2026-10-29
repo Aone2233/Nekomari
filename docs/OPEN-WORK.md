@@ -52,6 +52,13 @@ roadmap or every v1.7 exit criterion complete. All 200-node experiments/benchmar
 and their 26 failed reports remain deferred. Reuse exact-source and unchanged
 source-batch checks; no redundant broad local frontend/Go/capacity rerun.
 
+**Next candidate, not deployed:** sample the default-theme disk and memory
+cache state into two independently retained, session-only panel history series.
+The UI uses points instead of asserting exact transitions. Older images can
+delete these new definitions and history during manual reclaim. See
+[`THEME-CACHE-HISTORY.md`](./THEME-CACHE-HISTORY.md); exact CI, publication,
+isolated recovery and production acceptance are still required.
+
 **Latest bounded delivery:** v1.7.13 adds session-only connection-pool wait
 interval history to the existing Performance profiles page. Six independently
 retained metrics are sampled naturally on OC424. Published-binary browser and
@@ -284,7 +291,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | `PriceTags` missing/invalid expiry | `frontend/src/components/PriceTags.tsx` | **Fixed/deployed v1.7.7**: neutral localized unset/unknown labels preserve real dates/tags; focused, real embedded-browser, publication and OC424 continuity pass |
 | Dragging under a filter reorders only the visible subset | `frontend/src/pages/admin/index.tsx` | Needs a decision about what reordering a filtered list should mean |
 | Uptime history / restart count | `docs/UPTIME-HISTORY.md` | Uptime history is deployed in v1.7.8. It records bucketed positive readings, not reboot events; trustworthy restart counting remains open |
-| Panel self-metrics history | `docs/PANEL-HISTORY.md`; `docs/PANEL-POOL-HISTORY.md` | RSS, heap and goroutine history is deployed in v1.7.11; interval pool-wait history is deployed in v1.7.13, with restart/unknown handling. Theme-cache history remains open |
+| Panel self-metrics history | `docs/PANEL-HISTORY.md`; `docs/PANEL-POOL-HISTORY.md`; `docs/THEME-CACHE-HISTORY.md` | RSS, heap and goroutine history is deployed in v1.7.11; interval pool-wait history is deployed in v1.7.13. Theme-cache history is an unreleased candidate; restart counts and complete v1.8 remain open |
 | One bad metric parameter fails a whole batch query | `web/rpc/jsonrpc/public.metric.go` | Should report per-key rather than all-or-nothing |
 | Non-root ICMP and Windows/macOS agent footprint | `agent/` | netstatic, ping precision and the Linux footprint measurement shipped (v1.6.22–v1.6.25). Still open: non-root agents without `CAP_NET_RAW` cannot probe, and Windows/macOS peak memory/disk growth are unmeasured |
 | Legacy ping quantiles are unknown across the migration window | `web/rpc/jsonrpc/public.metric.go` | **Accepted**: the report says so itself |

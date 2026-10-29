@@ -8,6 +8,11 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **Candidate, not yet deployed:** add session-only default-theme disk and
+  memory-cache observations to the existing panel history. Points show sampled
+  bucket values, not continuous disk checks or precise transition times. Two
+  independently retained definitions default to one day; old-image manual
+  reclaim can delete them. See `docs/THEME-CACHE-HISTORY.md`.
 - Pin the two Playwright CI jobs to Ubuntu 24.04: the moving
   `ubuntu-latest` image reached Ubuntu 26.04, which the pinned Playwright
   1.58.0 cannot install browsers on. Test coverage remains enabled.
