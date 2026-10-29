@@ -47,6 +47,17 @@ unchanged. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for immutable artifacts,
 actual evidence and patch rollback to v1.7.13. The earlier v1.7.0->v1.6
 auth-migration rollback still requires the paired old binary and DB.
 
+**Operational follow-up (2026-10-29 11:42 Asia/Shanghai):** the panel remains
+healthy, but `VT01 | vps.taxi` is offline; 12 of 13 registered nodes have fresh
+CPU/uptime readings. Its last persisted sample is 11:26:18.909, after the
+11:12 panel switch and successful 13-node acceptance. The scoped live status
+reports it offline. Its configured SSH endpoint accepts a TCP connection from
+MAC-WAN but does not provide an SSH banner within 20 seconds; OC424's attempt
+also times out. This does not establish whether the host, network, firewall,
+SSH daemon or Agent is responsible. No node or Agent was modified or restarted.
+If it stays offline, check the provider console and host/Agent service; retain
+its registration and credentials. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
 **Adjusted active objective:** close the bounded v1.7 delivery/handoff, then
 continue small v1.8 observability/correctness batches. Do not mark the entire
 roadmap or every v1.7 exit criterion complete. All 200-node experiments/benchmarks
