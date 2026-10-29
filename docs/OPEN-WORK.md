@@ -145,7 +145,9 @@ Continue one bounded correctness/observability item, with 200-node work deferred
 **Next bounded work:** observe the first scheduled MAC-WAN daily backup and
 its subsequent health report; preserve evidence and do not treat the earlier
 manual run as a scheduled trigger. Investigate the earlier post-boot assertion
-if it recurs. Then select a small correctness/observability batch, with fresh
+if it recurs. Validate the CI browser jobs on their pinned Ubuntu 24.04 runner:
+PR120's prior `ubuntu-latest` run reached Ubuntu 26.04, unsupported by the
+pinned Playwright 1.58.0. Then select a small correctness/observability batch, with fresh
 13-node pre/post backup and isolated recovery gates for any new release. Keep
 200-node work deferred. Independent-media recovery, real incident delivery,
 complete API-caller inventory and the span/window-coverage decision remain open.

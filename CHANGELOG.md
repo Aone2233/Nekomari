@@ -8,6 +8,9 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Pin the two Playwright CI jobs to Ubuntu 24.04: the moving
+  `ubuntu-latest` image reached Ubuntu 26.04, which the pinned Playwright
+  1.58.0 cannot install browsers on. Test coverage remains enabled.
 - After the owner relinquishes OVH and confirms removal of its node, replace
   the old backup receiver with restricted MAC-WAN encrypted backup and health
   user services. Initial current-13-node recovery, independent online-host
