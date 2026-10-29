@@ -68,6 +68,25 @@ observed independently; a manual success is not proof of those events.
   timer test. The first daily timer remains scheduled for 11:30 Asia/Shanghai
   on 2026-10-29 and must be observed separately.
 
+## v1.7.14 release backups (2026-10-29)
+
+- The 11:05 manually started pre-backup
+  `oc424-20261029T030508182324Z-d429f2f81679.tar.gz.age` has SHA-256
+  `af6c5f6b82244704d948f01896b9ac0e4ba85ed9e0dec4a235188d1dc90d317f`.
+  It boots pinned v1.7.13 and v1.7.14 in isolated MAC-WAN recovery with both
+  databases and the current 13 UUID/token hashes.
+- The 11:13 manually started post-backup
+  `oc424-20261029T031324144179Z-24ec1c83091d.tar.gz.age` has SHA-256
+  `70fa15e0e06a82522a5070e6a29d0d29cdcb47f81ec16af6f29e46f5a03ef3aa`.
+  It boots pinned v1.7.14 in isolation. A retention-aware comparison of 12
+  metric series finds no missing in-window or changed archived rollups; 1,984
+  expired or inactive-tier rows are absent after startup cleanup. This does
+  not establish the cause of the earlier v1.7.13 assertion failure.
+- Both archive/checksum pairs have regular MAC-WAN `incoming/` copies outside
+  the scheduled retention set and matching ciphertext copies on the online
+  executor. The age identity remains on MAC-WAN; no independent-media restore
+  is claimed. These are manual backups, not evidence of a scheduled trigger.
+
 ## Operations
 
 The installed scripts and user units correspond to `deploy/hosts/mac-wan-*`
