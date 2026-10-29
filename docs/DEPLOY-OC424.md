@@ -7,8 +7,8 @@ restored, and the two hostname/TLS traps that cost the most time.
 has been relinquished. OVH is not a current trusted receiver or test host;
 historical plaintext backup exposure and replacement backup/health gates are
 recorded in [`OVH-RETIREMENT-2026-10-28.md`](./OVH-RETIREMENT-2026-10-28.md).
-Three identified OVH SSH authorizations are revoked on OC424. MAC-WAN's latest
-v1.7.12 pre/post ciphertext hashes still match; OC424 is healthy v1.7.12. The
+Three identified OVH SSH authorizations are revoked on OC424. MAC-WAN's
+v1.7.12 pre/post ciphertext hashes still match. The
 owner confirms the intentional OVH node removal (current baseline 13). MAC-WAN
 now receives scheduled encrypted backups and reports actual health; the first
 new archive passes isolated recovery and has a second online-host copy. The
@@ -16,9 +16,9 @@ first scheduled daily trigger and offline-media recovery remain unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
 schedule and 14-node acceptance statements below are history.
 
-## Current checkpoint (2026-10-28, Asia/Shanghai)
+## Current checkpoint (2026-10-29, Asia/Shanghai)
 
-OC424 serves **v1.7.12 / b4591d6** at
+OC424 serves **v1.7.13 / 9246bdc** at
 `https://nekomari.orderly2233.org`. Scoped-key migration and session-only token
 rotation are deployed; no existing Agent token is rotated. MAC-WAN receives
 encrypted backups and holds the online identity/recovery runner. The owner
@@ -29,14 +29,15 @@ Older rollout sections are dated evidence, not the current version/node count.
 
 | Item | Observed evidence |
 |---|---|
-| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.12/b4591d6. The earlier v1.7.12 upgrade9/9,public27/27,scoped forecast14rows and14fresh reporters are dated release evidence |
+| Panel | Docker `nekomari`, healthy/restart0; exact v1.7.13/9246bdc. OC424 upgrade9/9, public27/27, scoped forecast13rows and13 fresh CPU/uptime reporters pass |
 | Nodes | Owner confirms intentional removal of the OVH node; current baseline is 13 registered clients. Preserve all remaining clients and their tokens; do not restore the removed node |
 | Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2, unchanged; generic `nekomari-agent` is not the reporter |
 | OVH | Relinquished and no longer trusted; three identified OC424 backup/health SSH authorizations revoked. Plaintext archive exposure and disk sanitization remain unresolved |
 | MAC-WAN | Linux x86_64 user `macos`; encrypted receiver, health timer, online identity/isolated recovery. First scheduled daily trigger remains pending; Agent/Hermes are not restarted by this work |
-| Acceptance | Prior Hermes disposable CLI writes pass; dsh records earlier owner history/audit/API-key acceptance. No new owner UI session for v1.7.12; public401 is not authenticated acceptance. Complete caller inventory remains separate |
+| Acceptance | Prior Hermes disposable CLI writes pass; dsh records earlier owner history/audit/API-key acceptance. No new owner UI session for v1.7.13; public401 is not authenticated acceptance. Complete caller inventory remains separate |
 
-Latest delivery: v1.7.12 corrects data-mount persistence warnings; see
+Latest delivery: v1.7.13 adds private connection-pool wait history; see
+[`PANEL-POOL-HISTORY.md`](./PANEL-POOL-HISTORY.md). v1.7.12 corrects data-mount persistence warnings; see
 [`DATA-MOUNT-WARNING.md`](./DATA-MOUNT-WARNING.md). v1.7.11 adds session-only
 panel RSS/heap/goroutine history;
 see [`PANEL-HISTORY.md`](./PANEL-HISTORY.md). v1.7.10 limits completely empty
@@ -49,6 +50,38 @@ The prior v1.7.8 node uptime history remains; see
 The previous OVH scheduled archive is historical; the replacement MAC-WAN
 first scheduled nightly trigger, independent-media restore and real incident
 delivery remain unverified.
+
+## v1.7.13 rollout (2026-10-29 approximately 09:46 Asia/Shanghai)
+
+PR119 adds six session-only database-pool wait-history metrics to the existing
+Performance profiles page. They describe validated sampling-interval deltas,
+not request latency or bucket totals. No schema, Agent, key scope or token
+rotation is involved; this does not complete v1.8 observability.
+
+| Item | Evidence |
+|---|---|
+| Publication | Tag `v1.7.13` -> `9246bdc6770509edf6c938307455f14664d71024`; candidate CI40722073534 8/8, same-tree merge `9d3e488d408d375159f67b43cdc935cc63f52a2a` CI40723135889 8/8, release40800943975 10/10 and Docker40801663163 2/2 |
+| OC424 arm64 | `ghcr.io/aone2233/nekomari:v1.7.13@sha256:fcce3cd47a117e2017d0b8c00b554308a076df41706bd9bbbb4f19b687c8659e`; index `sha256:676d0c947d9a5818abf25fd48e4dbd567cd763395e9a48be7309a57a679030bf`; binary SHA256 `9bdc2ef661719f4d97a5920d5e2a3ccdcf51546049ae16b5fd5fc9e05389d7ba` |
+| MAC-WAN amd64 | `ghcr.io/aone2233/nekomari:v1.7.13@sha256:f458fc6bd2744f2d2e9cf0c44f32b47700366fa558cb47a4e3db4444c220a195`; binary SHA256 `a2b85ec817cf1436b2e35ac52b4e50719690d1b9c7108c9dd5569be28d68b48c`. Linux assets and source attestations, Panel/Agent OCI platform identities and native binaries verify; Agents are not deployed |
+| Synthetic acceptance | Published binary on MAC-WAN passes isolated Chinese desktop-light and English mobile-dark browser checks, guest/scoped-key denial, retention and restart checks. An initial transfer command times out after the remote test actually finishes; the report is retrieved and hash-verified. No production data or owner login is used |
+| Pre backup | `oc424-20261029T012849480670Z-cc47ba08087f.tar.gz.age`, SHA256 `8f7e74c9cf34e86ea8331113b38efd71403773c9dc93cbf6eef4a64cd7defb0d`. MAC-WAN boots the pinned v1.7.12/v1.7.13 images on isolated verified scratch copies with both DBs and the current13 UUID/token hashes. The first old-image attempt omitted the checksum file and failed; its corrected retry passes |
+| Post backup | `oc424-20261029T014717511121Z-e6adfad8b8b8.tar.gz.age`,187592739bytes, SHA256 `f08278b5a537d449ad8e56be790f51ccc1c7a2119f257b7079db4e5044f89ab3`. Pinned v1.7.13 isolated recovery passes with both DBs, current13 UUID/token hashes and scoped-key schema. A row-level comparison checks all 13,386 archived uptime, three panel and six pool rollups: no retained row or aggregate changes, and all six pool rows survive. Later five-second-delayed repeat also passes. No network, host ports, `ANALYZE`, reclaim, remaining scratch plaintext or recovery container |
+| Initial post-check limitation | The first post-recovery attempt reported a failure of the assertion that the total uptime-rollup row count never decreases. Its captured log lacks before/after counts, and the failure did not reproduce on two new drills from the same archive. Startup retention can delete expired data, but that is not an established explanation for this incident; no evidence supports declaring it fixed. Future checks should compare actual rows and retention boundaries, not only totals |
+| Custody and rollback | Pre/post ciphertext and matching checksums are retained in MAC-WAN `incoming/`, outside scheduled pruning; another hash-matching copy of each ciphertext is on the online executor. `/opt/nekomari/rollbacks/v1.7.13-20261029T014600Z-e234d564` holds compose and per-DB WAL-safe snapshots, which are not cross-DB atomic. The v1.7.12 image remains. This is not independent-media recovery |
+| Real continuity | OC424 healthy/restart0, upgrade9/9, public27/27, scoped forecast13rows and13 fresh CPU/uptime reporters. Both DB quick checks/schemas, current UUIDs/tokens, key grants/expiry, GeoIP and backup health remain; all six pool definitions receive natural samples. No production owner UI login or live rollback is claimed |
+
+### v1.7.13 rollback and boundaries
+
+Preserve and verify a fresh post-upgrade encrypted backup before any rollback.
+For this patch, restore the prior compose/image in the private rollback
+directory, validate compose and start only `nekomari`; expect v1.7.12/b4591d6
+while keeping current databases and the 13 remaining nodes. Old-image recovery
+was tested in isolation, not as a live rollback. v1.7.12 manual metric reclaim
+can delete all six v1.7.13 pool definitions/history. Do not restore older
+14-node snapshots over the live fleet. The earlier v1.7->v1.6 auth migration
+still requires a paired old database and binary with writers frozen.
+Independent-media restore, real incident delivery, MAC-WAN's first scheduled
+daily backup and owner-session UI acceptance remain separate.
 
 ## v1.7.12 rollout (2026-10-28 23:10:34 Asia/Shanghai)
 

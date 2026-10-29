@@ -1,6 +1,8 @@
 # Panel database connection-pool wait history
 
-Candidate only; this document is not evidence of publication or deployment.
+Published as v1.7.13 and deployed on OC424 on 2026-10-29. The exact release,
+backup/recovery evidence and the initial unreproduced post-boot assertion
+failure are recorded in [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 The session-only Performance profiles page extends the existing RSS/heap/
 goroutine history with main database, metric write pool and optional metric
 read pool wait count and total wait time. This is one part of v1.8, not full

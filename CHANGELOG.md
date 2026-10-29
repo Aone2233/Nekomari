@@ -8,13 +8,6 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- Add private, session-only main database and metric write/read pool wait
-  histories to the existing Performance profiles page. A reading is the delta
-  over the last validated sampling interval, not a cumulative counter or a
-  sum over the display bucket. Restart, pool replacement, missing/failed
-  samples and absent read pools remain unknown. Six new metrics default to
-  independent one-day retention; old-version manual reclaim can delete them.
-  Not yet published or deployed; see `docs/PANEL-POOL-HISTORY.md`.
 - After the owner relinquishes OVH and confirms removal of its node, replace
   the old backup receiver with restricted MAC-WAN encrypted backup and health
   user services. Initial current-13-node recovery, independent online-host
@@ -22,6 +15,32 @@ Nekomari's own.
   and independent-media recovery are still pending. Retire three OVH backup/
   health SSH authorizations. Historical unencrypted OVH backups may contain
   credentials; disk sanitization remains unverified. See `docs/MAC-WAN-BACKUP.md`.
+- Restore MAC-WAN backup-health access after verifying its changed public
+  egress address, without widening its forced-command SSH keys or disturbing
+  the separate `bero-backup-pull` key confirmed by the owner. The first daily
+  MAC-WAN backup trigger and an independent-media restore are still pending.
+
+## [v1.7.13] - 2026-10-29
+
+- **Published and deployed on OC424 at approximately 09:46 Asia/Shanghai.**
+  Immutable `9246bdc6770509edf6c938307455f14664d71024`, PR119; exact
+  CI40722073534 8/8, same-tree main CI40723135889 8/8, release40800943975
+  10/10 and Docker40801663163 2/2. Linux asset checksums/attestations and
+  both OCI platform identities verify. Published-binary isolated browser
+  checks run on MAC-WAN. OC424 upgrade9/9, public27/27, scoped forecast13rows
+  and 13 fresh reporters pass. Fresh encrypted pre-backup restores under
+  v1.7.12/v1.7.13 and post-backup under v1.7.13; a subsequent row-level
+  comparison preserves all selected uptime, panel and pool history. The first
+  post-boot total-count assertion failed and its cause was not reproduced;
+  later drills pass without asserting it was resolved. Owner-session UI and
+  independent-media restore remain unverified. See `docs/DEPLOY-OC424.md`.
+- Add private, session-only main database and metric write/read pool wait
+  histories to the existing Performance profiles page. A reading is the
+  delta over the last validated interval, not a cumulative counter or a sum
+  over the display bucket. Restart, pool replacement, missing/failed samples
+  and absent read pools remain unknown. Six new metrics default to independent
+  one-day retention; old-version manual reclaim can delete them. See
+  `docs/PANEL-POOL-HISTORY.md`.
 
 ## [v1.7.12] - 2026-10-28
 
