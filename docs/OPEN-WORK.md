@@ -52,11 +52,12 @@ is observed offline at 11:42, with 12 of 13 nodes reporting. Its last persisted
 sample is 11:26:18.909, after the 11:12 panel switch and successful 13-node
 acceptance. The scoped live status reports it offline. Its configured SSH
 endpoint accepts a TCP connection from MAC-WAN but does not provide an SSH
-banner within 20 seconds; OC424's attempt also times out. At 12:15-12:16,
-VT01 resumes reporting and all 13 nodes again have fresh CPU/uptime readings.
-The cause and whether it will recur remain unknown. No node or Agent was
-modified or restarted. If it recurs, check the provider console and host/Agent
-service; retain its registration and credentials. See
+banner within 20 seconds; OC424's attempt also times out. At 12:15-12:17,
+VT01 resumes reporting and all 13 nodes have fresh CPU/uptime readings; at
+12:20 it is stale again, last sample 12:17:22.908, with 12 of 13 reporting.
+The intermittent cause remains unknown. No node or Agent was modified or
+restarted. Check the provider console and host/Agent service if it persists;
+retain its registration and credentials. See
 [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
 **Adjusted active objective:** close the bounded v1.7 delivery/handoff, then
