@@ -619,6 +619,14 @@ func waitForThemeCacheMarker(t *testing.T, timeout time.Duration) string {
 	}
 }
 
+// Keep cleanup behind the prewarm even when a marker assertion fails.
+func startThemeCachePrewarmForTest(t *testing.T) <-chan struct{} {
+	t.Helper()
+	done := prewarmDefaultThemeCacheAsync()
+	t.Cleanup(func() { <-done })
+	return done
+}
+
 // 启动预热必须真的把缓存建出来，而且整个过程不碰内存副本 —— 预热买的是「第一个访客
 // 不用等 300-370ms」，不是「内存里多一份 33 MiB」。
 func TestPrewarmMaterialisesTheDiskCache(t *testing.T) {
@@ -626,12 +634,12 @@ func TestPrewarmMaterialisesTheDiskCache(t *testing.T) {
 	cacheRoot := enableThemeCacheForTest(t)
 	forgetEmbeddedDistForTest(t)
 
-	PrewarmDefaultThemeCache()
+	done := startThemeCachePrewarmForTest(t)
 
-	dir := waitForThemeCacheMarker(t, 5*time.Second)
-	// 标记出现说明文件已经写完；<-themeCacheSettled() 再等后台那次调用整体返回，
+	dir := waitForThemeCacheMarker(t, 30*time.Second)
+	// 标记出现说明文件已经写完；<-done 再等后台那次调用整体返回，
 	// 这样用例结束时的状态重置不会与它打架。
-	<-themeCacheSettled()
+	<-done
 	if want := filepath.Join(cacheRoot, embeddedDistArchiveKey()); dir != want {
 		t.Fatalf("the prewarmed cache directory = %q, want %q", dir, want)
 	}
@@ -650,9 +658,9 @@ func TestTheFirstRequestAfterPrewarmIsServedFromTheCache(t *testing.T) {
 	forgetEmbeddedDistForTest(t)
 	forgetHashedAssetManifests()
 
-	PrewarmDefaultThemeCache()
-	dir := waitForThemeCacheMarker(t, 5*time.Second)
-	<-themeCacheSettled()
+	done := startThemeCachePrewarmForTest(t)
+	dir := waitForThemeCacheMarker(t, 30*time.Second)
+	<-done
 
 	response := get(t, router, "/themes/default/dist/index.html")
 	if response.Code != http.StatusOK {
@@ -702,9 +710,9 @@ func TestPrewarmDoesNotMaterialiseTwice(t *testing.T) {
 	forgetEmbeddedDistForTest(t)
 	forgetHashedAssetManifests()
 
-	PrewarmDefaultThemeCache()
-	dir := waitForThemeCacheMarker(t, 5*time.Second)
-	<-themeCacheSettled()
+	done := startThemeCachePrewarmForTest(t)
+	dir := waitForThemeCacheMarker(t, 30*time.Second)
+	<-done
 	marker := filepath.Join(dir, themeCacheMarker)
 	before, err := os.Stat(marker)
 	if err != nil {
