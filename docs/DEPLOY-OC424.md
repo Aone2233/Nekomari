@@ -31,7 +31,7 @@ Older rollout sections are dated evidence, not the current version/node count.
 | Item | Observed evidence |
 |---|---|
 | Panel | Docker `nekomari`, healthy/restart0; exact v1.7.14/7f94561. OC424 upgrade9/9, public27/27, scoped forecast13rows and13 fresh CPU/uptime reporters pass |
-| Nodes | Owner confirms intentional removal of the OVH node; current baseline is 13 registered clients. Preserve all remaining clients and their tokens; do not restore the removed node |
+| Nodes | Owner confirms intentional removal of the OVH node; current baseline is 13 registered clients. The 11:12 upgrade acceptance saw 13 fresh reporters; at 11:42, VT01 is offline and 12 remain fresh. Preserve all clients and their tokens; do not restore the removed node |
 | Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2, unchanged; generic `nekomari-agent` is not the reporter |
 | OVH | Relinquished and no longer trusted; three identified OC424 backup/health SSH authorizations revoked. Plaintext archive exposure and disk sanitization remain unresolved |
 | MAC-WAN | Linux x86_64 user `macos`; encrypted receiver, health timer, online identity/isolated recovery. First scheduled daily backup succeeds at 11:30-11:31 Asia/Shanghai and its health report at 11:34; Agent/Hermes are not restarted by this work |
@@ -52,6 +52,20 @@ The prior v1.7.8 node uptime history remains; see
 The previous OVH scheduled archive is historical; the replacement MAC-WAN
 first scheduled daily trigger succeeds on 2026-10-29. Independent-media restore
 and real incident delivery remain unverified.
+
+### VT01 subsequent disconnect (2026-10-29 11:42 Asia/Shanghai)
+
+The panel remains healthy/restart0 on v1.7.14. `VT01 | vps.taxi` reports its
+last persisted CPU and uptime sample at 11:26:18.909, after the panel switch
+and its 13-node acceptance; the current scoped live status says offline.
+The other 12 registered clients have fresh CPU and uptime. MAC-WAN connects to
+the configured VT01 SSH TCP endpoint but receives no SSH banner within 20
+seconds; the OC424 attempt also times out. These observations cannot identify
+whether the host, network, firewall, SSH daemon or Agent is responsible, nor
+prove a causal relationship to the panel upgrade. No node, token, Agent or
+server was modified or restarted. If it persists, use the provider console to
+inspect the host and Agent. The 13-node acceptance in the dated rollout row
+below remains true only at the time it was observed.
 
 ## v1.7.14 rollout (2026-10-29 approximately 11:12 Asia/Shanghai)
 

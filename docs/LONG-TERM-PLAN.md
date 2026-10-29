@@ -48,6 +48,11 @@ and OVH plaintext-disk sanitization remain unverified. See [`MAC-WAN-BACKUP.md`]
 and [`OVH-RETIREMENT-2026-10-28.md`](./OVH-RETIREMENT-2026-10-28.md).
 The OVH/14-node release records below describe their original dates.
 
+At 11:42 Asia/Shanghai, after the successful 13-node v1.7.14 rollout check,
+`VT01 | vps.taxi` is offline and the other 12 nodes are reporting. Its last
+persisted sample is 11:26:18.909; SSH banner checks time out. The cause is
+unknown and no node or Agent has been changed. See [`OPEN-WORK.md`](./OPEN-WORK.md).
+
 **Latest delivery: v1.7.14 (2026-10-29 approximately 11:12 Asia/Shanghai).**
 The session-only Performance profiles page adds sampled default-theme disk
 and memory-cache history. Candidate CI40807334416 8/8, exact merge CI40808023833
@@ -159,7 +164,8 @@ Both Linux assets pass checksums/tag/source/workflow attestations; both image
 architectures identify exact source. Public checks27/27 and scoped forecast13rows
 pass; the earlier v1.7.4 bounded live SLA reads are dated evidence, not rerun
 for v1.7.14. The owner approved Pi's earlier addition and later intentionally
-removed OVH; the current baseline is 13 clients and 13 fresh reporting nodes.
+removed OVH; the current baseline is 13 clients. All 13 reported during the
+upgrade acceptance; the later VT01 disconnect is recorded above.
 UUIDs/tokens/Agent services are unchanged. The existing tools and new uptime page
 retain shared in-panel navigation. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
