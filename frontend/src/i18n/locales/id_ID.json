@@ -894,6 +894,7 @@
     "pool_read_wait_count": "Pool baca metrik: jumlah tunggu",
     "pool_read_wait_ms": "Pool baca metrik: waktu tunggu",
     "pool_history_note": "Nilai pool adalah perubahan pada interval sampel terakhir yang valid (biasanya sekitar satu menit), bukan total interval yang ditampilkan. Restart, penggantian pool, kegagalan sampel, dan celah tidak diketahui. Pool baca terpisah mungkin tidak ada. Waktu tunggu adalah akumulasi tunggu yang selesai, bukan latensi atau persentase.",
+    "theme_history_note": "Titik menunjukkan status cache tema bawaan yang disampel, bukan verifikasi disk terus-menerus atau waktu perubahan yang tepat. Setiap interval hanya menampilkan pengamatan terakhir sehingga perubahan singkat dapat terlewat. Status memori direset saat proses dimulai ulang.",
     "history_retention": "Retensi yang diatur: {{days}} hari. Ubah di pengaturan basis data pemantauan.",
     "capture_duration": "Durasi pengambilan CPU dan trace",
     "download": "Unduh",

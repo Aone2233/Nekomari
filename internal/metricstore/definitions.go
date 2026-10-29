@@ -106,6 +106,8 @@ func createMetricDefinitionsWithDefaultRetention(ctx context.Context, s *metric.
 		{Name: MetricPanelWriteWaitMS, Type: metric.TypeGauge, Unit: "ms", Description: "Metric write pool wait time per validated sample interval (-1 means unknown)", RetentionDays: defaultBuiltinMetricRetentionDays},
 		{Name: MetricPanelReadWaitCount, Type: metric.TypeGauge, Unit: "count", Description: "Metric read pool waits per validated sample interval (-1 means unknown)", RetentionDays: defaultBuiltinMetricRetentionDays},
 		{Name: MetricPanelReadWaitMS, Type: metric.TypeGauge, Unit: "ms", Description: "Metric read pool wait time per validated sample interval (-1 means unknown)", RetentionDays: defaultBuiltinMetricRetentionDays},
+		{Name: MetricPanelThemeDisk, Type: metric.TypeGauge, Unit: "state", Description: "Last observed default-theme disk cache state; not continuous disk verification", RetentionDays: defaultBuiltinMetricRetentionDays},
+		{Name: MetricPanelThemeMemory, Type: metric.TypeGauge, Unit: "bool", Description: "Default-theme in-memory fallback loaded in this process (0 or 1)", RetentionDays: defaultBuiltinMetricRetentionDays},
 	}
 
 	for _, def := range definitions {

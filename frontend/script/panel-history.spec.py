@@ -23,6 +23,8 @@ POOL_METRICS = ["panel.pool.main.wait_count", "panel.pool.main.wait_ms",
                 "panel.pool.metrics_read.wait_count", "panel.pool.metrics_read.wait_ms"]
 POOL_FIELDS = ["main_wait_count", "main_wait_ms", "write_wait_count", "write_wait_ms",
                "read_wait_count", "read_wait_ms"]
+THEME_METRICS = ["panel.theme_cache.disk_state", "panel.theme_cache.memory_loaded"]
+THEME_FIELDS = ["theme_cache_disk", "theme_cache_memory_loaded"]
 
 
 def run(binary, output):
@@ -105,16 +107,22 @@ def run(binary, output):
                     denied(path, admin, key, 403)
                 for client, key in [(guest, None), (guest, keys[0]), (guest, keys[1])]:
                     definitions = rpc("public:listMetricDefinitions", {}, client, key)
-                    assert "result" in definitions and all(m not in json.dumps(definitions) for m in METRICS + POOL_METRICS)
-                    for name in METRICS + POOL_METRICS:
+                    assert "result" in definitions and all(m not in json.dumps(definitions) for m in METRICS + POOL_METRICS + THEME_METRICS)
+                    for name in METRICS + POOL_METRICS + THEME_METRICS:
                         assert "error" in rpc("public:queryMetrics", {"metric_key": name, "hours": 1}, client, key)
                 status, headers, data = call(path)
                 assert status == 200 and "no-store" in headers.get("Cache-Control", "")
                 history = data["data"]
                 assert all(history["retention_days"][name] == 1 for name in METRICS)
                 assert all(history["retention_days"][name] == 1 for name in POOL_METRICS)
+                assert all(history["retention_days"][name] == 1 for name in THEME_METRICS)
                 assert all(field in point and (point[field] is None or point[field] >= 0)
                            for point in history["points"] for field in POOL_FIELDS)
+                assert all(point["theme_cache_disk"] in (None, "disabled", "uninitialized", "initializing", "ready", "failed", "degraded")
+                           and (point["theme_cache_memory_loaded"] is None or isinstance(point["theme_cache_memory_loaded"], bool))
+                           for point in history["points"])
+                assert any(point["theme_cache_disk"] is not None and point["theme_cache_memory_loaded"] is not None
+                           for point in history["points"])
                 before = {point["time"]: point["heap_bytes"] for point in history["points"] if point["heap_bytes"] is not None}
                 assert before
                 stop()
@@ -182,6 +190,45 @@ def run(binary, output):
                                     expect(page.get_by_test_id("panel-pool-note")).to_contain_text(strings["pool_history_note"])
                                     if scenario == "values":
                                         expect(page.get_by_test_id("panel-history-latest")).to_have_text("0")
+                                    else:
+                                        expect(page.get_by_test_id("panel-history-latest")).to_have_text("-")
+                                        expect(page.get_by_test_id("panel-history-empty")).to_contain_text(
+                                            strings["history_disabled"] if scenario == "disabled" else strings["history_empty"])
+                                    page.unroute("**/api/admin/pprof/history?*")
+                                for scenario in ("states", "gaps", "older", "future", "disabled"):
+                                    fixture = json.loads(json.dumps(data))
+                                    for point in fixture["data"]["points"]:
+                                        for field in THEME_FIELDS:
+                                            if scenario == "older":
+                                                point.pop(field, None)
+                                            else:
+                                                point[field] = None
+                                    if scenario == "states":
+                                        fixture["data"]["points"][-1]["theme_cache_disk"] = "degraded"
+                                        fixture["data"]["points"][-1]["theme_cache_memory_loaded"] = False
+                                    if scenario == "gaps":
+                                        for point in fixture["data"]["points"][-69:-5:2]:
+                                            point["theme_cache_disk"] = "ready"
+                                    if scenario == "future":
+                                        fixture["data"]["points"][-1]["theme_cache_disk"] = "future-state"
+                                    if scenario == "disabled":
+                                        fixture["data"]["retention_days"][THEME_METRICS[0]] = 0
+                                    page.route("**/api/admin/pprof/history?*", lambda route: route.fulfill(status=200, json=fixture))
+                                    page.get_by_test_id("panel-history").get_by_role("button", name="Refresh" if code == "en" else "刷新").click()
+                                    page.get_by_label(strings["history_metric"]).click()
+                                    page.get_by_role("option", name=strings["theme_cache_disk"], exact=True).click()
+                                    expect(page.get_by_test_id("panel-theme-note")).to_contain_text(strings["theme_history_note"])
+                                    if scenario == "states":
+                                        expect(page.get_by_test_id("panel-history-latest")).to_have_text(strings["theme_cache_disk_degraded"])
+                                        page.get_by_label(strings["history_metric"]).click()
+                                        page.get_by_role("option", name=strings["theme_cache_memory"], exact=True).click()
+                                        expect(page.get_by_test_id("panel-history-latest")).to_have_text(strings["theme_cache_memory_not_loaded"])
+                                    elif scenario == "gaps":
+                                        chart = page.get_by_test_id("panel-history-chart")
+                                        expect(chart).to_be_visible()
+                                        assert chart.locator(".recharts-dot").count() == 32
+                                        assert chart.locator(".recharts-line-curve").get_attribute("stroke-opacity") == "0"
+                                        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
                                     else:
                                         expect(page.get_by_test_id("panel-history-latest")).to_have_text("-")
                                         expect(page.get_by_test_id("panel-history-empty")).to_contain_text(
