@@ -12,7 +12,8 @@ v1.7.12 pre/post ciphertext hashes still match. The
 owner confirms the intentional OVH node removal (current baseline 13). MAC-WAN
 now receives scheduled encrypted backups and reports actual health; the first
 new archive passes isolated recovery and has a second online-host copy. The
-first scheduled daily trigger and offline-media recovery remain unverified.
+first scheduled daily trigger succeeded on 2026-10-29; independent-media
+recovery remains unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
 schedule and 14-node acceptance statements below are history.
 
@@ -33,7 +34,7 @@ Older rollout sections are dated evidence, not the current version/node count.
 | Nodes | Owner confirms intentional removal of the OVH node; current baseline is 13 registered clients. Preserve all remaining clients and their tokens; do not restore the removed node |
 | Actual OC424 Agent | `komari-agent-oc424-original-node.service`, active, PID499631/restarts2, unchanged; generic `nekomari-agent` is not the reporter |
 | OVH | Relinquished and no longer trusted; three identified OC424 backup/health SSH authorizations revoked. Plaintext archive exposure and disk sanitization remain unresolved |
-| MAC-WAN | Linux x86_64 user `macos`; encrypted receiver, health timer, online identity/isolated recovery. First scheduled daily trigger remains pending; Agent/Hermes are not restarted by this work |
+| MAC-WAN | Linux x86_64 user `macos`; encrypted receiver, health timer, online identity/isolated recovery. First scheduled daily backup succeeds at 11:30-11:31 Asia/Shanghai and its health report at 11:34; Agent/Hermes are not restarted by this work |
 | Acceptance | Prior Hermes disposable CLI writes pass; dsh records earlier owner history/audit/API-key acceptance. No new owner UI session for v1.7.14; public401 is not authenticated acceptance. Complete caller inventory remains separate |
 
 Latest delivery: v1.7.14 adds private default-theme cache history; see
@@ -49,8 +50,8 @@ default-theme cache state remains in the existing Performance profiles page; see
 The prior v1.7.8 node uptime history remains; see
 [`UPTIME-HISTORY.md`](./UPTIME-HISTORY.md) for data/retention and rollback limits.
 The previous OVH scheduled archive is historical; the replacement MAC-WAN
-first scheduled nightly trigger, independent-media restore and real incident
-delivery remain unverified.
+first scheduled daily trigger succeeds on 2026-10-29. Independent-media restore
+and real incident delivery remain unverified.
 
 ## v1.7.14 rollout (2026-10-29 approximately 11:12 Asia/Shanghai)
 

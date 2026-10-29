@@ -14,14 +14,14 @@ Nekomari's own.
 - After the owner relinquishes OVH and confirms removal of its node, replace
   the old backup receiver with restricted MAC-WAN encrypted backup and health
   user services. Initial current-13-node recovery, independent online-host
-  ciphertext copy and health-timer trigger pass; the first new daily trigger
-  and independent-media recovery are still pending. Retire three OVH backup/
-  health SSH authorizations. Historical unencrypted OVH backups may contain
+  ciphertext copy and health-timer trigger pass. The first scheduled MAC-WAN
+  daily backup and subsequent health report succeed; independent-media recovery
+  is still pending. Retire three OVH backup/health SSH authorizations. Historical unencrypted OVH backups may contain
   credentials; disk sanitization remains unverified. See `docs/MAC-WAN-BACKUP.md`.
 - Restore MAC-WAN backup-health access after verifying its changed public
   egress address, without widening its forced-command SSH keys or disturbing
   the separate `bero-backup-pull` key confirmed by the owner. The first daily
-  MAC-WAN backup trigger and an independent-media restore are still pending.
+  MAC-WAN backup trigger later succeeds; independent-media restore remains pending.
 
 ## [v1.7.14] - 2026-10-29
 
