@@ -4,14 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
 )
 
 type batchSeriesGroupKey struct {
-	resolution time.Duration
-	needDigest bool
+	resolution   time.Duration
+	needDigest   bool
+	alignedStart bool
 }
 
 type batchSeriesGroup struct {
@@ -47,14 +49,15 @@ type rollupAggregateState struct {
 }
 
 type metricSeriesAccumulator struct {
-	spec        BatchSeriesSpec
-	compression float64
-	needDigest  bool
-	needSummary bool
-	needRate    bool
-	groups      map[rollupKey]*rollupAggregateState
-	rateGroups  map[rollupKey]*rollupAggregateState
-	windowStart int64
+	spec         BatchSeriesSpec
+	compression  float64
+	needDigest   bool
+	needSummary  bool
+	needRate     bool
+	groups       map[rollupKey]*rollupAggregateState
+	rateGroups   map[rollupKey]*rollupAggregateState
+	windowStart  int64
+	alignedStart bool
 }
 
 // SeriesBatch is the single rollup query implementation. It resolves metric
@@ -100,10 +103,15 @@ func (s *Store) seriesBatchAt(ctx context.Context, query BatchSeriesQuery, now t
 	groups := make(map[batchSeriesGroupKey]*batchSeriesGroup)
 	for _, spec := range query.Specs {
 		values := make(map[Aggregation][]AggregatePoint, len(spec.Aggregations))
+		windowStart := query.Start.UnixMilli()
+		if spec.AlignedStart {
+			windowStart = ceilMillis(query.Start)
+		}
 		accumulator := &metricSeriesAccumulator{
 			spec: spec, compression: s.cfg.RollupPolicy.compression(),
-			windowStart: query.Start.UnixMilli(),
-			groups:      make(map[rollupKey]*rollupAggregateState), rateGroups: make(map[rollupKey]*rollupAggregateState),
+			windowStart:  windowStart,
+			alignedStart: spec.AlignedStart,
+			groups:       make(map[rollupKey]*rollupAggregateState), rateGroups: make(map[rollupKey]*rollupAggregateState),
 		}
 		for _, aggregation := range spec.Aggregations {
 			values[aggregation] = []AggregatePoint{}
@@ -147,7 +155,7 @@ func (s *Store) seriesBatchAt(ctx context.Context, query BatchSeriesQuery, now t
 			resolution = forced
 		}
 		result.Resolutions[spec.MetricName] = resolution
-		key := batchSeriesGroupKey{resolution: resolution, needDigest: accumulator.needDigest}
+		key := batchSeriesGroupKey{resolution: resolution, needDigest: accumulator.needDigest, alignedStart: spec.AlignedStart}
 		group := groups[key]
 		if group == nil {
 			group = &batchSeriesGroup{key: key, metricNames: make(map[string]struct{})}
@@ -174,9 +182,11 @@ func (s *Store) seriesBatchAt(ctx context.Context, query BatchSeriesQuery, now t
 		if orderedGroups[i].key.resolution != orderedGroups[j].key.resolution {
 			return orderedGroups[i].key.resolution < orderedGroups[j].key.resolution
 		}
+		if orderedGroups[i].key.alignedStart != orderedGroups[j].key.alignedStart {
+			return !orderedGroups[i].key.alignedStart
+		}
 		return !orderedGroups[i].key.needDigest && orderedGroups[j].key.needDigest
 	})
-
 	s.rollupViewMu.RLock()
 	defer s.rollupViewMu.RUnlock()
 	for _, group := range orderedGroups {
@@ -329,13 +339,41 @@ func (s *Store) renderPersistedRollupRead(ctx context.Context, query BatchSeries
 	if err != nil || !found {
 		return renderedSQL{}, false, err
 	}
+	start := rollupStartMillis(query.Start, group.key.resolution.Milliseconds(), group.key.alignedStart)
 	return s.dialect.renderRollupRead(s.tables, s.rollupReadIndex(ctx, len(seriesIDs)), rollupReadPlan{
 		SeriesIDs:    seriesIDs,
 		ResolutionID: resolutionID,
-		StartMilli:   bucketStartMillis(query.Start.UnixMilli(), group.key.resolution.Milliseconds()),
+		StartMilli:   start,
 		EndMilli:     query.End.UnixMilli(),
 		Fields:       group.fields,
 	}), true, nil
+}
+
+func ceilMillis(t time.Time) int64 {
+	ms := t.UnixMilli()
+	if !t.Equal(time.UnixMilli(ms)) && ms < math.MaxInt64 {
+		return ms + 1
+	}
+	return ms
+}
+
+// Exclude the indivisible backing bucket that crosses the requested start.
+func rollupStartMillis(at time.Time, resolution int64, alignedStart bool) int64 {
+	start := at.UnixMilli()
+	if alignedStart {
+		start = ceilMillis(at)
+	}
+	if resolution <= 0 {
+		return start
+	}
+	bucket := bucketStartMillis(start, resolution)
+	if alignedStart && bucket < start {
+		if bucket > math.MaxInt64-resolution {
+			return math.MaxInt64
+		}
+		return bucket + resolution
+	}
+	return bucket
 }
 
 // readBudgetAfterScan charges one scanned row and reports a scan failure first.
@@ -400,7 +438,7 @@ func (s *Store) scanMemoryRollupGroup(ctx context.Context, query BatchSeriesQuer
 }
 
 func (s *Store) scanHotRollupGroup(ctx context.Context, query BatchSeriesQuery, group *batchSeriesGroup, seriesByIdentity map[seriesIdentity]*seriesReadMeta, accumulators map[string]*metricSeriesAccumulator) error {
-	start := bucketStartMillis(query.Start.UnixMilli(), time.Minute.Milliseconds())
+	start := rollupStartMillis(query.Start, time.Minute.Milliseconds(), group.key.alignedStart)
 	end := query.End.UnixMilli()
 	entityIDs := stringSet(query.EntityIDs)
 	s.hotMu.RLock()
@@ -433,7 +471,7 @@ func (s *Store) scanHotRollupGroup(ctx context.Context, query BatchSeriesQuery, 
 }
 
 func (s *Store) scanCoarseRollupGroup(ctx context.Context, query BatchSeriesQuery, group *batchSeriesGroup, seriesByIdentity map[seriesIdentity]*seriesReadMeta, accumulators map[string]*metricSeriesAccumulator) error {
-	start := bucketStartMillis(query.Start.UnixMilli(), group.key.resolution.Milliseconds())
+	start := rollupStartMillis(query.Start, group.key.resolution.Milliseconds(), group.key.alignedStart)
 	end := query.End.UnixMilli()
 	entityIDs := stringSet(query.EntityIDs)
 	s.coarseMu.RLock()
@@ -511,6 +549,9 @@ func stringSet(values []string) map[string]struct{} {
 
 func (a *metricSeriesAccumulator) consume(meta *seriesReadMeta, sourceBucket, count int64, sum, sumSq, min, max, firstVal float64, firstTS int64, lastVal float64, lastTS int64, digest *TDigest) *rollupAggregateState {
 	key := rollupKey{bucket: bucketStartMillis(sourceBucket, a.spec.Interval.Milliseconds())}
+	if a.alignedStart && key.bucket < a.windowStart {
+		key.bucket = a.windowStart
+	}
 	if a.spec.WholeWindow {
 		key.bucket = a.windowStart
 	}
@@ -534,7 +575,7 @@ func (a *metricSeriesAccumulator) consume(meta *seriesReadMeta, sourceBucket, co
 	}
 	if a.needRate {
 		rateKey := rollupKey{
-			bucket:   bucketStartMillis(sourceBucket, a.spec.Interval.Milliseconds()),
+			bucket:   key.bucket,
 			entityID: meta.entityID,
 			tagsHash: meta.tagsHash,
 		}

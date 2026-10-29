@@ -177,10 +177,12 @@ No whole-roadmap app goal change or new owner-session UI acceptance is claimed.
 
 **In development, not yet released:** refuse forecast inputs with missing or
 invalid required traffic directions, sum overflow or a direction decrease
-between selected buckets. This avoids combining an unknown value as zero or
-masking a direction reset with the other's growth. A zero in a refused row is
-not measured usage; intra-bucket resets remain undetectable with bucket maxima.
-See [`FORECAST-DIRECTIONS.md`](./FORECAST-DIRECTIONS.md).
+between selected buckets. An additional unaligned cycle-boundary correction
+excludes straddling backing buckets and retains the first partial output bucket;
+this can discard valid values from an indivisible backing bucket and does not
+prove the node's actual reset timezone. A zero in a refused row is not measured
+usage; intra-bucket resets remain undetectable with bucket maxima. See
+[`FORECAST-DIRECTIONS.md`](./FORECAST-DIRECTIONS.md).
 
 ### v1.7 release readiness (2026-10-28)
 

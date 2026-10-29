@@ -191,11 +191,11 @@ jobs:
           go-version: '1.27.3'
           cache: true
           cache-dependency-path: go.sum
-      - name: Verify recovery bindings and sealed parents on both backends
+      - name: Verify recovery bindings, sealed parents and aligned reads on both backends
         env:
           METRIC_POSTGRES_DSN: postgres://probe:recovery-fixture-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/recovery?sslmode=disable
           METRIC_MYSQL_DSN: probe:recovery-fixture-only@tcp(127.0.0.1:${{ job.services.mysql.ports[3306] }})/recovery?parseTime=true
-        run: go test -race -count=1 ./pkg/metric -run '^TestCoarseRecovery' -timeout 3m
+        run: go test -race -count=1 ./pkg/metric -run '^(TestCoarseRecovery|TestAlignedStartSQLIntegration)' -timeout 3m
 
   # Shell-level tests for the deployment scripts. Offline and hermetic: the
   # installer's own flags confine every write to a temp directory, so this needs

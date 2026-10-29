@@ -326,6 +326,11 @@ type BatchSeriesSpec struct {
 	WholeWindow bool
 	// FinestResolution keeps additive query coverage independent of output sizing.
 	FinestResolution bool
+	// AlignedStart excludes any backing bucket that straddles the query start,
+	// and labels the first partial output bucket with the query start instead
+	// of its earlier natural bucket boundary (rounded up to a whole millisecond).
+	// The discarded bucket may contain valid points; the end is not restricted.
+	AlignedStart bool
 }
 
 // BatchSeriesQuery combines per-metric rollup specifications that share the

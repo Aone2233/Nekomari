@@ -19,19 +19,37 @@ from urllib.error import URLError
 from urllib.request import HTTPCookieProcessor, ProxyHandler, Request, build_opener
 
 
-def seed_metrics(path, nodes, now):
+def seed_metrics(path, nodes, now, reset_day):
     with contextlib.closing(sqlite3.connect(path)) as db, db:
         db.execute("INSERT OR IGNORE INTO metric_resolutions (resolution_milli) VALUES (60000)")
+        db.execute("INSERT OR IGNORE INTO metric_resolutions (resolution_milli) VALUES (300000)")
+        db.execute("UPDATE metric_definitions SET retention_days=30 WHERE name IN ('traffic.up','traffic.down')")
         resolution = db.execute("SELECT id FROM metric_resolutions WHERE resolution_milli=60000").fetchone()[0]
+        five_minutes = db.execute("SELECT id FROM metric_resolutions WHERE resolution_milli=300000").fetchone()[0]
         label = hashlib.sha256(b"forecast-fixture").hexdigest()
         db.execute("INSERT OR IGNORE INTO metric_label_sets (labels_hash,labels) VALUES (?, '{}')", (label,))
         label_id = db.execute("SELECT id FROM metric_label_sets WHERE labels_hash=?", (label,)).fetchone()[0]
+        boundary = now.replace(day=reset_day, hour=0, minute=0, second=0, microsecond=0)
+        if boundary > now:
+            previous = boundary.replace(day=1) - dt.timedelta(days=1)
+            boundary = previous.replace(day=reset_day)
         for node, kind in nodes:
             for direction in ("up", "down"):
                 name = "traffic." + direction
                 assert db.execute("SELECT 1 FROM metric_definitions WHERE name=?", (name,)).fetchone()
                 series = db.execute("INSERT INTO metric_series (metric_name,entity_id,tags_hash,tags) VALUES (?,?,?,?)",
                                     (name, node, hashlib.sha256(b"{}").hexdigest(), "{}")).lastrowid
+                if kind == "boundary":
+                    for day in range(6):
+                        timestamp = int((boundary + dt.timedelta(minutes=5, days=day)).timestamp() // 300 * 300000)
+                        value = (day + 1) * (100 if direction == "up" else 50)
+                        db.execute("""INSERT INTO metric_rollups
+                            (series_id,resolution_id,label_id,bucket_milli,count,sum,sum_sq,min_val,max_val,
+                             first_val,first_ts_milli,last_val,last_ts_milli,digest,created_at_milli)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?)""",
+                                   (series, five_minutes, label_id, timestamp, 1, value, value*value, value, value,
+                                    value, timestamp, value, timestamp, timestamp))
+                    continue
                 for day in range(6, 0, -1):
                     if kind in ("gap", "up") and direction == "down" and day == 3:
                         continue
@@ -113,18 +131,18 @@ def main():
                 wait("/api/public")
                 assert call("/api/login", {"username": "forecast-test", "password": password})["status"] == "success"
                 nodes = [(call("/api/admin/client/add", {"name": "Forecast " + kind})["uuid"], kind)
-                         for kind in ("complete", "gap", "reset", "up", "empty")]
+                         for kind in ("complete", "gap", "reset", "up", "empty", "boundary")]
                 for uuid, kind in nodes:
                     assert call(f"/api/admin/client/{uuid}/edit", {"traffic_limit": 10000,
                         "traffic_limit_type": "up" if kind == "up" else "sum"})["status"] == "success"
                 stop()
                 now = dt.datetime.now(dt.timezone.utc)
-                seed_metrics(scratch / "data/metrics.db", [(uuid, kind) for uuid, kind in nodes if kind != "empty"], now)
+                # Reset day 8 days ago makes this fixture independent of the calendar day.
+                reset_day = (now - dt.timedelta(days=8)).day
+                seed_metrics(scratch / "data/metrics.db", [(uuid, kind) for uuid, kind in nodes if kind != "empty"], now, reset_day)
                 start()
                 wait("/api/public")
                 assert call("/api/login", {"username": "forecast-test", "password": password})["status"] == "success"
-                # Reset day 8 days ago makes this fixture independent of the calendar day.
-                reset_day = (now - dt.timedelta(days=8)).day
                 response = call("/api/rpc2", {"jsonrpc": "2.0", "id": 1,
                     "method": "admin:getTrafficForecast", "params": {"reset_day": reset_day}})
                 assert "error" not in response, response.get("error")
@@ -132,8 +150,10 @@ def main():
                 assert len(rows) == len(nodes)
                 for uuid, kind in nodes:
                     row = rows[uuid]
-                    if kind in ("complete", "up"):
-                        assert row["method"] == "linear_rate" and row["used_bytes_known"] and row["used_bytes"] == (900 if kind == "complete" else 600), row
+                    if kind in ("complete", "up", "boundary"):
+                        assert row["method"] == "linear_rate" and row["used_bytes_known"] and row["used_bytes"] == (600 if kind == "up" else 900), row
+                        if kind == "boundary":
+                            assert row["basis"]["samples"] == 6 and row["used_bytes"] == 900, row
                     elif kind == "empty":
                         assert row["method"] == "insufficient" and not row["used_bytes_known"] and row["projected_bytes"] == 0, row
                     else:
@@ -143,7 +163,7 @@ def main():
         finally:
             stop()
     print(json.dumps({"status": "passed", "version": version, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
-                      "scenarios": ["complete sum", "missing direction", "masked direction reset", "single direction", "no observations"],
+                      "scenarios": ["complete sum", "missing direction", "masked direction reset", "single direction", "no observations", "cycle boundary first bucket"],
                       "synthetic_only": True, "scratch_removed": True}))
     return 0
 

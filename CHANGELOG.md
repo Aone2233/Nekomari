@@ -8,6 +8,11 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Exclude backing rollup buckets that straddle a forecast's billing-cycle
+  start, and retain the partial output bucket under the cycle-start label.
+  Post-boundary data inside a discarded backing bucket remains unavailable;
+  the label is not an exact sampling instant. Other metric queries keep their
+  existing overlap behavior, and no stored history is rewritten.
 - Refuse traffic forecasts when a required direction is absent, invalid,
   overflows a combined total or decreases between selected buckets. One-way
   limits use only their own direction. This avoids treating unknown values as
