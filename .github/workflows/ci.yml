@@ -130,6 +130,8 @@ jobs:
         run: python3 -W error::ResourceWarning deploy/geoip-empty-cache-smoke.py --panel-binary ./nekomari
       - name: Check backup freshness notifications in a synthetic Panel
         run: python3 -W error::ResourceWarning deploy/backup-health-smoke.py --panel-binary ./nekomari
+      - name: Check offline maintenance and grace in a synthetic Panel
+        run: python3 -W error::ResourceWarning deploy/offline-maintenance-smoke.py --panel-binary ./nekomari
       - name: Check overlapping SLA task generations in a synthetic Panel
         run: python3 -W error::ResourceWarning deploy/sla-generations-smoke.py --panel-binary ./nekomari
       - name: Check incomplete traffic forecast directions in a synthetic Panel
@@ -432,6 +434,7 @@ jobs:
           go test -race ./utils/geoip -count=1 -run 'TestGeoIP|TestUpdateDatabase'
           go test -race ./web/public -count=1 -run 'TestThemeCacheSnapshot|TestThemeCacheDisabled|TestAnUnwritableCache'
           go test -race ./internal/backupwatch ./utils/messageSender/...
+          go test -race ./utils/notifier -count=1
           go test -race ./internal/sla
           go test -race ./database/accounts ./web/api/public -count=10 -shuffle=on
           go test -race ./web/oauth/... ./web/security ./web/upload
