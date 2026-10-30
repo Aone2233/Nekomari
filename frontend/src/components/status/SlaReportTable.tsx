@@ -29,12 +29,10 @@ import {
  *
  *   - **`has_data === false` is not 0%.** It renders as "no data", because a fraction of
  *     zero with no evidence behind it is the shape a dead node takes.
- *   - **Coverage is shown beside availability, never instead of it.** A node that
- *     reported half a window and was up for all of it is not the same as one that
- *     reported throughout, and one number cannot say both.
- *   - **A reporting gap is not an outage.** It is listed as a gap, in its own column,
- *     because the panel does not know the node was down — only that it stopped
- *     reporting, which is a different claim.
+ *   - **Span coverage is not window coverage or freshness.** Show the bounds alongside
+ *     it, including for individual tasks, rather than implying trailing silence is covered.
+ *   - **A ping reporting gap is not a node outage.** The node row is built from ping
+ *     results, not from a complete record of agent or host availability.
  */
 
 export interface SlaReportTableProps {
@@ -81,8 +79,8 @@ const NodeSection: React.FC<{
   name: string;
   taskNames?: Record<string, string>;
 }> = ({ node, name, taskNames }) => {
-  const { t } = useTranslation();
-  // 空串表示「没有可解释的东西」：0 和缺失都是常态，渲染一条 "0m" 会暗示发生过排除。
+  const { t, i18n } = useTranslation();
+  const language = normalizeLanguage(i18n.language) || undefined;
   const maintenanceExcluded = maintenanceExcludedText(node.maintenance_excluded_seconds);
 
   return (
@@ -91,8 +89,6 @@ const NodeSection: React.FC<{
         <Flex align="center" justify="between" gap="2" wrap="wrap">
           <Heading size="4">{name}</Heading>
           <Flex gap="2" align="center" wrap="wrap">
-            {/* 维护窗口把时间从可用率的两边一起扣掉，所以覆盖率会低于按钟表算的窗口。
-                把被排除的时长放在节点这一行，差额才是可解释的，而不是像节点少报了数据。 */}
             {maintenanceExcluded && (
               <Badge
                 color="amber"
@@ -102,14 +98,22 @@ const NodeSection: React.FC<{
                 {t("maintenance.title")} · {maintenanceExcluded}
               </Badge>
             )}
-            <Badge data-testid="sla-node-presence" data-coverage={node.presence.coverage.toFixed(4)}>
-              {coverageText(
-                node.presence.observed_buckets,
-                node.presence.expected_buckets,
-                node.presence.coverage,
-                t,
+            <Flex direction="column" align="end" gap="1">
+              <Badge data-testid="sla-node-presence" data-coverage={node.presence.coverage.toFixed(4)}>
+                {t("status.nodePingSpan")}: {coverageText(
+                  node.presence.observed_buckets,
+                  node.presence.expected_buckets,
+                  node.presence.coverage,
+                  t,
+                )}
+              </Badge>
+              {node.presence.observed_buckets > 0 && (
+                <Text size="1" color="gray" data-testid="sla-node-observed-range">
+                  {t("status.firstBucket")}: {formatTime(node.presence.first_data, language)} ·{" "}
+                  {t("status.lastBucket")}: {formatTime(node.presence.last_data, language)}
+                </Text>
               )}
-            </Badge>
+            </Flex>
           </Flex>
         </Flex>
 
@@ -125,7 +129,7 @@ const NodeSection: React.FC<{
               <Table.Row>
                 <Table.ColumnHeaderCell>{t("status.task")}</Table.ColumnHeaderCell>
                 <Table.ColumnHeaderCell>{t("status.availability")}</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>{t("status.coverage")}</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>{t("status.spanCoverage")}</Table.ColumnHeaderCell>
                 <Table.ColumnHeaderCell>{t("status.latency")}</Table.ColumnHeaderCell>
                 <Table.ColumnHeaderCell>{t("status.outages")}</Table.ColumnHeaderCell>
               </Table.Row>
@@ -150,6 +154,12 @@ const NodeSection: React.FC<{
                       task.loss.presence.expected_buckets,
                       task.loss.presence.coverage,
                       t,
+                    )}
+                    {task.loss.presence.observed_buckets > 0 && (
+                      <Text as="div" size="1" color="gray" data-testid="sla-task-observed-range">
+                        {t("status.firstBucket")}: {formatTime(task.loss.presence.first_data, language)} ·{" "}
+                        {t("status.lastBucket")}: {formatTime(task.loss.presence.last_data, language)}
+                      </Text>
                     )}
                   </Table.Cell>
                   <Table.Cell data-testid="sla-task-latency">
@@ -253,6 +263,10 @@ export const SlaReportTable: React.FC<SlaReportTableProps> = ({
           )}
         </Text>
       </Flex>
+
+      <Text size="2" color="gray" data-testid="sla-coverage-explanation">
+        {t("status.coverageExplanation")}
+      </Text>
 
       {report.clamped && (
         <Text size="1" color="amber" data-testid="sla-clamped">

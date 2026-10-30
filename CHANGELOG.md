@@ -8,6 +8,11 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Clarify the SLA page's existing observed-span coverage and show first/last
+  bucket starts for each node and task. Ping-reporting gaps are not presented
+  as proof of node downtime. No SLA arithmetic or API field changes; a full
+  window-coverage measure remains separate. See `docs/SLA-COVERAGE.md`.
+
 ## [v1.7.18] - 2026-10-30
 
 - **Published and deployed on OC424 at approximately 22:34 Asia/Shanghai.**

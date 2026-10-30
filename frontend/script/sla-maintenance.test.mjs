@@ -13,11 +13,9 @@ import ts from 'typescript';
 /**
  * The SLA report's maintenance explanation (v1.6.18).
  *
- * The server removes window time from both sides of the availability ratio, so a node's coverage
- * can come out lower than the wall-clock window through no fault of the node. `NodeReport`
- * carries `maintenance_excluded_seconds` so the page can say why; without it the shortage reads
- * as a node that stopped reporting. Two properties are asserted, both of which a careless
- * implementation gets wrong:
+ * The server removes maintenance buckets from the span calculation. `NodeReport` carries the
+ * excluded wall-clock duration; that duration is not a full-window coverage denominator.
+ * Two properties are asserted, both of which a careless implementation gets wrong:
  *
  *   - **zero and absent render nothing.** "0m excluded" would suggest an exclusion that did not
  *     happen, and the overwhelming majority of reports have no window at all.

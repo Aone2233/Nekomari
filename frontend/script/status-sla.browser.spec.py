@@ -10,14 +10,11 @@ assertions below are about the definitions rather than about layout:
   * a node with no data must say so, and must **not** read "0.0%" — a silent node and a
     dead one would otherwise be indistinguishable, and the silent case is the one
     nobody notices;
-  * coverage must be visible **beside** availability, because a node up for all of a
-    window it only partly reported is not the same as one that reported throughout;
+  * span coverage must not be presented as coverage of the whole selected window;
   * an outage on a task must not become an outage of the node;
   * a reporting gap must be labelled as a gap, not as downtime.
 
-The fixture takes the report as a prop, so every state is reachable by URL without a
-server. English resources only: what is asserted is which figures appear, not in which
-language.
+The fixture takes the report as a prop and uses the real English and Chinese resources.
 """
 
 import socket
@@ -96,11 +93,14 @@ class SlaReportBrowserTest(unittest.TestCase):
         cls._stop()
         cls.output.close()
 
-    def open(self, state: str):
-        page = self.browser.new_page()
+    def open(self, state: str, lang="en", mobile=False):
+        page = self.browser.new_page(
+            viewport={"width": 390 if mobile else 1280, "height": 844 if mobile else 900},
+            timezone_id="UTC",
+        )
         self.errors = []
         page.on("pageerror", lambda error: self.errors.append(str(error)))
-        page.goto(f"{self.base}?state={state}")
+        page.goto(f"{self.base}?state={state}&lang={lang}&theme={'dark' if mobile else 'light'}")
         expect(page.locator('[data-testid="status-page"], [data-testid="sla-report"],'
                             ' [data-testid="sla-loading"], [data-testid="sla-error"]').first).to_be_visible()
         return page
@@ -151,6 +151,8 @@ class SlaReportBrowserTest(unittest.TestCase):
             expect(availability).not_to_contain_text("0.0%")
             expect(row.locator('[data-testid="sla-task-coverage"]')).to_contain_text("no data")
             expect(row.locator('[data-testid="sla-task-latency"]')).to_contain_text("no data")
+            expect(page.locator('[data-testid="sla-node-observed-range"]')).to_have_count(0)
+            expect(page.locator('[data-testid="sla-task-observed-range"]')).to_have_count(0)
         finally:
             self.teardown_page(page)
 
@@ -169,17 +171,58 @@ class SlaReportBrowserTest(unittest.TestCase):
         finally:
             self.teardown_page(page)
 
+    def test_empty_node_presence_does_not_claim_no_ping_results_when_task_has_data(self):
+        page = self.open("taskonly")
+        try:
+            expect(page.locator('[data-testid="sla-node-nodata"]')).to_have_count(0)
+            expect(page.locator('[data-testid="sla-node-observed-range"]')).to_have_count(0)
+            expect(page.locator('[data-testid="sla-task-observed-range"]')).to_have_count(2)
+        finally:
+            self.teardown_page(page)
+
     def test_reporting_gaps_are_labelled_as_gaps(self):
         page = self.open("gaps")
         try:
             gaps = page.locator('[data-testid="sla-reporting-gaps"]')
             expect(gaps).to_be_visible()
-            expect(gaps).to_contain_text("Reporting gaps")
-            expect(gaps).to_contain_text("not outages")
+            expect(gaps).to_contain_text("Ping reporting gaps")
+            expect(gaps).to_contain_text("not proof of node downtime")
             # And the shortened window is stated rather than silently answered.
             expect(page.locator('[data-testid="sla-clamped"]')).to_be_visible()
             # Coverage reflects the missing stretch while the measured buckets are clean.
             expect(page.locator('[data-testid="sla-node-presence"]')).to_contain_text("40/60")
+        finally:
+            self.teardown_page(page)
+
+    def test_partial_span_is_not_shown_as_full_window_coverage(self):
+        page = self.open("partial")
+        try:
+            expect(page.locator('[data-testid="sla-node-presence"]')).to_contain_text("Ping span coverage")
+            expect(page.locator('[data-testid="sla-node-presence"]')).to_contain_text("100.0%")
+            expect(page.locator('[data-testid="sla-coverage-explanation"]')).to_contain_text(
+                "not across the whole selected window")
+            expect(page.locator('[data-testid="sla-coverage-explanation"]')).to_contain_text(
+                "not a live-status check")
+            expect(page.locator('[data-testid="sla-coverage-explanation"]')).to_contain_text(
+                "not agent uptime")
+            for testid in ("sla-node-observed-range", "sla-task-observed-range"):
+                observed = page.locator(f'[data-testid="{testid}"]')
+                expect(observed).to_contain_text("First observed bucket")
+                expect(observed).to_contain_text("Last observed bucket")
+                expect(observed).to_contain_text("12:09")
+                expect(observed).to_contain_text("UTC")
+            expect(page.locator('[data-testid="sla-task-table"]')).to_contain_text("Span coverage")
+        finally:
+            self.teardown_page(page)
+
+    def test_chinese_mobile_uses_real_localized_caveats(self):
+        page = self.open("partial", lang="zh_CN", mobile=True)
+        try:
+            expect(page.locator('[data-testid="sla-coverage-explanation"]')).to_contain_text("并非整个所选时间窗")
+            expect(page.locator('[data-testid="sla-coverage-explanation"]')).to_contain_text("不代表实时状态")
+            expect(page.locator('[data-testid="sla-node-presence"]')).to_contain_text("Ping 观测区间覆盖率")
+            expect(page.locator('[data-testid="sla-task-observed-range"]')).to_contain_text("末个观测桶")
+            expect(page.locator('body')).not_to_contain_text("status.coverageExplanation")
         finally:
             self.teardown_page(page)
 
@@ -226,6 +269,15 @@ class SlaReportBrowserTest(unittest.TestCase):
             expect(page.locator('[data-testid="sla-interval"]')).to_contain_text("60")
         finally:
             self.teardown_page(page)
+
+    def test_all_locales_include_the_observation_caveats(self):
+        import json
+
+        for locale in ("en", "zh_CN", "zh_TW", "ja_JP", "id_ID"):
+            strings = json.loads((ROOT / "src/i18n/locales" / f"{locale}.json").read_text())
+            for key in ("spanCoverage", "nodePingSpan", "firstBucket", "lastBucket",
+                        "coverageExplanation", "reportingGaps", "nodeNoData"):
+                self.assertTrue(strings["status"].get(key), f"{locale}: missing {key}")
 
 
 if __name__ == "__main__":

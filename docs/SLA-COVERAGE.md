@@ -1,6 +1,6 @@
 # What `Presence.Coverage` measures
 
-Status: clarification. Date: 2026-10-27. This document changes no behaviour: the
+Status: clarification and UI-only improvement in the pending batch. The server
 field keeps its current value, its name and its meaning. It exists because the
 field's name reads as one thing and its arithmetic computes another, and a
 number that is misread is worse than a number that is missing.
@@ -89,18 +89,33 @@ If window coverage is worth having, the compatible shape is:
 3. An explicit note that a complete series can read `coverage = 1` while
    `window_coverage < 1` when the requested window starts before the data does,
    so the two fields are not treated as duplicates by a reviewer.
-4. A pass over the consumers that currently treat `coverage` as freshness —
-   dashboards, alerts, the incident list — before any UI text changes.
+4. A pass over consumers before using the new field for alerts or freshness.
 5. A minimum two-minor deprecation window for any rename, per the compatibility
    policy in `LONG-TERM-PLAN.md`, and a stated migration note for stored figures.
 
 That is a decision for the owner, tracked in `OPEN-WORK.md` under "Numbers and
 correctness", not something this document decides.
 
-## What this document does not claim
+## Pending UI clarification
 
-No runtime change, no RPC field change, no schema change, no dashboard change.
-The field's code comment now states the span arithmetic it always performed. No
-production number is re-derived here, and the v1.7.4 delivery in
-`SLA-GENERATIONS.md` is unaffected: task-generation de-duplication runs before
-presence is computed and does not alter the denominator described above.
+The SLA page labels the existing ratio as **span** coverage and displays the
+first and last observed bucket starts for the node aggregate and each task, with
+the viewer's timezone. A bucket start is not the actual last report time; it may
+be coarse (the page displays the bucket width). A full span can still represent
+only part of the selected window, and the last bucket is not a live-status check.
+Maintenance buckets are excluded. Zero observed buckets show no data, not a
+timestamp or a measured zero. These timestamps are observations, not a derived
+full-window fraction.
+
+The node aggregate in this report is the union of its **ping task** results,
+not resource-metric or live WebSocket presence. An absence of ping data or a
+ping reporting gap is not proof that the agent or host was down; a node with no
+configured ping tasks can have no SLA data while reporting normally elsewhere.
+Trailing gaps are not filled to the end of the requested window. The text is
+shown on both the admin and standalone report, in all supported locales.
+
+No calculation, RPC field, schema, saved data, alert or backend behavior is
+changed. A separate window-coverage field and its boundary, cadence and
+maintenance semantics remain undecided. This patch does not establish SLO
+measurement or actual downtime, and has not yet been deployed. The v1.7.4
+task-generation correction remains unaffected.

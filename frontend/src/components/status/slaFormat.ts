@@ -84,7 +84,7 @@ export const availabilityText = (
   return percent(availability.fraction);
 };
 
-/** coverageText says how much of the window the figure was computed from. */
+/** coverageText formats the server's observed-span ratio, not full-window coverage. */
 export const coverageText = (
   observed: number,
   expected: number,
