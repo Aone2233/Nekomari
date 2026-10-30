@@ -239,6 +239,7 @@ func cycleTrafficSamplesWithStore(now time.Time, client models.Client, window cy
 			MetricName:   name,
 			Aggregations: []metric.Aggregation{metric.AggMax},
 			Interval:     interval,
+			AlignedStart: true,
 		})
 	}
 	result, err := store.SeriesBatch(context.Background(), metric.BatchSeriesQuery{

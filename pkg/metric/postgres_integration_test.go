@@ -235,6 +235,61 @@ func runSQLIntegration(t *testing.T, name string, cfg Config) {
 	}
 }
 
+func TestAlignedStartSQLIntegration(t *testing.T) {
+	for _, backend := range []struct {
+		name, env string
+		config    func(string, ...Option) Config
+	}{
+		{"postgres", "METRIC_POSTGRES_DSN", PostgreSQL},
+		{"mysql", "METRIC_MYSQL_DSN", MySQL},
+	} {
+		t.Run(backend.name, func(t *testing.T) {
+			dsn := os.Getenv(backend.env)
+			if dsn == "" {
+				t.Skip(backend.env + " is not set")
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			defer cancel()
+			cfg := backend.config(dsn)
+			cfg.TablePrefix = fmt.Sprintf("as_%d_", time.Now().UnixNano())
+			store, err := Open(ctx, cfg)
+			if err != nil {
+				t.Fatalf("open %s store: %v", backend.name, err)
+			}
+			defer store.Close()
+			defer dropIntegrationTables(t, store, cfg.TablePrefix)
+			assertIntegrationAlignedStart(t, ctx, store)
+		})
+	}
+}
+
+func assertIntegrationAlignedStart(t *testing.T, ctx context.Context, store *Store) {
+	t.Helper()
+	name := "integration.aligned_start"
+	if err := store.CreateMetric(ctx, Definition{Name: name, Type: TypeGauge, RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Now().UTC().Truncate(5 * time.Minute).Add(-time.Hour)
+	start := base.Add(2 * time.Minute)
+	rows := []PersistedRollup{
+		constantTransferRollup(name, "aligned-node", base, 5*time.Minute, 1000, start),
+		constantTransferRollup(name, "aligned-node", base.Add(5*time.Minute), 5*time.Minute, 100, start),
+	}
+	if err := store.ImportRollups(ctx, rows); err != nil {
+		t.Fatal(err)
+	}
+	query := BatchSeriesQuery{Specs: []BatchSeriesSpec{{MetricName: name, Aggregations: []Aggregation{AggMax}, Interval: time.Hour, AlignedStart: true}},
+		EntityIDs: []string{"aligned-node"}, Start: start, End: base.Add(10 * time.Minute)}
+	result, err := store.seriesBatchAt(ctx, query.normalized(), start.Add(time.Hour), map[string]time.Duration{name: 5 * time.Minute})
+	if err != nil {
+		t.Fatalf("aligned persisted read: %v", err)
+	}
+	points := result.Values[name][AggMax]
+	if len(points) != 1 || points[0].Value != 100 || !points[0].Bucket.Equal(start) {
+		t.Fatalf("aligned persisted read = %+v; want only the in-window value at %s", points, start)
+	}
+}
+
 func assertIntegrationLateReplacement(t *testing.T, ctx context.Context, store *Store) {
 	t.Helper()
 	const metricName = "late.replacement"

@@ -200,6 +200,61 @@ func TestCycleTrafficSamplesUsesActualStoreAndRefusesIncompleteHistory(t *testin
 	}
 }
 
+func TestCycleTrafficSamplesKeepTheFirstInCycleBucket(t *testing.T) {
+	ctx := context.Background()
+	store, err := metric.Open(ctx, metric.SQLite(":memory:", metric.WithMaxOpenConns(1), metric.WithRollupPolicy(metric.RollupPolicy{
+		Tiers:       []metric.RollupTier{{Interval: time.Minute, Retention: time.Hour}, {Interval: 5 * time.Minute, Retention: 90 * 24 * time.Hour}},
+		Compression: 30,
+	})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+	for _, name := range cycleTrafficMetricNames {
+		if err := store.CreateMetric(ctx, metric.Definition{Name: name, Type: metric.TypeGauge, RetentionDays: 90}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	start := time.Date(2026, 10, 2, 0, 2, 0, 0, time.UTC)
+	window := cycle.Cycle{Start: start, End: start.Add(30 * 24 * time.Hour)}
+	now := start.Add(6 * 24 * time.Hour)
+	var rows []metric.PersistedRollup
+	for index, name := range cycleTrafficMetricNames {
+		perDay := float64(100)
+		if index == 1 {
+			perDay = 50
+		}
+		for day := 0; day < 6; day++ {
+			bucket := start.Truncate(5 * time.Minute).Add(5*time.Minute + time.Duration(day)*24*time.Hour)
+			value := float64(day+1) * perDay
+			at := bucket.Add(time.Second)
+			rows = append(rows, metric.PersistedRollup{MetricName: name, EntityID: "node", Resolution: 5 * time.Minute,
+				Bucket: bucket, Count: 1, Sum: value, SumSq: value * value, Min: value, Max: value,
+				FirstValue: value, FirstTime: at, LastValue: value, LastTime: at, CreatedAt: now})
+		}
+		// This older bucket straddles the cycle boundary and belongs to the old cycle.
+		bucket := start.Truncate(5 * time.Minute)
+		at := start.Add(-time.Minute)
+		rows = append(rows, metric.PersistedRollup{MetricName: name, EntityID: "node", Resolution: 5 * time.Minute,
+			Bucket: bucket, Count: 1, Sum: 9000, SumSq: 81000000, Min: 9000, Max: 9000,
+			FirstValue: 9000, FirstTime: at, LastValue: 9000, LastTime: at, CreatedAt: now})
+	}
+	if err := store.ImportRollups(ctx, rows); err != nil {
+		t.Fatal(err)
+	}
+	samples, err := cycleTrafficSamplesWithStore(now, models.Client{UUID: "node", TrafficLimitType: "sum"}, window, store)
+	if err != nil {
+		t.Fatalf("cycle samples: %v", err)
+	}
+	if len(samples) != 6 || !samples[0].At.Equal(start) || samples[0].Total != 150 {
+		t.Fatalf("cycle samples = %+v; want the first post-boundary value at %s", samples, start)
+	}
+	projection := forecast.Compute(now, forecast.Request{CycleStart: window.Start, CycleEnd: window.End, Samples: samples, LimitBytes: 3000})
+	if projection.Method != forecast.MethodLinearRate || projection.Basis.Samples != 6 || projection.UsedBytes != 900 {
+		t.Fatalf("in-cycle projection = %+v", projection)
+	}
+}
+
 func TestCycleSamplesRejectInvalidOrOverflowingCounters(t *testing.T) {
 	base := time.Date(2026, 10, 13, 0, 0, 0, 0, time.UTC)
 	point := func(value float64) metric.AggregatePoint { return metric.AggregatePoint{Bucket: base, Value: value} }

@@ -27,9 +27,24 @@ field distinguishes unavailable from measured usage; the in-panel table
 renders unavailable usage as a dash. Older clients that ignore this field must
 not interpret a refused row's default zero as a measurement.
 
+Forecasts now use the metric store's opt-in aligned-start read. When a cycle
+start falls inside the chosen backing resolution, that indivisible backing
+bucket is excluded instead of mixing old-cycle values into the new cycle; a
+bucket starting exactly on the boundary is retained. This may discard valid
+post-boundary points from the same backing bucket. The first coarser output
+bucket is labelled with the cycle start rather than its earlier natural start,
+so it is not discarded by the forecast's window filter. Its timestamp is a
+bucket label, not an exact sampling instant: the timing/rate remains approximate.
+For an unaligned backing boundary, a cycle can briefly have no usable reading;
+the UI will show unknown rather than borrowing the previous cycle's usage.
+The query end retains existing store semantics and no other metric consumer
+opts into this behavior. Neither the node's actual reset timezone nor missed
+counter resets can be inferred from this alignment.
+
 Focused Go tests cover complete and one-way series, real store queries,
-missing/zero values, masked resets and numerical bounds. The isolated installed
-Panel smoke uses synthetic scratch data to check the authenticated forecast
-RPC for complete, missing, reset and one-way scenarios. These checks are not a
+missing/zero values, masked resets, numerical bounds and cycle-start backing
+alignment. The isolated installed Panel smoke uses synthetic scratch data to
+check the authenticated forecast RPC for complete, missing, reset, one-way and
+first-partial-bucket scenarios. These checks are not a
 claim of real fleet faults, a measured production incident, or complete v1.8
 forecast semantics.
