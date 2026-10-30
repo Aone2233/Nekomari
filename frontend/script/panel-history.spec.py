@@ -27,6 +27,21 @@ THEME_METRICS = ["panel.theme_cache.disk_state", "panel.theme_cache.memory_loade
 THEME_FIELDS = ["theme_cache_disk", "theme_cache_memory_loaded"]
 
 
+def wait_for_startup_sample(fetch, timeout=15):
+    """Wait for the asynchronous immediate sampler, without inventing observations."""
+    deadline = time.monotonic() + timeout
+    while True:
+        status, headers, data = fetch()
+        assert status == 200 and "no-store" in headers.get("Cache-Control", "")
+        points = data["data"]["points"]
+        if any(point["theme_cache_disk"] is not None and point["theme_cache_memory_loaded"] is not None
+               for point in points):
+            return data
+        if time.monotonic() >= deadline:
+            raise AssertionError("startup theme-cache sample not visible before deadline")
+        time.sleep(0.1)
+
+
 def run(binary, output):
     os.umask(0o077)
     with socket.socket() as sock:
@@ -110,8 +125,7 @@ def run(binary, output):
                     assert "result" in definitions and all(m not in json.dumps(definitions) for m in METRICS + POOL_METRICS + THEME_METRICS)
                     for name in METRICS + POOL_METRICS + THEME_METRICS:
                         assert "error" in rpc("public:queryMetrics", {"metric_key": name, "hours": 1}, client, key)
-                status, headers, data = call(path)
-                assert status == 200 and "no-store" in headers.get("Cache-Control", "")
+                data = wait_for_startup_sample(lambda: call(path))
                 history = data["data"]
                 assert all(history["retention_days"][name] == 1 for name in METRICS)
                 assert all(history["retention_days"][name] == 1 for name in POOL_METRICS)

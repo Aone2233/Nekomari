@@ -23,6 +23,14 @@ from the operational MAC-WAN backup-health watcher. The v1.7.18 preview
 reports these options as unsupported; it does not enable them. See
 [`ALERT-RULE-PREVIEW.md`](./ALERT-RULE-PREVIEW.md).
 
+**CI follow-up (2026-10-31):** exact merge CI41111906239 for the pending SLA
+span clarification failed 7/8: the existing panel-history smoke asserted a
+theme-cache sample immediately after startup. The scheduler starts that sample
+on a goroutine; the test now waits a bounded 15 seconds for a real observed
+pair and still fails if none appears. This addresses a plausible startup race,
+not a proven root cause of that particular failure. A new exact-merge CI and
+all normal release gates remain required; no v1.7.19 release is implied.
+
 **Current operational checkpoint (2026-10-30 22:38 Asia/Shanghai):** OC424 is
 healthy/restart0 on **v1.7.18/8dbfd8c**. Candidate CI41066053281 and exact
 merge CI41067514587 pass 8/8; release41068843126 passes 10/10 and
