@@ -1,6 +1,6 @@
 # What `Presence.Coverage` measures
 
-Status: clarification and UI-only improvement in the pending batch. The server
+Status: clarification and UI-only improvement released in v1.7.19. The server
 field keeps its current value, its name and its meaning. It exists because the
 field's name reads as one thing and its arithmetic computes another, and a
 number that is misread is worse than a number that is missing.
@@ -96,7 +96,7 @@ If window coverage is worth having, the compatible shape is:
 That is a decision for the owner, tracked in `OPEN-WORK.md` under "Numbers and
 correctness", not something this document decides.
 
-## Pending UI clarification
+## UI clarification
 
 The SLA page labels the existing ratio as **span** coverage and displays the
 first and last observed bucket starts for the node aggregate and each task, with
@@ -117,5 +117,7 @@ shown on both the admin and standalone report, in all supported locales.
 No calculation, RPC field, schema, saved data, alert or backend behavior is
 changed. A separate window-coverage field and its boundary, cadence and
 maintenance semantics remain undecided. This patch does not establish SLO
-measurement or actual downtime, and has not yet been deployed. The v1.7.4
-task-generation correction remains unaffected.
+measurement or actual downtime. OC424 runs v1.7.19; the published binary passed
+four isolated MAC-WAN desktop/mobile and light/dark browser cases. Actual owner
+session acceptance remains open. The v1.7.4 task-generation correction remains
+unaffected. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).

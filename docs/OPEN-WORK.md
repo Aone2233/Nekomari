@@ -23,15 +23,41 @@ from the operational MAC-WAN backup-health watcher. The v1.7.18 preview
 reports these options as unsupported; it does not enable them. See
 [`ALERT-RULE-PREVIEW.md`](./ALERT-RULE-PREVIEW.md).
 
-**CI follow-up (2026-10-31):** exact merge CI41111906239 for the pending SLA
-span clarification failed 7/8: the existing panel-history smoke asserted a
+**CI follow-up (2026-10-31):** exact merge CI41111906239 for the SLA span
+clarification failed 7/8: the existing panel-history smoke asserted a
 theme-cache sample immediately after startup. The scheduler starts that sample
 on a goroutine; the test now waits a bounded 15 seconds for a real observed
 pair and still fails if none appears. This addresses a plausible startup race,
-not a proven root cause of that particular failure. A new exact-merge CI and
-all normal release gates remain required; no v1.7.19 release is implied.
+not a proven root cause of that particular failure. Test-fix candidate
+CI41113452947 and the subsequent exact merge CI41114880987 pass 8/8; the
+original failure remains part of the record.
 
-**Current operational checkpoint (2026-10-30 22:38 Asia/Shanghai):** OC424 is
+**Current operational checkpoint (2026-10-31 03:48 Asia/Shanghai):** OC424 is
+healthy/restart0 on **v1.7.19/cf221de**. Exact merge CI41114880987 passes 8/8,
+release41116050542 10/10 and Docker41117063818 2/2. Linux panel/Agent
+checksums and attestations, both architectures of both OCI identities and
+the native panel binaries verify. The released panel passes four isolated
+MAC-WAN SLA browser cases. OC424 upgrade9/9, public27/27, scoped
+forecast13rows and 13 fresh CPU/uptime reporters pass. Node identity digest,
+API-key scopes/expiry, SSH keys, GeoIP and local Agent remained unchanged during
+the switch. This
+clarifies existing observed-span coverage; full-window coverage semantics,
+owner-session UI and actual incident receipt remain open.
+
+Fresh manual pre/post encrypted backups have matching MAC-WAN `incoming/` and
+online executor copies. Pre restores under pinned v1.7.18/v1.7.19; post under
+v1.7.19. Post compares 21,140 archived rows across 12 histories: zero
+in-retention rows missing or changed; 48 expired or inactive-tier rows absent.
+The 03:35 automatic health report succeeded before manual backups; it checks
+`scheduled/` and does not verify those archives or the next daily timer via the
+new route (2026-10-31 11:30 Asia/Shanghai). Scheduled retention remains 14/14
+pairs; the next successful receive applies existing `keep=14` and retires its
+oldest eligible pair, with a matching `incoming/` copy already verified.
+Independent-media restore and OVH disk sanitization are unverified. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and
+[`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
+
+**Historical operational checkpoint (2026-10-30 22:38 Asia/Shanghai):** OC424 is
 healthy/restart0 on **v1.7.18/8dbfd8c**. Candidate CI41066053281 and exact
 merge CI41067514587 pass 8/8; release41068843126 passes 10/10 and
 Docker41071110757 2/2. Published binary provenance, dual-platform images and

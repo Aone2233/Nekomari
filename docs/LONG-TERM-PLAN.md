@@ -37,9 +37,30 @@ its exit criteria are met, not when the calendar says so.
 | `v2.0.0` | 2027-Q2 | Agent and platform v2 | non-root agent default with capability/ICMP strategy; Windows/macOS agent support and footprint measurement; single protocol source (remove root/agent duplication); agent updater/rollback hardening; secrets at rest (session/2FA) with key management; optional DB encryption; 200-node capacity | Migration guide; protocol compatibility policy (two-minor deprecation); 200-node benchmark; no plaintext session/2FA secrets on new installs |
 | `v2.1.0` | 2027-Q3 | Scale and ecosystem | HA/read-replica evaluation, plugin/theme marketplace signing, multi-region backup, optional external metrics export | Scale/HA runbook; marketplace signature verification; backup across two providers |
 
-## Current Delivery Checkpoint (2026-10-30)
+## Current Delivery Checkpoint (2026-10-31)
 
-**Latest bounded delivery: v1.7.17 (2026-10-30 approximately 17:06
+**Latest bounded delivery: v1.7.19 (2026-10-31 approximately 03:45
+Asia/Shanghai).** The SLA page labels the existing observed-span coverage and
+shows first/last buckets without presenting ping gaps as node downtime. Server
+arithmetic and API fields remain unchanged; full-window semantics remain open.
+Exact merge CI41114880987 passes 8/8, release41116050542 10/10 and
+Docker41117063818 2/2. Published panel/Agent Linux provenance, dual-platform
+image identities, MAC-WAN isolated browser tests, fresh encrypted recoveries,
+OC424 upgrade9/9, public27/27 and all 13 fresh CPU/uptime reporters pass. The
+next daily backup through the new route, owner UI, actual incident receipt and
+independent-media recovery remain unverified. This does not complete v1.8 or
+the deferred 200-node work. See [`SLA-COVERAGE.md`](./SLA-COVERAGE.md),
+[`OPEN-WORK.md`](./OPEN-WORK.md) and [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+**Previous bounded delivery: v1.7.18 (2026-10-30 approximately 22:34
+Asia/Shanghai).** Administrator-only read-only previews explain current saved
+load/ping rules without modifying state or sending alerts. Unsupported
+`temp`, `backup_age` and `backup_ok` remain separate work. Candidate/merge CI,
+release, isolated browser/API verification, encrypted recovery and OC424
+continuity pass. Preview is not real notification delivery or the whole v1.8
+test-button acceptance. See [`ALERT-RULE-PREVIEW.md`](./ALERT-RULE-PREVIEW.md).
+
+**Previous delivery: v1.7.17 (2026-10-30 approximately 17:06
 Asia/Shanghai).** Offline alerts now respect both grace and maintenance when
 their boundaries cross, and reconnects cancel pending outages. Candidate/merge
 CI, release, dual-architecture artifacts, MAC-WAN isolated published-binary
