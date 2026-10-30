@@ -14,6 +14,15 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
+**Found during load-rule preview development:** `temp`, `backup_age` and
+`backup_ok` are offered in the load-rule UI but the scheduler's selected-metric
+lookup does not map them, so those rules cannot evaluate as configured. Do not
+silently enable them: backup unknown values and the existing `>=` comparison
+need explicit semantics and tests before a separate correction. This is distinct
+from the operational MAC-WAN backup-health watcher. The in-development preview
+reports these options as unsupported; no release or deployment is implied. See
+[`ALERT-RULE-PREVIEW.md`](./ALERT-RULE-PREVIEW.md).
+
 **Current operational checkpoint (2026-10-30 17:11 Asia/Shanghai):** OC424 is
 healthy/restart0 on **v1.7.17/0a9fd1d**. Candidate CI41026965107 and exact merge
 CI41028016613 pass 8/8; release41028983238 passes 10/10 and Docker41029876841

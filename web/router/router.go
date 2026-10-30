@@ -272,6 +272,7 @@ func registerAdminRoutes(r *gin.Engine) {
 			loadAlert.POST("/add", jsonRpc.Bind("admin:addLoadNotification"))
 			loadAlert.POST("/delete", jsonRpc.Bind("admin:deleteLoadNotification"))
 			loadAlert.POST("/edit", jsonRpc.Bind("admin:editLoadNotification"))
+			loadAlert.POST("/preview", jsonRpc.Bind("admin:previewLoadNotification"))
 		}
 	}
 

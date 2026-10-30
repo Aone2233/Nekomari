@@ -23,7 +23,7 @@ import {
   Select,
   TextField,
 } from "@radix-ui/themes";
-import { MoreHorizontal, Pencil, Trash } from "lucide-react";
+import { FlaskConical, MoreHorizontal, Pencil, Trash } from "lucide-react";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -226,6 +226,7 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
         {alert.interval} {t("time.minute")}
       </TableCell>
       <TableCell className="flex items-center gap-2">
+        <RulePreview alert={alert} />
         {/* 编辑按钮 */}
         <Dialog.Root open={editOpen} onOpenChange={setEditOpen}>
           <Dialog.Trigger>
@@ -436,6 +437,141 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
         </Dialog.Root>
       </TableCell>
     </TableRow>
+  );
+};
+
+type PreviewTarget = {
+  client?: string;
+  task?: string;
+  status: string;
+  samples?: number;
+  threshold?: number;
+  value?: number;
+  exceeding?: number;
+  required?: number;
+  maintenance: boolean;
+};
+
+type PreviewResult = {
+  evaluated_at: string;
+  window_start: string;
+  stored_cooldown_active: boolean;
+  targets: PreviewTarget[];
+};
+
+const RulePreview = ({ alert }: { alert: LoadAlert }) => {
+  const { t } = useTranslation();
+  const { nodeDetail } = useNodeDetails();
+  const [open, setOpen] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const [result, setResult] = React.useState<PreviewResult | null>(null);
+  const request = React.useRef<AbortController | null>(null);
+
+  React.useEffect(() => () => request.current?.abort(), []);
+
+  const changeOpen = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      request.current?.abort();
+      request.current = null;
+      setLoading(false);
+      setResult(null);
+      setError("");
+    }
+  };
+
+  const run = async () => {
+    if (!alert.id || request.current) return;
+    const controller = new AbortController();
+    request.current = controller;
+    setLoading(true);
+    setResult(null);
+    setError("");
+    try {
+      const response = await fetch("/api/admin/notification/load/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: alert.id }),
+        signal: controller.signal,
+      });
+      const body: unknown = await response.json().catch(() => null);
+      const envelope = body && typeof body === "object"
+        ? body as { status?: unknown; message?: unknown; data?: unknown }
+        : null;
+      if (!response.ok || envelope?.status !== "success") {
+        throw new Error(typeof envelope?.message === "string" && envelope.message
+          ? envelope.message : t("loadAlert.preview.error"));
+      }
+      const data = envelope.data as PreviewResult | undefined;
+      if (!data || !Array.isArray(data.targets) || data.targets.length > 50 ||
+          typeof data.evaluated_at !== "string" || !Number.isFinite(Date.parse(data.evaluated_at)) ||
+          typeof data.window_start !== "string" || !Number.isFinite(Date.parse(data.window_start)) ||
+          typeof data.stored_cooldown_active !== "boolean" || !data.targets.every((target) =>
+            target && typeof target.status === "string" && typeof target.maintenance === "boolean" &&
+            (target.client == null || typeof target.client === "string") &&
+            (target.task == null || typeof target.task === "string") &&
+            [target.samples, target.threshold, target.value, target.exceeding, target.required].every(
+              (value) => value == null || (typeof value === "number" && Number.isFinite(value)),
+            ),
+          )) {
+        throw new Error(t("loadAlert.preview.error"));
+      }
+      if (request.current === controller) setResult(data);
+    } catch (cause) {
+      if (request.current === controller && !controller.signal.aborted) {
+        setError(cause instanceof Error ? cause.message : t("loadAlert.preview.error"));
+      }
+    } finally {
+      if (request.current === controller) {
+        request.current = null;
+        setLoading(false);
+      }
+    }
+  };
+
+  return (
+    <Dialog.Root open={open} onOpenChange={changeOpen}>
+      <Dialog.Trigger>
+        <IconButton variant="soft" title={t("loadAlert.preview.button")}
+          aria-label={t("loadAlert.preview.button")} disabled={!alert.id}>
+          <FlaskConical size="16" />
+        </IconButton>
+      </Dialog.Trigger>
+      <Dialog.Content maxWidth="720px">
+        <Dialog.Title>{t("loadAlert.preview.title", { name: alert.name || `#${alert.id}` })}</Dialog.Title>
+        <Dialog.Description>{t("loadAlert.preview.description")}</Dialog.Description>
+        <p className="text-sm text-muted-foreground mt-2">{t("loadAlert.preview.caveat")}</p>
+        <Flex gap="2" align="center" className="mt-4">
+          <Button onClick={run} disabled={loading}>{loading ? t("loadAlert.preview.running") : t("loadAlert.preview.run")}</Button>
+        </Flex>
+        {error && <p role="alert" className="text-red-600 mt-3">{error}</p>}
+        {result && <div aria-live="polite" className="mt-4">
+          <p className="text-sm">{t("loadAlert.preview.window", {
+            start: new Date(result.window_start).toLocaleString(), end: new Date(result.evaluated_at).toLocaleString(),
+          })}</p>
+          <p className="text-sm mt-1">{t(result.stored_cooldown_active
+            ? "loadAlert.preview.cooldown_active" : "loadAlert.preview.cooldown_inactive")}</p>
+          {result.targets.length === 0 ? <p className="mt-3">{t("loadAlert.preview.no_targets")}</p> :
+            <div className="overflow-x-auto mt-3">
+              <Table>
+                <TableHeader><TableHead>{t("loadAlert.preview.target")}</TableHead><TableHead>{t("loadAlert.preview.result")}</TableHead><TableHead>{t("loadAlert.preview.details")}</TableHead></TableHeader>
+                <TableBody>{result.targets.map((target, index) => <TableRow key={`${target.client ?? ""}-${target.task ?? ""}-${index}`}>
+                  <TableCell>{target.client ? nodeDetail.find((node) => node.uuid === target.client)?.name || target.client : "—"}
+                    {target.task && <span> · {t("loadAlert.preview.task", { id: target.task })}</span>}</TableCell>
+                  <TableCell>{t(`loadAlert.preview.status.${target.status}`, { defaultValue: t("loadAlert.preview.status.unknown") })}
+                    {target.maintenance && <span className="block text-amber-700">{t("loadAlert.preview.maintenance")}</span>}</TableCell>
+                  <TableCell>{target.samples != null && <div>{t("loadAlert.preview.samples", { value: target.samples })}</div>}
+                    {target.threshold != null && <div>{t("loadAlert.preview.threshold", { value: target.threshold })}</div>}
+                    {target.value != null && <div>{t("loadAlert.preview.value", { value: target.value })}</div>}
+                    {target.exceeding != null && target.required != null && <div>{t("loadAlert.preview.counts", { exceeding: target.exceeding, required: target.required })}</div>}</TableCell>
+                </TableRow>)}</TableBody>
+              </Table>
+            </div>}
+        </div>}
+        <Flex justify="end" className="mt-4"><Dialog.Close><Button variant="soft">{t("common.close")}</Button></Dialog.Close></Flex>
+      </Dialog.Content>
+    </Dialog.Root>
   );
 };
 
