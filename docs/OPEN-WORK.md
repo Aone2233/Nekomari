@@ -14,7 +14,24 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**Current operational checkpoint (2026-10-30 15:16 Asia/Shanghai):** OC424 is
+**Current operational checkpoint (2026-10-30 15:59 Asia/Shanghai):** OC424 is
+healthy/restart0 on **v1.7.16/e7323c8**. Exact merge CI41021022614 passes 8/8,
+release41021806313 10/10 and Docker41022572275 2/2. The published binary's
+isolated scheduled-logging test passes, as do upgrade9/9, public27/27, scoped
+forecast13rows and 13 fresh CPU/uptime reports. The owner-added QWRT node and
+all other current UUIDs/tokens remain. The persistent forecast reset logs one
+warning instead of a minute-by-minute error; it still refuses that prediction.
+
+Manual pre/post encrypted backups have hash-matching MAC-WAN `incoming/` and
+additional online executor copies. The pre archive restores under pinned old
+and new images, the post under the new image; 12 selected histories show no
+missing in-retention or changed archived rows. The new proxy's automatic health
+timer works, but its next daily backup (2026-10-31 11:30 Asia/Shanghai), actual
+alert receipt, independent-media restore, OVH disk sanitization and owner UI
+acceptance remain unverified. A stable release may trigger other Agents with
+self-update enabled. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+**Historical operational checkpoint (2026-10-30 15:16 Asia/Shanghai):** OC424 was
 healthy/restart0 on **v1.7.15/7c13e50**. Exact push CI41016555952 passes 8/8,
 release41017359338 10/10 and Docker41018148539 2/2. Linux asset checksums and
 tag/source/workflow attestations, both architectures of both OCI images,
