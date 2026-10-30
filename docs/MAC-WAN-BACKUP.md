@@ -1,4 +1,4 @@
-# MAC-WAN backup receiver (updated 2026-10-29)
+# MAC-WAN backup receiver (updated 2026-10-30)
 
 This replaces the relinquished OVH receiver, not the separate offline-media
 requirement. On MAC-WAN, the `macos` systemd user manager has lingering enabled.
@@ -10,6 +10,29 @@ watcher. The receiver keeps 14 scheduled pairs in a dedicated directory;
 `incoming/`, the initial executor copy and prior release copies are not in that
 retention set. Actual incident delivery and independent-media restore remain
 separate; a manual success is not proof of a scheduled trigger.
+
+## 2026-10-30 automatic health and v1.7.15 recovery
+
+The first actual health timer through the pinned jump fires at 14:54:00 and
+finishes successfully at 14:54:07 Asia/Shanghai; OC424 receives `ok` for the
+14:35 backup. The daily timer via this route has **not** yet been observed; its
+next scheduled run is 2026-10-31 11:30. Two additional backups at 15:10 and
+15:13 are manual, not scheduled runs.
+
+For the OC424 v1.7.15 rollout, the pre archive
+`oc424-20261030T071020075093Z-116c8230c9ea.tar.gz.age` has SHA-256
+`a1f9640c944dd7289e7368be812e7faaeaffe27f69c100808dfcc5ee4f8b45bf`;
+the post archive `oc424-20261030T071329235896Z-66eff1d9703b.tar.gz.age` has
+SHA-256 `a15dbaccf376d543c714aafdae3e54a2ad2805b73d44d82a76c90a4b7580346b`.
+Separate regular copies in `incoming/` and the online executor match each
+ciphertext. The pre archive boots pinned v1.7.14 and v1.7.15 in network-free
+isolated scratch stores; the post boots v1.7.15 and compares 12 selected
+histories with zero missing in-retention or changed archived rows. Both DBs
+and the 13 current UUID/token digest verify; no restore plaintext or container
+remains. At 15:15 a manual health push reaches OC424 with the post-backup
+timestamp and `ok`. These online copies are not independent media, and actual
+alert delivery remains unverified. Release/rollback details are in
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
 ## 2026-10-30 interruption and pinned proxy repair
 
@@ -47,9 +70,10 @@ remaining. The initiating SSH observation was lost, but systemd/journal and the
 archive were checked later through the pre-existing pinned reverse tunnel. A
 manual 14:38:39 health run succeeds and OC424 receives the matching fresh `ok`.
 MAC-WAN Agent/Hermes and panel remain running; no node, credential, schedule or
-retention change. The first actual automatic health run on the new route and
-tomorrow's daily run must still be observed; a manual invocation does not prove
-the timers. Real alert dispatch was logged but receipt remains unverified.
+retention change. At this checkpoint the first actual automatic health run on
+the new route and tomorrow's daily run were not yet observed; see the newer
+checkpoint above for the subsequent health timer. Real alert dispatch was
+logged but receipt remains unverified.
 
 ## Initial evidence
 

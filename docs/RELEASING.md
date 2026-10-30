@@ -2,7 +2,17 @@
 
 ## Cut a release
 
-**Latest delivery: v1.7.7 (2026-10-28).** Immutable `8e1dafa`, exactCI40642445800
+**Latest delivery: v1.7.15 (2026-10-30).** Immutable `7c13e50`, exact push
+CI41016555952 8/8, release41017359338 10/10 and Docker41018148539 2/2.
+Published Linux checksums and tag/source/workflow attestations, dual-platform
+OCI identities, six published-binary forecast cases, fresh MAC-WAN pre/post
+encrypted recovery, OC424 upgrade9/9, public27/27 and 13 fresh reporters pass.
+Independent-media restore and owner-session UI remain unverified. Stable
+publication can trigger Agents with self-update enabled; do not treat an empty
+Agent source diff as proof that all running processes stay unchanged. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for exact images and rollback.
+
+**Prior delivery: v1.7.7 (2026-10-28).** Immutable `8e1dafa`, exactCI40642445800
 8/8, mergeCI40643111878 8/8, release40643116847 10/10, Docker40643699302
 2/2. Linux checksums/attestations, native images, ten actual published-binary
 embedded-admin browser scenarios on OVH and fresh MAC-WAN pinned-old/new

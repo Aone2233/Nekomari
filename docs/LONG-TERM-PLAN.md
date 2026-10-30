@@ -37,7 +37,23 @@ its exit criteria are met, not when the calendar says so.
 | `v2.0.0` | 2027-Q2 | Agent and platform v2 | non-root agent default with capability/ICMP strategy; Windows/macOS agent support and footprint measurement; single protocol source (remove root/agent duplication); agent updater/rollback hardening; secrets at rest (session/2FA) with key management; optional DB encryption; 200-node capacity | Migration guide; protocol compatibility policy (two-minor deprecation); 200-node benchmark; no plaintext session/2FA secrets on new installs |
 | `v2.1.0` | 2027-Q3 | Scale and ecosystem | HA/read-replica evaluation, plugin/theme marketplace signing, multi-region backup, optional external metrics export | Scale/HA runbook; marketplace signature verification; backup across two providers |
 
-## Current Delivery Checkpoint (2026-10-29)
+## Current Delivery Checkpoint (2026-10-30)
+
+**Latest delivery: v1.7.15 (2026-10-30 approximately 15:12 Asia/Shanghai).**
+Traffic forecasts refuse missing/decreasing directions and exclude backing
+buckets crossing a billing-cycle start. Unknown usage is no longer shown as
+zero. Exact push CI41016555952 passes 8/8, release41017359338 10/10 and
+Docker41018148539 2/2; published-binary forecast6/6, OC424 upgrade9/9,
+public27/27, scoped forecast13rows and all13 fresh CPU/uptime reporters pass.
+Fresh pre/post encrypted archives recover on MAC-WAN; the post recovery
+preserves 12 selected metric histories. The owner-added QWRT node is included
+in the current 13-client baseline, which differs from the earlier 13. The
+new proxy's automatic health timer passes, but its next daily backup, actual
+alert receipt, independent-media restore and owner UI remain unverified. This
+does not complete v1.8 or the deferred 200-node work. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and [`OPEN-WORK.md`](./OPEN-WORK.md).
+
+### Previous checkpoint (2026-10-29)
 
 **Operational supersession:** OVH is relinquished; the owner intentionally
 removed its node, leaving a 13-node baseline. MAC-WAN now receives encrypted
@@ -55,7 +71,7 @@ report again at 12:15-12:17 without an action here, but VT01 is stale again at
 12:20, last sample 12:17:22.908. The cause is unknown and no node or Agent has
 been changed. See [`OPEN-WORK.md`](./OPEN-WORK.md).
 
-**Latest delivery: v1.7.14 (2026-10-29 approximately 11:12 Asia/Shanghai).**
+**Prior delivery: v1.7.14 (2026-10-29 approximately 11:12 Asia/Shanghai).**
 The session-only Performance profiles page adds sampled default-theme disk
 and memory-cache history. Candidate CI40807334416 8/8, exact merge CI40808023833
 8/8, release40808682926 10/10 and Docker40809339436 2/2 pass. The published
