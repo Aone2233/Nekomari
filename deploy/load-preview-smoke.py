@@ -88,12 +88,12 @@ def main():
                     "metric":"cpu", "threshold":80, "ratio":.8, "interval":240})[1]
                 assert added["status"] == "success", added
                 rule = added["data"]["task_id"]
-                key = call("/api/admin/api-keys", {"name":"preview read-only", "scopes":["nodes:read"],
-                                                   "expires_days":1})[1]["data"]["token"]
+                api_key = call("/api/admin/api-keys", {"name":"preview read-only", "scopes":["nodes:read"],
+                                                       "expires_days":1})[1]["data"]["token"]
                 stop()
                 with contextlib.closing(sqlite3.connect(scratch / "data/komari.db")) as db, db:
-                    for key in ("geo_ip_enabled", "login_notification", "notification_enabled"):
-                        db.execute("INSERT OR REPLACE INTO configs (key,value) VALUES (?,?)", (key, "false"))
+                    for setting in ("geo_ip_enabled", "login_notification", "notification_enabled"):
+                        db.execute("INSERT OR REPLACE INTO configs (key,value) VALUES (?,?)", (setting, "false"))
                 now = dt.datetime.now(dt.timezone.utc)
                 with contextlib.closing(sqlite3.connect(scratch / "data/metrics.db")) as db, db:
                     db.execute("INSERT OR IGNORE INTO metric_resolutions (resolution_milli) VALUES (60000)")
@@ -112,10 +112,13 @@ def main():
                 start()
                 wait("/api/public")
                 assert call("/api/login", {"username":"preview-test", "password":password})[1]["status"] == "success"
+                key_headers = {"Authorization":"Bearer " + api_key}
+                code, response = call("/api/admin/database/size", opener=guest, headers=key_headers)
+                assert code == 200 and response["status"] == "success", response
                 assert call("/api/admin/notification/load/preview", {"id":rule}, opener=guest)[0] in (401, 403)
                 # A real, scoped key is denied even though the owner session is allowed.
                 assert call("/api/admin/notification/load/preview", {"id":rule}, opener=guest,
-                            headers={"Authorization":"Bearer " + key})[0] in (401, 403)
+                            headers=key_headers)[0] == 403
                 path = "/api/admin/notification/load/preview"
                 statuses = []
                 for _ in range(2):
@@ -132,7 +135,7 @@ def main():
         finally:
             stop()
     print(json.dumps({"status":"passed", "version":version, "binary_sha256":hashlib.sha256(binary.read_bytes()).hexdigest(),
-                      "checks":["guest-denial", "scoped-key-denial", "saved-rule-matched-twice", "last-notified-unchanged"],
+                      "checks":["scoped-key-control", "guest-denial", "scoped-key-denial", "saved-rule-matched-twice", "last-notified-unchanged"],
                       "statuses":statuses, "synthetic_only":True, "scratch_removed":True}))
 
 
