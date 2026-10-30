@@ -11,6 +11,22 @@ watcher. The receiver keeps 14 scheduled pairs in a dedicated directory;
 retention set. Actual incident delivery and independent-media restore remain
 separate; a manual success is not proof of a scheduled trigger.
 
+## 2026-10-30 v1.7.16 recovery
+
+The automatic health timer through the pinned proxy reports success at 15:45
+Asia/Shanghai and OC424 receives `ok`. The next daily backup on this route is
+2026-10-31 11:30 and remains unverified; the following backups are manual.
+Pre archive `oc424-20261030T075406033437Z-607bbb4c0e38.tar.gz.age` has SHA-256
+`826292cab618b85f42102269fe7b70ee833735323664f5d52ce865f800721150`; post
+archive `oc424-20261030T075714517609Z-e4c7a7e18e6c.tar.gz.age` has SHA-256
+`36247661623647edcdc727600c621a2523fe58eb3572755d33771d2a5dbb0581`.
+Separate regular `incoming/` and online executor copies match each checksum.
+Pre recovers under pinned v1.7.15/v1.7.16, post under v1.7.16, with both DBs
+and the 13-current-client UUID/token digest. Post compares 20,384 rows across
+12 histories: no retained rows missing or changed; 46 expired rows are absent.
+No network or host ports are used and scratch plaintext/container is removed.
+This is not an independent-media recovery or proof of real incident delivery.
+
 ## 2026-10-30 automatic health and v1.7.15 recovery
 
 The first actual health timer through the pinned jump fires at 14:54:00 and

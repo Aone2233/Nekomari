@@ -17,7 +17,51 @@ recovery remains unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
 schedule and 14-node acceptance statements below are history.
 
-## Superseding checkpoint (2026-10-30 15:16 Asia/Shanghai)
+## Current checkpoint (2026-10-30 15:59 Asia/Shanghai)
+
+OC424 runs **v1.7.16/e7323c8**, immutable source
+`e7323c86ed91828e3df9d21f33d9fb5acba34956`, in the pinned arm64 image
+`ghcr.io/aone2233/nekomari:v1.7.16@sha256:d47b91611613b5f0e54b95a6481f41773ca47365f562781c534f55422b56223f`.
+It became healthy at approximately 15:56, with zero container restarts.
+
+- Exact push CI41021022614 passes 8/8; release41021806313 passes 10/10 and
+  Docker41022572275 2/2, with the release run ID checked in both Docker jobs.
+  Linux checksums/tag-source-workflow attestations and panel/Agent image
+  identities for both architectures verify. Native panel binaries match the
+  assets. A published-binary isolated test on MAC-WAN observes two scheduled
+  minutes and one refusal warning, with no corresponding error.
+- OC424 upgrade9/9 and public27/27 pass. Both DB quick checks and schemas pass;
+  all 13 current clients report fresh CPU/uptime and their UUID/token digest is
+  unchanged. API-key scopes/expiry, GeoIP, backup health and local Agent PID
+  remain unchanged. Scoped read-only forecast returns 13 rows: 10 linear and
+  three insufficient, including two unknown-usage direction decreases. At
+  15:58, the live container has logged one decrease warning and no forecast
+  errors since startup. This brief observation is not a long-duration test or
+  an authenticated owner browser acceptance.
+- Manual pre archive `oc424-20261030T075406033437Z-607bbb4c0e38.tar.gz.age`
+  has SHA-256 `826292cab618b85f42102269fe7b70ee833735323664f5d52ce865f800721150`;
+  manual post archive `oc424-20261030T075714517609Z-e4c7a7e18e6c.tar.gz.age`
+  has SHA-256 `36247661623647edcdc727600c621a2523fe58eb3572755d33771d2a5dbb0581`.
+  Each has a separate MAC-WAN `incoming/` copy and matching online executor
+  copy. In isolated recovery, pre boots pinned v1.7.15 and v1.7.16, and post
+  boots v1.7.16 with the 13-client digest. Post compares 20,384 archived rows
+  across 12 histories: zero retained rows missing or changed; 46 expired rows
+  are absent. No independent-media recovery is claimed.
+- MAC-WAN's automatic health timer reports `ok` at 15:45; the next daily backup
+  through the new proxy is not yet observed (2026-10-31 11:30 Asia/Shanghai).
+  Independent-media restore, real incident receipt and OVH disk sanitization
+  remain unverified. OC424 root usage is approximately 48%; no broad cleanup.
+
+Root-private rollback evidence is
+`/opt/nekomari/rollbacks/v1.7.16-20261030T075600Z-42c6a780`; the previous
+image remains
+`ghcr.io/aone2233/nekomari:v1.7.15@sha256:f59636293282b351f0e5d34064f198d0b3040a5582b2bba83c9dd04f0c6a209c`.
+If rollback is needed, assess the current state and switch only the pinned
+compose/image, keeping live databases and current nodes. Never replace the live
+database with an old snapshot. No Agent was deliberately restarted or
+reconfigured; stable publication can still trigger enabled Agent self-updaters.
+
+## Historical checkpoint (2026-10-30 15:16 Asia/Shanghai)
 
 OC424 now runs **v1.7.15/7c13e50**, immutable source
 `7c13e509767e59742196be61ec98973b785c68c8`, in the pinned arm64 image

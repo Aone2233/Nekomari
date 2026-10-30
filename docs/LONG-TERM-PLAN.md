@@ -39,7 +39,18 @@ its exit criteria are met, not when the calendar says so.
 
 ## Current Delivery Checkpoint (2026-10-30)
 
-**Latest delivery: v1.7.15 (2026-10-30 approximately 15:12 Asia/Shanghai).**
+**Latest delivery: v1.7.16 (2026-10-30 approximately 15:56 Asia/Shanghai).**
+Repeated forecast input refusals are bounded by node/category while real store
+errors remain unsuppressed. Exact merge CI41021022614 passes 8/8,
+release41021806313 10/10 and Docker41022572275 2/2; published-binary scheduled
+logging, OC424 upgrade9/9, public27/27, scoped forecast13rows and 13 fresh
+CPU/uptime reporters pass. Fresh pre/post archives restore on MAC-WAN; the post
+comparison retains 12 selected histories. The next daily backup via the new
+route, real alert receipt, independent-media restore and owner UI remain
+unverified. This does not complete v1.8 or deferred 200-node work. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and [`OPEN-WORK.md`](./OPEN-WORK.md).
+
+**Previous delivery: v1.7.15 (2026-10-30 approximately 15:12 Asia/Shanghai).**
 Traffic forecasts refuse missing/decreasing directions and exclude backing
 buckets crossing a billing-cycle start. Unknown usage is no longer shown as
 zero. Exact push CI41016555952 passes 8/8, release41017359338 10/10 and

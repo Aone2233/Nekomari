@@ -8,6 +8,24 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.7.16] - 2026-10-30
+
+- **Published and deployed on OC424 at approximately 15:56 Asia/Shanghai.**
+  Immutable `e7323c86ed91828e3df9d21f33d9fb5acba34956`; exact push
+  CI41021022614 8/8, release41021806313 10/10 and Docker41022572275 2/2.
+  Published Linux checksums/attestations and panel/Agent dual-architecture
+  image identities verify. The published binary passes a scheduled-logging
+  test on MAC-WAN; OC424 upgrade9/9, public27/27, scoped forecast13rows and
+  13 fresh CPU/uptime reporters pass. Fresh encrypted pre/post archives restore
+  on MAC-WAN and have matching additional online copies. Owner-session UI,
+  independent-media recovery and the next daily backup on the new route are
+  not claimed. See `docs/DEPLOY-OC424.md`.
+- Rate-limit repeated expected forecast input refusals to one warning per node
+  and problem category per hour; an intervening successful read clears the
+  limiter. Different categories remain visible, and actual store errors stay
+  unsuppressed errors. The existing RPC error strings, forecast refusal and
+  used-percentage notification behavior do not change. No history is rewritten.
+
 ## [v1.7.15] - 2026-10-30
 
 - **Published and deployed on OC424 at approximately 15:12 Asia/Shanghai.**
