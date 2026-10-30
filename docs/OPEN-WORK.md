@@ -19,11 +19,33 @@ holds the evidence and the acceptance criteria for each item. This file is the l
 lookup does not map them, so those rules cannot evaluate as configured. Do not
 silently enable them: backup unknown values and the existing `>=` comparison
 need explicit semantics and tests before a separate correction. This is distinct
-from the operational MAC-WAN backup-health watcher. The in-development preview
-reports these options as unsupported; no release or deployment is implied. See
+from the operational MAC-WAN backup-health watcher. The v1.7.18 preview
+reports these options as unsupported; it does not enable them. See
 [`ALERT-RULE-PREVIEW.md`](./ALERT-RULE-PREVIEW.md).
 
-**Current operational checkpoint (2026-10-30 17:11 Asia/Shanghai):** OC424 is
+**Current operational checkpoint (2026-10-30 22:38 Asia/Shanghai):** OC424 is
+healthy/restart0 on **v1.7.18/8dbfd8c**. Candidate CI41066053281 and exact
+merge CI41067514587 pass 8/8; release41068843126 passes 10/10 and
+Docker41071110757 2/2. Published binary provenance, dual-platform images and
+isolated MAC-WAN API and browser acceptance pass. OC424 upgrade9/9,
+public27/27, scoped forecast13rows and 13 fresh CPU/uptime reporters pass.
+The session-only preview is read-only, not a notification delivery test; owner
+login acceptance and actual incident receipt remain open.
+
+Fresh manual pre/post encrypted backups have matching MAC-WAN `incoming/` and
+online executor copies. Pre restores under pinned v1.7.17/v1.7.18; post under
+v1.7.18. Post compares 21,768 archived rows across 12 histories: zero
+in-retention rows missing or changed; 820 expired or inactive-tier rows absent.
+The 22:30 automatic health report succeeded before the isolated manual backups;
+those backups do not verify the next daily timer via the new route (2026-10-31
+11:30 Asia/Shanghai). Scheduled retention remains 14/14 pairs; the next
+successful receive applies existing `keep=14` and retires its oldest eligible
+pair, with a matching `incoming/` copy already verified. Independent-media
+restore and OVH disk sanitization are unverified. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and
+[`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
+
+**Historical operational checkpoint (2026-10-30 17:11 Asia/Shanghai):** OC424 is
 healthy/restart0 on **v1.7.17/0a9fd1d**. Candidate CI41026965107 and exact merge
 CI41028016613 pass 8/8; release41028983238 passes 10/10 and Docker41029876841
 2/2. The published binary passes isolated MAC-WAN maintenance/grace tests;

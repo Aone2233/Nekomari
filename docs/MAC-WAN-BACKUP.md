@@ -11,6 +11,30 @@ watcher. The receiver keeps 14 scheduled pairs in a dedicated directory;
 retention set. Actual incident delivery and independent-media restore remain
 separate; a manual success is not proof of a scheduled trigger.
 
+## 2026-10-30 v1.7.18 recovery
+
+The automatic health service runs successfully at 22:30:50-57 Asia/Shanghai;
+OC424 receives `ok` before the following manual release backups. Pre archive
+`oc424-20261030T143144743764Z-fd30cf6ef52b.tar.gz.age` has SHA-256
+`0c2a697b0018d747aa7dd9ad87a07e22d4cc57b6854a57e695f09c2322e5d51b`; post
+archive `oc424-20261030T143505907758Z-985e040a298b.tar.gz.age` has SHA-256
+`13f0594e1009f485b8ff2d564fca9d241b25510ce3bb02ea71d28d00a0cf1c24`.
+Each was received in a new private `manual/` directory while holding the
+existing scheduled lock, with matching regular `incoming/` and online executor
+ciphertext copies; the 14 scheduled pairs and timer were unchanged. Pre boots
+pinned v1.7.17/v1.7.18; post boots v1.7.18 with the 13-client digest. Post
+compares 21,768 archived rows across 12 histories: zero in-retention rows
+missing or changed, 820 expired or inactive-tier rows absent. Identity was not
+exported, and isolated scratch plaintext and containers were removed.
+
+These manually initiated backups are not an automatic daily trigger or an
+independent-media recovery. The scheduled health service checks the scheduled
+directory, not these manual release archives. The next daily backup via the
+new route is 2026-10-31 11:30 Asia/Shanghai and remains unverified; its existing
+keep=14 policy will retire the oldest eligible scheduled pair, whose independent
+`incoming/` copy was verified. Actual alert receipt and OVH disk sanitization
+remain unverified.
+
 ## 2026-10-30 v1.7.17 recovery
 
 At 17:01:20 Asia/Shanghai a manually started backup collides with the recurring

@@ -8,6 +8,18 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.7.18] - 2026-10-30
+
+- **Published and deployed on OC424 at approximately 22:34 Asia/Shanghai.**
+  Immutable `8dbfd8c214b13820cfa23cb84994ed9393a8aacd`; candidate CI41066053281
+  and exact merge CI41067514587 pass 8/8, release41068843126 10/10 and
+  Docker41071110757 2/2. Published checksums, attestations and dual-platform
+  images verify. The released binary passes isolated MAC-WAN API and embedded
+  browser tests. OC424 upgrade9/9, public27/27, scoped forecast13rows and 13
+  fresh CPU/uptime reporters pass. Manual pre/post encrypted backups have
+  matching online copies and pass isolated recovery. Owner UI acceptance,
+  actual notification receipt and independent-media restore remain unverified.
+  See `docs/DEPLOY-OC424.md`.
 - Add an administrator-only, read-only preview for saved load and ping alert
   rules. It shows per-target threshold, missing data and current maintenance
   state without sending or changing alert state. It is not a delivery test or
