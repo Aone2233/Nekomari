@@ -8,10 +8,25 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.7.19] - 2026-10-30
+
+- **Published and deployed on OC424 at approximately 03:45 on 2026-10-31
+  Asia/Shanghai.** Immutable `cf221def7fc5f0610e6b407ecde67e9ddb5714df`;
+  exact merge CI41114880987 passes 8/8, release41116050542 10/10 and
+  Docker41117063818 2/2. Published panel and Agent Linux binary checksums and
+  attestations and both architectures of both images verify. The released panel
+  passes four isolated MAC-WAN browser cases. OC424 upgrade9/9, public27/27,
+  scoped forecast13rows and 13 fresh CPU/uptime reporters pass. Fresh pre/post
+  encrypted backups have matching online copies and pass isolated recovery.
+  Owner-session UI, actual notification receipt and independent-media restore
+  remain unverified. See `docs/DEPLOY-OC424.md`.
 - Clarify the SLA page's existing observed-span coverage and show first/last
   bucket starts for each node and task. Ping-reporting gaps are not presented
   as proof of node downtime. No SLA arithmetic or API field changes; a full
   window-coverage measure remains separate. See `docs/SLA-COVERAGE.md`.
+- Wait a bounded time for real asynchronous startup samples in the existing
+  panel-history smoke. The earlier exact CI failure remains documented; a race
+  is plausible but its specific cause was not proven.
 
 ## [v1.7.18] - 2026-10-30
 

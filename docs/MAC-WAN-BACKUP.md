@@ -1,4 +1,4 @@
-# MAC-WAN backup receiver (updated 2026-10-30)
+# MAC-WAN backup receiver (updated 2026-10-31)
 
 This replaces the relinquished OVH receiver, not the separate offline-media
 requirement. On MAC-WAN, the `macos` systemd user manager has lingering enabled.
@@ -10,6 +10,29 @@ watcher. The receiver keeps 14 scheduled pairs in a dedicated directory;
 `incoming/`, the initial executor copy and prior release copies are not in that
 retention set. Actual incident delivery and independent-media restore remain
 separate; a manual success is not proof of a scheduled trigger.
+
+## 2026-10-31 v1.7.19 recovery
+
+The automatic health service succeeds at 03:35:37-47 Asia/Shanghai; OC424
+receives `ok` for the scheduled set before the following manual release backups.
+Pre archive `oc424-20261030T194300290955Z-e4ccf07fa200.tar.gz.age` has SHA-256
+`8b0695d6d4451a1f4a633b0f7fcfb22418c43ebe7cefba3f71e687e7ced06491`; post
+archive `oc424-20261030T194613732290Z-c5dab53a61d9.tar.gz.age` has SHA-256
+`012b287a1f893282c590f84b0d7b18eb12bd4c8cc5561f9fa819732b2c6e49ef`.
+Each was received in a new private `manual/` directory under the scheduled lock,
+with matching regular `incoming/` and online executor ciphertext copies; all
+14 scheduled pairs and the timer were unchanged. Pre boots pinned v1.7.18 and
+v1.7.19; post boots v1.7.19 with the current 13-client digest. Post compares
+21,140 archived rows across 12 histories: zero in-retention rows missing or
+changed and 48 expired or inactive-tier rows absent. The identity stays on
+MAC-WAN; network-free scratch plaintext and containers were removed.
+
+The health timer checks `scheduled/`, not these manual backups. Neither manual
+backup proves the next daily trigger via the new route at 11:30 Asia/Shanghai,
+an independent-media restore or real alert receipt. The existing keep=14 policy
+will retire the oldest eligible scheduled pair on success; its matching
+`incoming/` ciphertext was independently verified. OVH disk sanitization is
+also unverified.
 
 ## 2026-10-30 v1.7.18 recovery
 
