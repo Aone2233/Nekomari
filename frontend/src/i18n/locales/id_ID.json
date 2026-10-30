@@ -1707,7 +1707,7 @@
     "reportingGaps": "Celah laporan Ping (bukan bukti node berhenti)",
     "task": "Tugas",
     "untaggedSeries": "seri tanpa tag",
-    "nodeNoData": "Tidak ada hasil tugas Ping untuk node ini dalam rentang ini.",
+    "nodeNoData": "Tidak ada data tugas Ping yang tersedia untuk node ini dalam laporan.",
     "sampleInterval": "Bucket {{seconds}} detik",
     "clamped": "Dipersingkat ke rentang yang disimpan",
     "navStatus": "Status"

@@ -1707,7 +1707,7 @@
     "reportingGaps": "Ping 報告の欠落（ノード停止の証拠ではありません）",
     "task": "タスク",
     "untaggedSeries": "タグなし系列",
-    "nodeNoData": "この期間に、このノードの Ping タスク結果はありません。",
+    "nodeNoData": "このレポートに、このノードの利用可能な Ping タスクデータはありません。",
     "sampleInterval": "{{seconds}} 秒のバケット",
     "clamped": "保持期間の範囲に短縮しました",
     "navStatus": "ステータス"

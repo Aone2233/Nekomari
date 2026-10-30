@@ -1707,7 +1707,7 @@
     "reportingGaps": "Ping 上报缺口（不能证明节点停机）",
     "task": "任务",
     "untaggedSeries": "无标签序列",
-    "nodeNoData": "此时间窗内该节点没有 Ping 任务结果。",
+    "nodeNoData": "报表中没有该节点可用的 Ping 任务数据。",
     "sampleInterval": "每桶 {{seconds}} 秒",
     "clamped": "已缩短到保留范围内",
     "navStatus": "状态"
