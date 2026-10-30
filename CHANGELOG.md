@@ -8,6 +8,16 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.7.15] - 2026-10-30
+
+- **Published and deployed on OC424 at approximately 15:12 Asia/Shanghai.**
+  Immutable `7c13e509767e59742196be61ec98973b785c68c8`; exact push CI41016555952
+  8/8, release41017359338 10/10 and Docker41018148539 2/2. Linux checksums,
+  tag/source/workflow attestations and both panel/agent image architectures
+  verify; the published binary passes six synthetic forecast cases on MAC-WAN.
+  OC424 upgrade9/9 and public27/27 pass; 13 clients retain their UUID/token
+  digest and have fresh CPU/uptime reports. Read-only scoped forecast returns
+  13 rows (10 linear, three insufficient). Owner-session UI is not claimed.
 - Exclude backing rollup buckets that straddle a forecast's billing-cycle
   start, and retain the partial output bucket under the cycle-start label.
   Post-boundary data inside a discarded backing bucket remains unavailable;
@@ -20,20 +30,17 @@ Nekomari's own.
   maxima can still hide resets within a bucket. An additive usage-validity flag
   prevents the page from displaying unknown usage as zero. Existing history is
   not rewritten; older API clients must inspect the new flag.
-- Pin the two Playwright CI jobs to Ubuntu 24.04: the moving
-  `ubuntu-latest` image reached Ubuntu 26.04, which the pinned Playwright
-  1.58.0 cannot install browsers on. Test coverage remains enabled.
-- After the owner relinquishes OVH and confirms removal of its node, replace
-  the old backup receiver with restricted MAC-WAN encrypted backup and health
-  user services. Initial current-13-node recovery, independent online-host
-  ciphertext copy and health-timer trigger pass. The first scheduled MAC-WAN
-  daily backup and subsequent health report succeed; independent-media recovery
-  is still pending. Retire three OVH backup/health SSH authorizations. Historical unencrypted OVH backups may contain
-  credentials; disk sanitization remains unverified. See `docs/MAC-WAN-BACKUP.md`.
-- Restore MAC-WAN backup-health access after verifying its changed public
-  egress address, without widening its forced-command SSH keys or disturbing
-  the separate `bero-backup-pull` key confirmed by the owner. The first daily
-  MAC-WAN backup trigger later succeeds; independent-media restore remains pending.
+- Pin the two Playwright CI jobs to Ubuntu 24.04: the moving `ubuntu-latest`
+  image reached Ubuntu 26.04, which pinned Playwright 1.58.0 cannot install
+  browsers on. Test coverage remains enabled.
+- Replace the relinquished OVH backup destination with MAC-WAN. After the
+  October 30 direct-route failure, use a separately pinned MegaBox jump only
+  for the existing restricted backup/health keys. The automatic health timer
+  succeeds on the new route; the next daily backup trigger remains unverified.
+  Fresh pre/post encrypted backups restore in isolation with the current 13
+  clients; separate online ciphertext copies match. Independent-media restore,
+  actual alert receipt and historical OVH disk sanitization remain unverified.
+  See `docs/MAC-WAN-BACKUP.md` and `docs/DEPLOY-OC424.md`.
 
 ## [v1.7.14] - 2026-10-29
 

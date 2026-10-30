@@ -14,7 +14,28 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**Current operational checkpoint (2026-10-30 14:40 Asia/Shanghai):** the owner
+**Current operational checkpoint (2026-10-30 15:16 Asia/Shanghai):** OC424 is
+healthy/restart0 on **v1.7.15/7c13e50**. Exact push CI41016555952 passes 8/8,
+release41017359338 10/10 and Docker41018148539 2/2. Linux asset checksums and
+tag/source/workflow attestations, both architectures of both OCI images,
+published-binary synthetic forecast6/6, OC424 upgrade9/9 and public27/27 pass.
+All 13 registered clients retain their UUID/token digest and have fresh CPU and
+uptime rollups; the read-only scoped forecast has 13 rows (10 linear, three
+insufficient). Owner-session UI acceptance remains outstanding.
+
+MAC-WAN's repaired proxy passes the actual 14:54 automatic health timer and a
+15:15 manual health report for the post-upgrade backup. Fresh manually initiated
+pre/post encrypted backups have matching MAC-WAN and additional online-host
+copies; the pre archive restores under pinned old/new images and the post under
+the new image. The post recovery compares 12 selected metric histories without
+missing in-retention or changed archived rows. The **next daily timer via the
+new route is still unverified** (2026-10-31 11:30 Asia/Shanghai); manual runs do
+not prove it. Independent-media restore, actual alert receipt and OVH disk
+sanitization remain unverified. Stable release can trigger auto-updates on
+Agents whose local settings allow them. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md)
+and [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
+
+**Historical operational checkpoint (2026-10-30 14:40 Asia/Shanghai):** the owner
 confirms a deliberate deletion followed by their addition of `QWRT 主路由 | 宿舍`;
 13 clients are now registered and all 13 have fresh CPU/uptime rollups. This
 replaces the earlier 13-client identity set; do not restore deleted nodes or
@@ -34,7 +55,7 @@ health report are **manual**, not proof of the next automatic timer. Check the
 next actual health and daily timer; independent-media restore is unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
 
-**Urgent superseding checkpoint (2026-10-28 23:53 Asia/Shanghai):** the owner reports
+**Historical security checkpoint (2026-10-28 23:53 Asia/Shanghai):** the owner reports
 OVH/KSLE has been relinquished. It is no longer a trusted backup/test host.
 Historical plaintext backups held panel secrets; disk sanitization and other
 credential exposure are unknown. Three specifically identified OVH backup/
@@ -50,7 +71,7 @@ rollout, take fresh pre/post backups and verify continuity/recovery. See
 [`OVH-RETIREMENT-2026-10-28.md`](./OVH-RETIREMENT-2026-10-28.md).
 All OVH availability/schedule statements below are historical, not current.
 
-**Current checkpoint (2026-10-29, Asia/Shanghai):** OC424 serves
+**Historical checkpoint (2026-10-29, Asia/Shanghai):** OC424 served
 **v1.7.14/7f94561** at `nekomari.orderly2233.org`, healthy/restart0. Candidate
 CI40807334416 8/8, exact merge CI40808023833 8/8, release40808682926 10/10,
 Docker40809339436 2/2, Linux checksums/provenance, dual-architecture image
@@ -67,7 +88,7 @@ unchanged. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for immutable artifacts,
 actual evidence and patch rollback to v1.7.13. The earlier v1.7.0->v1.6
 auth-migration rollback still requires the paired old binary and DB.
 
-**Operational follow-up (2026-10-29, Asia/Shanghai):** `VT01 | vps.taxi`
+**Historical operational follow-up (2026-10-29, Asia/Shanghai):** `VT01 | vps.taxi`
 is observed offline at 11:42, with 12 of 13 nodes reporting. Its last persisted
 sample is 11:26:18.909, after the 11:12 panel switch and successful 13-node
 acceptance. The scoped live status reports it offline. Its configured SSH
@@ -86,7 +107,7 @@ roadmap or every v1.7 exit criterion complete. All 200-node experiments/benchmar
 and their 26 failed reports remain deferred. Reuse exact-source and unchanged
 source-batch checks; no redundant broad local frontend/Go/capacity rerun.
 
-**Latest bounded delivery:** v1.7.14 samples default-theme disk and memory
+**Prior bounded delivery:** v1.7.14 samples default-theme disk and memory
 cache state into two independently retained, session-only panel history series.
 The UI uses points instead of asserting exact transitions. Published-binary
 browser checks, 13-node pre/post encrypted recovery and OC424 continuity pass;
@@ -184,8 +205,8 @@ v1.7.5 provides the SQLite source startup fix; v1.7.6 cross-backend corrections
 are released/recovered/live-accepted. No stored history rewrite or production ANALYZE.
 Continue one bounded correctness/observability item, with 200-node work deferred.
 
-**Next bounded work:** preserve the separately observed MAC-WAN first daily
-trigger and its subsequent health report; do not treat a manual run as a
+**Next bounded work:** observe the next actual MAC-WAN daily trigger over the
+repaired proxy and its subsequent health report; do not treat a manual run as a
 scheduled trigger. Investigate the earlier post-boot assertion if it
 recurs; the v1.7.14 drill separately observes retention cleanup, without
 establishing the cause of the earlier failure. The browser jobs passed on their
@@ -195,7 +216,7 @@ pinned Ubuntu 24.04 runner in PR121 and exact merge CI. Then select a small corr
 complete API-caller inventory and the span/window-coverage decision remain open.
 No whole-roadmap app goal change or new owner-session UI acceptance is claimed.
 
-**In development, not yet released:** refuse forecast inputs with missing or
+**Delivered in v1.7.15, with limits:** refuse forecast inputs with missing or
 invalid required traffic directions, sum overflow or a direction decrease
 between selected buckets. An additional unaligned cycle-boundary correction
 excludes straddling backing buckets and retains the first partial output bucket;
@@ -204,7 +225,7 @@ prove the node's actual reset timezone. A zero in a refused row is not measured
 usage; intra-bucket resets remain undetectable with bucket maxima. See
 [`FORECAST-DIRECTIONS.md`](./FORECAST-DIRECTIONS.md).
 
-### v1.7 release readiness (2026-10-28)
+### Historical v1.7 release readiness checkpoint (2026-10-28)
 
 | Gate | Current state | Required next evidence/action |
 |---|---|---|

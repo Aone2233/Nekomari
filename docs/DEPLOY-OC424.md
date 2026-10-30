@@ -17,7 +17,56 @@ recovery remains unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
 schedule and 14-node acceptance statements below are history.
 
-## Superseding checkpoint (2026-10-30 14:40 Asia/Shanghai)
+## Superseding checkpoint (2026-10-30 15:16 Asia/Shanghai)
+
+OC424 now runs **v1.7.15/7c13e50**, immutable source
+`7c13e509767e59742196be61ec98973b785c68c8`, in the pinned arm64 image
+`ghcr.io/aone2233/nekomari:v1.7.15@sha256:f59636293282b351f0e5d34064f198d0b3040a5582b2bba83c9dd04f0c6a209c`.
+It becomes healthy at approximately 15:12 and has zero container restarts.
+The preceding 14:40 checkpoint below is history.
+
+- Exact push CI41016555952 passes 8/8; release41017359338 passes 10/10 and
+  Docker41018148539 2/2, with the actual release run ID in both Docker jobs.
+  Published Linux assets pass SHA-256 and tag/source/workflow attestations;
+  panel and Agent amd64/arm64 image identities match the exact source. Both
+  native panel binaries match their published assets, and the actual amd64
+  binary passes six isolated forecast cases on MAC-WAN.
+- OC424 upgrade check passes 9/9 and the public site 27/27; both databases
+  pass quick_check with unchanged schemas. All 13 clients have fresh CPU and
+  uptime reports and their UUID/token digest matches the pre-upgrade backup;
+  API-key permissions/expiry and the local OC424 Agent remain unchanged. The
+  scoped, read-only forecast returns 13 rows: 10 linear and three insufficient,
+  with two unknown-usage rows caused by direction decreases. An authenticated
+  owner browser session has not been checked.
+- Manual pre backup at 15:10 is
+  `oc424-20261030T071020075093Z-116c8230c9ea.tar.gz.age`, SHA-256
+  `a1f9640c944dd7289e7368be812e7faaeaffe27f69c100808dfcc5ee4f8b45bf`.
+  Manual post backup at 15:13 is
+  `oc424-20261030T071329235896Z-66eff1d9703b.tar.gz.age`, SHA-256
+  `a15dbaccf376d543c714aafdae3e54a2ad2805b73d44d82a76c90a4b7580346b`.
+  Each has a separate MAC-WAN `incoming/` copy and an online executor copy
+  matching the checksum. Isolated MAC-WAN recovery of the pre archive passes
+  under pinned v1.7.14 and v1.7.15, and the post archive under v1.7.15, with
+  the current 13-client digest. A retention-aware post-boot comparison of 12
+  selected metric histories finds zero missing in-retention or changed rows.
+  This is not an independent-media recovery.
+- The pinned proxy's actual automatic health timer succeeds at 14:54; a manual
+  15:15 report reaches OC424 with the post-backup timestamp. The daily timer on
+  the new route is not yet observed; the next run is 2026-10-31 11:30. Alert
+  dispatch receipt, independent-media recovery and old OVH disk sanitization
+  remain unverified. OC424 disk was 48% and MAC-WAN 30%; no broad pruning.
+
+The root-private rollback evidence is
+`/opt/nekomari/rollbacks/v1.7.15-20261030T071229Z-f5008eed`. The previous
+OC424 image is retained as
+`ghcr.io/aone2233/nekomari:v1.7.14@sha256:fd470535a34353f78ec2afeefa3bf0067df67d931a8a2762807c75dc31d9701d`.
+This patch changes no database schema: if rollback is actually needed, assess
+the current state and restore only the pinned image/compose, retaining the live
+databases and all current nodes; do not overwrite them with old snapshots.
+No Agent was deliberately restarted or reconfigured, but publishing a stable
+release may cause other Agents with self-update enabled to update on their own.
+
+## Historical checkpoint (2026-10-30 14:40 Asia/Shanghai)
 
 The owner confirms their deletion of a node and addition of `QWRT 主路由 | 宿舍`.
 The current set has 13 registered clients and all 13 have fresh CPU and uptime
@@ -36,7 +85,7 @@ not evidence that either next timer has succeeded. See
 [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The following older checkpoints are
 historical.
 
-## Current checkpoint (2026-10-29, Asia/Shanghai)
+## Historical checkpoint (2026-10-29, Asia/Shanghai)
 
 OC424 serves **v1.7.14 / 7f94561** at
 `https://nekomari.orderly2233.org`. Scoped-key migration and session-only token
