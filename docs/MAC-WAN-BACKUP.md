@@ -11,6 +11,35 @@ watcher. The receiver keeps 14 scheduled pairs in a dedicated directory;
 retention set. Actual incident delivery and independent-media restore remain
 separate; a manual success is not proof of a scheduled trigger.
 
+## 2026-10-30 v1.7.17 recovery
+
+At 17:01:20 Asia/Shanghai a manually started backup collides with the recurring
+health inspection's shared lock and exits 1 without creating an archive. The
+17:01 health run succeeds; the backup retry at 17:02 succeeds, as does the
+17:08 post-upgrade backup. A 17:10 **manual** health run reports `ok` for the
+post backup and OC424 receives it. Neither manual operation proves the next
+automatic daily trigger through the repaired proxy (2026-10-31 11:30).
+
+Pre archive `oc424-20261030T090213623348Z-54549a494a77.tar.gz.age` has SHA-256
+`fccaea8fa999f555b4cdd5fca4ca754a594de846fc3c809487c1f564265631f0`; post
+archive `oc424-20261030T090821042225Z-779daa8a7e4a.tar.gz.age` has SHA-256
+`8ae8585c745225eedf7cb13d2fa5393c3fdd483794d91ea351fc7473271e024d`.
+Separate regular `incoming/` and online executor copies match both hashes.
+Pre boots pinned v1.7.16 and v1.7.17 in isolated recovery; post boots v1.7.17
+with the current 13-client digest. Post compares 20,492 archived rows across
+12 histories: zero in-retention rows missing or changed. The identity remains
+on MAC-WAN; this is not independent-media recovery or actual alert receipt.
+
+The scheduled directory now has 14 pairs (the existing `keep=14` limit). The
+next successful receive automatically removes the oldest eligible scheduled
+pair under that pre-existing policy; its `incoming/` regular copy independently
+matches SHA-256 `2275911a697d18b79741cfcc1bb3b592e2e588da92bf518ffc52ab0fcd8dad82`.
+No historical backup was manually deleted and the timer/retention policy is
+unchanged. A manually initiated release backup can overlap the health timer: if
+the exclusive receive lock is busy, allow the health check to finish and retry
+without removing locks. Conversely, a health inspection while a receive holds
+the lock reports deferred rather than fabricating freshness.
+
 ## 2026-10-30 v1.7.16 recovery
 
 The automatic health timer through the pinned proxy reports success at 15:45

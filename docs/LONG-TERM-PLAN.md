@@ -39,7 +39,17 @@ its exit criteria are met, not when the calendar says so.
 
 ## Current Delivery Checkpoint (2026-10-30)
 
-**Latest delivery: v1.7.16 (2026-10-30 approximately 15:56 Asia/Shanghai).**
+**Latest bounded delivery: v1.7.17 (2026-10-30 approximately 17:06
+Asia/Shanghai).** Offline alerts now respect both grace and maintenance when
+their boundaries cross, and reconnects cancel pending outages. Candidate/merge
+CI, release, dual-architecture artifacts, MAC-WAN isolated published-binary
+testing, fresh encrypted recoveries and OC424 acceptance pass. The in-memory
+deferred queue is not restart-durable; real remote alert receipt remains
+unverified. This does not complete the alert-rule test button or v1.8. See
+[`OFFLINE-MAINTENANCE-GRACE.md`](./OFFLINE-MAINTENANCE-GRACE.md),
+[`OPEN-WORK.md`](./OPEN-WORK.md) and [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+**Previous delivery: v1.7.16 (2026-10-30 approximately 15:56 Asia/Shanghai).**
 Repeated forecast input refusals are bounded by node/category while real store
 errors remain unsuppressed. Exact merge CI41021022614 passes 8/8,
 release41021806313 10/10 and Docker41022572275 2/2; published-binary scheduled

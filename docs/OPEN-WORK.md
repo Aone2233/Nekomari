@@ -14,7 +14,31 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**Current operational checkpoint (2026-10-30 15:59 Asia/Shanghai):** OC424 is
+**Current operational checkpoint (2026-10-30 17:11 Asia/Shanghai):** OC424 is
+healthy/restart0 on **v1.7.17/0a9fd1d**. Candidate CI41026965107 and exact merge
+CI41028016613 pass 8/8; release41028983238 passes 10/10 and Docker41029876841
+2/2. The published binary passes isolated MAC-WAN maintenance/grace tests;
+upgrade9/9, public27/27, scoped forecast13rows, and all 13 fresh CPU/uptime
+reporters pass. No existing Agent tokens, API-key scope/expiry, database schema
+or authorized SSH keys changed. This is a bounded offline-alert correction, not
+the v1.8 rule-test button or proof of real incident receipt.
+
+Manual pre/post encrypted backups have matching MAC-WAN `incoming/` and online
+executor copies. Pre boots both pinned v1.7.16/v1.7.17; post boots v1.7.17
+and compares 20,492 archived rows across 12 histories with zero missing within
+retention or changed values. The 17:01 manual pre-backup attempt collided with
+the health timer's shared lock and failed without creating an archive; a 17:02
+manual retry and 17:08 manual post backup succeeded. A 17:10 manual health
+report identifies the post backup. This does not establish the next automatic
+daily trigger via the new route (2026-10-31 11:30 Asia/Shanghai), independent
+media recovery, actual alert receipt or owner-session acceptance. Scheduled
+retention is now 14/14 pairs: a successful next scheduled receive applies the
+existing `keep=14` policy and retires its oldest eligible pair; a matching
+`incoming/` ciphertext copy was verified. No broad cleanup or schedule change.
+See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and
+[`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
+
+**Historical operational checkpoint (2026-10-30 15:59 Asia/Shanghai):** OC424 is
 healthy/restart0 on **v1.7.16/e7323c8**. Exact merge CI41021022614 passes 8/8,
 release41021806313 10/10 and Docker41022572275 2/2. The published binary's
 isolated scheduled-logging test passes, as do upgrade9/9, public27/27, scoped
@@ -224,7 +248,10 @@ Continue one bounded correctness/observability item, with 200-node work deferred
 
 **Next bounded work:** observe the next actual MAC-WAN daily trigger over the
 repaired proxy and its subsequent health report; do not treat a manual run as a
-scheduled trigger. Investigate the earlier post-boot assertion if it
+scheduled trigger. The scheduled directory now has 14/14 pairs, and the next
+successful receive may remove its oldest eligible pair under the existing
+retention policy; the oldest pair has a verified separate incoming copy.
+Investigate the earlier post-boot assertion if it
 recurs; the v1.7.14 drill separately observes retention cleanup, without
 establishing the cause of the earlier failure. The browser jobs passed on their
 pinned Ubuntu 24.04 runner in PR121 and exact merge CI. Then select a small correctness/observability batch, with fresh
