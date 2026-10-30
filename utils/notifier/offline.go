@@ -71,6 +71,7 @@ func OfflineNotification(clientID string, endedConnectionID int64) {
 	}
 
 	now := time.Now().UTC()
+	decision := For(now, clientID)
 	state := getOrInitState(clientID)
 
 	state.mu.Lock()
@@ -82,53 +83,59 @@ func OfflineNotification(clientID string, endedConnectionID int64) {
 	}
 	// 标记该客户端为待离线。
 	state.pendingOfflineSince = now
-	state.mu.Unlock()
+	state.isConnExist = false
 
 	// 维护窗口：抑制这次通知，但**不是丢弃它**。
 	//
-	// 判断放在宽限期之前，也就是节点刚离线时：窗口在离线期间结束的话，延迟队列会在那时
-	// 重新检查，而那时它还能看到这次离线。放到宽限期之后判断的话，一个 3 分钟宽限期 +
-	// 10 分钟窗口的常见组合会让通知在窗口中途发出，抑制等于没做。
+	// 离线时和宽限期结束时都检查：窗口可能在这两者之间开始或结束。
 	//
 	// 「抑制」只针对这一条通知。指标照常采集 —— 维护窗口的意义就是节点确实在做事，
 	// 事后报表里出现一段空白才是真的在说谎。
-	if decision := For(now, clientID); decision.Suppress {
-		logger.Infof("notifier", "%s is inside a %s; the offline alert is deferred to %s",
-			clientID, decision.Reason, decision.DeliverAt.Format(time.RFC3339))
-		// Suppressing the alert defers it; it does not undo the outage. The fact that the node is
-		// offline has to be recorded here, because the sweeper that delivers the deferred alert
-		// answers "is the node still offline?" with exactly this flag (maintenance_defer.go:115).
-		// Setting it only in the grace-period goroutine below left it true on this path, so a node
-		// that went down inside a window and stayed down produced no alert at all — the deferred
-		// entry was read as "already recovered" and dropped.
-		state.mu.Lock()
-		state.isConnExist = false
+	if decision.Suppress && !decision.DeliverAt.IsZero() {
+		// Both the grace period and the maintenance window must have ended.
+		deliverAt := decision.DeliverAt
+		if graceEnd := now.Add(gracePeriod); graceEnd.After(deliverAt) {
+			deliverAt = graceEnd
+		}
+		// Enqueue while holding state.mu so a reconnect cannot remove the queue
+		// entry before the disconnect has actually added it.
+		deferOfflineAlert(clientID, deliverAt, endedConnectionID)
 		state.mu.Unlock()
-		// pendingOfflineSince is deliberately left set: it is what makes a reconnect resolve as
-		// "came back" instead of as a fresh outage that fires a spurious recovery notification.
-		deferOfflineAlert(clientID, decision.DeliverAt, endedConnectionID)
+		logger.Infof("notifier", "%s is inside a %s; the offline alert is deferred to %s",
+			clientID, decision.Reason, deliverAt.Format(time.RFC3339))
 		return
 	}
+	state.mu.Unlock()
 
 	// 新建协程，等待宽限期后判断是否需要发送通知。
-	go func(startTime time.Time, expectedConnectionID int64) {
+	go func(expectedConnectionID int64) {
 		time.Sleep(gracePeriod)
 
 		state.mu.Lock()
-		defer state.mu.Unlock()
 
 		// 检查离线状态是否仍为本次协程启动时的状态。
 		// 若为零值，说明客户端已重连。
 		// 当前的 connectionID 是否还是我们触发离线时的那个ID。如果不是，说明客户端重连过，本次离线通知已失效。
 		if state.pendingOfflineSince.IsZero() || state.connectionID != expectedConnectionID {
-			logger.Infof("notifier", "%s is reconnected new connID: %d, old connID: %d", clientID, state.connectionID, expectedConnectionID)
+			currentConnectionID := state.connectionID
+			state.mu.Unlock()
+			logger.Infof("notifier", "%s is reconnected new connID: %d, old connID: %d", clientID, currentConnectionID, expectedConnectionID)
+			return
+		}
+
+		// A window may have started while the grace timer was running.
+		if decision := For(time.Now().UTC(), clientID); decision.Suppress && !decision.DeliverAt.IsZero() {
+			deferOfflineAlert(clientID, decision.DeliverAt, expectedConnectionID)
+			state.mu.Unlock()
+			logger.Infof("notifier", "%s is inside a %s; the offline alert is deferred to %s",
+				clientID, decision.Reason, decision.DeliverAt.Format(time.RFC3339))
 			return
 		}
 
 		// 即将发送通知，重置待通知状态。
-		// 需要多一个boolean 是因为pendingOfflineSince在offline睡眠后才修改，可能导致online判断不对
 		state.pendingOfflineSince = time.Time{}
 		state.isConnExist = false
+		state.mu.Unlock()
 
 		// Send notification
 		go func() {
@@ -147,7 +154,7 @@ func OfflineNotification(clientID string, endedConnectionID int64) {
 		if err := db.Model(&models.OfflineNotification{}).Where("client = ?", clientID).Update("last_notified", now.UTC()).Error; err != nil {
 			logger.Errorf("notifier", "Failed to update last_notified for client %s: %v", clientID, err)
 		}
-	}(now, endedConnectionID)
+	}(endedConnectionID)
 }
 
 // updateOnlineState records a connection before notification configuration is checked.
@@ -156,6 +163,8 @@ func updateOnlineState(clientID string, connectionID int64) bool {
 	state := getOrInitState(clientID)
 	state.mu.Lock()
 	defer state.mu.Unlock()
+	// Serialize queue removal with disconnects and their enqueue operation.
+	forgetDeferredAlert(clientID)
 	state.connectionID = connectionID
 
 	// 规则1：首次连接不通知。
@@ -174,6 +183,7 @@ func updateOnlineState(clientID string, connectionID int64) bool {
 
 	// 规则2：宽限期内重连，不通知。
 	if wasPending {
+		state.isConnExist = true
 		return false
 	}
 
@@ -195,11 +205,6 @@ func OnlineNotification(clientID string, connectionID int64) {
 	if err != nil {
 		return
 	}
-	// An outage that has ended needs no alert: a deferred one about it is dropped rather than
-	// delivered late. This is the other half of the deferral rule — the sweeper checks that the node
-	// is still offline before sending, and this removes the entry as soon as it is not.
-	forgetDeferredAlert(clientID)
-
 	// 上线时检测续费
 	renewal.CheckAndAutoRenewal(client)
 	shouldNotify := updateOnlineState(clientID, connectionID)

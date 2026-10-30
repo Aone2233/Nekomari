@@ -101,9 +101,8 @@ func forgetDeferredAlertIfCurrent(clientID string, connectionID int64) {
 //     there is nothing left to deliver for that outage.
 //
 // The connection is preserved rather than refreshed from the node's current state. A node that
-// reconnected leaves that state looking offline — updateOnlineState clears the pending marker, and
-// isConnExist is only set by a later disconnect-then-connect pair — so borrowing the current id
-// would let the sweeper send a false alarm about a node that is up.
+// reconnected is a different connection, so borrowing the current id could make an older outage
+// look like the current one.
 func requeueDeferredAlert(clientID string, connectionID int64, deliverAt time.Time) {
 	if deliverAt.IsZero() {
 		return
@@ -168,7 +167,7 @@ func sweepDeferredAlerts(now time.Time) {
 			// Stale: the deferral outlived its usefulness, so it is dropped rather than sent as
 			// fresh news about an old outage.
 			if now.After(alert.deliverAt) {
-				forgetDeferredAlert(alert.clientID)
+				forgetDeferredAlertIfCurrent(alert.clientID, alert.connectionID)
 			}
 			continue
 		}
@@ -180,7 +179,7 @@ func sweepDeferredAlerts(now time.Time) {
 		stillOffline := state.connectionID == alert.connectionID && !state.isConnExist
 		state.mu.Unlock()
 		if !stillOffline {
-			forgetDeferredAlert(alert.clientID)
+			forgetDeferredAlertIfCurrent(alert.clientID, alert.connectionID)
 			continue
 		}
 

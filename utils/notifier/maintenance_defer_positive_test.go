@@ -168,7 +168,7 @@ func deferredOfflineScenario(t *testing.T, base string) string {
 	clientID := notifierTestNode(t, base)
 
 	windowStart := time.Now().UTC().Add(-time.Minute)
-	windowEnd := time.Now().UTC().Add(400 * time.Millisecond)
+	windowEnd := time.Now().UTC().Add(1400 * time.Millisecond)
 	notifierTestWindow(t, "reboot", windowStart, windowEnd, clientID)
 	Invalidate() // 让新窗口立刻可见，而不是等 30 秒缓存过期
 

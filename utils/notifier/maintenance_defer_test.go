@@ -149,6 +149,24 @@ func TestAStaleDeferralIsDroppedByTheSweeper(t *testing.T) {
 	}
 }
 
+func TestStaleSweepDoesNotDeleteANewerOutage(t *testing.T) {
+	clearDeferred(t)
+	now := time.Now().UTC()
+	deferOfflineAlert("node-a", now.Add(-time.Hour), 1)
+	withSeams(t, nil)
+	maintenanceShouldSendLater = func(time.Time, time.Time) bool {
+		deferOfflineAlert("node-a", now.Add(time.Minute), 2)
+		return false
+	}
+	sweepDeferredAlerts(now)
+	deferredMu.Lock()
+	queued, ok := deferredAlerts["node-a"]
+	deferredMu.Unlock()
+	if !ok || queued.connectionID != 2 {
+		t.Fatalf("sweeping the stale outage deleted the newer one: %+v", queued)
+	}
+}
+
 // A node that reconnected and disconnected again is a different outage: the queued alert is about
 // the older one and must not be sent as if it were current.
 func TestTheSweeperDropsAnAlertForAnOlderConnection(t *testing.T) {

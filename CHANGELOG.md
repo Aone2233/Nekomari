@@ -8,6 +8,13 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Prevent offline notifications before the configured grace period when a
+  maintenance window ends sooner, and defer alerts if a window begins while
+  the grace timer is running. A reconnect cancels its pending alert without a
+  false recovery; a later outage gets its own timer. Deferred notifications
+  remain in-memory, use the existing minute sweeper and staleness limit, and
+  are not guaranteed delivery across a Panel restart.
+
 ## [v1.7.16] - 2026-10-30
 
 - **Published and deployed on OC424 at approximately 15:56 Asia/Shanghai.**
