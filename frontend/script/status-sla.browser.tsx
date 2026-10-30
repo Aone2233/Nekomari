@@ -4,6 +4,8 @@ import { I18nextProvider } from "react-i18next";
 import { Theme } from "@radix-ui/themes";
 import { SlaReportTable } from "../src/components/status/SlaReportTable";
 import type { SlaReport } from "../src/types/Sla";
+import en from "../src/i18n/locales/en.json";
+import zhCN from "../src/i18n/locales/zh_CN.json";
 import "@radix-ui/themes/styles.css";
 
 /**
@@ -15,46 +17,21 @@ import "@radix-ui/themes/styles.css";
  * node itself was up.
  *
  * The state comes from `?state=` so one page serves all of them. The assertions read
- * DOM attributes and visible text, and the resources below are English only — what is
- * being tested is that a figure is not shown where there is no evidence for it, not
- * which language it is in.
+ * DOM attributes and visible text using the real English and Chinese locale resources.
  *
  * Built a minute at a time at a fixed instant rather than "now", so the incident times
  * the spec asserts on are stable.
  */
 
+const params = new URLSearchParams(globalThis.location.search);
 const i18n = i18next.createInstance();
 await i18n.init({
-  lng: "en",
+  lng: params.get("lang") === "zh_CN" ? "zh_CN" : "en",
+  fallbackLng: "en",
+  interpolation: { escapeValue: false },
   resources: {
-    en: {
-      translation: {
-        "status.title": "Status and SLA",
-        "status.subtitle": "Availability over the selected window.",
-        "status.window": "Window",
-        "status.window_24h": "24 hours",
-        "status.window_7d": "7 days",
-        "status.window_30d": "30 days",
-        "status.window_90d": "90 days",
-        "status.loading": "Loading the report…",
-        "status.error": "Could not load the report",
-        "status.empty": "No nodes reported in this window.",
-        "status.noData": "no data",
-        "status.coverage": "Coverage",
-        "status.coverageOf": "{{percent}} ({{observed}}/{{expected}} samples)",
-        "status.availability": "Availability",
-        "status.latency": "Latency p50/p95/p99 (ms)",
-        "status.latencyValues": "{{p50}} / {{p95}} / {{p99}}",
-        "status.outages": "Outages",
-        "status.noOutages": "none",
-        "status.reportingGaps": "Reporting gaps (not outages — the node stopped reporting)",
-        "status.task": "Task",
-        "status.untaggedSeries": "untagged series",
-        "status.nodeNoData": "This node reported nothing in this window.",
-        "status.sampleInterval": "Buckets of {{seconds}}s",
-        "status.clamped": "Shortened to the retained range",
-      },
-    },
+    en: { translation: en },
+    zh_CN: { translation: zhCN },
   },
 });
 
@@ -173,6 +150,13 @@ const noData: SlaReport = {
   ],
 };
 
+// A task can have results while the node aggregate has no data (for example,
+// an availability report assembled separately from its node presence).
+const taskOnly: SlaReport = {
+  ...noData,
+  nodes: [{ ...noData.nodes[0], has_report: true, tasks: healthy.nodes[0].tasks }],
+};
+
 /**
  * gapsAndClamp: one node that stopped reporting for a stretch, plus a window the server
  * shortened because the store does not retain that far back.
@@ -209,6 +193,19 @@ const gapsAndClamp: SlaReport = {
   ],
 };
 
+// A complete observed span can be a small, stale part of the selected window.
+const partial: SlaReport = {
+  ...healthy,
+  nodes: [{
+    ...healthy.nodes[0],
+    presence: presence(10, 10),
+    tasks: [{
+      ...healthy.nodes[0].tasks![0],
+      loss: { ...healthy.nodes[0].tasks![0].loss, buckets: 10, presence: presence(10, 10) },
+    }],
+  }],
+};
+
 /** hiddenAbsent: a report that simply does not mention a hidden node. */
 const hiddenAbsent: SlaReport = {
   start: at(0),
@@ -224,11 +221,12 @@ const REPORTS: Record<string, SlaReport> = {
   healthy,
   outage: withOutage,
   nodata: noData,
+  taskonly: taskOnly,
   gaps: gapsAndClamp,
+  partial,
   hidden: hiddenAbsent,
 };
 
-const params = new URLSearchParams(globalThis.location.search);
 const state = params.get("state") ?? "healthy";
 
 const root = createRoot(document.getElementById("root")!);
@@ -236,7 +234,7 @@ const root = createRoot(document.getElementById("root")!);
 const render = (props: Parameters<typeof SlaReportTable>[0]) =>
   root.render(
     <I18nextProvider i18n={i18n}>
-      <Theme appearance="dark">
+      <Theme appearance={params.get("theme") === "light" ? "light" : "dark"}>
         <SlaReportTable {...props} />
       </Theme>
     </I18nextProvider>,

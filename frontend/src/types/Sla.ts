@@ -8,11 +8,11 @@
  * that could disagree with the first.
  */
 
-/** How much of the requested window had data at all. */
+/** Coverage within the first-to-last observed bucket span, not the full request window. */
 export interface SlaPresence {
   expected_buckets: number;
   observed_buckets: number;
-  /** Observed/expected, 0..1. Zero when nothing was reported. */
+  /** Observed/expected within the span, 0..1. Zero when no data was reported. */
   coverage: number;
   first_data: string;
   last_data: string;
@@ -63,15 +63,14 @@ export interface SlaNodeReport {
   entity_id: string;
   presence: SlaPresence;
   tasks: SlaTaskReport[] | null;
-  /** Interruptions in the node's own reporting. Not downtime; see the server. */
+  /** Gaps in the union of ping-task results, not proof of node downtime. */
   reporting_gaps: SlaIncident[] | null;
   has_report: boolean;
   /**
    * How many seconds of the requested window fell inside maintenance windows for this node.
    *
-   * Omitted by the server when nothing was excluded. It is what explains a coverage figure lower
-   * than the wall-clock window: excluded time is removed from both sides of the ratio, so without
-   * this the shortage looks like a fault rather than a scheduled window.
+   * Omitted by the server when nothing was excluded. Excluded buckets are removed from
+   * the span calculation; this duration is not a denominator for full-window coverage.
    */
   maintenance_excluded_seconds?: number;
 }
