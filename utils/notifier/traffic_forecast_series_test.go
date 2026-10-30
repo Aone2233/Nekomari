@@ -2,6 +2,8 @@ package notifier
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -129,6 +131,11 @@ func TestCycleSamplesRequireTheDirectionsUsedByTheLimit(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), tc.wantError) {
 					t.Fatalf("got samples=%v err=%v, want error containing %q", got, err, tc.wantError)
 				}
+				wantKind := map[string]forecastInputKind{
+					"missing": forecastMissingDirection, "decreased": forecastCounterDecrease,
+					"duplicate": forecastDuplicateBucket,
+				}[tc.wantError]
+				assertForecastInputKind(t, err, wantKind)
 				if len(got) != 0 {
 					t.Fatalf("a partial series must not be projected: %v", got)
 				}
@@ -188,6 +195,7 @@ func TestCycleTrafficSamplesUsesActualStoreAndRefusesIncompleteHistory(t *testin
 			if err == nil || !strings.Contains(err.Error(), "missing") || len(samples) != 0 {
 				t.Fatalf("incomplete actual series: samples=%v err=%v", samples, err)
 			}
+			assertForecastInputKind(t, err, forecastMissingDirection)
 			continue
 		}
 		if err != nil || len(samples) != 6 {
@@ -279,6 +287,46 @@ func TestCycleSamplesRejectInvalidOrOverflowingCounters(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), tc.wantError) || len(got) != 0 {
 				t.Fatalf("got samples=%v err=%v; want no samples and error containing %q", got, err, tc.wantError)
 			}
+			wantKind := forecastInvalidCounter
+			if tc.wantError == "overflow" {
+				wantKind = forecastSumOverflow
+			}
+			assertForecastInputKind(t, err, wantKind)
 		})
 	}
+}
+
+func assertForecastInputKind(t *testing.T, err error, want forecastInputKind) {
+	t.Helper()
+	for _, candidate := range []error{err, fmt.Errorf("reading forecast: %w", err)} {
+		var input *forecastInputError
+		if !errors.As(candidate, &input) || input.kind != want {
+			t.Fatalf("error %v has input kind %v, want %q", candidate, input, want)
+		}
+	}
+}
+
+func TestForecastStoreFailuresAreNotInputRefusals(t *testing.T) {
+	now := time.Now().UTC()
+	window := cycle.Cycle{Start: now.Add(-24 * time.Hour), End: now.Add(24 * time.Hour)}
+	client := models.Client{UUID: "store-failure", TrafficLimitType: "sum"}
+	check := func(err error) {
+		t.Helper()
+		var input *forecastInputError
+		if err == nil || errors.As(err, &input) {
+			t.Fatalf("store failure = %v, must not be an input refusal", err)
+		}
+	}
+	_, err := cycleTrafficSamplesWithStore(now, client, window, nil)
+	check(err)
+
+	store, err := metric.Open(context.Background(), metric.SQLite(":memory:"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = cycleTrafficSamplesWithStore(now, client, window, store)
+	check(err)
 }
