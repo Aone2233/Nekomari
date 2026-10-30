@@ -2,14 +2,18 @@ package jsonrpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/database/notification"
+	"github.com/Aone2233/nekomari/pkg/metric"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 	"github.com/Aone2233/nekomari/utils/messageSender"
 	"github.com/Aone2233/nekomari/utils/notifier"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -22,6 +26,7 @@ func init() {
 	reg("deleteLoadNotification", adminDeleteLoadNotification, "Delete load notifications by ids")
 	reg("editLoadNotification", adminEditLoadNotification, "Edit load notifications")
 	reg("getAllLoadNotifications", adminGetAllLoadNotifications, "List all load notifications")
+	reg("previewLoadNotification", adminPreviewLoadNotification, "Preview a saved load rule without sending")
 	// offline notifications
 	reg("listOfflineNotifications", adminListOfflineNotifications, "List offline notifications")
 	reg("editOfflineNotification", adminEditOfflineNotification, "Edit offline notifications")
@@ -29,6 +34,50 @@ func init() {
 	reg("disableOfflineNotification", adminDisableOfflineNotification, "Disable offline notifications for clients")
 	// send notification
 	reg("sendNotification", adminSendNotification, "Send a notification")
+}
+
+// One preview at a time, with no queue: repeated clicks must not compete with
+// scheduled monitoring or accumulate expensive historical queries.
+var loadPreviewSlot = make(chan struct{}, 1)
+
+func adminPreviewLoadNotification(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	var params struct {
+		ID uint `json:"id"`
+	}
+	if err := req.BindParams(&params); err != nil || params.ID == 0 {
+		return nil, rpc.MakeError(rpc.InvalidParams, "A saved rule id is required", nil)
+	}
+	select {
+	case loadPreviewSlot <- struct{}{}:
+		defer func() { <-loadPreviewSlot }()
+	default:
+		return nil, rpc.MakeError(rpc.Unavailable, "Another rule preview is running", nil)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	ctx = metric.WithReadBudgetBytes(ctx, maxMetricTotalPoints, maxMetricTotalBytes)
+	db := dbcore.GetDBInstance()
+	if db == nil {
+		return nil, rpc.MakeError(rpc.Unavailable, "Database unavailable", nil)
+	}
+	var rule models.LoadNotification
+	if err := db.WithContext(ctx).First(&rule, params.ID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, rpc.MakeError(rpc.NotFound, "Rule not found", nil)
+		}
+		return nil, rpc.MakeError(rpc.InternalError, "Unable to read rule", nil)
+	}
+	result, err := notifier.PreviewLoadNotification(ctx, rule, time.Now())
+	if errors.Is(err, notifier.ErrPreviewLimit) {
+		return nil, rpc.MakeError(rpc.InvalidParams, "Rule exceeds preview limits (50 targets, 31 baseline days)", nil)
+	}
+	if err != nil {
+		return nil, rpc.MakeError(rpc.Unavailable, "Unable to preview this rule", nil)
+	}
+	return result, nil
 }
 
 // adminSendNotification 发送一条通知。仅供外部（插件/脚本）通过 RPC 调用，

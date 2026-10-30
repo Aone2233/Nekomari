@@ -8,6 +8,14 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Add an administrator-only, read-only preview for saved load and ping alert
+  rules. It shows per-target threshold, missing data and current maintenance
+  state without sending or changing alert state. It is not a delivery test or
+  a promise of future scheduler behavior. `temp`, `backup_age` and `backup_ok`
+  are explicitly unsupported because the existing scheduler lookup does not
+  map them; fixing that behavior remains separate. See
+  `docs/ALERT-RULE-PREVIEW.md`.
+
 ## [v1.7.17] - 2026-10-30
 
 - **Published and deployed on OC424 at approximately 17:06 Asia/Shanghai.**
