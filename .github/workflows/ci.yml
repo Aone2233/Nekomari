@@ -150,7 +150,9 @@ jobs:
       - name: Check theme-cache diagnostics and authorization in the embedded admin UI
         run: python -W error::ResourceWarning frontend/script/theme-cache-diagnostics.spec.py --panel-binary ./nekomari
       - name: Check private panel history and embedded admin UI
-        run: python -W error::ResourceWarning frontend/script/panel-history.spec.py --panel-binary ./nekomari
+        run: |
+          python -W error::ResourceWarning frontend/script/panel-history-wait-test.py
+          python -W error::ResourceWarning frontend/script/panel-history.spec.py --panel-binary ./nekomari
       - name: Restore a synthetic encrypted backup into an offline panel container
         run: |
           sudo apt-get update -qq
