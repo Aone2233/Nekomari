@@ -8,6 +8,19 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.7.17] - 2026-10-30
+
+- **Published and deployed on OC424 at approximately 17:06 Asia/Shanghai.**
+  Immutable `0a9fd1d91b263242eb0eaeb92fc84f47a5812b13`; candidate
+  CI41026965107 and exact merge CI41028016613 each pass 8/8,
+  release41028983238 10/10, Docker41029876841 2/2. Both Linux assets'
+  checksums and attestations and the dual-architecture panel/Agent image
+  identities verify. The actual released binary passes the synthetic offline
+  scenario on MAC-WAN. OC424 upgrade9/9, public27/27, read-only forecast13rows
+  and 13 fresh CPU/uptime reporters pass. Manual pre/post encrypted archives
+  restore in isolation, with matching online copies. Actual remote message
+  receipt, owner UI acceptance and independent-media recovery are not
+  claimed. See `docs/DEPLOY-OC424.md`.
 - Prevent offline notifications before the configured grace period when a
   maintenance window ends sooner, and defer alerts if a window begins while
   the grace timer is running. A reconnect cancels its pending alert without a

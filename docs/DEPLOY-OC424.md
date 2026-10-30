@@ -17,7 +17,57 @@ recovery remains unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
 schedule and 14-node acceptance statements below are history.
 
-## Current checkpoint (2026-10-30 15:59 Asia/Shanghai)
+## Current checkpoint (2026-10-30 17:11 Asia/Shanghai)
+
+OC424 runs **v1.7.17/0a9fd1d**, immutable source
+`0a9fd1d91b263242eb0eaeb92fc84f47a5812b13`, in the pinned arm64 image
+`ghcr.io/aone2233/nekomari:v1.7.17@sha256:4bd55153422e5c7a2533508c18582cba9fdd3d669887973080731b46911b8425`.
+It became healthy at approximately 17:06, with zero container restarts.
+
+- Candidate CI41026965107 and exact merge CI41028016613 pass 8/8;
+  release41028983238 passes 10/10 and Docker41029876841 2/2 with the actual
+  triggering release ID verified for both jobs. Published Linux checksums,
+  tag/source/workflow attestations and both architectures of panel/Agent OCI
+  identity verify. Native image binaries match released assets. The released
+  amd64 binary on MAC-WAN passes synthetic window-before-grace,
+  window-during-grace and reconnect/recovery cases using loopback fake
+  Telegram. No production failure or notification was injected.
+- OC424 upgrade9/9 and public27/27 pass; both DB quick checks and schemas
+  match, all 13 registered clients have fresh CPU/uptime, and the UUID/token
+  digest is unchanged. Key scope/expiry, authorized SSH keys, GeoIP, backup
+  health and the local OC424 Agent PID/restart count remain unchanged. A
+  scoped read-only forecast returns 13 rows (10 linear, three insufficient;
+  two unknown usage values). This is not an authenticated owner UI acceptance
+  or a test of actual remote alert delivery.
+- Manual pre archive `oc424-20261030T090213623348Z-54549a494a77.tar.gz.age`
+  has SHA-256 `fccaea8fa999f555b4cdd5fca4ca754a594de846fc3c809487c1f564265631f0`;
+  manual post archive `oc424-20261030T090821042225Z-779daa8a7e4a.tar.gz.age`
+  has SHA-256 `8ae8585c745225eedf7cb13d2fa5393c3fdd483794d91ea351fc7473271e024d`.
+  Separate MAC-WAN `incoming/` copies and online executor copies match. Pre
+  restores under pinned v1.7.16 and v1.7.17; post restores under v1.7.17 with
+  the current 13-client digest. Post compares 20,492 archived rows across 12
+  histories: zero in-retention rows missing or changed. No independent-media
+  recovery is claimed.
+- The initial 17:01 manual backup attempt collided with the automatic health
+  check's shared lock and failed without producing an archive; the 17:02 retry
+  and 17:08 post backup succeeded. A 17:10 **manual** health report reaches
+  OC424 as `ok` for the post archive. The next actual daily trigger through the
+  new route is 2026-10-31 11:30 and remains unverified. With 14 scheduled pairs,
+  the next successful receive's existing keep=14 policy will prune its oldest
+  eligible pair; the oldest pair has a checksum-matching `incoming/` copy.
+  Independent-media restore, real alert receipt and OVH disk sanitization
+  remain unverified. OC424 disk was 48%, MAC-WAN 32%; no broad cleanup.
+
+Root-private rollback evidence is
+`/opt/nekomari/rollbacks/v1.7.17-20261030T090636Z-9e7365cd`; the previous
+image remains
+`ghcr.io/aone2233/nekomari:v1.7.16@sha256:d47b91611613b5f0e54b95a6481f41773ca47365f562781c534f55422b56223f`.
+If rollback is needed, assess the current state and switch only the pinned
+image/compose while preserving the live databases and current nodes; never
+overwrite them with an old snapshot. No Agent was deliberately restarted or
+reconfigured; stable publication can trigger eligible Agent self-updaters.
+
+## Historical checkpoint (2026-10-30 15:59 Asia/Shanghai)
 
 OC424 runs **v1.7.16/e7323c8**, immutable source
 `e7323c86ed91828e3df9d21f33d9fb5acba34956`, in the pinned arm64 image
@@ -149,7 +199,7 @@ Older rollout sections are dated evidence, not the current version/node count.
 | MAC-WAN | Linux x86_64 user `macos`; encrypted receiver, health timer, online identity/isolated recovery. First scheduled daily backup succeeds at 11:30-11:31 Asia/Shanghai and its health report at 11:34; Agent/Hermes are not restarted by this work |
 | Acceptance | Prior Hermes disposable CLI writes pass; dsh records earlier owner history/audit/API-key acceptance. No new owner UI session for v1.7.14; public401 is not authenticated acceptance. Complete caller inventory remains separate |
 
-Latest delivery: v1.7.14 adds private default-theme cache history; see
+At the v1.7.14 historical checkpoint, that release added private default-theme cache history; see
 [`THEME-CACHE-HISTORY.md`](./THEME-CACHE-HISTORY.md). v1.7.13 adds private connection-pool wait history; see
 [`PANEL-POOL-HISTORY.md`](./PANEL-POOL-HISTORY.md). v1.7.12 corrects data-mount persistence warnings; see
 [`DATA-MOUNT-WARNING.md`](./DATA-MOUNT-WARNING.md). v1.7.11 adds session-only
