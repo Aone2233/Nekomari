@@ -19,7 +19,7 @@ export const LoadAlertProvider: React.FC<{ children: React.ReactNode }> = ({
   // 只负责发起请求并在响应到达后应用结果：函数体内没有同步的 setState，
   // 所以挂载 effect 可以直接调用它。refresh 保留原有的同步写入（error），
   // 供外部调用方使用。
-  const loadLoadAlerts = () => {
+  const loadLoadAlerts = () =>
     requestLoadAlerts()
       .then((resp: Response) => {
         if (resp && Array.isArray(resp.data)) {
@@ -34,11 +34,10 @@ export const LoadAlertProvider: React.FC<{ children: React.ReactNode }> = ({
       .finally(() => {
         setIsLoading(false);
       });
-  };
 
   const refresh = () => {
     setError(null);
-    loadLoadAlerts();
+    return loadLoadAlerts();
   };
 
   React.useEffect(() => {

@@ -13,6 +13,7 @@ import { LoadAlertProvider } from "@/contexts/LoadAlertProvider";
 import { useNodeDetails } from "@/contexts/NodeDetailsContext";
 import { NodeDetailsProvider } from "@/contexts/NodeDetailsProvider";
 import { usePingTask } from "@/contexts/PingTaskContext";
+import { requireApiSuccess } from "@/lib/apiResponse";
 
 import {
   Button,
@@ -89,61 +90,52 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
   const { nodeDetail } = useNodeDetails();
   const [editOpen, setEditOpen] = React.useState(false);
   const [editSaving, setEditSaving] = React.useState(false);
+  const saveInFlight = React.useRef(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [deleteLoading, setDeleteLoading] = React.useState(false);
-  const [form, setForm] = React.useState({
-    name: alert.name || "",
-    metric: alert.metric || "cpu",
-    threshold: alert.threshold || 80,
-    ratio: alert.ratio || 0.8,
+  const formFromAlert = () => ({
+    name: alert.name ?? "",
+    metric: alert.metric ?? "cpu",
+    threshold: alert.threshold ?? 80,
+    ratio: alert.ratio ?? 0.8,
     clients: alert.clients || [],
-    interval: alert.interval || 15,
+    interval: alert.interval ?? 15,
     mode: (alert.mode as "fixed" | "baseline") || "fixed",
-    baseline_days: alert.baseline_days || 7,
-    multiplier: alert.multiplier || 3,
+    baseline_days: alert.baseline_days ?? 7,
+    multiplier: alert.multiplier ?? 3,
     tasks: (alert.tasks as string[]) || [],
   });
+  const [form, setForm] = React.useState(formFromAlert);
 
-  const submitEdit = (newForm: typeof form) => {
+  const submitEdit = (update: Record<string, unknown>) => {
+    if (saveInFlight.current) return;
+    saveInFlight.current = true;
     setEditSaving(true);
-    fetch("/api/admin/notification/load/edit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        notifications: [
-          {
-            id: alert.id,
-            name: newForm.name,
-            metric: newForm.metric,
-            threshold: newForm.threshold,
-            ratio: newForm.ratio,
-            clients: newForm.clients,
-            interval: newForm.interval,
-            mode: newForm.mode,
-            baseline_days: newForm.baseline_days,
-            tasks: newForm.tasks,
-            multiplier: newForm.multiplier,
-          },
-        ],
-      }),
-    })
-      .then((res) => {
-        if (!res.ok) {
-          return res.json().then((data) => {
-            throw new Error(data?.message || t("common.error"));
-          });
-        }
-        return res.json();
-      })
-      .then(() => {
+    void (async () => {
+      try {
+        const response = await fetch("/api/admin/notification/load/edit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            notifications: [
+              {
+                id: alert.id,
+                ...update,
+              },
+            ],
+          }),
+        });
+        await requireApiSuccess(response, t("common.error"));
         setEditOpen(false);
         toast.success(t("common.updated_successfully"));
-        refresh();
-      })
-      .catch((error) => {
-        toast.error(error.message);
-      })
-      .finally(() => setEditSaving(false));
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : t("common.error"));
+      } finally {
+        await refresh();
+        saveInFlight.current = false;
+        setEditSaving(false);
+      }
+    })();
   };
 
   // 编辑提交
@@ -180,7 +172,7 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
   };
 
   return (
-    <TableRow key={alert.id}>
+    <TableRow key={alert.id} data-testid="load-rule-row">
       <TableCell>{alert.name}</TableCell>
       <TableCell>
         <Flex gap="2" align="center">
@@ -198,15 +190,13 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
               })()
             : t("common.none")}
           <NodeSelectorDialog
-            value={form.clients ?? []}
+            value={alert.clients ?? []}
             hiddenUuidOnlyClient
-            onChange={(uuids) => {
-              setForm((f) => ({ ...f, clients: uuids }));
-              submitEdit({ ...form, clients: uuids });
-            }}
+            onChange={(uuids) => submitEdit({ clients: uuids })}
           >
             <IconButton
               variant="ghost"
+              disabled={editSaving}
               title={t("common.select_clients", "Select clients")}
               aria-label={t("common.select_clients", "Select clients")}
             >
@@ -228,17 +218,21 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
       <TableCell className="flex items-center gap-2">
         <RulePreview alert={alert} />
         {/* 编辑按钮 */}
-        <Dialog.Root open={editOpen} onOpenChange={setEditOpen}>
+        <Dialog.Root open={editOpen} onOpenChange={(open) => {
+          if (open) setForm(formFromAlert());
+          setEditOpen(open);
+        }}>
           <Dialog.Trigger>
             <IconButton
               variant="soft"
+              disabled={editSaving}
               title={t("common.edit", "Edit")}
               aria-label={t("common.edit", "Edit")}
             >
               <Pencil size="16" />
             </IconButton>
           </Dialog.Trigger>
-          <Dialog.Content>
+          <Dialog.Content data-testid="load-rule-edit">
             <Dialog.Title>{t("common.edit")}</Dialog.Title>
             <form onSubmit={handleEdit} className="flex flex-col gap-2">
               <label>{t("common.name")}</label>
@@ -335,6 +329,8 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
               </label>
               <TextField.Root
                 type="number"
+                step="any"
+                data-testid="load-rule-threshold"
                 value={form.threshold}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, threshold: Number(e.target.value) }))
@@ -347,6 +343,7 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
                 step="0.1"
                 min="0"
                 max="1"
+                data-testid="load-rule-ratio"
                 value={form.ratio}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, ratio: Number(e.target.value) }))
@@ -670,24 +667,15 @@ const AddButton: React.FC = () => {
       },
       body: JSON.stringify(payload),
     })
-      .then((response) => {
-        if (response.ok) {
-          setIsOpen(false);
-          setSelected([]);
-          setSelectedType("cpu");
-          setMode("fixed");
-          setPingTaskIds([]);
-          toast.success(t("common.success"));
-        } else {
-          response
-            .json()
-            .then((data) => {
-              toast.error(data?.message || t("common.error"));
-            })
-            .catch((error) => {
-              toast.error(error.message);
-            });
-        }
+      .then((response) => requireApiSuccess(response, t("common.error")))
+      .then(() => {
+        setIsOpen(false);
+        setSelected([]);
+        setSelectedType("cpu");
+        setMode("fixed");
+        setPingTaskIds([]);
+        toast.success(t("common.success"));
+        refresh();
       })
       .catch((error) => {
         console.error("Error adding load alert:", error);
@@ -695,7 +683,6 @@ const AddButton: React.FC = () => {
       })
       .finally(() => {
         setSaving(false);
-        refresh();
       });
   };
   return (

@@ -8,6 +8,18 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Preserve an explicitly supplied zero baseline floor when creating or editing
+  a load rule; an omitted create threshold retains the prior default of 80.
+  The editor also preserves zero and node selection updates only clients.
+  Per-rule edits wait for a refreshed rule before allowing another edit.
+  Invalid interval, host ratio, mode and zero fixed-threshold edits are refused;
+  batches roll back and schedules are checked before existing jobs are removed.
+  Existing rules are not rewritten. Zero floor does not match an all-zero
+  baseline, and unsupported metrics remain unsupported. See
+  `docs/ALERT-RULE-PREVIEW.md`.
+- Report API business errors when creating or editing a load rule instead of
+  treating HTTP 200 alone as a successful save.
+
 ## [v1.7.19] - 2026-10-30
 
 - **Published and deployed on OC424 at approximately 03:45 on 2026-10-31

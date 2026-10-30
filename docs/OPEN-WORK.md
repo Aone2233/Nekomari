@@ -461,7 +461,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 
 | Item | Where | Why it is still here |
 |---|---|---|
-| `Presence.Coverage` is a span, not a window coverage | `internal/sla/availability.go`; `docs/SLA-COVERAGE.md` | The pending UI batch labels the existing span ratio, shows first/last observed bucket starts and explains that node presence uses ping tasks rather than agent uptime. Backend values are unchanged. A separate window-coverage field, including its boundary, cadence and maintenance semantics, remains undecided; an in-place redefinition would move stored figures and is not done |
+| `Presence.Coverage` is a span, not a window coverage | `internal/sla/availability.go`; `docs/SLA-COVERAGE.md` | The v1.7.19 UI labels the existing span ratio, shows first/last observed bucket starts and explains that node presence uses ping tasks rather than agent uptime. Backend values are unchanged. A separate window-coverage field, including its boundary, cadence and maintenance semantics, remains undecided; an in-place redefinition would move stored figures and is not done |
 | `PriceTags` missing/invalid expiry | `frontend/src/components/PriceTags.tsx` | **Fixed/deployed v1.7.7**: neutral localized unset/unknown labels preserve real dates/tags; focused, real embedded-browser, publication and OC424 continuity pass |
 | Dragging under a filter reorders only the visible subset | `frontend/src/pages/admin/index.tsx` | Needs a decision about what reordering a filtered list should mean |
 | Uptime history / restart count | `docs/UPTIME-HISTORY.md` | Uptime history is deployed in v1.7.8. It records bucketed positive readings, not reboot events; trustworthy restart counting remains open |
