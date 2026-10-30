@@ -265,28 +265,41 @@ func TestAlignedStartSQLIntegration(t *testing.T) {
 
 func assertIntegrationAlignedStart(t *testing.T, ctx context.Context, store *Store) {
 	t.Helper()
-	name := "integration.aligned_start"
-	if err := store.CreateMetric(ctx, Definition{Name: name, Type: TypeGauge, RetentionDays: 30}); err != nil {
-		t.Fatal(err)
-	}
-	base := time.Now().UTC().Truncate(5 * time.Minute).Add(-time.Hour)
-	start := base.Add(2 * time.Minute)
-	rows := []PersistedRollup{
-		constantTransferRollup(name, "aligned-node", base, 5*time.Minute, 1000, start),
-		constantTransferRollup(name, "aligned-node", base.Add(5*time.Minute), 5*time.Minute, 100, start),
-	}
-	if err := store.ImportRollups(ctx, rows); err != nil {
-		t.Fatal(err)
-	}
-	query := BatchSeriesQuery{Specs: []BatchSeriesSpec{{MetricName: name, Aggregations: []Aggregation{AggMax}, Interval: time.Hour, AlignedStart: true}},
-		EntityIDs: []string{"aligned-node"}, Start: start, End: base.Add(10 * time.Minute)}
-	result, err := store.seriesBatchAt(ctx, query.normalized(), start.Add(time.Hour), map[string]time.Duration{name: 5 * time.Minute})
-	if err != nil {
-		t.Fatalf("aligned persisted read: %v", err)
-	}
-	points := result.Values[name][AggMax]
-	if len(points) != 1 || points[0].Value != 100 || !points[0].Bucket.Equal(start) {
-		t.Fatalf("aligned persisted read = %+v; want only the in-window value at %s", points, start)
+	hour := time.Now().UTC().Truncate(time.Hour).Add(-2 * time.Hour)
+	for _, tc := range []struct {
+		name       string
+		baseOffset time.Duration
+		wantOffset time.Duration
+	}{
+		{"partial_output", 5 * time.Minute, 7 * time.Minute},
+		{"next_output", 55 * time.Minute, time.Hour},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			name := "integration.aligned_start." + tc.name
+			if err := store.CreateMetric(ctx, Definition{Name: name, Type: TypeGauge, RetentionDays: 30}); err != nil {
+				t.Fatal(err)
+			}
+			base := hour.Add(tc.baseOffset)
+			start := base.Add(2 * time.Minute)
+			rows := []PersistedRollup{
+				constantTransferRollup(name, "aligned-node", base, 5*time.Minute, 1000, start),
+				constantTransferRollup(name, "aligned-node", base.Add(5*time.Minute), 5*time.Minute, 100, start),
+			}
+			if err := store.ImportRollups(ctx, rows); err != nil {
+				t.Fatal(err)
+			}
+			query := BatchSeriesQuery{Specs: []BatchSeriesSpec{{MetricName: name, Aggregations: []Aggregation{AggMax}, Interval: time.Hour, AlignedStart: true}},
+				EntityIDs: []string{"aligned-node"}, Start: start, End: base.Add(10 * time.Minute)}
+			result, err := store.seriesBatchAt(ctx, query.normalized(), start.Add(time.Hour), map[string]time.Duration{name: 5 * time.Minute})
+			if err != nil {
+				t.Fatalf("aligned persisted read: %v", err)
+			}
+			points := result.Values[name][AggMax]
+			wantBucket := hour.Add(tc.wantOffset)
+			if len(points) != 1 || points[0].Value != 100 || !points[0].Bucket.Equal(wantBucket) {
+				t.Fatalf("aligned persisted read = %+v; want only the in-window value at %s", points, wantBucket)
+			}
+		})
 	}
 }
 

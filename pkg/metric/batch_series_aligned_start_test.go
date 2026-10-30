@@ -152,3 +152,8 @@ func TestAlignedRollupStartRounding(t *testing.T) {
 		t.Fatalf("overflowing next boundary = %d", got)
 	}
 }
+
+func TestAlignedStartSQLFixtureCrossesOutputHour(t *testing.T) {
+	store := newMemStore(t)
+	assertIntegrationAlignedStart(t, context.Background(), store)
+}
