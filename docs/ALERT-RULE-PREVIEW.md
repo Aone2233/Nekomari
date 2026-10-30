@@ -25,6 +25,28 @@ maintenance windows directly, whereas the scheduler uses a short-lived cache.
 It neither validates notification enablement/provider nor predicts future
 condition, cooldown, maintenance or real delivery.
 
+## Baseline floor and editing
+
+The pending load-rule update preserves an explicitly supplied zero threshold in
+baseline mode on create and edit. Previously the model default changed it to
+80 on create, the editor displayed 80, and a struct update ignored a zero
+threshold. An omitted baseline create threshold still defaults to 80 for API
+compatibility; fixed mode still requires a non-zero threshold. Existing rules
+are not migrated: inspect their saved value before changing them. A zero floor
+does not guarantee an alert when the historical P95 is zero: the evaluator
+requires at least eight samples and skips when the resulting threshold is not
+positive.
+
+Partial edits preserve omitted fields; explicit empty client/task arrays clear
+them. The editor serializes each row's saves through a refresh to avoid an
+immediate stale edit. Clients can still supply `last_notified` explicitly as before, but the
+editor does not submit it and the timestamp is not proof of delivery. An
+invalid interval, host ratio, mode or zero fixed threshold is refused; a batch
+is atomic. If any legacy rule has a non-positive or overflowing interval, a
+create or edit fails until the offending interval is repaired, rather than
+discarding existing scheduled jobs. A partial edit may repair that interval.
+The changes do not enable unsupported metrics or validate delivery.
+
 The `admin:previewLoadNotification` RPC and REST bridge are administrator
 session only; no API-key scope is added. Input is a saved numeric ID, not an
 arbitrary query. One preview can run at a time with no queue, a 15-second

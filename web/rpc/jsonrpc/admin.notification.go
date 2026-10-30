@@ -108,7 +108,7 @@ func adminAddLoadNotification(_ context.Context, req *rpc.JsonRpcRequest) (any, 
 		Clients      []string `json:"clients"`
 		Name         string   `json:"name"`
 		Metric       string   `json:"metric"`
-		Threshold    float32  `json:"threshold"`
+		Threshold    *float32 `json:"threshold"`
 		Ratio        float32  `json:"ratio"`
 		Interval     int      `json:"interval"`
 		Mode         string   `json:"mode"`
@@ -117,7 +117,9 @@ func adminAddLoadNotification(_ context.Context, req *rpc.JsonRpcRequest) (any, 
 		// Tasks 仅 ping 指标需要：要盯的延迟监测任务 id 列表。
 		Tasks []string `json:"tasks"`
 	}
-	req.BindParams(&params)
+	if err := req.BindParams(&params); err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request data", nil)
+	}
 	if params.Mode == "" {
 		params.Mode = models.LoadThresholdModeFixed
 	}
@@ -134,7 +136,7 @@ func adminAddLoadNotification(_ context.Context, req *rpc.JsonRpcRequest) (any, 
 
 	// ping 指标的「对象」是任务，服务器由任务自身推导，因此不要求选客户端；
 	// 主机指标反过来，必须选客户端。Ratio 只被主机指标使用。
-	if params.Metric == "" || params.Interval == 0 || (thresholdRequired && params.Threshold == 0) {
+	if params.Metric == "" || params.Interval == 0 || (thresholdRequired && (params.Threshold == nil || *params.Threshold == 0)) {
 		return nil, rpc.MakeError(rpc.InvalidParams, "metric and interval are required (threshold is required in fixed mode)", nil)
 	}
 	if !pingMode && len(params.Clients) == 0 {
@@ -147,7 +149,13 @@ func adminAddLoadNotification(_ context.Context, req *rpc.JsonRpcRequest) (any, 
 	if !pingMode && (params.Ratio <= 0 || params.Ratio > 1) {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Ratio must be between 0 and 1", nil)
 	}
-	taskID, err := notification.AddLoadNotification(params.Clients, params.Name, params.Metric, params.Threshold, params.Ratio, params.Interval,
+	// Before zero floors were persisted, an omitted baseline threshold acquired
+	// the model default. Preserve that behavior for existing API clients.
+	threshold := float32(80)
+	if params.Threshold != nil {
+		threshold = *params.Threshold
+	}
+	taskID, err := notification.AddLoadNotification(params.Clients, params.Name, params.Metric, threshold, params.Ratio, params.Interval,
 		params.Mode, params.BaselineDays, params.Multiplier, params.Tasks)
 	if err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
@@ -171,7 +179,7 @@ func adminDeleteLoadNotification(_ context.Context, req *rpc.JsonRpcRequest) (an
 
 func adminEditLoadNotification(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {
-		Notifications []*models.LoadNotification `json:"notifications"`
+		Notifications []*notification.LoadNotificationEdit `json:"notifications"`
 	}
 	if err := req.BindParams(&params); err != nil {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request data", nil)
