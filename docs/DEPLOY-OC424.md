@@ -17,7 +17,57 @@ recovery remains unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
 schedule and 14-node acceptance statements below are history.
 
-## Current checkpoint (2026-10-30 17:11 Asia/Shanghai)
+## Current checkpoint (2026-10-30 22:38 Asia/Shanghai)
+
+OC424 runs **v1.7.18/8dbfd8c**, immutable source
+`8dbfd8c214b13820cfa23cb84994ed9393a8aacd`, in the pinned arm64 image
+`ghcr.io/aone2233/nekomari:v1.7.18@sha256:61c64fc685a409f534e472e9e67f77145fda45475ce3065fe93af7be241b9c0d`.
+It became healthy at approximately 22:34, with zero container restarts.
+
+- Candidate CI41066053281 and exact merge CI41067514587 pass 8/8;
+  release41068843126 passes 10/10 and Docker41071110757 2/2 with the actual
+  triggering release ID verified. Published Linux checksums and
+  tag/source/workflow attestations, both architectures of panel/Agent OCI
+  identity and the native panel image binaries verify. The released amd64
+  binary passes isolated MAC-WAN preview API and embedded UI tests: a valid
+  scoped key passes a positive control but is denied preview; repeated previews
+  do not change `last_notified`. Chinese desktop/light and English mobile/dark
+  browser cases pass. No production rule or notification was modified.
+- OC424 upgrade9/9 and public27/27 pass; both DB quick checks and schemas
+  match, all 13 registered clients have fresh CPU/uptime, and the UUID/token
+  digest is unchanged. Key scope/expiry, authorized SSH keys, GeoIP, backup
+  health and local OC424 Agent PID/restart count remain unchanged during the
+  switch. Scoped read-only forecast returns 13 rows, including three
+  insufficient results and two unknown usage values. The actual owner UI and
+  remote alert receipt were not tested. Stable publication can cause other
+  Agents with self-update enabled to update independently.
+- Manual pre archive `oc424-20261030T143144743764Z-fd30cf6ef52b.tar.gz.age`
+  has SHA-256 `0c2a697b0018d747aa7dd9ad87a07e22d4cc57b6854a57e695f09c2322e5d51b`;
+  manual post archive `oc424-20261030T143505907758Z-985e040a298b.tar.gz.age`
+  has SHA-256 `13f0594e1009f485b8ff2d564fca9d241b25510ce3bb02ea71d28d00a0cf1c24`.
+  Matching regular MAC-WAN `incoming/` and executor ciphertext copies exist.
+  Pre restores under pinned v1.7.17/v1.7.18, post under v1.7.18, with the
+  current 13-client digest. Post compares 21,768 archived rows across 12
+  histories: zero retained rows missing or changed, 820 expired or inactive-tier
+  rows absent. No independent-media recovery is claimed.
+- The 22:30 automatic backup-health report succeeded before the manual
+  backups. Those backups used isolated directories under the existing lock,
+  leaving all 14 scheduled pairs unchanged. The next actual daily trigger via
+  the new route is 2026-10-31 11:30 and remains unverified; its existing
+  keep=14 policy retires the oldest eligible pair, whose matching `incoming/`
+  copy was verified. OC424 disk was 48%, MAC-WAN 32%, executor 70%; no broad
+  cleanup or timer change.
+
+Root-private rollback evidence is
+`/opt/nekomari/rollbacks/v1.7.18-20261030T143439Z-d5b693eb`; the previous
+image remains
+`ghcr.io/aone2233/nekomari:v1.7.17@sha256:4bd55153422e5c7a2533508c18582cba9fdd3d669887973080731b46911b8425`.
+If rollback is needed, assess the live state and switch only the pinned
+image/compose while preserving current databases and nodes; never overwrite
+them with old snapshots. See [`ALERT-RULE-PREVIEW.md`](./ALERT-RULE-PREVIEW.md)
+for the preview's limits and unsupported metrics.
+
+## Historical checkpoint (2026-10-30 17:11 Asia/Shanghai)
 
 OC424 runs **v1.7.17/0a9fd1d**, immutable source
 `0a9fd1d91b263242eb0eaeb92fc84f47a5812b13`, in the pinned arm64 image

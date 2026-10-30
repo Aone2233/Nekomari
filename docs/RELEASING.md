@@ -2,7 +2,23 @@
 
 ## Cut a release
 
-**Latest delivery: v1.7.16 (2026-10-30).** Immutable `e7323c8`, exact push
+**Latest delivery: v1.7.18 (2026-10-30).** Immutable `8dbfd8c`, candidate
+CI41066053281 and exact merge CI41067514587 8/8, release41068843126 10/10,
+and Docker41071110757 2/2. Published checksums/attestations and dual-platform
+image identities verify; the released binary's isolated MAC-WAN preview API
+and embedded browser checks, fresh pre/post encrypted recovery, OC424
+upgrade9/9, public27/27 and 13 fresh reporters pass. Independent-media restore,
+the new route's next daily timer, actual alert receipt and owner-session UI
+remain unverified. Stable publication may trigger Agent self-updates. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for pinned images and rollback.
+
+**Prior delivery: v1.7.17 (2026-10-30).** Immutable `0a9fd1d`, exact merge
+CI41028016613 8/8, release41028983238 10/10 and Docker41029876841 2/2.
+Published binary provenance, isolated maintenance/grace acceptance, encrypted
+pre/post recovery and OC424 upgrade/public/reporting checks pass. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for the dated evidence.
+
+**Prior delivery: v1.7.16 (2026-10-30).** Immutable `e7323c8`, exact push
 CI41021022614 8/8, release41021806313 10/10 and Docker41022572275 2/2.
 Published Linux checksums/attestations and dual-platform image identities
 verify; the published binary's scheduled-logging test, fresh MAC-WAN pre/post
