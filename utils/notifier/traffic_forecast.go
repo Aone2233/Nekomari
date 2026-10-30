@@ -2,6 +2,7 @@ package notifier
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -43,6 +44,71 @@ import (
 // it does not, deliberately: an in-memory cache that forgets at worst sends one extra warning, while a
 // persisted one would need a migration and a table for a single timestamp per node.
 var forecastCache = cache.New(40*24*time.Hour, time.Hour)
+
+type forecastInputKind string
+
+const (
+	forecastInvalidCounter   forecastInputKind = "invalid-counter"
+	forecastDuplicateBucket  forecastInputKind = "duplicate-bucket"
+	forecastMissingDirection forecastInputKind = "missing-direction"
+	forecastCounterDecrease  forecastInputKind = "counter-decrease"
+	forecastSumOverflow      forecastInputKind = "sum-overflow"
+)
+
+var forecastInputKinds = [...]forecastInputKind{
+	forecastInvalidCounter, forecastDuplicateBucket, forecastMissingDirection,
+	forecastCounterDecrease, forecastSumOverflow,
+}
+
+type forecastInputError struct {
+	kind   forecastInputKind
+	reason string
+}
+
+func (e *forecastInputError) Error() string { return e.reason }
+
+func invalidForecastInput(kind forecastInputKind, format string, args ...any) error {
+	return &forecastInputError{kind: kind, reason: fmt.Sprintf(format, args...)}
+}
+
+// Limit each input problem by node and category, not by its changing bucket
+// timestamp. A successful read clears the limiter for a new failure episode.
+type forecastFailureLogger struct {
+	refusals *cache.Cache
+	warn     func(string, error)
+	fail     func(string, error)
+}
+
+var forecastFailures = forecastFailureLogger{
+	refusals: cache.New(time.Hour, time.Hour),
+	warn: func(uuid string, err error) {
+		logger.WarnArgs("notifier", "traffic forecast unavailable for "+uuid+": ", err)
+	},
+	fail: func(uuid string, err error) {
+		logger.ErrorArgs("notifier", "traffic forecast failed for "+uuid+":", err)
+	},
+}
+
+func forecastRefusalKey(uuid string, kind forecastInputKind) string {
+	return uuid + "\x00" + string(kind)
+}
+
+func (l *forecastFailureLogger) failure(uuid string, err error) {
+	var invalid *forecastInputError
+	if errors.As(err, &invalid) {
+		if l.refusals.Add(forecastRefusalKey(uuid, invalid.kind), true, cache.DefaultExpiration) == nil {
+			l.warn(uuid, err)
+		}
+		return
+	}
+	l.fail(uuid, err)
+}
+
+func (l *forecastFailureLogger) clear(uuid string) {
+	for _, kind := range forecastInputKinds {
+		l.refusals.Delete(forecastRefusalKey(uuid, kind))
+	}
+}
 
 // resetDay reads the configured billing-cycle day.
 //
@@ -89,9 +155,10 @@ func CheckTrafficForecast() {
 		}
 		projection, cycleStart, err := projectClient(now, client, day)
 		if err != nil {
-			logger.ErrorArgs("notifier", "traffic forecast failed for "+client.UUID+":", err)
+			forecastFailures.failure(client.UUID, err)
 			continue
 		}
+		forecastFailures.clear(client.UUID)
 		if projection.Method == forecast.MethodInsufficient || projection.Warning == nil {
 			continue
 		}
@@ -283,18 +350,18 @@ func cycleSamplesFromSeries(limitType string, result metric.BatchSeriesResult) (
 		}
 		for _, point := range result.Values[name][metric.AggMax] {
 			if math.IsNaN(point.Value) || math.IsInf(point.Value, 0) || point.Value < 0 || point.Value >= math.Ldexp(1, 63) {
-				return nil, fmt.Errorf("invalid traffic counter in %s", name)
+				return nil, invalidForecastInput(forecastInvalidCounter, "invalid traffic counter in %s", name)
 			}
 			at := point.Bucket.UTC()
 			values := buckets[at]
 			if index == 0 {
 				if values.hasUp {
-					return nil, fmt.Errorf("duplicate traffic counter bucket in %s", name)
+					return nil, invalidForecastInput(forecastDuplicateBucket, "duplicate traffic counter bucket in %s", name)
 				}
 				values.up, values.hasUp = int64(point.Value), true
 			} else {
 				if values.hasDown {
-					return nil, fmt.Errorf("duplicate traffic counter bucket in %s", name)
+					return nil, invalidForecastInput(forecastDuplicateBucket, "duplicate traffic counter bucket in %s", name)
 				}
 				values.down, values.hasDown = int64(point.Value), true
 			}
@@ -312,14 +379,14 @@ func cycleSamplesFromSeries(limitType string, result metric.BatchSeriesResult) (
 	for _, at := range times {
 		values := buckets[at]
 		if (needUp && !values.hasUp) || (needDown && !values.hasDown) {
-			return nil, fmt.Errorf("traffic counter direction missing at %s", at.Format(time.RFC3339Nano))
+			return nil, invalidForecastInput(forecastMissingDirection, "traffic counter direction missing at %s", at.Format(time.RFC3339Nano))
 		}
 		if (previous.hasUp && values.hasUp && values.up < previous.up) ||
 			(previous.hasDown && values.hasDown && values.down < previous.down) {
-			return nil, fmt.Errorf("traffic counter direction decreased at %s; the counter may have restarted", at.Format(time.RFC3339Nano))
+			return nil, invalidForecastInput(forecastCounterDecrease, "traffic counter direction decreased at %s; the counter may have restarted", at.Format(time.RFC3339Nano))
 		}
 		if limitType == "sum" && values.up > math.MaxInt64-values.down {
-			return nil, fmt.Errorf("traffic counter sum overflow at %s", at.Format(time.RFC3339Nano))
+			return nil, invalidForecastInput(forecastSumOverflow, "traffic counter sum overflow at %s", at.Format(time.RFC3339Nano))
 		}
 		samples = append(samples, forecast.Sample{At: at, Total: combineByLimitType(limitType, values.up, values.down)})
 		previous = values
