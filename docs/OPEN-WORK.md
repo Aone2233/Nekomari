@@ -14,6 +14,26 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
+**Current operational checkpoint (2026-10-30 14:40 Asia/Shanghai):** the owner
+confirms a deliberate deletion followed by their addition of `QWRT 主路由 | 宿舍`;
+13 clients are now registered and all 13 have fresh CPU/uptime rollups. This
+replaces the earlier 13-client identity set; do not restore deleted nodes or
+overwrite the live database. OC424 remains on v1.7.14/7f94561, healthy. Forecast
+fixes are merged in PR128/129; exact merge CI41013963594 passes 8/8, but v1.7.15
+has **not** been tagged, published or deployed. PR128's first merge CI failed an
+hour-dependent SQL fixture assertion, deterministically corrected by PR129;
+it is not erased by the subsequent pass. A stable release may trigger periodic
+updates of Agents whose local configuration does not disable them.
+
+MAC-WAN's scheduled 2026-10-30 11:30 backup and recurring health reports failed
+after its egress changed and later the direct SSH route stopped delivering new
+connections. The now-installed pinned MegaBox proxy was manually verified with a
+fresh 13-client encrypted backup, two online ciphertext copies, isolated old
+image recovery and a real health report. The 14:35 successful backup and 14:38
+health report are **manual**, not proof of the next automatic timer. Check the
+next actual health and daily timer; independent-media restore is unverified.
+See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
+
 **Urgent superseding checkpoint (2026-10-28 23:53 Asia/Shanghai):** the owner reports
 OVH/KSLE has been relinquished. It is no longer a trusted backup/test host.
 Historical plaintext backups held panel secrets; disk sanitization and other

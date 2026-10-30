@@ -11,6 +11,46 @@ watcher. The receiver keeps 14 scheduled pairs in a dedicated directory;
 retention set. Actual incident delivery and independent-media restore remain
 separate; a manual success is not proof of a scheduled trigger.
 
+## 2026-10-30 interruption and pinned proxy repair
+
+The 11:30 Asia/Shanghai scheduled backup fails; health reports fail from 10:05.
+The prior MAC-WAN public egress was outside the two keys' source restriction. At
+12:56, `203.218.171.130` is added to those two forced-command keys only; a manual
+12:56 backup and health report work, and the then-current 12-client archive
+boots v1.7.14 in isolation. The owner confirms the deliberate deletion. The owner
+then adds `QWRT 主路由 | 宿舍`; the resulting 13-client set is different.
+
+New direct MAC-WAN-to-OC424 SSH connections subsequently terminate before
+server identification. A bounded OC424 packet capture sees no new SYN from the
+reported direct egress during one successful client-side TCP connection; this
+does not identify which network device terminates it. The existing OC424 alias
+uses the owner's MegaBox jump. A separate fixed config, with strictly pinned
+OC424 and MegaBox host keys and no agent forwarding, directs only the backup
+and health scripts through that jump. The actual jump exit `144.34.224.86` was
+added to the two existing `restrict`/forced-command keys, not a wildcard; all
+other authorization bytes, including `bero-backup-pull`, remain unchanged.
+This adds a dependency and expands those keys' permitted source to the shared
+MegaBox exit; the jump sees encrypted SSH but no backup identity or plaintext.
+Snapshot authorization material is root-private in
+`/root/nekomari-macwan-source-20261030-hrlhqkke` and
+`/root/nekomari-macwan-proxy-source-20261030-dzwht697`. Previous MAC-WAN scripts
+are at `~/.local/share/nekomari-recovery/macwan-backup-proxy-20261030-vgkoxp_u`.
+Do not restore whole authorization snapshots over unrelated edits.
+
+The manual 14:35:09-14:36:24 backup succeeds through the proxy.
+`oc424-20261030T063509678495Z-c86b90219196.tar.gz.age` is 191250046 bytes,
+SHA-256 `94ae94f950318996d760b66ccf97d5e1803b775cc492676ca00383c6a3820854`.
+Its separate `incoming/` copy and executor copy match; the executor is online,
+not independent media. Isolated pinned-v1.7.14 recovery validates both DBs and
+the 13 current UUID/token hashes, with network disabled and no scratch plaintext
+remaining. The initiating SSH observation was lost, but systemd/journal and the
+archive were checked later through the pre-existing pinned reverse tunnel. A
+manual 14:38:39 health run succeeds and OC424 receives the matching fresh `ok`.
+MAC-WAN Agent/Hermes and panel remain running; no node, credential, schedule or
+retention change. The first actual automatic health run on the new route and
+tomorrow's daily run must still be observed; a manual invocation does not prove
+the timers. Real alert dispatch was logged but receipt remains unverified.
+
 ## Initial evidence
 
 - 2026-10-28 23:44 Asia/Shanghai: the user service successfully pulls ciphertext
