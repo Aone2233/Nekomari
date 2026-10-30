@@ -30,15 +30,32 @@ class MacWanBackupContracts(unittest.TestCase):
             text = path.read_text()
             for term in ('[ "$#" -eq 0 ]', "umask 077", 'base=' + BASE,
                          "python3 -I", mode, '--output-dir "$base/scheduled"',
-                         '"$base/credentials/' + key + '"', "-F /dev/null -T",
+                         '"$base/credentials/' + key + '"', '-F "$base/credentials/oc424-proxy-ssh-config" -T',
                          "IdentitiesOnly=yes", "BatchMode=yes", "StrictHostKeyChecking=yes",
                          'UserKnownHostsFile="$base/credentials/oc424-known-hosts"',
-                         "GlobalKnownHostsFile=/dev/null"):
+                         "GlobalKnownHostsFile=/dev/null", "oc424-backup-producer"):
                 self.assertIn(term, text, (filename, term))
             self.assertNotIn("--identity-file", text)
         backup = (HOSTS / "mac-wan-receive-oc424-encrypted-backup.sh").read_text()
         self.assertIn("--keep 14", backup)
         self.assertNotIn('"$base/incoming"', backup)
+
+    def test_proxy_pins_both_hosts_without_agent_forwarding(self):
+        config = (HOSTS / "mac-wan-oc424-proxy-ssh-config").read_text()
+        producer, jump = config.split("Host macwan-backup-jump\n")
+        for term in ("Host oc424-backup-producer", "HostName 213.35.99.48",
+                     "HostKeyAlias 213.35.99.48", "ProxyJump macwan-backup-jump",
+                     "UserKnownHostsFile " + BASE + "/credentials/oc424-known-hosts"):
+            self.assertIn(term, producer)
+        for term in ("HostName 144.34.224.86", "Port 9950", "User root",
+                     "IdentityFile /home/macos/.ssh/id_ed25519",
+                     "UserKnownHostsFile " + BASE + "/credentials/megabox-known-hosts"):
+            self.assertIn(term, jump)
+        for part in (producer, jump):
+            for term in ("BatchMode yes", "StrictHostKeyChecking yes", "IdentitiesOnly yes",
+                         "ControlMaster no", "ControlPath none", "GlobalKnownHostsFile /dev/null"):
+                self.assertIn(term, part)
+        self.assertNotIn("ForwardAgent yes", config)
 
     def test_user_timers_and_services_are_bounded(self):
         backup = unit("nekomari-macwan-oc424-backup.timer")["Timer"]

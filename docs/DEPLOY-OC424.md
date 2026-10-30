@@ -17,6 +17,25 @@ recovery remains unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
 schedule and 14-node acceptance statements below are history.
 
+## Superseding checkpoint (2026-10-30 14:40 Asia/Shanghai)
+
+The owner confirms their deletion of a node and addition of `QWRT 主路由 | 宿舍`.
+The current set has 13 registered clients and all 13 have fresh CPU and uptime
+rollups; it is **not** the same set as the earlier 13-node recovery. Do not
+restore deleted nodes or overwrite live databases with older archives. OC424
+remains healthy on v1.7.14/7f94561. Forecast PR128 and its SQL fixture fix PR129
+are merged; exact merge CI41013963594 succeeds 8/8. v1.7.15 is not yet tagged,
+published or deployed. Agent periodic auto-update policies are not fully
+inventoried; a stable release may cause eligible Agents to update and restart.
+
+The 2026-10-30 11:30 scheduled backup failed and health reports became stale.
+Manual 14:35 backup and 14:38 health recovery through a pinned MegaBox jump pass;
+its fresh current-13 ciphertext is independently copied to the online executor
+and boots the pinned old image on MAC-WAN in isolation. These are manual runs,
+not evidence that either next timer has succeeded. See
+[`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The following older checkpoints are
+historical.
+
 ## Current checkpoint (2026-10-29, Asia/Shanghai)
 
 OC424 serves **v1.7.14 / 7f94561** at

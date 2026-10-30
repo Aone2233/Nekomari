@@ -1,0 +1,28 @@
+Host oc424-backup-producer
+    HostName 213.35.99.48
+    HostKeyAlias 213.35.99.48
+    User ubuntu
+    Port 22
+    ProxyJump macwan-backup-jump
+    BatchMode yes
+    StrictHostKeyChecking yes
+    IdentitiesOnly yes
+    ConnectTimeout 12
+    ControlMaster no
+    ControlPath none
+    UserKnownHostsFile /home/macos/.local/share/nekomari-recovery/credentials/oc424-known-hosts
+    GlobalKnownHostsFile /dev/null
+
+Host macwan-backup-jump
+    HostName 144.34.224.86
+    User root
+    Port 9950
+    IdentityFile /home/macos/.ssh/id_ed25519
+    BatchMode yes
+    StrictHostKeyChecking yes
+    IdentitiesOnly yes
+    ConnectTimeout 12
+    ControlMaster no
+    ControlPath none
+    UserKnownHostsFile /home/macos/.local/share/nekomari-recovery/credentials/megabox-known-hosts
+    GlobalKnownHostsFile /dev/null
