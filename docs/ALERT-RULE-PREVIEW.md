@@ -55,12 +55,13 @@ deadline, a shared metric read budget, at most 50 expanded targets and a
 previewed with this bounded endpoint. Empty node IDs are rejected per target
 and never trigger an all-node metric query.
 
-Known limitation: `temp`, `backup_age` and `backup_ok` cannot currently be
-previewed: the existing single-record-metric lookup used by the scheduler does
-not map those UI options. They are shown as unsupported, not healthy. The
-backup-age/status ingestion path and the separate MAC-WAN backup health watcher
-exist, but that does not mean these load rules fire. Correcting metric mapping,
-unknown backup semantics and the single `>=` comparison needs a separate
-review; do not silently enable dormant alert rules by changing lookup here.
-No offline-rule preview, actual test delivery, real incident receipt, capacity
-benchmark or v1.8 completion is implied by this feature.
+Backup metrics now preview with the same value conversion as the scheduler:
+`backup_age` is seconds since the last successful backup, and an unknown
+(`-1`) sample is excluded from both the sample count and the baseline window;
+`backup_ok` is inverted into a not-ok signal so threshold 1 matches a failed
+or unknown last run and never matches a healthy one. A window whose samples
+are all unknown reports `no_data`, not healthy. `temp` is no longer offered
+because no metric-store series backs it. The separate MAC-WAN backup health
+watcher is unaffected. No offline-rule preview, actual test delivery, real
+incident receipt, capacity benchmark or v1.8 completion is implied by this
+feature.

@@ -121,6 +121,61 @@ func TestCheckMetricThresholdAtRatio(t *testing.T) {
 	}
 }
 
+func TestBackupMetricAlertSemantics(t *testing.T) {
+	t.Run("backup_age 未知样本不参与比率与阈值判定", func(t *testing.T) {
+		records := []models.Record{
+			{BackupAge: -1},
+			{BackupAge: 7200},
+			{BackupAge: 8000},
+		}
+		task := models.LoadNotification{Metric: "backup_age", Ratio: 0.5, Threshold: 7000}
+		// 已知样本 2 条、达标 1 条，ratio 0.5 -> 至少 1 条，应告警。
+		if !checkMetricThresholdAt(records, task, 7000) {
+			t.Error("1/2 已知样本达标、ratio=0.5 应判定为超阈值")
+		}
+		// 全部未知时不告警：-1 不能被当作 0 秒前的健康样本。
+		if checkMetricThresholdAt([]models.Record{{BackupAge: -1}, {BackupAge: -1}}, task, 7000) {
+			t.Error("全部未知样本不应告警")
+		}
+		// 未知样本不会占用比率名额：1 条已知且达标，ratio=1 也应告警。
+		if !checkMetricThresholdAt([]models.Record{{BackupAge: -1}, {BackupAge: 7200}}, models.LoadNotification{Metric: "backup_age", Ratio: 1, Threshold: 7000}, 7000) {
+			t.Error("唯一已知样本达标、ratio=1 应判定为超阈值")
+		}
+	})
+
+	t.Run("backup_ok 把成功信号倒置为失败信号", func(t *testing.T) {
+		records := []models.Record{{BackupOk: 1}, {BackupOk: 0}}
+		task := models.LoadNotification{Metric: "backup_ok", Ratio: 1, Threshold: 1}
+		// 信号为 [0, 1]，只有 1 条达标，ratio=1 要求 2 条，不告警。
+		if checkMetricThresholdAt(records, task, 1) {
+			t.Error("1/2 失败信号达标、ratio=1 不应判定为超阈值")
+		}
+		task.Ratio = 0.5
+		if !checkMetricThresholdAt(records, task, 1) {
+			t.Error("1/2 失败信号达标、ratio=0.5 应判定为超阈值")
+		}
+		// 未知与失败同值（ok=0），阈值 1 的规则同样告警。
+		if !checkMetricThresholdAt([]models.Record{{BackupOk: 0}}, models.LoadNotification{Metric: "backup_ok", Ratio: 1, Threshold: 1}, 1) {
+			t.Error("备份状态缺失应按失败信号告警")
+		}
+	})
+}
+
+func TestKnownAlertMetricValue(t *testing.T) {
+	if _, ok := knownAlertMetricValue(models.Record{BackupAge: -1}, "backup_age"); ok {
+		t.Error("backup_age=-1 应视为未知")
+	}
+	if value, ok := knownAlertMetricValue(models.Record{BackupAge: 300}, "backup_age"); !ok || value != 300 {
+		t.Errorf("backup_age=300 应为已知 300，得到 %v/%v", value, ok)
+	}
+	if value, ok := knownAlertMetricValue(models.Record{BackupOk: 1}, "backup_ok"); !ok || value != 0 {
+		t.Errorf("backup_ok=1 应倒置为 0，得到 %v/%v", value, ok)
+	}
+	if value, ok := knownAlertMetricValue(models.Record{BackupOk: 0}, "backup_ok"); !ok || value != 1 {
+		t.Errorf("backup_ok=0 应倒置为 1，得到 %v/%v", value, ok)
+	}
+}
+
 func TestLoadNotificationBaselineHelpers(t *testing.T) {
 	n := models.LoadNotification{}
 	if n.UsesBaseline() {

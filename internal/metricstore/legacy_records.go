@@ -246,6 +246,10 @@ func applyRecordMetricValue(rec *models.Record, metricName string, value float64
 		rec.Connections = int(value)
 	case MetricConnectionsUDP:
 		rec.ConnectionsUdp = int(value)
+	case MetricBackupAge:
+		rec.BackupAge = int64(value)
+	case MetricBackupOK:
+		rec.BackupOk = int(value)
 	}
 }
 

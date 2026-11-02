@@ -124,6 +124,10 @@ func metricNameForRecordField(name string) (string, bool) {
 		return MetricConnections, true
 	case "connections_udp":
 		return MetricConnectionsUDP, true
+	case "backup_age":
+		return MetricBackupAge, true
+	case "backup_ok":
+		return MetricBackupOK, true
 	default:
 		return "", false
 	}

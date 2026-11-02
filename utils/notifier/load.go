@@ -133,7 +133,9 @@ func resolveBaselineThreshold(clientUUID string, task models.LoadNotification, n
 	}
 	values := make([]float32, 0, len(history))
 	for _, record := range history {
-		values = append(values, getMetricValue(record, task.Metric))
+		if value, ok := knownAlertMetricValue(record, task.Metric); ok {
+			values = append(values, value)
+		}
 	}
 	return computeBaselineThreshold(values, task.EffectiveMultiplier(), task.Threshold)
 }
@@ -219,19 +221,28 @@ func checkMetricThresholdAt(records []models.Record, task models.LoadNotificatio
 		return false
 	}
 
-	// 计算需要达标的最小记录数
-	minRequiredRecords := int(float32(len(records)) * task.Ratio)
-	if minRequiredRecords == 0 {
-		minRequiredRecords = 1
-	}
-
+	knownCount := 0
 	exceededCount := 0
 
 	for _, record := range records {
-		metricValue := getMetricValue(record, task.Metric)
+		metricValue, ok := knownAlertMetricValue(record, task.Metric)
+		if !ok {
+			continue
+		}
+		knownCount++
 		if metricValue >= threshold {
 			exceededCount++
 		}
+	}
+	if knownCount == 0 {
+		return false
+	}
+
+	// 计算需要达标的最小记录数：比率只作用在已知样本上，未知样本既不
+	// 算达标也不算未达标。
+	minRequiredRecords := int(float32(knownCount) * task.Ratio)
+	if minRequiredRecords == 0 {
+		minRequiredRecords = 1
 	}
 
 	return exceededCount >= minRequiredRecords
@@ -270,15 +281,19 @@ func getMetricValue(record models.Record, metric string) float32 {
 		return 0
 	case "load":
 		return record.Load
-	case "temp":
-		return record.Temp
 	// 备份新鲜度：由 agent 读备份状态文件上报（见 agent/monitoring/backup.go）。
 	// 不依赖反射而写显式分支，因为 UI 传的是 snake_case（backup_age），
 	// 而反射要找的是 Go 字段名（BackupAge）。
 	case "backup_age":
 		return float32(record.BackupAge)
+	// backup_ok 是布尔成功标志，但告警引擎只支持「>= 阈值」比较。把它倒置成
+	// 「备份不正常」信号：1=ok 时信号为 0，任何非 1（失败或未知）信号为 1，
+	// 于是阈值 1 的规则只在备份失败/状态缺失时告警。
 	case "backup_ok":
-		return float32(record.BackupOk)
+		if record.BackupOk == 1 {
+			return 0
+		}
+		return 1
 	case "disk":
 		client, err := clients.GetClientByUUID(record.Client) // 确保客户端信息已加载
 		if err != nil {
@@ -305,6 +320,16 @@ func getMetricValue(record models.Record, metric string) float32 {
 		}
 		return 0
 	}
+}
+
+// knownAlertMetricValue 返回参与告警判定的指标值。backup_age 的 -1 表示
+// agent 明确读不到最后成功时间；把「未知」当作 0 秒前会让新鲜度规则永远
+// 不触发，也会污染基线窗口，所以未知样本直接排除，返回 ok=false。
+func knownAlertMetricValue(record models.Record, metric string) (float32, bool) {
+	if metric == "backup_age" && record.BackupAge < 0 {
+		return 0, false
+	}
+	return getMetricValue(record, metric), true
 }
 
 func bytesPerSecondToMbps(bytesPerSecond int64) float32 {

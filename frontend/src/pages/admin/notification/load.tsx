@@ -259,10 +259,9 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
                   <Select.Item value="net_out">Net Out</Select.Item>
                   <Select.Item value="load">Load</Select.Item>
                   <Select.Item value="swap">Swap</Select.Item>
-                  <Select.Item value="temp">Temp</Select.Item>
                   <Select.Item value="gpu">GPU</Select.Item>
                   <Select.Item value="backup_age">{t("loadAlert.m_backup_age", "Backup age (s)")}</Select.Item>
-                  <Select.Item value="backup_ok">{t("loadAlert.m_backup_ok", "Backup ok (1/0)")}</Select.Item>
+                  <Select.Item value="backup_ok">{t("loadAlert.m_backup_ok", "Backup failure (1=alert)")}</Select.Item>
                   <Select.Item value="ping_loss">{t("loadAlert.m_ping_loss", "Ping loss (%)")}</Select.Item>
                   <Select.Item value="ping_latency">{t("loadAlert.m_ping_latency", "Ping latency (ms)")}</Select.Item>
                 </Select.Content>
@@ -633,7 +632,6 @@ const AddButton: React.FC = () => {
     | "net_out"
     | "load"
     | "swap"
-    | "temp"
     | "gpu"
     | "backup_age"
     | "backup_ok"
@@ -709,7 +707,6 @@ const AddButton: React.FC = () => {
                     | "net_out"
                     | "load"
                     | "swap"
-                    | "temp"
                     | "gpu"
                     | "backup_age"
                     | "backup_ok",
@@ -725,10 +722,9 @@ const AddButton: React.FC = () => {
                 <Select.Item value="net_out">Net Out(Mbps)</Select.Item>
                 <Select.Item value="load">Load</Select.Item>
                 <Select.Item value="swap">Swap</Select.Item>
-                <Select.Item value="temp">Temp</Select.Item>
                 <Select.Item value="gpu">GPU</Select.Item>
                 <Select.Item value="backup_age">{t("loadAlert.m_backup_age", "Backup age (s)")}</Select.Item>
-                <Select.Item value="backup_ok">{t("loadAlert.m_backup_ok", "Backup ok (1/0)")}</Select.Item>
+                <Select.Item value="backup_ok">{t("loadAlert.m_backup_ok", "Backup failure (1=alert)")}</Select.Item>
                 <Select.Item value="ping_loss">{t("loadAlert.m_ping_loss", "Ping loss (%)")}</Select.Item>
                 <Select.Item value="ping_latency">{t("loadAlert.m_ping_latency", "Ping latency (ms)")}</Select.Item>
               </Select.Content>
