@@ -1010,3 +1010,154 @@ func TestPublicLegacyTrafficFallbacksAreKeyedByRequestedMetricKey(t *testing.T) 
 		t.Fatalf("the redirected traffic.up read lost its fallback: %#v", fallbacks)
 	}
 }
+
+func openPerKeyErrorTestStore(t *testing.T) *metric.Store {
+	t.Helper()
+	store, err := metric.Open(context.Background(), metric.SQLite(":memory:",
+		metric.WithMaxOpenConns(1),
+		metric.WithRollupPolicy(metric.RollupPolicy{
+			RawRetention: 10 * time.Minute,
+			Tiers:        []metric.RollupTier{{Interval: time.Minute, Retention: time.Hour}},
+			Compression:  30,
+		}),
+	))
+	if err != nil {
+		t.Fatalf("open metric store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	return store
+}
+
+func TestPublicQueryMetricsKeepsValidKeysWhenOneKeyIsUnknown(t *testing.T) {
+	ctx := context.Background()
+	db := dbcore.GetDBInstance()
+	if err := db.Create(&models.Client{UUID: "perkey-node", Name: "per-key node", Token: "test-only-token-perkey"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	dbcache.InvalidateAll()
+
+	store := openPerKeyErrorTestStore(t)
+	const good = "cpu.usage"
+	if err := store.CreateMetric(ctx, metric.Definition{Name: good, Type: metric.TypeGauge, RetentionDays: 30}); err != nil {
+		t.Fatalf("create metric: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := store.Write(ctx, metric.Point{
+		MetricName: good,
+		EntityID:   "perkey-node",
+		Timestamp:  now.Add(-5 * time.Minute),
+		Value:      42,
+	}); err != nil {
+		t.Fatalf("write point: %v", err)
+	}
+
+	startTime := now.Add(-9 * time.Minute)
+	params := publicMetricQueryParams{
+		MetricKeys: []string{good, "ghost.metric"},
+		EntityIDs:  []string{"perkey-node"},
+		Start:      &startTime,
+		End:        &now,
+	}
+	result, rpcErr := publicQueryMetricsWithStore(ctx, params, store)
+	if rpcErr != nil {
+		t.Fatalf("mixed batch should not fail the whole query: %+v", rpcErr)
+	}
+	payload, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("result type = %T, want the query response map", result)
+	}
+	metricErrors, ok := payload["errors"].(map[string]string)
+	if !ok || metricErrors["ghost.metric"] == "" {
+		t.Fatalf("expected a per-key error for ghost.metric, got %#v", payload["errors"])
+	}
+	if metricErrors[good] != "" {
+		t.Fatalf("valid key reported as error: %#v", metricErrors)
+	}
+	series, ok := payload["series"].([]publicMetricSeries)
+	if !ok || len(series) == 0 {
+		t.Fatalf("expected series for the valid key, got %#v", payload["series"])
+	}
+	for _, item := range series {
+		if item.MetricKey != good {
+			t.Fatalf("series for an invalid key leaked into the result: %#v", item)
+		}
+	}
+}
+
+func TestPublicQueryMetricsReportsUnsafeAggregationPerKey(t *testing.T) {
+	ctx := context.Background()
+	store := openPerKeyErrorTestStore(t)
+	if err := store.CreateMetric(ctx, metric.Definition{Name: "cpu.usage", Type: metric.TypeGauge, RetentionDays: 30}); err != nil {
+		t.Fatalf("create metric: %v", err)
+	}
+
+	params := publicMetricQueryParams{
+		MetricKeys:          []string{metricstore.MetricTrafficUp, "cpu.usage"},
+		Hours:               4,
+		AggregationByMetric: map[string]string{metricstore.MetricTrafficUp: "rate"},
+	}
+	result, rpcErr := publicQueryMetricsWithStore(ctx, params, store)
+	if rpcErr != nil {
+		t.Fatalf("mixed batch should not fail the whole query: %+v", rpcErr)
+	}
+	payload := result.(map[string]any)
+	metricErrors, ok := payload["errors"].(map[string]string)
+	if !ok || metricErrors[metricstore.MetricTrafficUp] == "" {
+		t.Fatalf("expected a per-key error for traffic.up, got %#v", payload["errors"])
+	}
+	if metricErrors["cpu.usage"] != "" {
+		t.Fatalf("valid key reported as error: %#v", metricErrors)
+	}
+}
+
+func TestPublicQueryMetricsRejectsWhenEveryKeyIsInvalid(t *testing.T) {
+	ctx := context.Background()
+	store := openPerKeyErrorTestStore(t)
+
+	tests := []struct {
+		name   string
+		params publicMetricQueryParams
+		key    string
+	}{
+		{
+			name: "bad max points",
+			params: publicMetricQueryParams{
+				MetricKeys:        []string{"cpu.usage"},
+				Hours:             4,
+				MaxPointsByMetric: map[string]int{"cpu.usage": 0},
+			},
+			key: "cpu.usage",
+		},
+		{
+			name: "panel metric is private",
+			params: publicMetricQueryParams{
+				MetricKeys: []string{metricstore.MetricPanelRSS},
+				Hours:      4,
+			},
+			key: metricstore.MetricPanelRSS,
+		},
+		{
+			name: "unknown metric",
+			params: publicMetricQueryParams{
+				MetricKeys: []string{"ghost.metric"},
+				Hours:      4,
+			},
+			key: "ghost.metric",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, rpcErr := publicQueryMetricsWithStore(ctx, test.params, store)
+			if rpcErr == nil {
+				t.Fatal("expected the all-invalid batch to be rejected")
+			}
+			if rpcErr.Code != rpc.InvalidParams {
+				t.Fatalf("error code = %d, want InvalidParams", rpcErr.Code)
+			}
+			data, ok := rpcErr.Data.(map[string]string)
+			if !ok || data[test.key] == "" {
+				t.Fatalf("error data should carry the per-key failure, got %#v", rpcErr.Data)
+			}
+		})
+	}
+}
