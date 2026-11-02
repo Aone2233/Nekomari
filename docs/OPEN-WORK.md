@@ -71,10 +71,13 @@ retains **active upstream SAO**; the local variant is staged, not activated,
 with eight older hashed assets retained and no database change. Before an
 authenticated switch, copy settings, recheck live identity/health/backup and
 preserve the rollback procedure in [`SAO-CYCLE-ROLLOUT.md`](./SAO-CYCLE-ROLLOUT.md).
-The separate upstream "today traffic" path still does not validate historical
-series semantics; legacy cumulative series must not be treated as daily sums.
-MegaBox's Agent reset day and provider accounting remain unverified: never
-change the Agent cycle, reset a ledger, or claim provider-billing equivalence.
+The separate upstream "today traffic" path now validates historical series
+semantics (`v1.3.4-nekomari.2`): legacy cumulative series are shown as
+unknown instead of being summed. The staged `SAO-Nekomari` directory on OC424
+carries this build; activating it still requires an authenticated owner
+session. MegaBox's Agent reset day and provider accounting remain unverified:
+never change the Agent cycle, reset a ledger, or claim provider-billing
+equivalence.
 
 **Historical operational checkpoint (2026-10-31 03:48 Asia/Shanghai):** OC424 is
 healthy/restart0 on **v1.7.19/cf221de**. Exact merge CI41114880987 passes 8/8,

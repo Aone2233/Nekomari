@@ -30,12 +30,15 @@ cases. A separate synthetic panel cutover copied settings, retained all eight
 old assets through `/assets/`, and rolled back. These are synthetic checks,
 not owner-session or provider-bill acceptance.
 
-**Known limitation:** the independent upstream "today traffic" history path
-does not validate series semantics. Its legacy cumulative fallback can be
-misinterpreted as a daily sum. Do not treat that display as validated. Agent
-reset day, billing directions and time zone may differ from a provider; the
-cycle counter itself is not a provider bill. No Agent rotation day or ledger
-has been changed.
+**Today traffic (fixed in v1.3.4-nekomari.2):** the independent variant now
+validates series semantics before summing. A direction only counts when the
+backend answers exactly one `interval_delta_v2` stream with complete,
+non-negative integer per-interval points; `billing_cycle_cumulative`
+fallbacks, duplicates and partial streams render as unknown, and boundary
+repair never merges cumulative counters into validated buckets. The display
+is a sampled, possibly-incomplete interval sum, not a provider bill. Agent
+reset day, billing directions and time zone may differ from a provider; no
+Agent rotation day or ledger has been changed.
 
 ## OC424 staging and recovery
 
