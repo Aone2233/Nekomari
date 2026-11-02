@@ -57,14 +57,24 @@ recovery. OVH disk sanitization is also unverified. See
 [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and
 [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
 
-**Next traffic-display investigation:** the separately maintained SAO reference
-uses boot-counter `net_total_up/down` in its quota display, not the Agent's
-periodic `traffic_up/down` counters. MegaBox's configured Agent rotation day
-and the provider's displayed reset date have differed, and the provider's
-accounting rules are not established. Investigate field availability, missing
-sample and zero-at-rollover semantics before changing the theme; do not change
-the Agent cycle, reset a ledger, or claim provider-billing equivalence. Treat
-any SAO changes and release as a separate repository/deployment.
+**SAO cycle-display rollout (2026-11-02):** the owner confirms the active
+upstream SAO v1.3.4 upgrade. Its 322 files match the official release. A
+separate, unofficial [`v1.3.4-nekomari.1`](https://github.com/Aone2233/Komari-Theme-SAO/releases/tag/v1.3.4-nekomari.1)
+variant based on upstream `918fb899` is published from `ed6dd31`: quota,
+instance details and mobile mini cards use quality-marked Agent cycle counters,
+preserving valid zero and treating missing or invalid values as unknown. The
+locally built asset has SHA-256
+`9bdacc816dcc195b2592dc9f4eaf663d1f2444f9cd3ebe8c2e44b80f1084f90b`.
+Tests (389), typecheck, lint and isolated published-panel/Agent/browser
+checks pass; this is not a CI or build-attestation claim. OC424 currently
+retains **active upstream SAO**; the local variant is staged, not activated,
+with eight older hashed assets retained and no database change. Before an
+authenticated switch, copy settings, recheck live identity/health/backup and
+preserve the rollback procedure in [`SAO-CYCLE-ROLLOUT.md`](./SAO-CYCLE-ROLLOUT.md).
+The separate upstream "today traffic" path still does not validate historical
+series semantics; legacy cumulative series must not be treated as daily sums.
+MegaBox's Agent reset day and provider accounting remain unverified: never
+change the Agent cycle, reset a ledger, or claim provider-billing equivalence.
 
 **Historical operational checkpoint (2026-10-31 03:48 Asia/Shanghai):** OC424 is
 healthy/restart0 on **v1.7.19/cf221de**. Exact merge CI41114880987 passes 8/8,
