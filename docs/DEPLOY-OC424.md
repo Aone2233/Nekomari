@@ -18,7 +18,57 @@ recovery remains unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
 schedule and 14-node acceptance statements below are history.
 
-## Current checkpoint (2026-11-02 20:03 Asia/Shanghai)
+## Current checkpoint (2026-11-02 22:20 Asia/Shanghai)
+
+OC424 runs **v1.7.21/8ea6375**, immutable source
+`8ea637583b4172e0af50e1396b93f394eb6f5bf3`, in the pinned arm64 image
+`ghcr.io/aone2233/nekomari:v1.7.21@sha256:2bf654d035d265df6c19d928d6302da415a4145207956f858da8267c8c434878`.
+The controlled switch started at 22:13:45 Asia/Shanghai and the container is
+healthy with zero restarts at this checkpoint.
+
+- `backup_age`/`backup_ok` load rules now evaluate end to end: `backup_age`
+  excludes unknown (`-1`) samples from the ratio count and baseline window;
+  `backup_ok` is inverted into a not-ok signal so threshold 1 matches a failed
+  or unknown last run and never a healthy one; `temp` is gone from the metric
+  options. The production rule set contains no saved `temp`/`backup_*` rules,
+  so nothing dormant became active; no existing rule was rewritten.
+- Exact merge CI41454470023 passes 8/8, release41454839939 10/10 and
+  Docker41457061876 2/2. Linux panel/Agent assets pass checksums and
+  attestations; both architectures of both OCI identities and native panel
+  image binaries verify and image labels report v1.7.21/8ea6375. The released
+  amd64 panel passes isolated Chinese desktop/light and English mobile/dark
+  load-rule browser cases on the executor, with synthetic data.
+- OC424 upgrade9/9 passes. Both DB quick checks and schema hashes match the
+  pre-switch values; all 14 registered clients have byte-identical `uuid`/`token`
+  rows before and after the switch (exact row diff, no opaque digest) and fresh
+  CPU and uptime series. API-key scope/expiry, GeoIP settings, authorized SSH
+  keys, theme directories and the local Agent (PID 499631, NRestarts 2) are
+  unchanged. Public entry points and the Cloudflare origin serve 200; the
+  authenticated admin/forecast API was not exercised this cycle (no credential
+  provisioned). Owner-session UI and real remote alert receipt were not
+  tested. Stable publication can trigger other Agents with self-update enabled.
+- Manual pre archive `oc424-20261102T140707554676Z-e74e5ee31977.tar.gz.age`
+  has SHA-256 `44c60f80849d9a10ec9721d8a76bf450b84ee1e47e8554f755e2a63cce34bf30`;
+  post archive `oc424-20261102T141456007928Z-f15d1227f2eb.tar.gz.age` has
+  SHA-256 `018315c87da47ba3be6049d58bc884e443c2a070b4f06af606946295ef245d9e`.
+  Both have matching MAC-WAN `incoming/` and executor ciphertext copies. Pre
+  restores in isolation under pinned v1.7.19/v1.7.20; post under v1.7.21,
+  each with network disabled. The decryption identity was not exported. This
+  is not independent-media recovery.
+- MAC-WAN's scheduled 11:30 backup succeeded today; the post-switch automatic
+  health run checked it at 22:20:37 and OC424 received the `ok` report at
+  22:20:44, after the switch. The health check covers the scheduled set, not
+  either manual release archive. OC424 disk is 48%, executor 70%; no broad
+  cache or backup deletion. OVH disk sanitization is unverified.
+
+Root-private rollback evidence is
+`/opt/nekomari/rollbacks/v1.7.21-20261102T141225Z-45c28821`; the retained
+previous image is
+`ghcr.io/aone2233/nekomari:v1.7.20@sha256:b41efce6742c45f049b751d294d62b68adee71604429973f3fa71ce61760a53a`.
+If needed, assess live state and switch only the pinned compose/image, keeping
+the current databases and nodes. Never overwrite them with old snapshots.
+
+## Historical checkpoint (2026-11-02 20:03 Asia/Shanghai)
 
 OC424 runs **v1.7.20/065bb4d**, immutable source
 `065bb4d120b00bd3fbc0871ed576ad04e21dae55`, in the pinned arm64 image
