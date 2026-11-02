@@ -206,11 +206,6 @@ func publicQueryMetricsWithStore(ctx context.Context, params publicMetricQueryPa
 	if len(metricKeys) == 0 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "metric_keys is required", nil)
 	}
-	for _, key := range metricKeys {
-		if metricstore.IsPanelMetric(key) {
-			return nil, rpc.MakeError(rpc.InvalidParams, "unknown metric key: "+key, nil)
-		}
-	}
 
 	queryNow := time.Now().UTC()
 	end := metricQueryTimeOrDefault(firstMetricQueryTime(params.End, params.EndTime), queryNow)
@@ -233,13 +228,21 @@ func publicQueryMetricsWithStore(ctx context.Context, params publicMetricQueryPa
 		return nil, rpc.MakeError(rpc.InternalError, "metric store not initialized", nil)
 	}
 
+	// One bad key must not sink the whole batch: collect per-key failures and keep
+	// querying the keys that are valid. Request-level problems (window, entity set,
+	// total point budget) still reject the whole request.
+	metricErrors := map[string]string{}
 	loadSpecs := make([]metricLoadSpec, 0, len(metricKeys))
-	storageKeys := make([]string, 0, len(metricKeys))
 	pointBudget := 0
 	for _, metricKey := range metricKeys {
+		if metricstore.IsPanelMetric(metricKey) {
+			metricErrors[metricKey] = "unknown metric key: " + metricKey
+			continue
+		}
 		maxPoints, err := resolveMetricMaxPoints(metricKey, params)
 		if err != nil {
-			return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
+			metricErrors[metricKey] = err.Error()
+			continue
 		}
 		pointBudget += maxPoints * maxInt(1, len(entityIDs))
 		if pointBudget > maxMetricTotalPoints {
@@ -247,10 +250,10 @@ func publicQueryMetricsWithStore(ctx context.Context, params publicMetricQueryPa
 		}
 		algorithm := resolveMetricAggregation(metricKey, params)
 		if _, cumulative := trafficCumulativeMetrics[metricKey]; cumulative && (algorithm == metric.AggRate || algorithm == metric.AggDelta) {
-			return nil, rpc.MakeError(rpc.InvalidParams, "rate/delta on billing-cycle counters is not continuity-safe; use sum for validated interval amounts", nil)
+			metricErrors[metricKey] = "rate/delta on billing-cycle counters is not continuity-safe; use sum for validated interval amounts"
+			continue
 		}
 		storageKey := publicMetricStorageKey(metricKey, algorithm)
-		storageKeys = append(storageKeys, storageKey)
 		loadSpecs = append(loadSpecs, metricLoadSpec{
 			metricKey:  metricKey,
 			storageKey: storageKey,
@@ -258,6 +261,10 @@ func publicQueryMetricsWithStore(ctx context.Context, params publicMetricQueryPa
 			maxPoints:  maxPoints,
 		})
 	}
+	if len(loadSpecs) == 0 {
+		return nil, rpc.MakeError(rpc.InvalidParams, "no valid metric keys", metricErrors)
+	}
+	storageKeys := metricSpecStorageKeys(loadSpecs)
 
 	metricFillEmpty := resolveMetricFillEmpty(params)
 	useRaw := publicMetricUsesRawWindow(start, end, queryNow)
@@ -271,11 +278,11 @@ func publicQueryMetricsWithStore(ctx context.Context, params publicMetricQueryPa
 		if err != nil {
 			return nil, rpc.MakeError(rpc.InternalError, "Failed to query metric definitions: "+err.Error(), nil)
 		}
-		for _, spec := range loadSpecs {
-			if _, ok := definitions[spec.storageKey]; !ok {
-				return nil, rpc.MakeError(rpc.InvalidParams, "unknown metric key: "+spec.metricKey, nil)
-			}
+		loadSpecs = dropUndefinedMetricSpecs(loadSpecs, definitions, metricErrors)
+		if len(loadSpecs) == 0 {
+			return nil, rpc.MakeError(rpc.InvalidParams, "no valid metric keys", metricErrors)
 		}
+		storageKeys = metricSpecStorageKeys(loadSpecs)
 		rawValues, err = store.QueryBatch(ctx, metric.BatchQuery{
 			MetricNames: storageKeys,
 			EntityIDs:   entityIDs,
@@ -325,22 +332,22 @@ func publicQueryMetricsWithStore(ctx context.Context, params publicMetricQueryPa
 			rollupValues = loaded.Values
 			backingResolutions = loaded.Resolutions
 		}
-		for _, spec := range loadSpecs {
-			if _, ok := definitions[spec.storageKey]; !ok {
-				return nil, rpc.MakeError(rpc.InvalidParams, "unknown metric key: "+spec.metricKey, nil)
-			}
+		loadSpecs = dropUndefinedMetricSpecs(loadSpecs, definitions, metricErrors)
+		if len(loadSpecs) == 0 {
+			return nil, rpc.MakeError(rpc.InvalidParams, "no valid metric keys", metricErrors)
 		}
+		storageKeys = metricSpecStorageKeys(loadSpecs)
 	} else {
 		var err error
 		definitions, err = store.GetMetrics(ctx, storageKeys)
 		if err != nil {
 			return nil, rpc.MakeError(rpc.InternalError, "Failed to query metric definitions: "+err.Error(), nil)
 		}
-		for _, spec := range loadSpecs {
-			if _, ok := definitions[spec.storageKey]; !ok {
-				return nil, rpc.MakeError(rpc.InvalidParams, "unknown metric key: "+spec.metricKey, nil)
-			}
+		loadSpecs = dropUndefinedMetricSpecs(loadSpecs, definitions, metricErrors)
+		if len(loadSpecs) == 0 {
+			return nil, rpc.MakeError(rpc.InvalidParams, "no valid metric keys", metricErrors)
 		}
+		storageKeys = metricSpecStorageKeys(loadSpecs)
 	}
 
 	var coverageRawValues map[string][]metric.Point
@@ -516,14 +523,41 @@ func publicQueryMetricsWithStore(ctx context.Context, params publicMetricQueryPa
 		}
 	}
 
-	return map[string]any{
+	result := map[string]any{
 		"start":                     start.UTC(),
 		"end":                       end.UTC(),
 		"server_downsample_default": true,
 		"default_points":            defaultMetricQueryPoints,
 		"series":                    series,
 		"count":                     len(series),
-	}, nil
+	}
+	if len(metricErrors) > 0 {
+		result["errors"] = metricErrors
+	}
+	return result, nil
+}
+
+func metricSpecStorageKeys(specs []metricLoadSpec) []string {
+	keys := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		keys = append(keys, spec.storageKey)
+	}
+	return keys
+}
+
+// dropUndefinedMetricSpecs keeps only specs whose storage key has a definition and
+// records a per-key error for every spec it drops, so a batch reports unknown keys
+// individually instead of rejecting the whole query.
+func dropUndefinedMetricSpecs(specs []metricLoadSpec, definitions map[string]metric.Definition, errors map[string]string) []metricLoadSpec {
+	kept := specs[:0]
+	for _, spec := range specs {
+		if _, ok := definitions[spec.storageKey]; ok {
+			kept = append(kept, spec)
+			continue
+		}
+		errors[spec.metricKey] = "unknown metric key: " + spec.metricKey
+	}
+	return kept
 }
 
 type publicMetricPointResult struct {

@@ -6,6 +6,15 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [Unreleased]
+
+- Batch metric queries report invalid keys per-key instead of all-or-nothing.
+  A mixed `queryMetrics` batch keeps the valid keys, returns their series and
+  adds an `errors` map keyed by metric key; request-level failures (window,
+  entity set, point budget) still reject the whole query. When every key is
+  invalid the request is rejected with the per-key failures carried in the
+  error data, preserving the old single-key behavior.
+
 ## [v1.7.21] - 2026-11-02
 
 - **Published and deployed on OC424 at approximately 22:13 Asia/Shanghai.**

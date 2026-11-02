@@ -36,6 +36,7 @@ export type QueryMetricsResponse = {
   end: string;
   series: MetricSeries[];
   count: number;
+  errors?: Record<string, string>;
 };
 
 export type PublicPingTask = {
