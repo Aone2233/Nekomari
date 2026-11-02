@@ -95,6 +95,7 @@ class LoadPreviewBrowserTest(unittest.TestCase):
               if (url === '/api/admin/notification/load/edit') {
                 const body=JSON.parse(init.body);
                 window.editRequests = [...(window.editRequests || []), body];
+                if (window.holdEdit) await new Promise(resolve => { window.releaseEdit = resolve; });
                 if (window.editDelay) await new Promise(resolve => setTimeout(resolve, window.editDelay));
                 const failure=window.editFailure;
                 if (failure) return json({status:'error',message:'Save refused'});
@@ -213,14 +214,16 @@ class LoadPreviewBrowserTest(unittest.TestCase):
         self.assertEqual(self.page.evaluate("window.rules.length"), 2)
 
     def test_node_save_locks_other_rule_edits_until_refresh(self):
-        self.page.evaluate("window.editDelay = 300")
+        self.page.evaluate("window.holdEdit = true")
         row = self.page.get_by_test_id("load-rule-row").filter(has_text="Zero floor")
         selector = row.get_by_role("button", name="Select clients")
         edit = row.get_by_role("button", name="Edit")
         selector.click()
         self.page.get_by_role("button", name="Done", exact=True).click()
+        self.page.wait_for_function("typeof window.releaseEdit === 'function'")
         expect(selector).to_be_disabled()
         expect(edit).to_be_disabled()
+        self.page.evaluate("window.releaseEdit()")
         expect(edit).to_be_enabled()
         self.assertEqual(self.page.evaluate("window.editRequests.length"), 1)
 
