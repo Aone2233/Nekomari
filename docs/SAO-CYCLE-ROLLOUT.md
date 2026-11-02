@@ -26,7 +26,9 @@ zero, and missing, failed or invalid cycle samples remain unknown. Desktop and
 mobile browser checks against the released v1.7.20 panel and synthetic Agent
 WebSocket passed for normal, zero, unknown, recovered and offline data. The
 389 unit tests, typecheck and lint pass, including initial-load and store-restart
-cases. These are synthetic checks, not owner-session or provider-bill acceptance.
+cases. A separate synthetic panel cutover copied settings, retained all eight
+old assets through `/assets/`, and rolled back. These are synthetic checks,
+not owner-session or provider-bill acceptance.
 
 **Known limitation:** the independent upstream "today traffic" history path
 does not validate series semantics. Its legacy cumulative fallback can be
