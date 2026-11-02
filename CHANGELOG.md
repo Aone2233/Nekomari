@@ -6,6 +6,16 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [Unreleased]
+
+- Zone-labelled timestamps across the panel and admin UI. Every rendered
+  instant names its time zone next to the time so a copied row, a tooltip or a
+  screenshot keeps its meaning. `formatTime`, `formatTimeWithSeconds`,
+  `formatTimeShort` and `formatTimeOfDay` in `status/slaFormat` are the single
+  formatter for expiry dates, logs, sessions, SLA/uptime/panel-history charts,
+  load-rule preview windows and the home-page clock; invalid or missing values
+  render "—" instead of "Invalid Date".
+
 ## [v1.7.22] - 2026-11-02
 
 - **Published and deployed on OC424 at approximately 00:08 Asia/Shanghai on

@@ -11,6 +11,7 @@ import { Button, Dialog, Flex, Select } from "@radix-ui/themes";
 import { Activity, Download } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { formatTime } from "@/components/status/slaFormat";
 import NumberPicker from "@/components/ui/number-picker";
 import Loading from "@/components/loading";
 import {
@@ -279,7 +280,7 @@ const LogPage = () => {
                         <label className="text-sm">{log.message}</label>
                         <label className="font-bold">Time</label>
                         <label className="text-sm">
-                          {new Date(log.time).toLocaleString()}
+                          {formatTime(log.time)}
                         </label>
                       </Flex>
                       <Flex justify={"end"}>
@@ -297,7 +298,7 @@ const LogPage = () => {
                     ? `${log.message.slice(0, 75)}...`
                     : log.message}
                 </TableCell>
-                <TableCell>{new Date(log.time).toLocaleString()}</TableCell>
+                <TableCell>{formatTime(log.time)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

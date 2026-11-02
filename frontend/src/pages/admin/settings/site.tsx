@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { formatTime } from "@/components/status/slaFormat";
 import { Button, Dialog, Flex, Text } from "@radix-ui/themes";
 import { updateSettingsWithToast, useSettings } from "@/lib/api";
 import {
@@ -192,7 +193,7 @@ export default function SiteSettings() {
                 : ""
             }
             showSaveButton={false}
-            description={`${t("admin.nodeTable.expiredAt")}: ${new Date((settings.tempory_share_token_expire_at || 0) * 1000).toLocaleString()}`}
+            description={`${t("admin.nodeTable.expiredAt")}: ${formatTime((settings.tempory_share_token_expire_at || 0) * 1000)}`}
             disabled
             bordless
           >

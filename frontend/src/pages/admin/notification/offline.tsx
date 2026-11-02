@@ -14,6 +14,7 @@ import { OfflineNotificationProvider } from "@/contexts/NotificationProvider";
 import React from "react";
 import { Pencil, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { formatTime } from "@/components/status/slaFormat";
 import {
   Badge,
   Button,
@@ -361,7 +362,7 @@ const OfflineNotificationTable = ({
                   const date = new Date(lastNotified);
                   if (date.getFullYear() < 3)
                     return t("notification.offline.never_triggered");
-                  return date.toLocaleString();
+                  return formatTime(date);
                 })()}
               </TableCell>
               <TableCell>

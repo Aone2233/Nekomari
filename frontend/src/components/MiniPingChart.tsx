@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import Loading from "@/components/loading";
 import MetricBoundaryAxisTick from "@/components/MetricBoundaryAxisTick";
 import PingMetricStatContent from "@/components/PingMetricStatContent";
+import { formatTimeWithSeconds } from "@/components/status/slaFormat";
 import {
   ChartContainer,
   ChartTooltip,
@@ -231,13 +232,7 @@ const MiniPingChart = ({
 
   // v3 widens the tooltip label to ReactNode; this axis always supplies the ISO time string.
   const labelFormatter = (value: ReactNode) =>
-    new Date(value as string | number).toLocaleString([], {
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
+    formatTimeWithSeconds(value as string | number);
 
   const toggleLine = (dataKey: string) => {
     setHiddenLines((current) => ({ ...current, [dataKey]: !current[dataKey] }));

@@ -9,6 +9,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { useTranslation } from "react-i18next";
+import { formatTime } from "@/components/status/slaFormat";
 import { Dialog, Flex, Button } from "@radix-ui/themes";
 import { UserAgentHelper } from "@/utils/UserAgentHelper";
 import Loading from "@/components/loading";
@@ -206,20 +207,20 @@ export default function Sessions() {
                             {t("sessions.latest_online")}
                           </label>
                           <label className="text-sm">
-                            {new Date(s.latest_online).toLocaleString()}
+                            {formatTime(s.latest_online)}
                             {" "}({formatDuration(now - new Date(s.latest_online).getTime(),t)})
                           </label>
                           <label className="text-base font-bold">
                             {t("sessions.created_at")}
                           </label>
                           <label className="text-sm">
-                            {new Date(s.created_at).toLocaleString()}
+                            {formatTime(s.created_at)}
                           </label>
                           <label className="text-base font-bold">
                             {t("sessions.expires_at")}
                           </label>
                           <label className="text-sm">
-                            {new Date(s.expires).toLocaleString()}
+                            {formatTime(s.expires)}
                           </label>
                           <Flex justify={"end"}>
                             <Dialog.Trigger>
@@ -233,9 +234,9 @@ export default function Sessions() {
                   <TableCell>{UserAgentHelper.format(s.user_agent, t)}</TableCell>
                   <TableCell>{s.ip}</TableCell>
                   <TableCell>{s.latest_ip}</TableCell>
-                  <TableCell>{new Date(s.expires).toLocaleString()}</TableCell>
+                  <TableCell>{formatTime(s.expires)}</TableCell>
                   <TableCell>
-                    {new Date(s.latest_online).toLocaleString()}{" "}({formatDuration(now - new Date(s.latest_online).getTime(),t)})
+                    {formatTime(s.latest_online)}{" "}({formatDuration(now - new Date(s.latest_online).getTime(),t)})
                   </TableCell>
                   <TableCell>
                     <Dialog.Root>

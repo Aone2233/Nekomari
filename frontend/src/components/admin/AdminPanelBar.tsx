@@ -10,6 +10,7 @@ import {
 import { AnimatePresence, motion, type Variants } from "framer-motion"; // 引入 Framer Motion
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { formatTime } from "@/components/status/slaFormat";
 import { Link, useLocation /*useNavigate*/ } from "react-router-dom";
 import ColorSwitch from "../ColorSwitch";
 import LanguageSwitch from "../Language";
@@ -463,7 +464,7 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
                               </div>
                               {r.published_at && (
                                 <div className="text-xs text-muted-foreground">
-                                  {new Date(r.published_at).toLocaleString()}
+                                  {formatTime(r.published_at)}
                                 </div>
                               )}
                             </div>

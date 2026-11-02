@@ -36,6 +36,31 @@ not a proven root cause of that particular failure. Test-fix candidate
 CI41113452947 and the subsequent exact merge CI41114880987 pass 8/8; the
 original failure remains part of the record.
 
+**Current phase, newly designed (2026-11-03):** v1.7.22 is the deployed
+baseline. The next bounded releases and operational gates, in order:
+
+1. **v1.7.23 zone-labelled timestamps.** The frontend change is complete
+   locally (lint, typecheck, build and the 197 script tests pass) and goes
+   through the normal PR/exact-merge/release/Docker flow before OC424.
+   Exit: CI 8/8, release and Docker green, OC424 upgrade9/9 with the live
+   13-client node set byte-identical, owner-session UI acceptance.
+2. **Backup close-out.** Push the post-v1.7.22 archive to MAC-WAN `incoming/`
+   and run the deferred isolated restore drills once MAC-WAN SSH is reachable
+   again. Exit: matching ciphertext on MAC-WAN and a booted restore comparison
+   with no missing in-retention rows.
+3. **v1.8.0 next increments, one at a time.** Alert-rule test button (the
+   existing preview is read-only), panel self-metrics trend view,
+   full-window SLA coverage semantics, and the forecast reset/overflow fixes.
+   Exit per increment: bounded change, CI green, no P0 regression.
+4. **Still open acceptance.** Real remote notification receipt (not just
+   synthetic delivery) and MegaBox provider-billing equivalence; the latter
+   needs provider-side data and must never be claimed from panel numbers alone.
+
+Deferred by owner decision: 200-node capacity work stays on hold; a stable
+release may still trigger agent auto-updates. OVH is sold and its disk
+sanitization is no longer possible — that item is closed with the residual
+credential-exposure risk recorded, not re-opened.
+
 **Current operational checkpoint (2026-11-03 00:08 Asia/Shanghai):** OC424 is
 healthy/restart0 on **v1.7.22/5a81d96**. Pull-request CI41468164541 passes
 8/8, exact merge CI41469995167 8/8, release41473382220 10/10 and
@@ -56,8 +81,9 @@ reachable again. The SAO-Nekomari theme premium sync is now verified: the
 owner applied the authenticated payload after the v1.7.22 switch, the row
 keeps all 45 keys and `/api/public` matches the three live entries; see
 [`SAO-CYCLE-ROLLOUT.md`](./SAO-CYCLE-ROLLOUT.md).
-Neither online ciphertext copies nor an isolated restore prove independent-media
-recovery. OVH disk sanitization is also unverified. See
+Neither online ciphertext copies nor an isolated restore prove
+independent-media recovery. OVH is sold; disk sanitization is closed as
+unrecoverable. See
 [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and
 [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
 
@@ -70,16 +96,13 @@ preserving valid zero and treating missing or invalid values as unknown. The
 locally built asset has SHA-256
 `9bdacc816dcc195b2592dc9f4eaf663d1f2444f9cd3ebe8c2e44b80f1084f90b`.
 Tests (389), typecheck, lint and isolated published-panel/Agent/browser
-checks pass; this is not a CI or build-attestation claim. OC424 currently
-retains **active upstream SAO**; the local variant is staged, not activated,
-with eight older hashed assets retained and no database change. Before an
-authenticated switch, copy settings, recheck live identity/health/backup and
-preserve the rollback procedure in [`SAO-CYCLE-ROLLOUT.md`](./SAO-CYCLE-ROLLOUT.md).
+checks pass; this is not a CI or build-attestation claim. OC424 retains
+**upstream SAO intact for rollback**; the owner activated the staged
+`SAO-Nekomari` (`v1.3.4-nekomari.2`) on 2026-11-02 through the authenticated
+themes UI, with eight older hashed assets retained and no database change.
 The separate upstream "today traffic" path now validates historical series
-semantics (`v1.3.4-nekomari.2`): legacy cumulative series are shown as
-unknown instead of being summed. The staged `SAO-Nekomari` directory on OC424
-carries this build; activating it still requires an authenticated owner
-session. MegaBox's Agent reset day and provider accounting remain unverified:
+semantics: legacy cumulative series are shown as unknown instead of being
+summed. MegaBox's Agent reset day and provider accounting remain unverified:
 never change the Agent cycle, reset a ledger, or claim provider-billing
 equivalence.
 

@@ -56,14 +56,79 @@ export const maintenanceExcludedText = (seconds: number | undefined): string => 
  *
  * `language` 传 i18next 的当前语言；不传则用浏览器默认，至少数字格式是对的。
  */
-export const formatTime = (value: string, language?: string): string => {
-  if (!value) return "—";
-  const date = new Date(value);
+export const formatTime = (
+  value: string | number | Date,
+  language?: string,
+): string => {
+  if (value === null || value === undefined || value === "") return "—";
+  const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleString(language, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+};
+
+/**
+ * formatTimeWithSeconds renders the same labelled timestamp including seconds.
+ *
+ * Tooltips that display per-second samples (ping charts, instance charts) keep
+ * their precision; the zone label still travels with the string.
+ */
+export const formatTimeWithSeconds = (
+  value: string | number | Date,
+  language?: string,
+): string => {
+  if (value === null || value === undefined || value === "") return "—";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString(language, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  });
+};
+
+/**
+ * formatTimeShort renders a compact, zone-labelled timestamp for dense chart
+ * axes and tables: month/day hour:minute plus the zone abbreviation.
+ */
+export const formatTimeShort = (
+  value: string | number | Date,
+  language?: string,
+): string => {
+  if (value === null || value === undefined || value === "") return "—";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString(language, {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+};
+
+/**
+ * formatTimeOfDay renders hour:minute plus the zone abbreviation, for the
+ * time-only chart axes whose window stays inside a single day.
+ */
+export const formatTimeOfDay = (
+  value: string | number | Date,
+  language?: string,
+): string => {
+  if (value === null || value === undefined || value === "") return "—";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleTimeString(language, {
     hour: "2-digit",
     minute: "2-digit",
     timeZoneName: "short",

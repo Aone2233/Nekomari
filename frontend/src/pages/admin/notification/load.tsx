@@ -27,6 +27,7 @@ import {
 import { FlaskConical, MoreHorizontal, Pencil, Trash } from "lucide-react";
 import React from "react";
 import { useTranslation } from "react-i18next";
+import { formatTime } from "@/components/status/slaFormat";
 import { toast } from "sonner";
 
 const LoadPage = () => {
@@ -544,7 +545,7 @@ const RulePreview = ({ alert }: { alert: LoadAlert }) => {
         {error && <p role="alert" className="text-red-600 mt-3">{error}</p>}
         {result && <div aria-live="polite" className="mt-4">
           <p className="text-sm">{t("loadAlert.preview.window", {
-            start: new Date(result.window_start).toLocaleString(), end: new Date(result.evaluated_at).toLocaleString(),
+            start: formatTime(result.window_start), end: formatTime(result.evaluated_at),
           })}</p>
           <p className="text-sm mt-1">{t(result.stored_cooldown_active
             ? "loadAlert.preview.cooldown_active" : "loadAlert.preview.cooldown_inactive")}</p>
