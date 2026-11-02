@@ -6,8 +6,20 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
-## [Unreleased]
+## [v1.7.21] - 2026-11-02
 
+- **Published and deployed on OC424 at approximately 22:13 Asia/Shanghai.**
+  Immutable `8ea637583b4172e0af50e1396b93f394eb6f5bf3`; exact merge
+  CI41454470023 passes 8/8, release41454839939 10/10 and Docker41457061876
+  2/2. Published panel and Agent Linux checksums and attestations, both
+  architectures of both OCI images and native panel binaries verify; image
+  labels report v1.7.21/8ea6375. The released amd64 panel passes isolated
+  Chinese desktop/light and English mobile/dark load-rule browser cases with
+  synthetic data. OC424 upgrade9/9 passes and all 14 registered clients keep
+  identical UUID/token rows with fresh CPU and uptime. Fresh encrypted
+  pre/post backups have matching MAC-WAN `incoming/` and executor copies and
+  pass isolated recovery. Owner-session UI, actual notification receipt and
+  independent-media restore remain unverified. See `docs/DEPLOY-OC424.md`.
 - Load-alert rules for `backup_age` and `backup_ok` now evaluate end to end.
   `backup_age` excludes unknown (`-1`) samples from the ratio count and the
   baseline window; `backup_ok` is inverted into a not-ok signal so threshold 1

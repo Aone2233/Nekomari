@@ -14,17 +14,17 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**Load-rule backup metrics (pending v1.7.21 deployment):** `backup_age` and
-`backup_ok` now evaluate end to end with explicit semantics. `backup_age` uses
+**Load-rule backup metrics (deployed in v1.7.21 on 2026-11-02):** `backup_age`
+and `backup_ok` evaluate end to end with explicit semantics. `backup_age` uses
 seconds since the last successful backup; an agent-reported unknown (`-1`) is
 excluded from both the ratio count and the baseline window instead of being
-read as a zero-age healthy sample. `backup_ok` is inverted into a
-not-ok signal for the engine's single `>=` comparison: threshold 1 alerts when
-the last run failed or the status is unknown, and never alerts while it is
-healthy. `temp` was removed from the metric options: no metric-store series
-backs it, so a temp rule could never evaluate. The production rule set contains
-no saved `temp`/`backup_*` rules, so nothing dormant becomes active. This is
-distinct from the operational MAC-WAN backup-health watcher. See
+read as a zero-age healthy sample. `backup_ok` is inverted into a not-ok
+signal for the engine's single `>=` comparison: threshold 1 alerts when the
+last run failed or the status is unknown, and never alerts while it is
+healthy. `temp` was removed from the metric options because no metric-store
+series backs it. The production rule set contains no saved `temp`/`backup_*`
+rules, so nothing dormant became active at cutover. This is distinct from the
+operational MAC-WAN backup-health watcher. See
 [`ALERT-RULE-PREVIEW.md`](./ALERT-RULE-PREVIEW.md).
 
 **CI follow-up (2026-10-31):** exact merge CI41111906239 for the SLA span
@@ -36,26 +36,28 @@ not a proven root cause of that particular failure. Test-fix candidate
 CI41113452947 and the subsequent exact merge CI41114880987 pass 8/8; the
 original failure remains part of the record.
 
-**Current operational checkpoint (2026-11-02 20:03 Asia/Shanghai):** OC424 is
-healthy/restart0 on **v1.7.20/065bb4d**. Exact merge CI41437154107 passes 8/8,
-release41438202648 10/10 and Docker41439178485 2/2. Linux panel/Agent
+**Current operational checkpoint (2026-11-02 22:20 Asia/Shanghai):** OC424 is
+healthy/restart0 on **v1.7.21/8ea6375**. Exact merge CI41454470023 passes 8/8,
+release41454839939 10/10 and Docker41457061876 2/2. Linux panel/Agent
 checksums and attestations, both architectures of both OCI identities, native
-panel binaries and isolated MAC-WAN load-rule browser acceptance pass. OC424
-upgrade9/9 and public28/28 pass; all 14 clients have fresh CPU/uptime at this
-checkpoint. The owner confirmed the current additions and removal; preserve
-the live node set and never restore an older database over it. Read-only scoped
-forecast returns 14 rows, seven insufficient because a required direction
-decreased; it is not a provider billing validation. Owner-session UI and real
-remote notification receipt remain unverified.
+panel binaries and released-binary load-rule browser acceptance pass. OC424
+upgrade9/9 passes; both DB schema hashes match the pre-switch values and all
+14 clients keep byte-identical `uuid`/`token` rows with fresh CPU/uptime.
+API-key scope/expiry, GeoIP, authorized SSH keys, theme directories and the
+local Agent are unchanged. Preserve the live node set and never restore an
+older database over it. The authenticated admin/forecast API was not exercised
+this cycle; owner-session UI and real remote notification receipt remain
+unverified.
 
 Fresh manual pre/post encrypted backups have matching MAC-WAN `incoming/` and
 executor ciphertext copies. Pre restores under pinned v1.7.19/v1.7.20 and post
-under v1.7.20; among 22,173 archived rows in 12 selected histories, none within
-retention are missing or changed and 75 expired/inactive-tier rows are absent.
-MAC-WAN's scheduled 11:30 backup succeeded and its next daily timer is
-2026-11-03 11:30 Asia/Shanghai. A subsequent automatic health run at 20:02:57
-succeeded, and OC424 received its `ok` report at 20:03:03 after the switch.
-It checks scheduled backup health, not either manually created release archive.
+under v1.7.21, each network-free. MAC-WAN's scheduled 11:30 backup succeeded
+and its next daily timer is 2026-11-03 11:30 Asia/Shanghai. A subsequent
+automatic health run checked it at 22:20:37 and OC424 received its `ok` report
+at 22:20:44 after the switch. It checks scheduled backup health, not either
+manually created release archive. This cycle did not repeat the 12-history
+row comparison; the byte-identical client rows and schema hashes cover the
+auth/data-integrity invariant for this image-only switch.
 Neither online ciphertext copies nor an isolated restore prove independent-media
 recovery. OVH disk sanitization is also unverified. See
 [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and

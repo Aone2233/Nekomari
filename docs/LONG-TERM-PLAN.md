@@ -39,7 +39,22 @@ its exit criteria are met, not when the calendar says so.
 
 ## Current Delivery Checkpoint (2026-11-02)
 
-**Latest bounded delivery: v1.7.20 (2026-11-02 approximately 19:51
+**Latest bounded delivery: v1.7.21 (2026-11-02 approximately 22:13
+Asia/Shanghai).** `backup_age`/`backup_ok` load rules evaluate end to end
+with explicit semantics and the unsupported `temp` option is removed; the
+production rule set contains no dormant `backup_*`/`temp` rules. Exact merge
+CI41454470023 passes 8/8, release41454839939 10/10 and Docker41457061876 2/2.
+Published provenance, dual-platform images, released-binary load-rule browser
+cases, fresh encrypted pre/post recoveries, OC424 upgrade9/9 and all 14 fresh
+CPU/uptime reporters pass; the 14 registered clients keep byte-identical
+UUID/token rows across the switch. Owner UI, real incident receipt and
+independent-media recovery remain unverified. This does not complete v1.8 or
+deferred 200-node work. Investigate SAO quota field and missing/rollover
+semantics separately before changing traffic presentation; provider accounting
+is not established. See [`OPEN-WORK.md`](./OPEN-WORK.md) and
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+**Previous bounded delivery: v1.7.20 (2026-11-02 approximately 19:51
 Asia/Shanghai).** Load-rule edits preserve explicit zero baseline floors,
 validate inputs and report save errors; concurrent refreshes preserve the
 newest state. Exact merge CI41437154107 passes 8/8, release41438202648 10/10
@@ -48,10 +63,11 @@ MAC-WAN browser tests, fresh encrypted recovery, OC424 upgrade9/9, public28/28
 and all 14 fresh CPU/uptime reporters pass. The owner confirmed the current
 node changes. The daily backup through the new route and a later automatic
 health report after this switch succeeded. Owner UI, real incident receipt and
-independent-media recovery remain unverified. This does not complete v1.8 or deferred 200-node
-work. Investigate SAO quota field and missing/rollover semantics separately
-before changing traffic presentation; provider accounting is not established.
-See [`OPEN-WORK.md`](./OPEN-WORK.md) and [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+independent-media recovery remain unverified. This does not complete v1.8 or
+deferred 200-node work. Investigate SAO quota field and missing/rollover
+semantics separately before changing traffic presentation; provider accounting
+is not established. See [`OPEN-WORK.md`](./OPEN-WORK.md) and
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
 **Previous bounded delivery: v1.7.19 (2026-10-31 approximately 03:45
 Asia/Shanghai).** The SLA page labels the existing observed-span coverage and
