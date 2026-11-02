@@ -6,7 +6,7 @@ export interface LoadAlert {
   clients?: string[];
   /** ping 指标要盯的延迟监测任务 id */
   tasks?: string[];
-  metric?: "cpu" | "ram" | "disk" | "net_in" | "net_out" | "load" | "swap" | "temp" | "gpu" | "backup_age" | "backup_ok";
+  metric?: "cpu" | "ram" | "disk" | "net_in" | "net_out" | "load" | "swap" | "gpu" | "backup_age" | "backup_ok";
   threshold?: number;
   ratio?: number;
   interval?: number;

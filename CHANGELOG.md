@@ -8,6 +8,12 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Load-alert rules for `backup_age` and `backup_ok` now evaluate end to end.
+  `backup_age` excludes unknown (`-1`) samples from the ratio count and the
+  baseline window; `backup_ok` is inverted into a not-ok signal so threshold 1
+  matches a failed or unknown last run and never a healthy one. `temp` is
+  removed from the metric options because no metric-store series backs it.
+
 ## [v1.7.20] - 2026-11-02
 
 - **Published and deployed on OC424 at approximately 19:51 Asia/Shanghai.**

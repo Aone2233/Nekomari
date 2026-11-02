@@ -175,9 +175,57 @@ func TestPreviewUnsupportedAndEmptyTargetCannotQueryAllNodes(t *testing.T) {
 		t.Fatal("unexpected metric query")
 		return nil, nil
 	}
-	rule := models.LoadNotification{Metric: "backup_age", Clients: models.StringArray{"valid", ""}, Ratio: .8, Interval: 15}
+	// temp 没有对应的 metric store 序列（agent 只上报 GPU 温度），继续保持
+	// unsupported，而不是默默按 0 求值。
+	rule := models.LoadNotification{Metric: "temp", Clients: models.StringArray{"valid", ""}, Ratio: .8, Interval: 15}
 	got, err := previewLoadNotification(context.Background(), rule, time.Now(), source)
 	if err != nil || got.Targets[0].Status != "unsupported_metric" || got.Targets[1].Status != "invalid_target" {
 		t.Fatalf("%+v %v", got, err)
+	}
+}
+
+func TestPreviewBackupMetricsWithUnknownSemantics(t *testing.T) {
+	now := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	source := emptyPreviewSource()
+	source.host = func(_ context.Context, uuid, _ string, start, end time.Time) ([]models.Record, error) {
+		if !start.Equal(now.Add(-15*time.Minute)) || !end.Equal(now) {
+			t.Fatalf("unexpected window %s..%s", start, end)
+		}
+		switch uuid {
+		case "stale":
+			return []models.Record{{BackupAge: 7200}, {BackupAge: 8100}, {BackupAge: -1}}, nil
+		case "unknown-age":
+			return []models.Record{{BackupAge: -1}}, nil
+		case "failed":
+			return []models.Record{{BackupOk: 0}}, nil
+		case "ok":
+			return []models.Record{{BackupOk: 1}}, nil
+		default:
+			return nil, nil
+		}
+	}
+
+	age := models.LoadNotification{Clients: models.StringArray{"stale", "unknown-age"}, Metric: "backup_age", Threshold: 7000, Ratio: .5, Interval: 15}
+	got, err := previewLoadNotification(context.Background(), age, now, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Targets[0].Status != "matched" || got.Targets[0].Samples != 2 || *got.Targets[0].Exceeding != 2 || *got.Targets[0].Required != 1 {
+		t.Fatalf("stale backup_age: %+v", got.Targets[0])
+	}
+	if got.Targets[1].Status != "no_data" {
+		t.Fatalf("all-unknown backup_age should be no_data: %+v", got.Targets[1])
+	}
+
+	ok := models.LoadNotification{Clients: models.StringArray{"failed", "ok"}, Metric: "backup_ok", Threshold: 1, Ratio: 1, Interval: 15}
+	got, err = previewLoadNotification(context.Background(), ok, now, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Targets[0].Status != "matched" || *got.Targets[0].Exceeding != 1 || *got.Targets[0].Threshold != 1 {
+		t.Fatalf("failed backup_ok should match with signal 1: %+v", got.Targets[0])
+	}
+	if got.Targets[1].Status != "not_matched" || *got.Targets[1].Exceeding != 0 {
+		t.Fatalf("healthy backup_ok should not match: %+v", got.Targets[1])
 	}
 }

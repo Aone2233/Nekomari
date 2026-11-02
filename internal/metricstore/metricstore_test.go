@@ -657,3 +657,64 @@ func TestGetRecordMetricMaxByClientAndTimeQueriesOnlySelectedMetric(t *testing.T
 		t.Fatalf("unselected RAM value = %d, want 0", got[0].Ram)
 	}
 }
+
+func TestBackupRecordMetricLookupAndReconstruction(t *testing.T) {
+	if name, ok := metricNameForRecordField("backup_age"); !ok || name != MetricBackupAge {
+		t.Errorf("backup_age lookup = %q, %v", name, ok)
+	}
+	if name, ok := metricNameForRecordField("backup_ok"); !ok || name != MetricBackupOK {
+		t.Errorf("backup_ok lookup = %q, %v", name, ok)
+	}
+	if _, ok := metricNameForRecordField("temp"); ok {
+		t.Error("temp has no metric store series and must not map")
+	}
+	rec := models.Record{}
+	applyRecordMetricValue(&rec, MetricBackupAge, 7200)
+	applyRecordMetricValue(&rec, MetricBackupOK, 1)
+	if rec.BackupAge != 7200 || rec.BackupOk != 1 {
+		t.Errorf("backup fields not reconstructed: age=%d ok=%d", rec.BackupAge, rec.BackupOk)
+	}
+}
+
+func TestGetRecordMetricMaxReturnsBackupFields(t *testing.T) {
+	ctx := context.Background()
+	s, err := metric.Open(ctx, metric.SQLite(":memory:",
+		metric.WithMaxOpenConns(1),
+		metric.WithRollupPolicy(defaultRollupPolicy()),
+	))
+	if err != nil {
+		t.Fatalf("open metric store: %v", err)
+	}
+	defer s.Close()
+	if err := createMetricDefinitions(ctx, s); err != nil {
+		t.Fatalf("create metric definitions: %v", err)
+	}
+
+	base := time.Now().UTC().Truncate(time.Minute).Add(-time.Minute)
+	if err := s.WriteBatch(ctx, []metric.Point{
+		{MetricName: MetricBackupAge, EntityID: "node-a", Timestamp: base.Add(10 * time.Second), Value: 300},
+		{MetricName: MetricBackupAge, EntityID: "node-a", Timestamp: base.Add(20 * time.Second), Value: 7200},
+		{MetricName: MetricBackupOK, EntityID: "node-a", Timestamp: base.Add(20 * time.Second), Value: 0},
+	}); err != nil {
+		t.Fatalf("write backup points: %v", err)
+	}
+
+	got, err := getRecordMetricMaxByClientAndTimeFromSeries(ctx, s, "node-a", "backup_age", base, base.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("get backup_age records: %v", err)
+	}
+	if len(got) != 1 || got[0].BackupAge != 7200 {
+		t.Fatalf("backup_age max = %#v", got)
+	}
+	if got[0].BackupOk != 0 {
+		t.Fatalf("unselected backup_ok value = %d, want 0", got[0].BackupOk)
+	}
+
+	ok, err := getRecordMetricMaxByClientAndTimeFromSeries(ctx, s, "node-a", "backup_ok", base, base.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("get backup_ok records: %v", err)
+	}
+	if len(ok) != 1 || ok[0].BackupOk != 0 {
+		t.Fatalf("backup_ok max = %#v", ok)
+	}
+}

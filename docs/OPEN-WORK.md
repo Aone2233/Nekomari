@@ -14,13 +14,17 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**Found during load-rule preview development:** `temp`, `backup_age` and
-`backup_ok` are offered in the load-rule UI but the scheduler's selected-metric
-lookup does not map them, so those rules cannot evaluate as configured. Do not
-silently enable them: backup unknown values and the existing `>=` comparison
-need explicit semantics and tests before a separate correction. This is distinct
-from the operational MAC-WAN backup-health watcher. The v1.7.18 preview
-reports these options as unsupported; it does not enable them. See
+**Load-rule backup metrics (pending v1.7.21 deployment):** `backup_age` and
+`backup_ok` now evaluate end to end with explicit semantics. `backup_age` uses
+seconds since the last successful backup; an agent-reported unknown (`-1`) is
+excluded from both the ratio count and the baseline window instead of being
+read as a zero-age healthy sample. `backup_ok` is inverted into a
+not-ok signal for the engine's single `>=` comparison: threshold 1 alerts when
+the last run failed or the status is unknown, and never alerts while it is
+healthy. `temp` was removed from the metric options: no metric-store series
+backs it, so a temp rule could never evaluate. The production rule set contains
+no saved `temp`/`backup_*` rules, so nothing dormant becomes active. This is
+distinct from the operational MAC-WAN backup-health watcher. See
 [`ALERT-RULE-PREVIEW.md`](./ALERT-RULE-PREVIEW.md).
 
 **CI follow-up (2026-10-31):** exact merge CI41111906239 for the SLA span

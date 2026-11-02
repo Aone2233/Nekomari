@@ -242,7 +242,8 @@ func previewPingTarget(ctx context.Context, rule models.LoadNotification, start,
 func previewHostTarget(ctx context.Context, rule models.LoadNotification, start, now time.Time, target *LoadPreviewTarget, source loadPreviewSource) {
 	// Only metrics whose scheduler value conversion is understood are previewed.
 	switch rule.Metric {
-	case "cpu", "gpu", "ram", "swap", "disk", "load", "net_in", "netin", "net_out", "netout":
+	case "cpu", "gpu", "ram", "swap", "disk", "load", "net_in", "netin", "net_out", "netout",
+		"backup_age", "backup_ok":
 	default:
 		target.Status = "unsupported_metric"
 		return
@@ -269,6 +270,11 @@ func previewHostTarget(ctx context.Context, rule models.LoadNotification, start,
 		}
 	}
 	values := previewHostValues(recs, rule.Metric, capacity)
+	if len(values) == 0 {
+		// 记录存在但全部为未知（例如 backup_age 全是 -1）时同样没有可判定样本。
+		target.Status = "no_data"
+		return
+	}
 	target.Samples = len(values)
 	threshold := rule.Threshold
 	if rule.UsesBaseline() {
@@ -312,7 +318,9 @@ func previewHostValues(records []models.Record, metric string, capacity int64) [
 		case "disk":
 			values = append(values, float32(record.Disk)/float32(capacity)*100)
 		default:
-			values = append(values, getMetricValue(record, metric))
+			if value, ok := knownAlertMetricValue(record, metric); ok {
+				values = append(values, value)
+			}
 		}
 	}
 	return values
