@@ -32,7 +32,40 @@ not a proven root cause of that particular failure. Test-fix candidate
 CI41113452947 and the subsequent exact merge CI41114880987 pass 8/8; the
 original failure remains part of the record.
 
-**Current operational checkpoint (2026-10-31 03:48 Asia/Shanghai):** OC424 is
+**Current operational checkpoint (2026-11-02 19:56 Asia/Shanghai):** OC424 is
+healthy/restart0 on **v1.7.20/065bb4d**. Exact merge CI41437154107 passes 8/8,
+release41438202648 10/10 and Docker41439178485 2/2. Linux panel/Agent
+checksums and attestations, both architectures of both OCI identities, native
+panel binaries and isolated MAC-WAN load-rule browser acceptance pass. OC424
+upgrade9/9 and public28/28 pass; all 14 clients have fresh CPU/uptime at this
+checkpoint. The owner confirmed the current additions and removal; preserve
+the live node set and never restore an older database over it. Read-only scoped
+forecast returns 14 rows, seven insufficient because a required direction
+decreased; it is not a provider billing validation. Owner-session UI and real
+remote notification receipt remain unverified.
+
+Fresh manual pre/post encrypted backups have matching MAC-WAN `incoming/` and
+executor ciphertext copies. Pre restores under pinned v1.7.19/v1.7.20 and post
+under v1.7.20; among 22,173 archived rows in 12 selected histories, none within
+retention are missing or changed and 75 expired/inactive-tier rows are absent.
+MAC-WAN's scheduled 11:30 backup succeeded and its next daily timer is
+2026-11-03 11:30 Asia/Shanghai. The latest observed automatic health report at
+19:47:50 predates the switch; verify a subsequent scheduled report separately.
+Neither online ciphertext copies nor an isolated restore prove independent-media
+recovery. OVH disk sanitization is also unverified. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and
+[`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
+
+**Next traffic-display investigation:** the separately maintained SAO reference
+uses boot-counter `net_total_up/down` in its quota display, not the Agent's
+periodic `traffic_up/down` counters. MegaBox's configured Agent rotation day
+and the provider's displayed reset date have differed, and the provider's
+accounting rules are not established. Investigate field availability, missing
+sample and zero-at-rollover semantics before changing the theme; do not change
+the Agent cycle, reset a ledger, or claim provider-billing equivalence. Treat
+any SAO changes and release as a separate repository/deployment.
+
+**Historical operational checkpoint (2026-10-31 03:48 Asia/Shanghai):** OC424 is
 healthy/restart0 on **v1.7.19/cf221de**. Exact merge CI41114880987 passes 8/8,
 release41116050542 10/10 and Docker41117063818 2/2. Linux panel/Agent
 checksums and attestations, both architectures of both OCI identities and
@@ -188,8 +221,8 @@ Earlier v1.7.4 SLA14nodes/58tasks remains dated evidence, not a newly rerun
 SLA live comparison. The existing tools and new uptime page remain
 in the admin shell. After the earlier removal, Pi adds a node with the owner's
 explicit authorization: 14 registered clients were the earlier release baseline;
-the owner later intentionally removes OVH, so the current baseline is 13. Preserve
-all remaining nodes. Existing UUIDs/tokens and Agent services are
+the owner later intentionally removes OVH, leaving 13 at this historical checkpoint.
+Preserve all remaining nodes. Existing UUIDs/tokens and Agent services are
 unchanged. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for immutable artifacts,
 actual evidence and patch rollback to v1.7.13. The earlier v1.7.0->v1.6
 auth-migration rollback still requires the paired old binary and DB.

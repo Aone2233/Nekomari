@@ -37,9 +37,23 @@ its exit criteria are met, not when the calendar says so.
 | `v2.0.0` | 2027-Q2 | Agent and platform v2 | non-root agent default with capability/ICMP strategy; Windows/macOS agent support and footprint measurement; single protocol source (remove root/agent duplication); agent updater/rollback hardening; secrets at rest (session/2FA) with key management; optional DB encryption; 200-node capacity | Migration guide; protocol compatibility policy (two-minor deprecation); 200-node benchmark; no plaintext session/2FA secrets on new installs |
 | `v2.1.0` | 2027-Q3 | Scale and ecosystem | HA/read-replica evaluation, plugin/theme marketplace signing, multi-region backup, optional external metrics export | Scale/HA runbook; marketplace signature verification; backup across two providers |
 
-## Current Delivery Checkpoint (2026-10-31)
+## Current Delivery Checkpoint (2026-11-02)
 
-**Latest bounded delivery: v1.7.19 (2026-10-31 approximately 03:45
+**Latest bounded delivery: v1.7.20 (2026-11-02 approximately 19:51
+Asia/Shanghai).** Load-rule edits preserve explicit zero baseline floors,
+validate inputs and report save errors; concurrent refreshes preserve the
+newest state. Exact merge CI41437154107 passes 8/8, release41438202648 10/10
+and Docker41439178485 2/2. Published provenance, dual-platform images, isolated
+MAC-WAN browser tests, fresh encrypted recovery, OC424 upgrade9/9, public28/28
+and all 14 fresh CPU/uptime reporters pass. The owner confirmed the current
+node changes. The daily backup through the new route succeeded; a health report
+after this switch, owner UI, real incident receipt and independent-media
+recovery remain unverified. This does not complete v1.8 or deferred 200-node
+work. Investigate SAO quota field and missing/rollover semantics separately
+before changing traffic presentation; provider accounting is not established.
+See [`OPEN-WORK.md`](./OPEN-WORK.md) and [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+**Previous bounded delivery: v1.7.19 (2026-10-31 approximately 03:45
 Asia/Shanghai).** The SLA page labels the existing observed-span coverage and
 shows first/last buckets without presenting ping gaps as node downtime. Server
 arithmetic and API fields remain unchanged; full-window semantics remain open.
@@ -89,7 +103,7 @@ Docker41018148539 2/2; published-binary forecast6/6, OC424 upgrade9/9,
 public27/27, scoped forecast13rows and all13 fresh CPU/uptime reporters pass.
 Fresh pre/post encrypted archives recover on MAC-WAN; the post recovery
 preserves 12 selected metric histories. The owner-added QWRT node is included
-in the current 13-client baseline, which differs from the earlier 13. The
+in the then-current 13-client baseline, which differs from the earlier 13. The
 new proxy's automatic health timer passes, but its next daily backup, actual
 alert receipt, independent-media restore and owner UI remain unverified. This
 does not complete v1.8 or the deferred 200-node work. See
@@ -218,13 +232,13 @@ correctness batches. The full v1.8-v2.1 roadmap is not one continuous task.
 All 200-node work remains deferred, preserving its original limits and 26 failed
 reports. Publication is not proof that every roadmap exit criterion passed.
 
-**Delivered:** OC424 serves v1.7.14/7f94561 at `nekomari.orderly2233.org`, healthy/
+**Historical v1.7.14 delivery:** OC424 served v1.7.14/7f94561 at `nekomari.orderly2233.org`, healthy/
 restart0, after exact-source CI 8/8, release 10/10, Docker 2/2 and upgrade check 9/9.
 Both Linux assets pass checksums/tag/source/workflow attestations; both image
 architectures identify exact source. Public checks27/27 and scoped forecast13rows
 pass; the earlier v1.7.4 bounded live SLA reads are dated evidence, not rerun
 for v1.7.14. The owner approved Pi's earlier addition and later intentionally
-removed OVH; the current baseline is 13 clients. All 13 reported during the
+removed OVH; the baseline was then 13 clients. All 13 reported during the
 upgrade acceptance and briefly after the intermittent VT01 disconnect recorded above.
 UUIDs/tokens/Agent services are unchanged. The existing tools and new uptime page
 retain shared in-panel navigation. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
@@ -241,10 +255,10 @@ the owner's intentional OVH removal. The owner selects365days to2027-10-27 13:38
 Asia/Shanghai, not the suggested90; no silent rotation. Other runtime callers
 are not fully inventoried. v1.7.14 does not restart Hermes or any Agent.
 
-**Backup delivery:** OC424 has only public recipients; MAC-WAN receives encrypted
+**Historical backup delivery:** OC424 has only public recipients; MAC-WAN receives encrypted
 backups and sends health reports. Its 03:30 UTC daily timer retains 14 scheduled
 ciphertext pairs, and its first scheduled daily run succeeds on 2026-10-29.
-Current 13-node pre ciphertext recovers under pinned v1.7.13/v1.7.14 and post
+The then-current 13-node pre ciphertext recovers under pinned v1.7.13/v1.7.14 and post
 under v1.7.14, without production `ANALYZE` or reclaim. Separate release copies are
 outside automatic pruning; both pre/post ciphertexts also have matching online
 executor copies. All old plaintext/local rollback assets are kept. The owner
@@ -253,7 +267,7 @@ not claimed. Online same-UID Hermes/root/Docker exposure remains explicit.
 No unattended decrypt scheduler or production RPO/RTO/SLO acceptance is implied.
 The first nightly trigger observed on 2026-10-28 was for former OVH, not MAC-WAN.
 
-**Next bounded actions:**
+**Historical next bounded actions (v1.7.14):**
 
 1. dsh records the owner's history/audit/API-key UI acceptance as closed; no
    new owner session is performed in this review, nor is that acceptance
