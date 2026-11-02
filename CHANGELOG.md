@@ -6,7 +6,7 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
-## [Unreleased]
+## [v1.7.22] - 2026-11-02
 
 - Batch metric queries report invalid keys per-key instead of all-or-nothing.
   A mixed `queryMetrics` batch keeps the valid keys, returns their series and
