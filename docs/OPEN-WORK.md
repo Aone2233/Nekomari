@@ -36,28 +36,26 @@ not a proven root cause of that particular failure. Test-fix candidate
 CI41113452947 and the subsequent exact merge CI41114880987 pass 8/8; the
 original failure remains part of the record.
 
-**Current operational checkpoint (2026-11-02 22:20 Asia/Shanghai):** OC424 is
-healthy/restart0 on **v1.7.21/8ea6375**. Exact merge CI41454470023 passes 8/8,
-release41454839939 10/10 and Docker41457061876 2/2. Linux panel/Agent
-checksums and attestations, both architectures of both OCI identities, native
-panel binaries and released-binary load-rule browser acceptance pass. OC424
-upgrade9/9 passes; both DB schema hashes match the pre-switch values and all
-14 clients keep byte-identical `uuid`/`token` rows with fresh CPU/uptime.
-API-key scope/expiry, GeoIP, authorized SSH keys, theme directories and the
-local Agent are unchanged. Preserve the live node set and never restore an
-older database over it. The authenticated admin/forecast API was not exercised
-this cycle; owner-session UI and real remote notification receipt remain
-unverified.
+**Current operational checkpoint (2026-11-03 00:08 Asia/Shanghai):** OC424 is
+healthy/restart0 on **v1.7.22/5a81d96**. Pull-request CI41468164541 passes
+8/8, exact merge CI41469995167 8/8, release41473382220 10/10 and
+Docker41474774363 2/2. Both architectures of the assets and images verify and
+the arm64 image binary matches the release asset natively on OC424. OC424
+upgrade9/9 passes; both DB quick checks pass and all 13 clients (owner's
+post-v1.7.21 node changes) keep byte-identical `uuid`/`token` rows. The local
+Agent (PID 499631, NRestarts 2) is unchanged. Preserve the live node set and
+never restore an older database over it. Owner-session UI and real remote
+notification receipt remain unverified.
 
-Fresh manual pre/post encrypted backups have matching MAC-WAN `incoming/` and
-executor ciphertext copies. Pre restores under pinned v1.7.19/v1.7.20 and post
-under v1.7.21, each network-free. MAC-WAN's scheduled 11:30 backup succeeded
-and its next daily timer is 2026-11-03 11:30 Asia/Shanghai. A subsequent
-automatic health run checked it at 22:20:37 and OC424 received its `ok` report
-at 22:20:44 after the switch. It checks scheduled backup health, not either
-manually created release archive. This cycle did not repeat the 12-history
-row comparison; the byte-identical client rows and schema hashes cover the
-auth/data-integrity invariant for this image-only switch.
+Fresh manual pre/post encrypted backups have matching OC424-root and executor
+ciphertext copies. The MAC-WAN `incoming/` copy and the isolated restore
+drills are deferred: MAC-WAN SSH (59.66.23.138:52022) timed out repeatedly
+from about 16:00 UTC while its 15:51:49 health report to OC424 was `ok`. Run
+both drills and push the post archive to MAC-WAN as soon as the host is
+reachable again. The SAO-Nekomari theme premium sync is now verified: the
+owner applied the authenticated payload after the v1.7.22 switch, the row
+keeps all 45 keys and `/api/public` matches the three live entries; see
+[`SAO-CYCLE-ROLLOUT.md`](./SAO-CYCLE-ROLLOUT.md).
 Neither online ciphertext copies nor an isolated restore prove independent-media
 recovery. OVH disk sanitization is also unverified. See
 [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and
@@ -519,7 +517,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Dragging under a filter reorders only the visible subset | `frontend/src/pages/admin/index.tsx` | Needs a decision about what reordering a filtered list should mean |
 | Uptime history / restart count | `docs/UPTIME-HISTORY.md` | Uptime history is deployed in v1.7.8. It records bucketed positive readings, not reboot events; trustworthy restart counting remains open |
 | Panel self-metrics history | `docs/PANEL-HISTORY.md`; `docs/PANEL-POOL-HISTORY.md`; `docs/THEME-CACHE-HISTORY.md` | RSS, heap and goroutine history is deployed in v1.7.11; interval pool-wait history in v1.7.13; theme-cache history in v1.7.14. Restart counts and complete v1.8 remain open |
-| One bad metric parameter fails a whole batch query | `web/rpc/jsonrpc/public.metric.go` | Implemented but unreleased: mixed batches keep valid keys and return per-key `errors`; an all-invalid batch is still rejected with the per-key failures in the error data. Package tests added |
+| One bad metric parameter fails a whole batch query | `web/rpc/jsonrpc/public.metric.go` | **Deployed in v1.7.22**: mixed batches keep valid keys and return per-key `errors`; an all-invalid batch is still rejected with the per-key failures in the error data |
 | Non-root ICMP and Windows/macOS agent footprint | `agent/` | netstatic, ping precision and the Linux footprint measurement shipped (v1.6.22–v1.6.25). Still open: non-root agents without `CAP_NET_RAW` cannot probe, and Windows/macOS peak memory/disk growth are unmeasured |
 | Legacy ping quantiles are unknown across the migration window | `web/rpc/jsonrpc/public.metric.go` | **Accepted**: the report says so itself |
 | Timestamps render in the viewer's own timezone with no zone label | ~33 remaining `toLocaleString*` sites | The shared helper now exists (`components/status/slaFormat.ts`'s `formatTime`, which takes the language and appends the zone) and the SLA incident list — the surface where a shareable report makes the ambiguity matter — uses it. The rest are the same one-line change, site by site |

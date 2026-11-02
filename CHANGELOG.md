@@ -8,6 +8,18 @@ Nekomari's own.
 
 ## [v1.7.22] - 2026-11-02
 
+- **Published and deployed on OC424 at approximately 00:08 Asia/Shanghai on
+  2026-11-03 (16:07:56 UTC 2026-11-02).** Immutable
+  `5a81d968edf1801ee1cecdfce93591ae35300485`; pull-request
+  CI41468164541 passes 8/8, exact merge CI41469995167 8/8,
+  release41473382220 10/10 and Docker41474774363 2/2. Both architectures of
+  the published assets and both OCI images verify; the arm64 image binary
+  matches the release asset natively on OC424. OC424 upgrade9/9 passes and
+  all 13 registered clients keep byte-identical `uuid`/`token` rows with both
+  DB quick checks clean. Fresh encrypted pre/post backups have matching
+  OC424-root and executor copies; the MAC-WAN `incoming/` copy and isolated
+  restore drills are deferred by a MAC-WAN SSH reachability gap. Owner-session
+  UI and real alert receipt remain unverified. See `docs/DEPLOY-OC424.md`.
 - Batch metric queries report invalid keys per-key instead of all-or-nothing.
   A mixed `queryMetrics` batch keeps the valid keys, returns their series and
   adds an `errors` map keyed by metric key; request-level failures (window,

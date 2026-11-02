@@ -70,3 +70,33 @@ preserve any subsequent local settings and explicitly copy them back if needed.
 Select upstream `SAO` to roll back; do not restore an older database, node list,
 or Agent configuration. Verify the public page, panel health and node identity
 after either switch and request owner-session acceptance.
+
+## Activation and retro settings sync (2026-11-02 evening)
+
+The owner activated the staged `SAO-Nekomari` (`v1.3.4-nekomari.2`, archive
+SHA-256 `ed270123dd5498b4e1bf3245cf500b20d5f2f210ac5815c7ed0e69b431500f66`)
+through the authenticated `/admin/themes` UI on 2026-11-02. Panel continuity
+is unaffected: the container stays healthy/restart0 on v1.7.21/`8ea6375`.
+
+The pre-activation settings copy was not performed, so the new theme's
+per-short-name configuration started from staging defaults. The visible gap is
+cost premium data: `SAO` carries six `costPremiums` entries while
+`SAO-Nekomari` has an empty `costPremiums` object. Three of the six entries
+reference nodes that no longer exist in the fleet after the owner's confirmed
+node changes (`3ce4da47-a296-44ed-9f68-3f1f9542a061`,
+`4d4cc4ab-0f76-4e25-8b3e-41bf7e44737b`,
+`b46a4f67-71c1-43e7-a515-3d4adb31ecf9`); their entries remain intact in the
+`SAO` configuration. The three live entries were prepared as a merged payload
+and provided to the owner as an authenticated console `fetch` against
+`/api/admin/theme/settings?theme=SAO-Nekomari`; the settings database is not
+written directly. Verification after the owner applies the payload: the row
+for `SAO-Nekomari` carries the three live entries and `/api/public`
+`theme_settings.costPremiums` matches, without a panel restart.
+
+The owner applied the payload on 2026-11-02 (CST evening) after the v1.7.22
+panel switch. Verified on 2026-11-03: the `SAO-Nekomari` row keeps all 45
+settings keys and carries exactly the three live premium entries
+(`25a97683…6642`, `41b1f6f8…b719`, `d67e6b38…f81e`); `/api/public`
+`theme_settings.costPremiums` matches; no panel restart was needed. The
+three stale entries are intentionally excluded and remain intact in the
+`SAO` configuration.

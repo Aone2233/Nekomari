@@ -39,7 +39,24 @@ its exit criteria are met, not when the calendar says so.
 
 ## Current Delivery Checkpoint (2026-11-02)
 
-**Latest bounded delivery: v1.7.21 (2026-11-02 approximately 22:13
+**Latest bounded delivery: v1.7.22 (2026-11-03 approximately 00:08
+Asia/Shanghai; 16:07:56 UTC 2026-11-02).** Batch metric queries report
+per-key errors instead of all-or-nothing: mixed batches keep valid series and
+add an `errors` map, request-level failures still reject, and an all-invalid
+batch keeps the old rejection with per-key detail in the error data.
+Pull-request CI41468164541 passes 8/8, exact merge CI41469995167 8/8,
+release41473382220 10/10 and Docker41474774363 2/2. Both architectures of the
+assets and images verify; OC424 upgrade9/9 passes and the 13 registered
+clients (owner-confirmed after v1.7.21) keep byte-identical UUID/token rows.
+Fresh encrypted pre/post backups have matching OC424-root and executor
+copies; the MAC-WAN incoming copy and isolated restore drills are deferred by
+a MAC-WAN SSH reachability gap. Owner UI, real incident receipt and
+independent-media recovery remain unverified. This does not complete v1.8 or
+the deferred 200-node work. The owner's locally staged `SAO-Nekomari` theme
+still needs its `costPremiums` sync verified. See
+[`OPEN-WORK.md`](./OPEN-WORK.md) and [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+**Previous bounded delivery: v1.7.21 (2026-11-02 approximately 22:13
 Asia/Shanghai).** `backup_age`/`backup_ok` load rules evaluate end to end
 with explicit semantics and the unsupported `temp` option is removed; the
 production rule set contains no dormant `backup_*`/`temp` rules. Exact merge
