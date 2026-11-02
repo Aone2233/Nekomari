@@ -52,8 +52,10 @@ ciphertext copies. The MAC-WAN `incoming/` copy and the isolated restore
 drills are deferred: MAC-WAN SSH (59.66.23.138:52022) timed out repeatedly
 from about 16:00 UTC while its 15:51:49 health report to OC424 was `ok`. Run
 both drills and push the post archive to MAC-WAN as soon as the host is
-reachable again. The SAO-Nekomari theme premium sync also awaits the owner's
-console save and verification; see [`SAO-CYCLE-ROLLOUT.md`](./SAO-CYCLE-ROLLOUT.md).
+reachable again. The SAO-Nekomari theme premium sync is now verified: the
+owner applied the authenticated payload after the v1.7.22 switch, the row
+keeps all 45 keys and `/api/public` matches the three live entries; see
+[`SAO-CYCLE-ROLLOUT.md`](./SAO-CYCLE-ROLLOUT.md).
 Neither online ciphertext copies nor an isolated restore prove independent-media
 recovery. OVH disk sanitization is also unverified. See
 [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and

@@ -57,9 +57,10 @@ this checkpoint.
   reachability gap, not a backup failure. Decryption identity stays on
   MAC-WAN. This is not independent-media recovery.
 - The owner activated the locally staged `SAO-Nekomari` theme before this
-  release. Its `costPremiums` were still empty at cutover; the authenticated
-  settings payload was re-provided to the owner and verification is pending.
-  See [`SAO-CYCLE-ROLLOUT.md`](./SAO-CYCLE-ROLLOUT.md). OC424 disk is 48%.
+  release. Its `costPremiums` were still empty at cutover; the owner applied
+  the authenticated payload afterwards and the verified row now carries the
+  three live entries, matching `/api/public`. See
+  [`SAO-CYCLE-ROLLOUT.md`](./SAO-CYCLE-ROLLOUT.md). OC424 disk is 48%.
 
 Root-private rollback evidence is
 `/opt/nekomari/rollbacks/v1.7.22-20261102T155846Z-24c457276ff43ddd` with

@@ -92,3 +92,11 @@ and provided to the owner as an authenticated console `fetch` against
 written directly. Verification after the owner applies the payload: the row
 for `SAO-Nekomari` carries the three live entries and `/api/public`
 `theme_settings.costPremiums` matches, without a panel restart.
+
+The owner applied the payload on 2026-11-02 (CST evening) after the v1.7.22
+panel switch. Verified on 2026-11-03: the `SAO-Nekomari` row keeps all 45
+settings keys and carries exactly the three live premium entries
+(`25a97683…6642`, `41b1f6f8…b719`, `d67e6b38…f81e`); `/api/public`
+`theme_settings.costPremiums` matches; no panel restart was needed. The
+three stale entries are intentionally excluded and remain intact in the
+`SAO` configuration.
