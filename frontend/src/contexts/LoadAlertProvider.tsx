@@ -15,25 +15,39 @@ export const LoadAlertProvider: React.FC<{ children: React.ReactNode }> = ({
   const [loadAlerts, setLoadAlerts] = React.useState<LoadAlert[] | null>(null);
   const [isLoading, setIsLoading] = React.useState<boolean>(false);
   const [error, setError] = React.useState<string | null>(null);
+  const latestRequest = React.useRef<{ promise: Promise<void> } | null>(null);
 
-  // 只负责发起请求并在响应到达后应用结果：函数体内没有同步的 setState，
-  // 所以挂载 effect 可以直接调用它。refresh 保留原有的同步写入（error），
-  // 供外部调用方使用。
-  const loadLoadAlerts = () =>
-    requestLoadAlerts()
+  // Superseded refreshes wait for the newest result before unlocking editors.
+  const loadLoadAlerts = () => {
+    const request = { promise: Promise.resolve() };
+    request.promise = requestLoadAlerts()
       .then((resp: Response) => {
+        if (request !== latestRequest.current) return;
         if (resp && Array.isArray(resp.data)) {
+          setError(null);
           setLoadAlerts(resp.data);
         } else {
           setLoadAlerts([]);
         }
       })
       .catch((err) => {
-        setError(err.message || "An error occurred while fetching load alerts");
+        if (request === latestRequest.current) {
+          setError(err.message || "An error occurred while fetching load alerts");
+        }
       })
       .finally(() => {
-        setIsLoading(false);
+        if (request === latestRequest.current) setIsLoading(false);
       });
+    latestRequest.current = request;
+    return (async () => {
+      let pending = request;
+      for (;;) {
+        await pending.promise;
+        if (latestRequest.current === pending || latestRequest.current === null) return;
+        pending = latestRequest.current;
+      }
+    })();
+  };
 
   const refresh = () => {
     setError(null);

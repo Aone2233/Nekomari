@@ -19,6 +19,8 @@ Nekomari's own.
   `docs/ALERT-RULE-PREVIEW.md`.
 - Report API business errors when creating or editing a load rule instead of
   treating HTTP 200 alone as a successful save.
+- Prevent an older in-flight load-rule refresh, including a failed one, from
+  replacing a newer response after concurrent edits to different rules.
 
 ## [v1.7.19] - 2026-10-30
 

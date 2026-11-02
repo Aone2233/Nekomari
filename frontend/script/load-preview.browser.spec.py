@@ -87,7 +87,17 @@ class LoadPreviewBrowserTest(unittest.TestCase):
                 {uuid:'b',name:'Beta',weight:1,billing_cycle:0},
               ]);
               if (url === '/api/admin/ping') return json({status:'success',data:[]});
-              if (url === '/api/admin/notification/load') return json({status:'success',data:window.rules});
+              if (url === '/api/admin/notification/load') {
+                const snapshot=structuredClone(window.rules);
+                const plan=(window.listPlans || []).shift() || {};
+                if (plan.hold) {
+                  await new Promise(resolve => {
+                    window.listReleases = {...(window.listReleases || {}), [plan.hold]:resolve};
+                  });
+                }
+                if (plan.fail) return json({status:'error',message:'Refresh refused'},503);
+                return json({status:'success',data:snapshot});
+              }
               if (url === '/api/admin/notification/load/add') {
                 window.addRequests = [...(window.addRequests || []), JSON.parse(init.body)];
                 return json({status:'error',message:'Create refused'});
@@ -226,6 +236,58 @@ class LoadPreviewBrowserTest(unittest.TestCase):
         self.page.evaluate("window.releaseEdit()")
         expect(edit).to_be_enabled()
         self.assertEqual(self.page.evaluate("window.editRequests.length"), 1)
+
+    def test_out_of_order_refresh_cannot_restore_stale_rule(self):
+        row_a = self.page.get_by_test_id("load-rule-row").filter(has_text="CPU test")
+        row_b = self.page.get_by_test_id("load-rule-row").filter(has_text="Zero floor")
+        self.page.evaluate("window.listPlans = [{hold:'old'}]")
+        row_a.get_by_role("button", name="Select clients").click()
+        self.page.get_by_role("button", name="Done", exact=True).click()
+        self.page.wait_for_function("typeof window.listReleases?.old === 'function'")
+        row_b.get_by_role("button", name="Edit").click()
+        dialog = self.page.get_by_test_id("load-rule-edit")
+        dialog.get_by_test_id("load-rule-threshold").fill("42")
+        dialog.get_by_role("button", name="Save").click()
+        expect(dialog).not_to_be_visible()
+        expect(row_b.get_by_role("button", name="Edit")).to_be_enabled()
+        self.page.evaluate("window.listReleases.old()")
+        expect(row_a.get_by_role("button", name="Edit")).to_be_enabled()
+        row_b.get_by_role("button", name="Edit").click()
+        expect(dialog.get_by_test_id("load-rule-threshold")).to_have_value("42")
+
+    def test_late_refresh_failure_does_not_hide_newer_success(self):
+        row_a = self.page.get_by_test_id("load-rule-row").filter(has_text="CPU test")
+        row_b = self.page.get_by_test_id("load-rule-row").filter(has_text="Zero floor")
+        self.page.evaluate("window.listPlans = [{hold:'old', fail:true}]")
+        row_a.get_by_role("button", name="Select clients").click()
+        self.page.get_by_role("button", name="Done", exact=True).click()
+        self.page.wait_for_function("typeof window.listReleases?.old === 'function'")
+        row_b.get_by_role("button", name="Select clients").click()
+        self.page.get_by_role("button", name="Done", exact=True).click()
+        expect(row_b.get_by_role("button", name="Edit")).to_be_enabled()
+        self.page.evaluate("window.listReleases.old()")
+        expect(row_a.get_by_role("button", name="Edit")).to_be_enabled()
+        expect(row_b.get_by_role("button", name="Edit")).to_be_visible()
+
+    def test_superseded_refresh_waits_for_newest_before_unlocking(self):
+        row_a = self.page.get_by_test_id("load-rule-row").filter(has_text="CPU test")
+        row_b = self.page.get_by_test_id("load-rule-row").filter(has_text="Zero floor")
+        self.page.evaluate("window.listPlans = [{hold:'old'}, {hold:'new'}]")
+        row_a.get_by_role("button", name="Select clients").click()
+        self.page.get_by_role("button", name="Done", exact=True).click()
+        self.page.wait_for_function("typeof window.listReleases?.old === 'function'")
+        row_b.get_by_role("button", name="Edit").click()
+        dialog = self.page.get_by_test_id("load-rule-edit")
+        dialog.get_by_test_id("load-rule-threshold").fill("42")
+        dialog.get_by_role("button", name="Save").click()
+        self.page.wait_for_function("typeof window.listReleases?.new === 'function'")
+        self.page.evaluate("window.listReleases.old()")
+        expect(row_a.get_by_role("button", name="Edit")).to_be_disabled()
+        self.page.evaluate("window.listReleases.new()")
+        expect(row_a.get_by_role("button", name="Edit")).to_be_enabled()
+        expect(row_b.get_by_role("button", name="Edit")).to_be_enabled()
+        row_b.get_by_role("button", name="Edit").click()
+        expect(dialog.get_by_test_id("load-rule-threshold")).to_have_value("42")
 
 
 if __name__ == "__main__":
