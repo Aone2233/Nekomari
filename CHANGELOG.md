@@ -8,6 +8,18 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [v1.7.20] - 2026-11-02
+
+- **Published and deployed on OC424 at approximately 19:51 Asia/Shanghai.**
+  Immutable `065bb4d120b00bd3fbc0871ed576ad04e21dae55`; exact merge
+  CI41437154107 passes 8/8, release41438202648 10/10 and Docker41439178485
+  2/2. Published panel and Agent Linux checksums and attestations, both
+  architectures of both OCI images and native panel binaries verify. The
+  released panel passes isolated MAC-WAN load-rule browser cases. OC424
+  upgrade9/9, public28/28 and 14 fresh CPU/uptime reporters pass. Fresh
+  encrypted pre/post backups have matching online copies and pass isolated
+  recovery. Owner-session UI, actual notification receipt and independent-
+  media restore remain unverified. See `docs/DEPLOY-OC424.md`.
 - Preserve an explicitly supplied zero baseline floor when creating or editing
   a load rule; an omitted create threshold retains the prior default of 80.
   The editor also preserves zero and node selection updates only clients.

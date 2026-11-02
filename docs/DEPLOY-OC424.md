@@ -9,7 +9,8 @@ historical plaintext backup exposure and replacement backup/health gates are
 recorded in [`OVH-RETIREMENT-2026-10-28.md`](./OVH-RETIREMENT-2026-10-28.md).
 Three identified OVH SSH authorizations are revoked on OC424. MAC-WAN's
 v1.7.12 pre/post ciphertext hashes still match. The
-owner confirms the intentional OVH node removal (current baseline 13). MAC-WAN
+owner confirms the intentional OVH node removal (then-baseline 13; see the
+current checkpoint for later owner-confirmed changes). MAC-WAN
 now receives scheduled encrypted backups and reports actual health; the first
 new archive passes isolated recovery and has a second online-host copy. The
 first scheduled daily trigger succeeded on 2026-10-29; independent-media
@@ -17,7 +18,61 @@ recovery remains unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
 schedule and 14-node acceptance statements below are history.
 
-## Current checkpoint (2026-10-31 03:48 Asia/Shanghai)
+## Current checkpoint (2026-11-02 20:03 Asia/Shanghai)
+
+OC424 runs **v1.7.20/065bb4d**, immutable source
+`065bb4d120b00bd3fbc0871ed576ad04e21dae55`, in the pinned arm64 image
+`ghcr.io/aone2233/nekomari:v1.7.20@sha256:b41efce6742c45f049b751d294d62b68adee71604429973f3fa71ce61760a53a`.
+The controlled switch started at 19:51:33 and the container is healthy with
+zero restarts at this checkpoint.
+
+- Explicit zero baseline floors survive load-rule creates/edits; omitted create
+  values retain the existing default. Invalid edits are rejected and batches
+  roll back; save errors are shown. Concurrent refreshes cannot replace a newer
+  result with an older response. No existing rule was rewritten; the zero-floor
+  all-zero baseline and unsupported metrics retain their documented behavior.
+- Final merge CI41437154107 passes 8/8, release41438202648 10/10 and
+  Docker41439178485 2/2 with trigger linkage checked. Linux panel/Agent assets
+  pass checksums and source/ref/workflow attestations; both architectures of
+  both OCI identities and native panel image binaries verify. The released
+  amd64 panel passes isolated Chinese desktop/light and English mobile/dark
+  load-rule browser cases on MAC-WAN, with synthetic data.
+- OC424 upgrade9/9 and public28/28 pass. Both DB quick checks and schemas
+  match; all 14 registered clients have fresh CPU and uptime. The owner
+  confirmed the node changes, and UUID/token digest remains
+  `c79551b52b303bc821f7d948ca7b8048ae3b0502d358569778fbc1105aca2459`.
+  API-key scope/expiry, GeoIP, authorized SSH keys and local Agent PID/restarts
+  remain unchanged during the switch. The scoped read-only forecast returns
+  14 rows, seven insufficient because a required counter decreased; this is
+  not a provider billing validation. Owner-session UI and real remote alert
+  receipt were not tested. Stable publication can trigger other Agents with
+  self-update enabled.
+- Manual pre archive `oc424-20261102T114759167309Z-88467f3af51b.tar.gz.age`
+  has SHA-256 `c9a0d040401b46bc94802f29323e42564bb45dead9bdf6c2a8377be0afd459f6`;
+  post archive `oc424-20261102T115252297926Z-e1f07ad60b38.tar.gz.age` has
+  SHA-256 `f3a9ba01c8a6c7a5dce09511901f96b92263f59ed93e161f4c3e0de0a5550aa2`.
+  Both have matching MAC-WAN `incoming/` and executor ciphertext copies. Pre
+  restores in isolation under pinned v1.7.19/v1.7.20; post under v1.7.20.
+  Post compares 22,173 archived rows across 12 selected histories: none within
+  retention are missing or changed; 75 expired/inactive-tier rows are absent.
+  The decryption identity was not exported. This is not independent-media
+  recovery.
+- MAC-WAN's scheduled 11:30 backup succeeded and its next daily backup is
+  2026-11-03 11:30 Asia/Shanghai; the existing keep=14 is unchanged. A later
+  automatic health run began at 20:02:57, exited successfully and delivered an
+  `ok` report to OC424 at 20:03:03, after the switch. It checks scheduled backup
+  health, not these manual release archives. OC424 disk is 48%, MAC-WAN 34%,
+  executor 68%; no broad cache or backup deletion. OVH disk sanitization is
+  unverified.
+
+Root-private rollback evidence is
+`/opt/nekomari/rollbacks/v1.7.20-20261102T115130Z-b8d44224`; the retained
+previous image is
+`ghcr.io/aone2233/nekomari:v1.7.19@sha256:28d9f40423d2188e6636d1384f80dd567e7bf7aa27032dd0b28f2fd32674d970`.
+If needed, assess live state and switch only the pinned compose/image, keeping
+the current databases and nodes. Never overwrite them with old snapshots.
+
+## Historical checkpoint (2026-10-31 03:48 Asia/Shanghai)
 
 OC424 runs **v1.7.19/cf221de**, immutable source
 `cf221def7fc5f0610e6b407ecde67e9ddb5714df`, in the pinned arm64 image
