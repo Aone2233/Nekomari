@@ -27,7 +27,7 @@ export interface LoadAlertContextType {
   loadAlerts: LoadAlert[] | null;
   isLoading: boolean;
   error: string | null;
-  refresh: () => void;
+  refresh: () => Promise<void>;
 }
 export const LoadAlertContext = React.createContext<LoadAlertContextType | undefined>(
   undefined

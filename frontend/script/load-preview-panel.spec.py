@@ -67,8 +67,14 @@ def run(binary):
                     "login_notification":False, "notification_enabled":False})["status"] == "success"
                 node = call("/api/admin/client/add", {"name":"Preview fixture"})["uuid"]
                 added = call("/api/admin/notification/load/add", {"name":"Preview CPU", "clients":[node],
-                    "metric":"cpu", "threshold":80, "ratio":.8, "interval":240})
+                    "metric":"cpu", "mode":"baseline", "threshold":0, "ratio":.8, "interval":240,
+                    "baseline_days":7, "multiplier":3})
                 assert added["status"] == "success"
+                rule = added["data"]["task_id"]
+                def saved_rule():
+                    result = call("/api/admin/notification/load/")
+                    return next(item for item in result["data"] if item["id"] == rule)
+                assert saved_rule()["threshold"] == 0
                 version = call("/api/version")["data"]
 
                 with sync_playwright() as pw:
@@ -77,6 +83,7 @@ def run(binary):
                         for locale, code, width, appearance in [("zh-CN", "zh_CN", 1280, "light"),
                                                                 ("en-US", "en", 390, "dark")]:
                             strings = json.loads((ROOT / f"src/i18n/locales/{code}.json").read_text())["loadAlert"]["preview"]
+                            common = json.loads((ROOT / f"src/i18n/locales/{code}.json").read_text())["common"]
                             context = browser.new_context(locale=locale, viewport={"width":width, "height":900},
                                                           color_scheme=appearance, service_workers="block")
                             try:
@@ -89,6 +96,13 @@ def run(binary):
                                 page.on("pageerror", lambda error: errors.append(str(error)))
                                 page.route("**/*", lambda route: route.continue_() if route.request.url.startswith(origin + "/") else route.abort())
                                 page.goto(origin + "/admin/notification/load")
+                                row = page.get_by_test_id("load-rule-row").filter(has_text="Preview CPU")
+                                row.get_by_role("button", name=common["edit"]).click()
+                                dialog = page.get_by_test_id("load-rule-edit")
+                                expect(dialog.get_by_test_id("load-rule-threshold")).to_have_value("0")
+                                dialog.get_by_role("button", name=common["save"], exact=True).click()
+                                expect(dialog).not_to_be_visible()
+                                assert saved_rule()["threshold"] == 0
                                 page.get_by_role("button", name=strings["button"]).click()
                                 expect(page.get_by_text(strings["description"], exact=True)).to_be_visible()
                                 page.get_by_role("button", name=strings["run"], exact=True).click()

@@ -28,11 +28,26 @@ var LoadNotificationManager = &LoadNotificationService{
 	tasks: make(map[int][]models.LoadNotification),
 }
 
+// ValidateLoadNotificationSchedule checks every interval before an existing
+// schedule is touched. Old databases can contain invalid or overflowing values.
+func ValidateLoadNotificationSchedule(rules []models.LoadNotification) error {
+	const maxInterval = int64((1<<63 - 1) / int64(time.Minute))
+	for _, rule := range rules {
+		if rule.Interval <= 0 || int64(rule.Interval) > maxInterval {
+			return fmt.Errorf("invalid interval for load notification %d", rule.Id)
+		}
+	}
+	return nil
+}
+
 // Reload 重载时间表
 func (m *LoadNotificationService) Reload(loadNotifications []models.LoadNotification) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if err := ValidateLoadNotificationSchedule(loadNotifications); err != nil {
+		return err
+	}
 	scheduler.RemovePrefix("load-notification:")
 	m.tasks = make(map[int][]models.LoadNotification)
 
