@@ -18,7 +18,7 @@ recovery remains unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
 schedule and 14-node acceptance statements below are history.
 
-## Current checkpoint (2026-11-02 19:56 Asia/Shanghai)
+## Current checkpoint (2026-11-02 20:03 Asia/Shanghai)
 
 OC424 runs **v1.7.20/065bb4d**, immutable source
 `065bb4d120b00bd3fbc0871ed576ad04e21dae55`, in the pinned arm64 image
@@ -58,9 +58,10 @@ zero restarts at this checkpoint.
   The decryption identity was not exported. This is not independent-media
   recovery.
 - MAC-WAN's scheduled 11:30 backup succeeded and its next daily backup is
-  2026-11-03 11:30 Asia/Shanghai; the existing keep=14 is unchanged. The latest
-  observed automatic health report, at 19:47:50, predates the switch; a later
-  scheduled report still needs verification. OC424 disk is 48%, MAC-WAN 34%,
+  2026-11-03 11:30 Asia/Shanghai; the existing keep=14 is unchanged. A later
+  automatic health run began at 20:02:57, exited successfully and delivered an
+  `ok` report to OC424 at 20:03:03, after the switch. It checks scheduled backup
+  health, not these manual release archives. OC424 disk is 48%, MAC-WAN 34%,
   executor 68%; no broad cache or backup deletion. OVH disk sanitization is
   unverified.
 

@@ -46,9 +46,9 @@ newest state. Exact merge CI41437154107 passes 8/8, release41438202648 10/10
 and Docker41439178485 2/2. Published provenance, dual-platform images, isolated
 MAC-WAN browser tests, fresh encrypted recovery, OC424 upgrade9/9, public28/28
 and all 14 fresh CPU/uptime reporters pass. The owner confirmed the current
-node changes. The daily backup through the new route succeeded; a health report
-after this switch, owner UI, real incident receipt and independent-media
-recovery remain unverified. This does not complete v1.8 or deferred 200-node
+node changes. The daily backup through the new route and a later automatic
+health report after this switch succeeded. Owner UI, real incident receipt and
+independent-media recovery remain unverified. This does not complete v1.8 or deferred 200-node
 work. Investigate SAO quota field and missing/rollover semantics separately
 before changing traffic presentation; provider accounting is not established.
 See [`OPEN-WORK.md`](./OPEN-WORK.md) and [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).

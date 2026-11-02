@@ -32,7 +32,7 @@ not a proven root cause of that particular failure. Test-fix candidate
 CI41113452947 and the subsequent exact merge CI41114880987 pass 8/8; the
 original failure remains part of the record.
 
-**Current operational checkpoint (2026-11-02 19:56 Asia/Shanghai):** OC424 is
+**Current operational checkpoint (2026-11-02 20:03 Asia/Shanghai):** OC424 is
 healthy/restart0 on **v1.7.20/065bb4d**. Exact merge CI41437154107 passes 8/8,
 release41438202648 10/10 and Docker41439178485 2/2. Linux panel/Agent
 checksums and attestations, both architectures of both OCI identities, native
@@ -49,8 +49,9 @@ executor ciphertext copies. Pre restores under pinned v1.7.19/v1.7.20 and post
 under v1.7.20; among 22,173 archived rows in 12 selected histories, none within
 retention are missing or changed and 75 expired/inactive-tier rows are absent.
 MAC-WAN's scheduled 11:30 backup succeeded and its next daily timer is
-2026-11-03 11:30 Asia/Shanghai. The latest observed automatic health report at
-19:47:50 predates the switch; verify a subsequent scheduled report separately.
+2026-11-03 11:30 Asia/Shanghai. A subsequent automatic health run at 20:02:57
+succeeded, and OC424 received its `ok` report at 20:03:03 after the switch.
+It checks scheduled backup health, not either manually created release archive.
 Neither online ciphertext copies nor an isolated restore prove independent-media
 recovery. OVH disk sanitization is also unverified. See
 [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and
