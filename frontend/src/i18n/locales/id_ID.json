@@ -658,6 +658,14 @@
     "ratio": "Rasio",
     "threshold_placeholder": "'80' untuk 80%",
     "title": "Peringatan Beban",
+    "test": {
+      "button": "Kirim notifikasi uji",
+      "dialog_title": "Kirim notifikasi uji untuk {{name}}?",
+      "dialog_description": "Satu notifikasi nyata dikirim melalui kanal yang dikonfigurasi. Status peringatan dan cooldown aturan tidak berubah. Pengiriman dibatasi.",
+      "sending": "Mengirim...",
+      "sent": "Notifikasi uji terkirim untuk {{name}}",
+      "error": "Tidak dapat mengirim notifikasi uji."
+    },
     "preview": {
       "button": "Pratinjau aturan",
       "title": "Pratinjau aturan: {{name}}",

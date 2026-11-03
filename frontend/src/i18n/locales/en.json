@@ -658,6 +658,14 @@
     "ratio": "Ratio",
     "threshold_placeholder": "'80' for 80%",
     "title": "Load Alert",
+    "test": {
+      "button": "Send test notification",
+      "dialog_title": "Send test notification for {{name}}?",
+      "dialog_description": "One real notification is sent through the configured channel. The rule's alert state and cooldown are not changed. Sends are rate-limited.",
+      "sending": "Sending...",
+      "sent": "Test notification sent for {{name}}",
+      "error": "Unable to send the test notification."
+    },
     "preview": {
       "button": "Preview rule",
       "title": "Preview rule: {{name}}",

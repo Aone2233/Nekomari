@@ -658,6 +658,14 @@
     "ratio": "時間佔比",
     "threshold_placeholder": "百分比，例如80代表80%",
     "title": "負載警報",
+    "test": {
+      "button": "傳送測試通知",
+      "dialog_title": "為「{{name}}」傳送測試通知？",
+      "dialog_description": "將透過已設定管道傳送一條真實通知，不改變該規則的告警狀態與冷卻時間。傳送頻率受限。",
+      "sending": "傳送中…",
+      "sent": "已為「{{name}}」傳送測試通知",
+      "error": "無法傳送測試通知。"
+    },
     "preview": {
       "button": "預覽規則",
       "title": "預覽規則：{{name}}",

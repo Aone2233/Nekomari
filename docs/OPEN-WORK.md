@@ -45,10 +45,13 @@ bounded releases and operational gates, in order:
    observed-span `coverage`; the UI shows both figures side by side in five
    locales. Deployed on OC424 with upgrade9/9 and identical client rows. The
    owner's on-page acceptance of the new figure is open.
-2. **v1.7.25 alert-rule test button.** One bounded real test notification
-   through the existing channel from the saved-rule editor; the preview stays
-   read-only and the send is rate-limited. Exit: CI green and one actual
-   owner-acknowledged test receipt.
+2. **v1.7.25 alert-rule test button — code complete, tests green.** One
+   bounded real test notification through the existing channel from the
+   saved-rule editor; the preview stays read-only and the send is
+   rate-limited globally (60 s). Backend RPC `admin:testLoadNotification`,
+   REST route and tests, the five-locale frontend dialog and 13/13 browser
+   cases all pass; the next step is branch + PR CI, then OC424 delivery.
+   Exit: CI green and one actual owner-acknowledged test receipt.
 3. **v1.8.0 remainder.** Uptime restart-count metric, then the 50-node
    capacity/memory gate and the second off-host destination decision (owner).
 4. **Still open acceptance.** Owner-session UI acceptance for v1.7.23, real
