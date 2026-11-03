@@ -18,6 +18,53 @@ recovery remains unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
 schedule and 14-node acceptance statements below are history.
 
+## Current checkpoint (2026-11-03 14:20 UTC)
+
+OC424 runs **v1.7.24/64b8f57**, immutable source
+`64b8f577462fcf272a8242a55b94266b11b9bebd`, in the pinned arm64 image
+`ghcr.io/aone2233/nekomari:v1.7.24@sha256:597f63142945b440928dc149ce3f36e40a6a578d2e8852bb7ba659447f52e6a3`.
+The controlled switch started at approximately 14:12 UTC 2026-11-03 and the
+container is healthy with zero restarts at this checkpoint.
+
+- SLA reports now carry `cadence_seconds`, `window_buckets` and
+  `window_coverage` next to the pinned span `coverage`. The window
+  denominator is `floor(window/cadence)` from the same inferred cadence, so a
+  perfect span can read window coverage below 1 when the window starts before
+  the data does; no existing field changes meaning. The status page shows the
+  window figure beside the span figure in all five locales and stays silent
+  for older-server or evidence-free series. See
+  [`SLA-COVERAGE.md`](./SLA-COVERAGE.md).
+- Pull-request CI41646180928 passes 8/8, exact merge CI41647810219 8/8,
+  release41649086456 10/10 and Docker41650325053 2/2. The released arm64
+  asset verifies against `SHA256SUMS.txt` (`7797184b…1cd967`) and the
+  extracted image binary matches it natively on OC424. OCI index digest
+  `sha256:597f6314…52e6a3`; per-platform manifests
+  `sha256:15ac6807…3ff7a` (amd64) and `sha256:fc48c1f2…6dea6` (arm64).
+- OC424 upgrade9/9 passes: healthy/restart0, `/api/version` v1.7.24/64b8f57,
+  public and front page 200, `komari.db` quick_check ok, upgrade archives
+  present, zero ERROR lines in the last five minutes. All 13 registered
+  clients keep byte-identical `uuid`/`token` rows before and after the switch
+  (digest `8e0928f3…6790`). Public entry points serve v1.7.24 through
+  Cloudflare. Owner-session UI acceptance of the new window figure remains
+  open; real remote alert receipt remains unverified.
+- Manual pre archive `/root/nekomari-v1724-pre/oc424.tar.gz.age` has SHA-256
+  `65e25d3eda7dc79e5e7363e619958901571c6d44685603c32bdbbde3fa46a8a9`; post
+  archive `/root/nekomari-v1724-post/oc424.tar.gz.age` has SHA-256
+  `3e01f7667f0ddfe8d679dc32170bdbfe5138ed073373967c9c4f1978888df56f`. Both
+  reached MAC-WAN's private `manual/v1724-recovery-20261103/` with matching
+  sidecars, and two isolated restore drills pass with `--network=none`, no
+  host ports and scratch-only plaintext: the v1.7.23 pre state boots the
+  v1.7.24 amd64 image
+  (`sha256:15ac6807…3ff7a`) with the v1.7.23→v1.7.24 migration applied, and
+  the post state boots v1.7.24 and serves `/api/version` v1.7.24/64b8f57.
+  Scratch plaintext and drill containers were removed.
+- OC424 disk is 49%. Rollback: restore
+  `rollbacks/v1.7.24-20261103T141216Z-64b8f577462fcf27/docker-compose.before.yml`
+  (SHA-256 `8a9eccf1…ed4c2`) as `/opt/nekomari/docker-compose.yml` and run
+  `docker compose up -d --no-deps nekomari`; the previous image
+  `ghcr.io/aone2233/nekomari:v1.7.23@sha256:027dccbb…aa7dc` remains on the
+  host. Never overwrite the live databases with older snapshots.
+
 ## Current checkpoint (2026-11-03 01:00 UTC)
 
 OC424 runs **v1.7.23/1e4d22a**, immutable source

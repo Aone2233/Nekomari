@@ -28,6 +28,19 @@ mismatch, not a backup defect, and the archives themselves verified on both
 the `verify` path and inside the successful drills. The scheduled 03:30 UTC
 receiver, its keep=14 set and the health timer were not touched.
 
+## 2026-11-03 v1.7.24 delivery
+
+The v1.7.24 pre archive (`65e25d3e…a8a9`) and post archive
+(`3e01f766…56df`) reached the private `manual/v1724-recovery-20261103/`
+directory with sidecars naming the files; both pass `sha256sum -c`. Two
+isolated restore drills pass with `--network=none`, no host ports and
+scratch-only plaintext: the pre archive (v1.7.23 state) boots the v1.7.24
+amd64 image `sha256:15ac6807…3ff7a` with the v1.7.23→v1.7.24 DB migration
+applied, and the post archive boots v1.7.24 and serves `/api/version`
+v1.7.24/64b8f57. Scratch plaintext, the extracted tars and both drill
+containers were removed; the decryption identity never left MAC-WAN. The
+scheduled 03:30 UTC receiver and its keep=14 set were not touched.
+
 ## 2026-10-31 v1.7.19 recovery
 
 The automatic health service succeeds at 03:35:37-47 Asia/Shanghai; OC424

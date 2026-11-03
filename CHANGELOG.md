@@ -6,6 +6,37 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v1.7.24] - 2026-11-03
+
+- **Published and deployed on OC424 at approximately 14:12 UTC 2026-11-03.**
+  Immutable `64b8f577462fcf272a8242a55b94266b11b9bebd`; pull-request
+  CI41646180928 passes 8/8, exact merge CI41647810219 8/8,
+  release41649086456 10/10 and Docker41650325053 2/2. The released arm64
+  asset verifies against `SHA256SUMS.txt` (`7797184b…1cd967`) and the
+  extracted image binary matches it natively on OC424. OCI index digest
+  `sha256:597f6314…52e6a3`; per-platform manifests
+  `sha256:15ac6807…3ff7a` (amd64) and `sha256:fc48c1f2…6dea6` (arm64).
+  OC424 upgrade9/9 passes and all 13 registered clients keep byte-identical
+  `uuid`/`token` rows (digest `8e0928f3…6790` before and after). Manual pre
+  archive `oc424.tar.gz.age` has SHA-256
+  `65e25d3eda7dc79e5e7363e619958901571c6d44685603c32bdbbde3fa46a8a9`; post
+  archive has SHA-256
+  `3e01f7667f0ddfe8d679dc32170bdbfe5138ed073373967c9c4f1978888df56f`. Both
+  reached MAC-WAN's `manual/v1724-recovery-20261103/` with matching sidecars,
+  and two isolated restore drills pass: the v1.7.23 pre state boots the
+  v1.7.24 amd64 image with the DB migration applied, and the post state boots
+  and serves `/api/version` v1.7.24/64b8f57. See `docs/DEPLOY-OC424.md` and
+  `docs/MAC-WAN-BACKUP.md`.
+- SLA reports carry three new fields beside the pinned span coverage:
+  `cadence_seconds`, `window_buckets` and `window_coverage`. The window
+  denominator is `floor(window/cadence)` from the same inferred cadence as
+  the span figure, so a complete but stale span reads `coverage = 1` while
+  `window_coverage < 1`; both figures stay reproducible from
+  `observed_buckets`. No existing field changes meaning. The status page
+  shows the window figure beside the span figure for the node aggregate and
+  each task in all five locales, and stays silent when an older server omits
+  the fields or a series has no evidence at all. See `docs/SLA-COVERAGE.md`.
+
 ## [v1.7.23] - 2026-11-03
 
 - **Published and deployed on OC424 at approximately 01:00 UTC 2026-11-03.**
