@@ -24,7 +24,7 @@ import {
   Select,
   TextField,
 } from "@radix-ui/themes";
-import { FlaskConical, MoreHorizontal, Pencil, Trash } from "lucide-react";
+import { FlaskConical, MoreHorizontal, Pencil, Send, Trash } from "lucide-react";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { formatTime } from "@/components/status/slaFormat";
@@ -218,6 +218,7 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
       </TableCell>
       <TableCell className="flex items-center gap-2">
         <RulePreview alert={alert} />
+        <RuleTestSend alert={alert} />
         {/* 编辑按钮 */}
         <Dialog.Root open={editOpen} onOpenChange={(open) => {
           if (open) setForm(formFromAlert());
@@ -434,6 +435,68 @@ const Row = ({ alert }: { alert: LoadAlert }) => {
         </Dialog.Root>
       </TableCell>
     </TableRow>
+  );
+};
+
+/** One bounded, real channel test for a saved rule, behind an explicit confirm. */
+const RuleTestSend = ({ alert }: { alert: LoadAlert }) => {
+  const { t } = useTranslation();
+  const [open, setOpen] = React.useState(false);
+  const [sending, setSending] = React.useState(false);
+
+  const send = async () => {
+    setSending(true);
+    try {
+      const res = await fetch("/api/admin/notification/load/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: alert.id }),
+      });
+      const data: any = await res.json().catch(() => null);
+      if (!res.ok || !data || data.status !== "success") {
+        throw new Error(data?.message || t("loadAlert.test.error"));
+      }
+      toast.success(t("loadAlert.test.sent", { name: alert.name ?? "" }));
+      setOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("loadAlert.test.error"));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Dialog.Root open={open} onOpenChange={setOpen}>
+      <Dialog.Trigger>
+        <IconButton
+          variant="soft"
+          title={t("loadAlert.test.button")}
+          aria-label={t("loadAlert.test.button")}
+          data-testid="load-rule-test-send"
+        >
+          <Send size="16" />
+        </IconButton>
+      </Dialog.Trigger>
+      <Dialog.Content data-testid="load-rule-test-dialog">
+        <Dialog.Title>{t("loadAlert.test.dialog_title", { name: alert.name ?? "" })}</Dialog.Title>
+        <Dialog.Description>{t("loadAlert.test.dialog_description")}</Dialog.Description>
+        <Flex gap="2" justify="end" className="mt-4">
+          <Dialog.Close>
+            <Button variant="soft" color="gray" type="button">
+              {t("common.cancel")}
+            </Button>
+          </Dialog.Close>
+          <Button
+            variant="solid"
+            onClick={send}
+            disabled={sending}
+            data-testid="load-rule-test-confirm"
+          >
+            {sending ? t("loadAlert.test.sending") : t("loadAlert.test.button")}
+          </Button>
+        </Flex>
+      </Dialog.Content>
+    </Dialog.Root>
   );
 };
 

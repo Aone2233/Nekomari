@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/database/models/messageEvent"
 	"github.com/Aone2233/nekomari/database/notification"
 	"github.com/Aone2233/nekomari/pkg/metric"
 	"github.com/Aone2233/nekomari/pkg/rpc"
@@ -27,6 +29,7 @@ func init() {
 	reg("editLoadNotification", adminEditLoadNotification, "Edit load notifications")
 	reg("getAllLoadNotifications", adminGetAllLoadNotifications, "List all load notifications")
 	reg("previewLoadNotification", adminPreviewLoadNotification, "Preview a saved load rule without sending")
+	reg("testLoadNotification", adminTestLoadNotification, "Send one bounded test notification for a saved load rule")
 	// offline notifications
 	reg("listOfflineNotifications", adminListOfflineNotifications, "List offline notifications")
 	reg("editOfflineNotification", adminEditOfflineNotification, "Edit offline notifications")
@@ -39,6 +42,63 @@ func init() {
 // One preview at a time, with no queue: repeated clicks must not compete with
 // scheduled monitoring or accumulate expensive historical queries.
 var loadPreviewSlot = make(chan struct{}, 1)
+
+// testSendGate allows one rule test-send per cooldown, fleet-wide. It exists so the
+// button cannot turn the notification channel into a repeat-trigger, and it is
+// deliberately separate from the rule's own last_notified cooldown: a channel test
+// must not consume or suppress the rule's real alert cadence.
+var testSendGate = struct {
+	sync.Mutex
+	last       time.Time
+	cooldown   time.Duration
+	lastCalled bool
+}{cooldown: time.Minute}
+
+func adminTestLoadNotification(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	var params struct {
+		ID uint `json:"id"`
+	}
+	if err := req.BindParams(&params); err != nil || params.ID == 0 {
+		return nil, rpc.MakeError(rpc.InvalidParams, "A saved rule id is required", nil)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	db := dbcore.GetDBInstance()
+	if db == nil {
+		return nil, rpc.MakeError(rpc.Unavailable, "Database unavailable", nil)
+	}
+	var rule models.LoadNotification
+	if err := db.WithContext(ctx).First(&rule, params.ID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, rpc.MakeError(rpc.NotFound, "Rule not found", nil)
+		}
+		return nil, rpc.MakeError(rpc.InternalError, "Unable to read rule", nil)
+	}
+	now := time.Now().UTC()
+	testSendGate.Lock()
+	if testSendGate.lastCalled && now.Sub(testSendGate.last) < testSendGate.cooldown {
+		retryAfter := testSendGate.cooldown - now.Sub(testSendGate.last)
+		testSendGate.Unlock()
+		return nil, rpc.MakeError(rpc.Unavailable, fmt.Sprintf("Test sends are rate-limited; retry in %s", retryAfter.Round(time.Second)), nil)
+	}
+	testSendGate.last = now
+	testSendGate.lastCalled = true
+	testSendGate.Unlock()
+
+	// One real send through the configured channel, labelled so a recipient can tell
+	// it apart from a genuine alert. Deliberately no clients: the channel test targets
+	// the configured default recipient, like the notification-settings test button.
+	if err := messageSender.SendNotification(models.EventMessage{
+		Event:   messageevent.Alert,
+		Time:    now,
+		Emoji:   "🧪",
+		Message: fmt.Sprintf("[TEST] %s", rule.Name),
+	}); err != nil {
+		return nil, rpc.MakeError(rpc.InternalError, "Failed to send test notification: "+err.Error(), nil)
+	}
+	return map[string]any{"id": rule.Id, "name": rule.Name, "sent_at": now}, nil
+}
 
 func adminPreviewLoadNotification(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {

@@ -120,6 +120,12 @@ class LoadPreviewBrowserTest(unittest.TestCase):
                 if (reply.delay) await new Promise(resolve => setTimeout(resolve,reply.delay));
                 return json(reply.body, reply.status || 200);
               }
+              if (url === '/api/admin/notification/load/test') {
+                window.testSends = [...(window.testSends || []), JSON.parse(init.body)];
+                const reply = (window.testReplies || []).shift();
+                if (reply) return json(reply.body, reply.status || 200);
+                return json({status:'success',data:{id:7,name:'CPU test'}});
+              }
               throw Error('Unexpected request: '+url);
             };
         """)
@@ -148,6 +154,25 @@ class LoadPreviewBrowserTest(unittest.TestCase):
         self.page.get_by_role("button", name="Close", exact=True).click()
         self.page.get_by_test_id("load-rule-row").filter(has_text="CPU test").get_by_role("button", name="Preview rule").click()
         expect(self.page.get_by_text("Condition matched")).to_have_count(0)
+
+    def test_rule_test_send_requires_confirmation_and_reports_delivery(self):
+        row = self.page.get_by_test_id("load-rule-row").filter(has_text="CPU test")
+        row.get_by_role("button", name="Send test notification").click()
+        dialog = self.page.get_by_test_id("load-rule-test-dialog")
+        expect(dialog).to_be_visible()
+        expect(dialog).to_contain_text("CPU test")
+        expect(dialog).to_contain_text("are not changed")
+        self.assertEqual(self.page.evaluate("(window.testSends || []).length"), 0)
+        dialog.get_by_role("button", name="Send test notification").click()
+        expect(self.page.get_by_text("Test notification sent for CPU test")).to_be_visible()
+        self.assertEqual(self.page.evaluate("window.testSends"), [{"id": 7}])
+        expect(dialog).to_have_count(0)
+
+    def test_rule_test_send_surfaces_the_server_rate_limit(self):
+        self.page.evaluate("""() => window.testReplies = [{body:{status:'error',message:'Test sends are rate-limited; retry in 50s'}}]""")
+        self.page.get_by_test_id("load-rule-row").filter(has_text="CPU test").get_by_role("button", name="Send test notification").click()
+        self.page.get_by_test_id("load-rule-test-dialog").get_by_role("button", name="Send test notification").click()
+        expect(self.page.get_by_text("Test sends are rate-limited; retry in 50s")).to_be_visible()
 
     def test_error_and_late_response_do_not_display_a_stale_result(self):
         self.page.evaluate("""() => window.replies.push({delay:300,body:{status:'success',data:{

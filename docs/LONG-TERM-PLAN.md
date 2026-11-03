@@ -37,29 +37,55 @@ its exit criteria are met, not when the calendar says so.
 | `v2.0.0` | 2027-Q2 | Agent and platform v2 | non-root agent default with capability/ICMP strategy; Windows/macOS agent support and footprint measurement; single protocol source (remove root/agent duplication); agent updater/rollback hardening; secrets at rest (session/2FA) with key management; optional DB encryption; 200-node capacity | Migration guide; protocol compatibility policy (two-minor deprecation); 200-node benchmark; no plaintext session/2FA secrets on new installs |
 | `v2.1.0` | 2027-Q3 | Scale and ecosystem | HA/read-replica evaluation, plugin/theme marketplace signing, multi-region backup, optional external metrics export | Scale/HA runbook; marketplace signature verification; backup across two providers |
 
-## Update plan (2026-11-03)
+## Update plan (designed 2026-11-03)
 
-Long-term cadence, restated after the v1.7.23 delivery and the MAC-WAN
-recovery close-out:
+Long-term cadence, redesigned after the v1.7.24 delivery and the MAC-WAN
+recovery close-out. Version targets remain windows, not promises; the owner
+decides at the gates marked **[Owner]**.
+
+### Cadence rules
 
 - **One bounded release at a time.** Every release goes through branch+PR CI,
   exact-merge CI, tag/release with SBOM/provenance, Docker, then OC424
-  upgrade9/9 with byte-identical client rows and fresh pre/post archives.
-  No two independent features share one release.
-- **Next slices.** v1.7.24 shipped the window-coverage fields (delivered
-  2026-11-03, below). v1.7.25 adds the alert-rule test button (one bounded,
-  rate-limited real send). Then the v1.8.0 remainder: uptime restart-count
-  metric, 50-node capacity gate, second off-host destination decision.
-- **Backlog trim.** Forecast reset/overflow fixes (`#92`), backup-freshness
-  load rules (v1.7.21), timezone labels (v1.7.23), the read-only load-rule
-  preview (v1.7.18) and the panel self-metrics history (v1.7.13/v1.7.14) are
-  shipped; they stay on the roadmap only as done markers, not as open work.
-- **Deferred by owner.** 200-node capacity stays on hold; OVH is sold and
-  removed from every destination plan. MAC-WAN stays the sole off-host
-  receiver until the second-destination decision.
-- **Monthly SLO review unchanged.** Availability, errors, fleet freshness,
-  backup age, upgrade success and memory trend, recorded in the delivery
-  checkpoints below.
+  upgrade9/9 with byte-identical client rows and fresh pre/post archives. No
+  two independent features share one release.
+- **Weekly bounded-slice rhythm.** Target one v1.7.x delivery per working
+  week, each ending with OC424 acceptance, unless a decision gate blocks it.
+- **Gate before tag.** A slice does not reach a tag until its repo tests are
+  green and the unattended runbook steps pass.
+- **Freeze on decision.** Slices that change operator-visible behavior wait
+  for owner UI acceptance before the next slice starts; coding may continue
+  on the following slice in a separate branch.
+
+### Phases
+
+| Phase | Window | Slices | Exit gate |
+|---|---|---|---|
+| `v1.7.25` | 2026-11-03 → 06 | Alert-rule test button: one bounded, rate-limited real send from the saved-rule editor, five locales | CI green; OC424 9/9; one owner-acknowledged real test receipt **[Owner]** |
+| `v1.7.2x` patches | as needed | CVE, dependency and bug fixes only | standard delivery gates |
+| `v1.8.0` | 2026-11 → 12 | Uptime restart-count metric; 50-node capacity/memory gate; second off-host destination decision **[Owner]** | each slice deployed and accepted; 50-node gate passes |
+| `v1.9.0` | 2027-01 → 02 | metric/record CSV export, exec-result history, roles UI, frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
+| `v2.0.0` | 2027-Q2 | non-root agent default, protocol consolidation, secrets at rest, 200-node benchmark | migration guide; two-minor compat policy; benchmark |
+
+### Owner decision calendar
+
+1. **v1.7.25 acceptance** — acknowledge one real test notification sent from
+   the saved-rule editor (needed this week).
+2. **Second off-host destination** — decide whether a second receiver is
+   wanted and where; until then MAC-WAN stays the sole off-host receiver
+   (needed before v1.8.0 closes). OVH is sold and removed from all plans.
+3. **Key/token rotation cadence** — currently "no rotation for now"; revisit
+   at each monthly SLO review.
+4. **200-node target** — stays deferred; revisit only after the v1.8.0
+   50-node gate passes.
+
+### Standing maintenance
+
+- Monthly SLO review: availability, errors, fleet freshness, backup age,
+  upgrade success, memory trend; recorded in the delivery checkpoints below.
+- Weekly read of the MAC-WAN backup timer and restore-drill log.
+- Quarterly panel rollback drill (< 5 min) and monthly restore check
+  (RPO ≤ 24 h, RTO ≤ 30 min).
 
 ## Current Delivery Checkpoint (2026-11-03)
 
