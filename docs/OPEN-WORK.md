@@ -40,19 +40,28 @@ original failure remains part of the record.
 runs `v1.7.23/1e4d22a` with upgrade9/9 and identical client rows. The next
 bounded releases and operational gates, in order:
 
-1. **Backup close-out (the only deferred gate).** Push the v1.7.22 post and
-   v1.7.23 pre/post archives to MAC-WAN `incoming/` and run the isolated
-   restore drills once MAC-WAN SSH (59.66.23.138:52022) stays reachable; its
-   health channel to OC424 is already fresh/ok. Exit: matching ciphertext on
-   MAC-WAN and a booted restore comparison with no missing in-retention rows.
-2. **v1.8.0 next increment, one at a time.** Alert-rule test button (the
-   existing preview is read-only), panel self-metrics trend view,
-   full-window SLA coverage semantics, and the forecast reset/overflow fixes.
-   Exit per increment: bounded change, CI green, no P0 regression.
-3. **Still open acceptance.** Owner-session UI acceptance for v1.7.23, real
+1. **v1.7.24 SLA window coverage (next code slice).** Add `window_coverage`
+   next to the pinned observed-span `coverage`, together with the inferred
+   cadence and window-bucket count, exactly per the compatible shape in
+   [`SLA-COVERAGE.md`](./SLA-COVERAGE.md); no existing field changes meaning.
+   Exit: CI green, wire contract tests, UI shows both numbers side by side.
+2. **v1.7.25 alert-rule test button.** One bounded real test notification
+   through the existing channel from the saved-rule editor; the preview stays
+   read-only and the send is rate-limited. Exit: CI green and one actual
+   owner-acknowledged test receipt.
+3. **v1.8.0 remainder.** Uptime restart-count metric, then the 50-node
+   capacity/memory gate and the second off-host destination decision (owner).
+4. **Still open acceptance.** Owner-session UI acceptance for v1.7.23, real
    remote notification receipt (not just
    synthetic delivery) and MegaBox provider-billing equivalence; the latter
    needs provider-side data and must never be claimed from panel numbers alone.
+
+**Backup close-out: done (2026-11-03).** The v1.7.22 post and v1.7.23
+pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds
+the two older verified copies, and four isolated restore drills pass (see
+[`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md) and
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md)). The recurring MAC-WAN SSH timeouts
+remain an operational note, not an open gate.
 
 Deferred by owner decision: 200-node capacity work stays on hold; a stable
 release may still trigger agent auto-updates. OVH is sold and its disk
@@ -66,10 +75,9 @@ Docker41555850720 2/2. The arm64 image binary matches the release asset
 natively on OC424 and the multi-arch OCI index verifies. OC424 upgrade9/9
 passes; all 13 clients keep byte-identical `uuid`/`token` rows. Fresh
 encrypted pre/post archives exist with matching OC424-root and executor
-copies. The MAC-WAN `incoming/` copy and isolated restore drills remain
-deferred by the recurring SSH reachability gap while its health report to
-OC424 stays `ok`; retry the push and drills whenever the host is reachable.
-Owner-session UI and real remote notification receipt remain unverified.
+copies, and the deferred MAC-WAN archive copy and four isolated restore
+drills are now complete. Owner-session UI and real remote notification
+receipt remain unverified.
 See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
 **Current operational checkpoint (2026-11-03 00:08 Asia/Shanghai):** OC424 is

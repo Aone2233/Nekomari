@@ -11,6 +11,23 @@ watcher. The receiver keeps 14 scheduled pairs in a dedicated directory;
 retention set. Actual incident delivery and independent-media restore remain
 separate; a manual success is not proof of a scheduled trigger.
 
+## 2026-11-03 v1.7.22/v1.7.23 recovery close-out
+
+The recurring MAC-WAN SSH timeouts cleared long enough to finish the deferred
+work. The v1.7.22 post archive (`30c75e1f…095d54`) and the v1.7.23 pre/post
+archives (`a3126cc4…85af`, `eaec116f…2b28`) were received into the private
+`manual/v1723-recovery-20261103/` directory with sidecars that reference the
+actual filenames, and the two older archives also have verified `incoming/`
+copies; the partial third `incoming/` upload was removed. Four isolated
+restore drills pass with `--network=none`, no host ports and scratch-only
+plaintext: v1.7.22 post boots the v1.7.22 amd64 image
+(`sha256:fe0e46f3…831ba`), v1.7.23 pre boots both that image and v1.7.23, and
+v1.7.23 post boots v1.7.23. Two earlier attempts timed out because the arm64
+manifest digest was passed to MAC-WAN's amd64 Docker — an image/architecture
+mismatch, not a backup defect, and the archives themselves verified on both
+the `verify` path and inside the successful drills. The scheduled 03:30 UTC
+receiver, its keep=14 set and the health timer were not touched.
+
 ## 2026-10-31 v1.7.19 recovery
 
 The automatic health service succeeds at 03:35:37-47 Asia/Shanghai; OC424

@@ -21,9 +21,11 @@ Nekomari's own.
   `a3126cc451c44e762c99a2c833941d95d7c8db60b168fa4984b3040ce59285af`) and
   `oc424-20261103T010200000000Z-v1723post.tar.gz.age` (SHA-256
   `eaec116f6e6c7417b845035d6881d8d38dfbe69b8b46c58db5099d99a7212b28`).
-  The MAC-WAN `incoming/` copy and isolated restore drills remain deferred by
-  the recurring MAC-WAN SSH reachability gap; its health report to OC424 was
-  `ok` at 01:15 UTC. See `docs/DEPLOY-OC424.md`.
+  The deferred MAC-WAN close-out completed later on 2026-11-03: all three
+  archives reached MAC-WAN with matching sidecars, `incoming/` holds the two
+  older verified copies, and four isolated restore drills pass (v1.7.22 post
+  boots v1.7.22; v1.7.23 pre boots v1.7.22 and v1.7.23; v1.7.23 post boots
+  v1.7.23). See `docs/DEPLOY-OC424.md` and `docs/MAC-WAN-BACKUP.md`.
 - Zone-labelled timestamps across the panel and admin UI. Every rendered
   instant names its time zone next to the time so a copied row, a tooltip or a
   screenshot keeps its meaning. `formatTime`, `formatTimeWithSeconds`,

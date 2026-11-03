@@ -48,12 +48,19 @@ container is healthy with zero restarts at this checkpoint.
   SHA-256 `a3126cc451c44e762c99a2c833941d95d7c8db60b168fa4984b3040ce59285af`;
   post archive `oc424-20261103T010200000000Z-v1723post.tar.gz.age` has SHA-256
   `eaec116f6e6c7417b845035d6881d8d38dfbe69b8b46c58db5099d99a7212b28`. Both
-  have matching OC424-root and executor ciphertext copies. The MAC-WAN
-  `incoming/` copy and isolated restore drills are still deferred: MAC-WAN
-  SSH (59.66.23.138:52022) answered briefly, then timed out again during the
-  transfer, while its own health report to OC424 was fresh (`ok`,
-  checked_at 2026-11-03T01:15 UTC). This is recorded as a reachability gap,
-  not a backup failure. Decryption identity stays on MAC-WAN.
+  have matching OC424-root and executor ciphertext copies. The deferred
+  MAC-WAN close-out completed on 2026-11-03 (UTC evening): all three archives
+  reached MAC-WAN's private `manual/v1723-recovery-20261103/` with matching
+  sidecars, `incoming/` holds verified copies of the v1.7.22 post and
+  v1.7.23 pre archives, and four isolated restore drills pass —
+  v1.7.22 post boots v1.7.22 (amd64
+  `sha256:fe0e46f3…831ba`), v1.7.23 pre boots both v1.7.22 (same amd64
+  digest) and v1.7.23, and v1.7.23 post boots v1.7.23. Two earlier drill
+  timeouts were an architecture mismatch (the arm64 manifest digest was
+  passed to MAC-WAN's amd64 Docker), not a backup defect. The recurring
+  MAC-WAN SSH timeouts remain an operational note; its health report to
+  OC424 stayed fresh (`ok`). Decryption identity stays on MAC-WAN; network-free
+  scratch plaintext and containers were removed.
 - OC424 disk is 48%. Rollback: restore
   `rollbacks/v1.7.23-20261103T005559Z-1e4d22a2f9e01607/docker-compose.before.yml`
   (SHA-256 `c3f7bcb8…497c20`) as `/opt/nekomari/docker-compose.yml` and run
