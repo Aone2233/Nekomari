@@ -6,8 +6,24 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
-## [Unreleased]
+## [v1.7.23] - 2026-11-03
 
+- **Published and deployed on OC424 at approximately 01:00 UTC 2026-11-03.**
+  Immutable `1e4d22a2f9e01607874a4cf6a81ed46d96f8883e`; pull-request
+  CI41484802139 passes 8/8, exact merge CI41554085010 8/8,
+  release41554944654 10/10 and Docker41555850720 2/2. The released arm64
+  asset verifies against `SHA256SUMS.txt` and the extracted image binary
+  matches it natively on OC424; the OCI index digest is
+  `sha256:027dccbb567a7a52312b18aeca7b02b31fbf11e77068f41d63c065d95caaa7dc`.
+  OC424 upgrade9/9 passes and all 13 registered clients keep byte-identical
+  `uuid`/`token` rows. Manual pre/post archives are
+  `oc424-20261103T005200000000Z-v1723pre.tar.gz.age` (SHA-256
+  `a3126cc451c44e762c99a2c833941d95d7c8db60b168fa4984b3040ce59285af`) and
+  `oc424-20261103T010200000000Z-v1723post.tar.gz.age` (SHA-256
+  `eaec116f6e6c7417b845035d6881d8d38dfbe69b8b46c58db5099d99a7212b28`).
+  The MAC-WAN `incoming/` copy and isolated restore drills remain deferred by
+  the recurring MAC-WAN SSH reachability gap; its health report to OC424 was
+  `ok` at 01:15 UTC. See `docs/DEPLOY-OC424.md`.
 - Zone-labelled timestamps across the panel and admin UI. Every rendered
   instant names its time zone next to the time so a copied row, a tooltip or a
   screenshot keeps its meaning. `formatTime`, `formatTimeWithSeconds`,
