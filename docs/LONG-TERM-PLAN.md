@@ -32,10 +32,36 @@ its exit criteria are met, not when the calendar says so.
 |---|---|---|---|---|
 | `v1.6.x` | ongoing | Patch/soak | Bug fixes, dependency and CVE updates, backup/monitoring tweaks | CI green; no P0 regression; panel check 9/9 |
 | `v1.7.0` | 2026-11 | Security and invariants | API-key scopes + rotation, scoped/step-up policy for `exec`/`roll`/`getClientToken`; input caps for `getRecords`/`getLogs`; `v2EventQueues` cleanup; `used > total` clamp; encrypted off-host backups (`age`/`gpg`) with key-management decision; token rotation API/UI | No unbounded admin inputs; no global all-powerful API key; every sensitive method gated or scoped; backup encrypted and restore drill automated; zero P0 |
-| `v1.8.0` | 2026-12 → 2027-01 | Observability and SLOs | uptime/restart-count metric; panel self-metrics history (RSS/heap/goroutine/theme-cache/DB pool wait) and a `/metrics` or admin trend view; backup-freshness alert; alert-rule test button; SLA tag-generation dedupe and coverage semantics; forecast reset/overflow fixes; second off-host destination decision | SLO dashboard/measurement exists; stale-backup and agent-offline alerts tested; SLA numbers reproducible against raw points; 50-node capacity test |
+| `v1.8.0` | 2026-12 → 2027-01 | Observability and SLOs | uptime/restart-count metric; alert-rule test button; SLA window-coverage fields; second off-host destination decision. Shipped in v1.7.x already: panel self-metrics history/trend view, backup-freshness alerts (`backup_age`/`backup_ok`), forecast reset/overflow fixes, SLA coverage clarification | SLO dashboard/measurement exists; stale-backup and agent-offline alerts tested; SLA numbers reproducible against raw points; 50-node capacity test |
 | `v1.9.0` | 2027-02 → 2027-03 | Operator features and UX | metric/record CSV export; exec-result history; cost-forecast column; roles (viewer/operator/admin) if not in v1.7; frontend entry < 160 KB gzip, < 35 JS requests, PWA precache < 3 MB; timezone labels, raw-HTML locale hardening, TerminalDialog focus trap; screen-reader pass | Feature acceptance tests; a11y checklist signed off; budget targets met on a production build |
 | `v2.0.0` | 2027-Q2 | Agent and platform v2 | non-root agent default with capability/ICMP strategy; Windows/macOS agent support and footprint measurement; single protocol source (remove root/agent duplication); agent updater/rollback hardening; secrets at rest (session/2FA) with key management; optional DB encryption; 200-node capacity | Migration guide; protocol compatibility policy (two-minor deprecation); 200-node benchmark; no plaintext session/2FA secrets on new installs |
 | `v2.1.0` | 2027-Q3 | Scale and ecosystem | HA/read-replica evaluation, plugin/theme marketplace signing, multi-region backup, optional external metrics export | Scale/HA runbook; marketplace signature verification; backup across two providers |
+
+## Update plan (2026-11-03)
+
+Long-term cadence, restated after the v1.7.23 delivery and the MAC-WAN
+recovery close-out:
+
+- **One bounded release at a time.** Every release goes through branch+PR CI,
+  exact-merge CI, tag/release with SBOM/provenance, Docker, then OC424
+  upgrade9/9 with byte-identical client rows and fresh pre/post archives.
+  No two independent features share one release.
+- **Next slices.** v1.7.24 adds `window_coverage`, the inferred cadence and
+  the window-bucket count as new SLA fields beside the pinned `coverage`
+  (shape agreed in `SLA-COVERAGE.md`). v1.7.25 adds the alert-rule test
+  button (one bounded, rate-limited real send). Then the v1.8.0 remainder:
+  uptime restart-count metric, 50-node capacity gate, second off-host
+  destination decision.
+- **Backlog trim.** Forecast reset/overflow fixes (`#92`), backup-freshness
+  load rules (v1.7.21), timezone labels (v1.7.23), the read-only load-rule
+  preview (v1.7.18) and the panel self-metrics history (v1.7.13/v1.7.14) are
+  shipped; they stay on the roadmap only as done markers, not as open work.
+- **Deferred by owner.** 200-node capacity stays on hold; OVH is sold and
+  removed from every destination plan. MAC-WAN stays the sole off-host
+  receiver until the second-destination decision.
+- **Monthly SLO review unchanged.** Availability, errors, fleet freshness,
+  backup age, upgrade success and memory trend, recorded in the delivery
+  checkpoints below.
 
 ## Current Delivery Checkpoint (2026-11-02)
 
