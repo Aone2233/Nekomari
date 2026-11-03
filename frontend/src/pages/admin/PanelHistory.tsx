@@ -2,6 +2,10 @@ import { Button, Flex, Select, Text } from "@radix-ui/themes";
 import { RefreshCw } from "lucide-react";
 import React from "react";
 import { useTranslation } from "react-i18next";
+import {
+  formatTime,
+  formatTimeShort,
+} from "@/components/status/slaFormat";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis, type TooltipPayload } from "recharts";
 import { z } from "zod";
 import { SettingCard } from "@/components/admin/SettingCard";
@@ -157,7 +161,7 @@ export default function PanelHistory() {
         <div>
           <Text as="div" size="1" color="gray">{t("pprof.history_last_bucket")}</Text>
           <Text as="div" size="5" weight="bold" data-testid="panel-history-latest">{latest?.value !== null && latest?.value !== undefined ? formatValue(latest.value) : "-"}</Text>
-          {latest && <Text as="div" size="1" color="gray">{new Date(latest.time).toLocaleString()}</Text>}
+          {latest && <Text as="div" size="1" color="gray">{formatTime(latest.time)}</Text>}
         </div>
         {!current ? <Text color="gray">{t("pprof.loading")}</Text> : current.error ? (
           <Text color="red" role="alert">{t("pprof.history_error")}</Text>
@@ -169,7 +173,7 @@ export default function PanelHistory() {
           <ChartContainer config={{ value: { label, color: "var(--accent-9)" } }} className="h-[240px] w-full" style={{ aspectRatio: "auto" }} data-testid="panel-history-chart">
             <LineChart data={rows} accessibilityLayer margin={{ top: 16, right: 16, bottom: 4, left: themeMetric ? 0 : 8 }}>
               <CartesianGrid vertical={false} />
-              <XAxis dataKey="time" type="number" domain={["dataMin", "dataMax"]} tickFormatter={(value: number) => new Date(value).toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} />
+              <XAxis dataKey="time" type="number" domain={["dataMin", "dataMax"]} tickFormatter={(value: number) => formatTimeShort(value)} />
               {themeMetric ? (
                 <YAxis width={130} type="number" domain={metric === "theme_cache_disk" ? [0, 5] : [0, 1]}
                   ticks={metric === "theme_cache_disk" ? [0, 1, 2, 3, 4, 5] : [0, 1]}
@@ -177,7 +181,7 @@ export default function PanelHistory() {
               ) : <YAxis width={1} mirror tick={{ dx: 8 }} tickFormatter={(value: number) => formatValue(value)} />}
               <ChartTooltip cursor={false} content={<ChartTooltipContent labelFormatter={(_value: unknown, payload: TooltipPayload) => {
                 const time = payload?.[0]?.payload?.time;
-                return typeof time === "number" ? new Date(time).toLocaleString() : "";
+                return typeof time === "number" ? formatTime(time) : "";
               }} formatter={(value: unknown) => typeof value === "number" ? formatValue(value) : "-"} />} />
               <Line dataKey="value" stroke="var(--accent-9)" strokeWidth={2} strokeOpacity={themeMetric ? 0 : 1}
                 dot={themeMetric ? { r: 2, fill: "var(--accent-9)", stroke: "var(--accent-9)" } : measured.length <= 30}

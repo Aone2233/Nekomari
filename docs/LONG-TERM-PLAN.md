@@ -39,6 +39,19 @@ its exit criteria are met, not when the calendar says so.
 
 ## Current Delivery Checkpoint (2026-11-02)
 
+**Next bounded delivery: v1.7.23 (in-flight, 2026-11-03).** Zone-labelled
+timestamps pulled forward from the v1.9 UX column: a single formatter family in
+`frontend/src/components/status/slaFormat.ts` renders expiry dates, logs,
+sessions, chart axes/tooltips, load-rule preview windows and the home-page
+clock with the time zone named beside each instant, and renders missing or
+invalid values as "—". The change is complete locally (lint, typecheck, build,
+197 script tests pass) and enters the normal PR/exact-merge/release/Docker
+flow before OC424. Exit criteria: CI 8/8, release and Docker green, OC424
+upgrade9/9 with the live 13-client node set unchanged, owner-session UI
+acceptance. The new goal sequence (v1.7.23, MAC-WAN backup close-out, then
+one-at-a-time v1.8 increments) is recorded in
+[`OPEN-WORK.md`](./OPEN-WORK.md).
+
 **Latest bounded delivery: v1.7.22 (2026-11-03 approximately 00:08
 Asia/Shanghai; 16:07:56 UTC 2026-11-02).** Batch metric queries report
 per-key errors instead of all-or-nothing: mixed batches keep valid series and

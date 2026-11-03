@@ -11,6 +11,7 @@ import type { LiveData, Record } from "../types/LiveData";
 import UsageBar from "./UsageBar";
 import Flag from "./Flag";
 import { useTranslation } from "react-i18next";
+import { formatTime } from "@/components/status/slaFormat";
 import Tips from "./ui/tips";
 
 import { formatBytes } from "@/utils/unitHelper";
@@ -47,7 +48,7 @@ function maintenanceHint(
     const until = new Date(maintenance.until);
     // 解析失败时宁可不显示时间，也不要让运维看到 "Invalid Date"。
     if (!Number.isNaN(until.getTime())) {
-      parts.push(`${labels.endTime} ${until.toLocaleString()}`);
+      parts.push(`${labels.endTime} ${formatTime(until)}`);
     }
   }
   return parts.join(" · ");

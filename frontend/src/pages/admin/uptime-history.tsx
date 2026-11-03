@@ -2,6 +2,10 @@ import React from "react";
 import { Button, Card, Flex, Select, Text } from "@radix-ui/themes";
 import { RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import {
+  formatTime,
+  formatTimeShort,
+} from "@/components/status/slaFormat";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis, type TooltipPayload } from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { useNodeList } from "@/contexts/NodeListContext";
@@ -83,7 +87,7 @@ export default function UptimeHistoryPage() {
           <div>
             <Text as="div" size="2" color="gray">{selectedNode?.name || t("uptimeHistory.node")}</Text>
             <Text as="div" size="5" weight="bold" data-testid="uptime-latest">{latest ? formatUptime(latest.uptime, t) : "-"}</Text>
-            <Text as="div" size="1" color="gray">{latest ? t("uptimeHistory.latestAt", { time: new Date(latest.time).toLocaleString() }) : current?.error ? t("uptimeHistory.error") : t("uptimeHistory.noData")}</Text>
+            <Text as="div" size="1" color="gray">{latest ? t("uptimeHistory.latestAt", { time: formatTime(latest.time) }) : current?.error ? t("uptimeHistory.error") : t("uptimeHistory.noData")}</Text>
           </div>
           {nodesError && <Text color="red" size="2" role="alert">{nodesError}</Text>}
           {current?.error && <Text color="red" size="2" role="alert">{t("uptimeHistory.error")}: {current.error}</Text>}
@@ -93,11 +97,11 @@ export default function UptimeHistoryPage() {
             <ChartContainer config={{ uptime: { label: t("nodeCard.uptime"), color: "var(--accent-9)" } }} className="h-[260px] w-full" style={{ aspectRatio: "auto" }}>
               <LineChart data={rows} accessibilityLayer margin={{ top: 16, right: 16, bottom: 4, left: 8 }}>
                 <CartesianGrid vertical={false} />
-                <XAxis dataKey="time" type="number" domain={["dataMin", "dataMax"]} tickFormatter={(value: number) => new Date(value).toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })} />
+                <XAxis dataKey="time" type="number" domain={["dataMin", "dataMax"]} tickFormatter={(value: number) => formatTimeShort(value)} />
                 <YAxis width={1} mirror tick={{ dx: 8 }} tickFormatter={(value: number) => formatUptime(value, t)} />
                 <ChartTooltip cursor={false} content={<ChartTooltipContent labelFormatter={(_value: unknown, payload: TooltipPayload) => {
                   const time = payload?.[0]?.payload?.time;
-                  return typeof time === "number" ? new Date(time).toLocaleString() : "";
+                  return typeof time === "number" ? formatTime(time) : "";
                 }} formatter={(value: unknown) => formatUptime(typeof value === "number" ? value : null, t)} />} />
                 <Line dataKey="uptime" type="stepAfter" stroke="var(--accent-9)" strokeWidth={2} dot={measured.length <= 30} connectNulls={false} isAnimationActive={false} />
               </LineChart>

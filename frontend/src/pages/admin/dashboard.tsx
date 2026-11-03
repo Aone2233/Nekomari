@@ -12,6 +12,11 @@ import {
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import {
+  formatTime,
+  formatTimeOfDay,
+  formatTimeShort,
+} from "@/components/status/slaFormat";
+import {
   Area,
   AreaChart,
   CartesianGrid,
@@ -105,18 +110,14 @@ const formatPeakTime = (t: TFunction, timestamp: number): string => {
     now.getMonth(),
     now.getDate(),
   ).getTime();
-  const time = date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  const time = formatTimeOfDay(date);
   if (timestamp >= startOfToday) {
     return `${t("dashboard.today", "Today")} ${time}`;
   }
   if (timestamp >= startOfToday - DAY_MS) {
     return `${t("dashboard.yesterday", "Yesterday")} ${time}`;
   }
-  return `${date.toLocaleDateString()} ${time}`;
+  return formatTimeShort(date);
 };
 
 const latencyColor = (ms: number): "green" | "yellow" | "red" =>
@@ -448,7 +449,7 @@ const DashboardContent = () => {
       if (res.ok) {
         toast.success(
           t("dashboard.renewSuccess", "Renewed. New expiry: {{date}}", {
-            date: expiry.toLocaleDateString(),
+            date: formatTime(expiry),
           }),
         );
         setRenewedUuids((prev) => new Set(prev).add(node.uuid));
@@ -816,7 +817,7 @@ const DashboardContent = () => {
                         </Text>
                         <Flex gap="2" align="center">
                           <Text size="2" color="gray">
-                            {new Date(node.expired_at).toLocaleDateString()}
+                            {formatTime(node.expired_at)}
                           </Text>
                           <Badge
                             color={daysLeft <= 3 ? "red" : "amber"}
@@ -969,12 +970,7 @@ const DashboardContent = () => {
                     dataKey="time"
                     tickLine={false}
                     axisLine={false}
-                    tickFormatter={(v: any) =>
-                      new Date(v).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
-                    }
+                    tickFormatter={(v: any) => formatTimeOfDay(v)}
                   />
                   <YAxis
                     yAxisId="rate"
@@ -1008,7 +1004,7 @@ const DashboardContent = () => {
                         labelFormatter={(_value: any, payload: TooltipPayload) => {
                           const point = payload?.[0]?.payload;
                           return point?.time
-                            ? new Date(point.time).toLocaleString()
+                            ? formatTime(point.time)
                             : "";
                         }}
                         formatter={(value: any, name: any) =>
@@ -1606,12 +1602,7 @@ const MiniMetricChart = ({
               dataKey="time"
               tickLine={false}
               axisLine={false}
-              tickFormatter={(v: any) =>
-                new Date(v).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              }
+              tickFormatter={(v: any) => formatTimeOfDay(v)}
             />
             <YAxis
               tickLine={false}
@@ -1633,7 +1624,7 @@ const MiniMetricChart = ({
                   labelFormatter={(_value: any, payload: TooltipPayload) => {
                     const point = payload?.[0]?.payload;
                     return point?.time
-                      ? new Date(Number(point.time)).toLocaleString()
+                      ? formatTime(Number(point.time))
                       : "";
                   }}
                   formatter={(value: any, name: any) =>

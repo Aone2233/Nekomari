@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { formatTime } from "@/components/status/slaFormat";
 import {
   Button,
   Dialog,
@@ -253,7 +254,7 @@ export function DetailView({ node }: { node: NodeDetail }) {
                   className="bg-muted px-3 py-2 rounded border select-text"
                 >
                   {node.created_at ? (
-                    new Date(node.created_at).toLocaleString()
+                    formatTime(node.created_at)
                   ) : (
                     <span className="text-muted-foreground">-</span>
                   )}
@@ -268,7 +269,7 @@ export function DetailView({ node }: { node: NodeDetail }) {
                   className="bg-muted px-3 py-2 rounded border select-text"
                 >
                   {node.updated_at ? (
-                    new Date(node.updated_at).toLocaleString()
+                    formatTime(node.updated_at)
                   ) : (
                     <span className="text-muted-foreground">-</span>
                   )}

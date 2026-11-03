@@ -8,6 +8,7 @@ import {
   Switch,
 } from "@radix-ui/themes";
 import { useTranslation } from "react-i18next";
+import { formatTimeWithSeconds } from "@/components/status/slaFormat";
 import React, { useCallback, useEffect, useMemo, Suspense } from "react";
 const NodeDisplay = React.lazy(() => import("../components/NodeDisplay"));
 import { formatBytes } from "@/utils/unitHelper";
@@ -356,12 +357,12 @@ const TopCard: React.FC<TopCardProps> = React.memo(
 
 const CurrentTimeValue = React.memo(() => {
   const [currentTime, setCurrentTime] = React.useState(() =>
-    new Date().toLocaleTimeString(),
+    formatTimeWithSeconds(new Date()),
   );
 
   React.useEffect(() => {
     const timer = window.setInterval(() => {
-      setCurrentTime(new Date().toLocaleTimeString());
+      setCurrentTime(formatTimeWithSeconds(new Date()));
     }, 1000);
     return () => window.clearInterval(timer);
   }, []);

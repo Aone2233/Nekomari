@@ -2,6 +2,10 @@ import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
+  formatTimeShort,
+  formatTimeWithSeconds,
+} from "@/components/status/slaFormat";
+import {
   Card,
   Flex,
   SegmentedControl,
@@ -872,18 +876,9 @@ const labelFormatter = (hours: number | undefined) => {
   return (value: any) => {
     const date = new Date(value);
     if (!hours || hours < 24) {
-      return date.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      });
+      return formatTimeWithSeconds(date);
     }
-    return date.toLocaleString([], {
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return formatTimeShort(date);
   };
 };
 
