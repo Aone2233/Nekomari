@@ -16,6 +16,15 @@ export interface SlaPresence {
   coverage: number;
   first_data: string;
   last_data: string;
+  /** Reporting cadence inferred by the server, in seconds. Zero when unknown. */
+  cadence_seconds?: number;
+  /** How many cadence-sized buckets the requested window holds. Zero when unknown. */
+  window_buckets?: number;
+  /**
+   * Observed/window_buckets over the whole requested window, 0..1. Missing from
+   * reports served by v1.7.23 and earlier, so the page must treat it as absent.
+   */
+  window_coverage?: number;
 }
 
 /**

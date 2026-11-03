@@ -5,6 +5,23 @@ field keeps its current value, its name and its meaning. It exists because the
 field's name reads as one thing and its arithmetic computes another, and a
 number that is misread is worse than a number that is missing.
 
+As of v1.7.24 the same `Presence` carries three new fields next to the pinned
+`coverage`, and no existing field changes meaning. They are the second half
+the section below used to say the API did not expose:
+
+| Field | Meaning |
+|---|---|
+| `cadence_seconds` | The inferred reporting cadence in seconds, from the median gap of the whole bucket grid (empty buckets included). Zero when fewer than two buckets carry cadence evidence. |
+| `window_buckets` | `floor(window / cadence)` — how many cadence-sized buckets the requested window holds. The denominator for `window_coverage`, deliberately not the span-based `expected_buckets`. Zero when the cadence or the window is unknown. |
+| `window_coverage` | `observed_buckets / window_buckets` over the whole requested window, clamped to `[0, 1]`. Zero when `window_buckets` is 0. |
+
+`coverage` and `window_coverage` answer different questions and are never
+duplicates: a series that reported every minute for the first ten minutes of
+an hour reads `coverage = 1` (its span has no interior gaps) and
+`window_coverage = 10/60` (most of the window carried nothing). Readers on
+servers older than v1.7.24 must treat the three fields as absent, not as
+zero.
+
 ## The contract
 
 `Presence` separates "did the node report at all" from "was it up", and
@@ -60,41 +77,34 @@ Two reasons, both of which are load-bearing:
 - **Freshness / "is this node still reporting"**: use `first_data`, `last_data`
   and the request time, or a dedicated staleness metric. A node that stopped an
   hour ago still reports `coverage = 1` for the window it did report.
-- **"How much of the requested window has data"**: the API does not expose this
-  directly, and it does not expose the inferred cadence either. It can be
-  derived approximately as `(last_data - first_data + cadence) / window × coverage`
-  when the caller knows the cadence from the task's interval; without the
-  cadence, compare `first_data`/`last_data` against the requested window instead
-  of trying to reconstruct it from the fraction.
+- **"How much of the requested window has data"**: use `window_coverage`
+  (v1.7.24 onward), with `cadence_seconds` and `window_buckets` so the figure
+  is reproducible from `observed_buckets`. On older servers the fields are
+  absent: derive it approximately as
+  `(last_data - first_data + cadence) / window × coverage` when the caller
+  knows the cadence from the task's interval, or compare
+  `first_data`/`last_data` against the requested window instead of trying to
+  reconstruct it from the fraction.
 - **Availability**: `fraction` is computed over the *reported* buckets only, so
   availability and coverage must be read together. No samples means
   `has_data=false`, `fraction=0`, `coverage=0`; it is not a measured 0% or 100%
   availability. Earlier successful samples may still read `fraction=1` and
   span coverage 1 after reporting stops, which is why the timestamps matter.
 
-## What a semantic change would require
+## The v1.7.24 addition
 
-Do not redefine `Coverage` in place. It is pinned by `internal/sla/batch_test.go`
-and read by dashboards, the SLA incident list and the RPC surface; changing the
-denominator silently moves every historical number a consumer has stored or
-alerted on.
+`Coverage` stays pinned by `internal/sla/batch_test.go` and by dashboards, the
+SLA incident list and the RPC surface. The window figure shipped as the three
+new fields above rather than a redefinition, for the reasons this section
+always required: a new denominator must not silently move historical numbers,
+and a ratio whose denominator is not reported is not reproducible by a reader.
 
-If window coverage is worth having, the compatible shape is:
-
-1. A **new** field (for example `window_coverage`) with the window as the
-   denominator, reported next to `coverage` rather than replacing it.
-2. The inferred **cadence and the window-bucket count** reported alongside it.
-   Window coverage computed without them is not reproducible by a reader, which
-   is the same problem this document exists to fix.
-3. An explicit note that a complete series can read `coverage = 1` while
-   `window_coverage < 1` when the requested window starts before the data does,
-   so the two fields are not treated as duplicates by a reviewer.
-4. A pass over consumers before using the new field for alerts or freshness.
-5. A minimum two-minor deprecation window for any rename, per the compatibility
-   policy in `LONG-TERM-PLAN.md`, and a stated migration note for stored figures.
-
-That is a decision for the owner, tracked in `OPEN-WORK.md` under "Numbers and
-correctness", not something this document decides.
+The window denominator `window_buckets` is `floor(window / cadence)`; it is not
+`floor(window / cadence) + 1`, for the same endpoint double-count that the
+span denominator above rejects. `window_coverage` is clamped to `[0, 1]` and
+zero whenever the denominator is zero, so a no-data window can never divide
+by zero. A minimum two-minor deprecation window applies to any future rename,
+per the compatibility policy in `LONG-TERM-PLAN.md`.
 
 ## UI clarification
 
@@ -105,7 +115,9 @@ be coarse (the page displays the bucket width). A full span can still represent
 only part of the selected window, and the last bucket is not a live-status check.
 Maintenance buckets are excluded. Zero observed buckets show no data, not a
 timestamp or a measured zero. These timestamps are observations, not a derived
-full-window fraction.
+full-window fraction. When the server reports the v1.7.24 fields, the page also
+shows the window coverage beside the span figure for the node aggregate and
+each task, labelled separately; a report without them renders as before.
 
 The node aggregate in this report is the union of its **ping task** results,
 not resource-metric or live WebSocket presence. An absence of ping data or a
@@ -114,10 +126,7 @@ configured ping tasks can have no SLA data while reporting normally elsewhere.
 Trailing gaps are not filled to the end of the requested window. The text is
 shown on both the admin and standalone report, in all supported locales.
 
-No calculation, RPC field, schema, saved data, alert or backend behavior is
-changed. A separate window-coverage field and its boundary, cadence and
-maintenance semantics remain undecided. This patch does not establish SLO
-measurement or actual downtime. OC424 runs v1.7.19; the published binary passed
-four isolated MAC-WAN desktop/mobile and light/dark browser cases. Actual owner
-session acceptance remains open. The v1.7.4 task-generation correction remains
-unaffected. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+No existing calculation, RPC field, schema, saved data or alert changed
+meaning: v1.7.24 only adds the three fields documented above. This does not
+establish SLO measurement or actual downtime. The v1.7.4 task-generation
+correction remains unaffected. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).

@@ -1696,6 +1696,7 @@
     "coverageOf": "{{percent}} ({{observed}}/{{expected}} samples)",
     "spanCoverage": "Span coverage",
     "nodePingSpan": "Ping span coverage",
+    "windowCoverage": "Window coverage {{percent}}",
     "firstBucket": "First observed bucket",
     "lastBucket": "Last observed bucket",
     "coverageExplanation": "Coverage is measured between the first and last reported buckets, not across the whole selected window. The latest bucket is not a live-status check; availability uses reported buckets only. Node totals combine ping task results, not agent uptime. Maintenance buckets are excluded.",

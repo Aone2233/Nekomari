@@ -1696,6 +1696,7 @@
     "coverageOf": "{{percent}} ({{observed}}/{{expected}} sampel)",
     "spanCoverage": "Cakupan rentang pengamatan",
     "nodePingSpan": "Cakupan rentang Ping",
+    "windowCoverage": "Cakupan jendela {{percent}}",
     "firstBucket": "Bucket pertama teramati",
     "lastBucket": "Bucket terakhir teramati",
     "coverageExplanation": "Cakupan dihitung antara bucket pertama dan terakhir yang memiliki data, bukan seluruh rentang yang dipilih. Bucket terakhir bukan pemeriksaan status saat ini; ketersediaan dihitung hanya dari bucket yang memiliki data. Ringkasan node menggabungkan hasil tugas Ping, bukan waktu aktif Agent. Bucket selama pemeliharaan dikecualikan.",

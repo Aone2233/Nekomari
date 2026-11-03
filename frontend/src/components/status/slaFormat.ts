@@ -164,6 +164,21 @@ export const coverageText = (
 };
 
 /**
+ * windowCoverageText formats the server's full-window ratio, the figure `coverageText`
+ * deliberately does not show. An empty string means "do not render": the field is
+ * absent on reports from servers older than v1.7.24, and the older denominator-less
+ * span figure must keep working on its own.
+ */
+export const windowCoverageText = (
+	windowBuckets: number | undefined,
+	windowCoverage: number | undefined,
+	t: (key: string) => string,
+): string => {
+	if (!windowBuckets || windowCoverage === undefined) return "";
+	return t("status.windowCoverage").replace("{{percent}}", percent(windowCoverage));
+};
+
+/**
  * windowFromLocation reads the window out of the URL, falling back to the default.
  *
  * In the URL so a report can be shared with its window rather than only its host —

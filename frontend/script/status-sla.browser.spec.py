@@ -130,6 +130,8 @@ class SlaReportBrowserTest(unittest.TestCase):
             # Coverage is beside availability, not instead of it.
             expect(first.locator('[data-testid="sla-task-coverage"]')).to_contain_text("100.0%")
             expect(first.locator('[data-testid="sla-task-coverage"]')).to_contain_text("60/60")
+            # The window figure sits beside the span figure, with its own identity.
+            expect(first.locator('[data-testid="sla-task-window-coverage"]')).to_contain_text("100.0%")
             # Percentiles, all three.
             expect(first.locator('[data-testid="sla-task-latency"]')).to_contain_text("12.5")
             expect(first.locator('[data-testid="sla-task-latency"]')).to_contain_text("48.9")
@@ -153,6 +155,7 @@ class SlaReportBrowserTest(unittest.TestCase):
             expect(row.locator('[data-testid="sla-task-latency"]')).to_contain_text("no data")
             expect(page.locator('[data-testid="sla-node-observed-range"]')).to_have_count(0)
             expect(page.locator('[data-testid="sla-task-observed-range"]')).to_have_count(0)
+            expect(page.locator('[data-testid="sla-task-window-coverage"]')).to_have_count(0)
         finally:
             self.teardown_page(page)
 
@@ -199,6 +202,9 @@ class SlaReportBrowserTest(unittest.TestCase):
         try:
             expect(page.locator('[data-testid="sla-node-presence"]')).to_contain_text("Ping span coverage")
             expect(page.locator('[data-testid="sla-node-presence"]')).to_contain_text("100.0%")
+            # The span is complete, but only ten of sixty window minutes carried data:
+            # the window figure is the number that says so.
+            expect(page.locator('[data-testid="sla-node-window-coverage"]')).to_contain_text("16.7%")
             expect(page.locator('[data-testid="sla-coverage-explanation"]')).to_contain_text(
                 "not across the whole selected window")
             expect(page.locator('[data-testid="sla-coverage-explanation"]')).to_contain_text(
@@ -276,7 +282,8 @@ class SlaReportBrowserTest(unittest.TestCase):
         for locale in ("en", "zh_CN", "zh_TW", "ja_JP", "id_ID"):
             strings = json.loads((ROOT / "src/i18n/locales" / f"{locale}.json").read_text())
             for key in ("spanCoverage", "nodePingSpan", "firstBucket", "lastBucket",
-                        "coverageExplanation", "reportingGaps", "nodeNoData"):
+                        "coverageExplanation", "reportingGaps", "nodeNoData",
+                        "windowCoverage"):
                 self.assertTrue(strings["status"].get(key), f"{locale}: missing {key}")
 
 
