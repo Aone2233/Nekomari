@@ -90,6 +90,7 @@ await i18n.init({
         'status.coverageOf': '{{percent}} ({{observed}}/{{expected}} samples)',
         'status.sampleInterval': 'Buckets of {{seconds}}s',
         'status.noData': 'no data',
+        'status.windowCoverage': 'Window coverage {{percent}}',
       },
     },
   },
@@ -138,6 +139,73 @@ test('the node report types the maintenance exclusion as optional seconds', () =
     /maintenance_excluded_seconds\?: number;/,
     'the field mirrors NodeReport.MaintenanceExcludedSeconds and is absent when nothing was excluded',
   );
+});
+
+test('the window coverage fields are optional on the wire and never duplicated', () => {
+  const source = readFileSync(new URL('../src/types/Sla.ts', import.meta.url), 'utf8');
+  assert.match(
+    source,
+    /window_coverage\?: number;/,
+    'window_coverage is optional: v1.7.23 servers do not send it',
+  );
+  assert.match(
+    source,
+    /window_buckets\?: number;/,
+    'window_buckets is optional for the same backward-compatibility reason',
+  );
+  const { windowCoverageText, coverageText } = load(path.join(srcRoot, 'components/status/slaFormat.ts'));
+  const t = (key) => ({
+    'status.windowCoverage': 'Window coverage {{percent}}',
+    'status.coverageOf': '{{percent}} ({{observed}}/{{expected}} samples)',
+  }[key]);
+  assert.equal(windowCoverageText(60, 0.2, t), 'Window coverage 20.0%');
+  assert.equal(windowCoverageText(0, 0, t), '');
+  assert.equal(windowCoverageText(60, undefined, t), '');
+  assert.equal(windowCoverageText(undefined, 0.2, t), '');
+  // The span figure must not pick up the window figure's wording or vice versa.
+  assert.match(coverageText(10, 10, 1, t), /samples/);
+  assert.doesNotMatch(windowCoverageText(60, 0.2, t), /samples/);
+});
+
+test('a report with window figures renders them beside the span figure', () => {
+  const html = render(reportWith({
+    presence: {
+      expected_buckets: 10,
+      observed_buckets: 10,
+      coverage: 1,
+      first_data: '2026-09-26T12:00:00Z',
+      last_data: '2026-09-26T12:09:00Z',
+      cadence_seconds: 60,
+      window_buckets: 60,
+      window_coverage: 10 / 60,
+    },
+  }));
+  assert.match(html, /data-testid="sla-node-window-coverage"/, 'the window figure must be rendered');
+  assert.match(html, /data-window-buckets="60"/, 'the denominator stays addressable for tests');
+  assert.match(html, /16\.7%/, '10 of 60 window buckets is 16.7%');
+});
+
+test('window figures stay silent when the server did not send them', () => {
+  const html = render(reportWith({}));
+  assert.doesNotMatch(html, /sla-node-window-coverage/, 'no window figure without window_buckets');
+  assert.doesNotMatch(html, /Window coverage/, 'no window wording for an older report');
+});
+
+test('a silent series shows no window figure at all, not 0.0%', () => {
+  const html = render(reportWith({
+    presence: {
+      expected_buckets: 0,
+      observed_buckets: 0,
+      coverage: 0,
+      first_data: '',
+      last_data: '',
+      cadence_seconds: 60,
+      window_buckets: 60,
+      window_coverage: 0,
+    },
+  }));
+  assert.doesNotMatch(html, /sla-node-window-coverage/, '0 window coverage without evidence must not render');
+  assert.doesNotMatch(html, /0\.0%/, 'no measured-looking percentage for a silent node');
 });
 
 test('a positive exclusion is explained with the maintenance wording and a readable duration', () => {

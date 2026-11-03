@@ -15,6 +15,7 @@ import {
   duration,
   formatTime,
   maintenanceExcludedText,
+  windowCoverageText,
 } from "./slaFormat";
 
 /**
@@ -74,6 +75,31 @@ const IncidentList: React.FC<{ incidents: SlaIncident[] | null; emptyLabel: stri
   );
 };
 
+const WindowCoverageLine: React.FC<{
+  observedBuckets?: number;
+  windowBuckets?: number;
+  windowCoverage?: number;
+  testId: string;
+}> = ({ observedBuckets, windowBuckets, windowCoverage, testId }) => {
+  const { t } = useTranslation();
+  // No evidence means no percentage: a silent series has a window coverage of 0 for
+  // the same reason availability does, and "0.0%" would read as a measured failure.
+  if (!observedBuckets) return null;
+  const text = windowCoverageText(windowBuckets, windowCoverage, t);
+  if (!text) return null;
+  return (
+    <Text
+      size="1"
+      color="gray"
+      data-testid={testId}
+      data-window-buckets={String(windowBuckets)}
+      data-window-coverage={String(windowCoverage)}
+    >
+      {text}
+    </Text>
+  );
+};
+
 const NodeSection: React.FC<{
   node: SlaNodeReport;
   name: string;
@@ -107,6 +133,12 @@ const NodeSection: React.FC<{
                   t,
                 )}
               </Badge>
+              <WindowCoverageLine
+                observedBuckets={node.presence.observed_buckets}
+                windowBuckets={node.presence.window_buckets}
+                windowCoverage={node.presence.window_coverage}
+                testId="sla-node-window-coverage"
+              />
               {node.presence.observed_buckets > 0 && (
                 <Text size="1" color="gray" data-testid="sla-node-observed-range">
                   {t("status.firstBucket")}: {formatTime(node.presence.first_data, language)} ·{" "}
@@ -155,6 +187,12 @@ const NodeSection: React.FC<{
                       task.loss.presence.coverage,
                       t,
                     )}
+                    <WindowCoverageLine
+                      observedBuckets={task.loss.presence.observed_buckets}
+                      windowBuckets={task.loss.presence.window_buckets}
+                      windowCoverage={task.loss.presence.window_coverage}
+                      testId="sla-task-window-coverage"
+                    />
                     {task.loss.presence.observed_buckets > 0 && (
                       <Text as="div" size="1" color="gray" data-testid="sla-task-observed-range">
                         {t("status.firstBucket")}: {formatTime(task.loss.presence.first_data, language)} ·{" "}

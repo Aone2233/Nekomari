@@ -155,6 +155,47 @@ func TestASingleBucketClaimsNoCadence(t *testing.T) {
 	if presence.ExpectedBuckets != 1 || !almostEqual(presence.Coverage, 1) {
 		t.Fatalf("presence = %+v, want one expected bucket at full coverage", presence)
 	}
+	if presence.CadenceSeconds != 0 || presence.WindowBuckets != 0 || presence.WindowCoverage != 0 {
+		t.Fatalf("presence = %+v, want zero window figures without cadence evidence", presence)
+	}
+}
+
+// The window fields answer the question Coverage deliberately does not: how much of the
+// requested window carried data. They reuse the inferred cadence and the deduplicated
+// observed count, so both figures can be reproduced from the same evidence.
+func TestWindowCoverageMeasuresTheRequestedWindow(t *testing.T) {
+	// Every minute of a ten-minute window reported: span and window agree.
+	complete := computePresence(series(0, 0, 0, 0, 0, 0, 0, 0, 0, 0), 10*time.Minute)
+	if complete.CadenceSeconds != 60 || complete.WindowBuckets != 10 || !almostEqual(complete.WindowCoverage, 1) {
+		t.Fatalf("complete = %+v, want cadence 60s, 10 buckets, coverage 1", complete)
+	}
+
+	// Only the first two minutes reported: the span reads full, the window reads 20%.
+	stale := computePresence(series(0, 0), 10*time.Minute)
+	if !almostEqual(stale.Coverage, 1) {
+		t.Fatalf("span Coverage = %v, want 1: the observed span has no gaps", stale.Coverage)
+	}
+	if stale.WindowBuckets != 10 || !almostEqual(stale.WindowCoverage, 0.2) {
+		t.Fatalf("stale = %+v, want 10 window buckets at 0.2 coverage", stale)
+	}
+
+	// An interior gap is visible in both figures.
+	gapped := computePresence(slots([]float64{0, 0, gap, gap, 0, 0, 0, 0, 0, 0}), 10*time.Minute)
+	if !almostEqual(gapped.Coverage, 0.8) || !almostEqual(gapped.WindowCoverage, 0.8) {
+		t.Fatalf("gapped = %+v, want 0.8 for both figures", gapped)
+	}
+
+	// No data at all: every figure is zero, never a division by zero.
+	empty := computePresence(nil, 10*time.Minute)
+	if empty.CadenceSeconds != 0 || empty.WindowBuckets != 0 || empty.WindowCoverage != 0 {
+		t.Fatalf("empty = %+v, want zero window figures", empty)
+	}
+
+	// No window requested: the cadence is still known, the window denominator is not.
+	unbounded := computePresence(series(0, 0, 0), 0)
+	if unbounded.CadenceSeconds != 60 || unbounded.WindowBuckets != 0 || unbounded.WindowCoverage != 0 {
+		t.Fatalf("unbounded = %+v, want cadence only", unbounded)
+	}
 }
 
 // Percentiles come from the values, and a gap must be excluded before calling this:
@@ -225,6 +266,7 @@ func TestAGapEndsAnIncidentRatherThanJoiningIt(t *testing.T) {
 		t.Fatalf("second incident starts at %s, want %s", incidents[1].Start, at(4))
 	}
 }
+
 // A single lost probe is not an incident at the default threshold; a total loss is.
 // This is the "one blip counted as an outage" failure the plan calls out.
 func TestOneLostProbeIsNotAnOutage(t *testing.T) {

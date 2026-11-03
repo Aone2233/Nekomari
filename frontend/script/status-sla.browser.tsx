@@ -45,6 +45,11 @@ const presence = (observed: number, expected: number) => ({
   coverage: expected ? observed / expected : 0,
   first_data: observed ? at(0) : "",
   last_data: observed ? at(observed - 1) : "",
+  cadence_seconds: 60,
+  // The requested window is one hour; window_coverage below 1 is the "stale tail"
+  // case the page must show next to a perfect span figure.
+  window_buckets: 60,
+  window_coverage: expected ? observed / 60 : 0,
 });
 
 /**

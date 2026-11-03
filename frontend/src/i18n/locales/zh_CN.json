@@ -1696,6 +1696,7 @@
     "coverageOf": "{{percent}}（{{observed}}/{{expected}} 个采样）",
     "spanCoverage": "观测区间覆盖率",
     "nodePingSpan": "Ping 观测区间覆盖率",
+    "windowCoverage": "时间窗覆盖率 {{percent}}",
     "firstBucket": "首个观测桶",
     "lastBucket": "末个观测桶",
     "coverageExplanation": "覆盖率仅计算首末有数据的采样桶之间的区间，并非整个所选时间窗。末个采样桶不代表实时状态；可用率仅按有数据的桶计算。节点汇总来自 Ping 任务结果，不是 Agent 运行时间；维护期内的采样桶会被排除。",

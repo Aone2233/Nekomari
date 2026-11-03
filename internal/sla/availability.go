@@ -57,6 +57,21 @@ type Presence struct {
 	// FirstData and LastData bound the buckets that carried data. Zero when none did.
 	FirstData time.Time `json:"first_data"`
 	LastData  time.Time `json:"last_data"`
+	// CadenceSeconds is the reporting cadence inferred from the bucket grid,
+	// empty buckets included, in seconds. Zero when fewer than two buckets
+	// carry cadence evidence.
+	CadenceSeconds float64 `json:"cadence_seconds"`
+	// WindowBuckets is how many cadence-sized buckets the requested window
+	// holds (window/step). It is the denominator for WindowCoverage and
+	// deliberately not the span-based ExpectedBuckets. Zero when the cadence
+	// or the window is unknown.
+	WindowBuckets int `json:"window_buckets"`
+	// WindowCoverage is ObservedBuckets/WindowBuckets across the whole
+	// requested window: how much of the window carried measured data. Zero
+	// when WindowBuckets is 0. A complete series can read Coverage 1 while
+	// WindowCoverage is below 1 when the window starts before the data does;
+	// the two fields answer different questions and are never duplicates.
+	WindowCoverage float64 `json:"window_coverage"`
 }
 
 // Availability is a fraction in [0, 1] with the evidence it was computed from.
@@ -223,6 +238,19 @@ func computePresence(samples []Sample, window time.Duration) Presence {
 	presence.Coverage = float64(presence.ObservedBuckets) / float64(expected)
 	if presence.Coverage > 1 {
 		presence.Coverage = 1
+	}
+	// The window denominator is separate from the span denominator above. It is
+	// computed from the same inferred cadence so a reader can reproduce the
+	// figure from window, step and observed count — see docs/SLA-COVERAGE.md.
+	presence.CadenceSeconds = float64(step) / float64(time.Second)
+	if window > 0 {
+		presence.WindowBuckets = int(window / step)
+		if presence.WindowBuckets > 0 {
+			presence.WindowCoverage = float64(presence.ObservedBuckets) / float64(presence.WindowBuckets)
+			if presence.WindowCoverage > 1 {
+				presence.WindowCoverage = 1
+			}
+		}
 	}
 	return presence
 }

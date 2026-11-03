@@ -126,6 +126,13 @@ def run(binary):
                 for item in (presence, task):
                     assert item["observed_buckets"] == item["expected_buckets"] == 2 and item["coverage"] == 1
                     assert dt.datetime.fromisoformat(item["last_data"].replace("Z", "+00:00")) == start_at + dt.timedelta(minutes=5)
+                    # v1.7.24 window fields: the same perfect span is a small, stale part
+                    # of the requested window, and the new fields say so with a denominator
+                    # the reader can check.
+                    assert item["cadence_seconds"] == 300
+                    assert item["window_buckets"] > 200 and item["window_coverage"] < 0.05
+                    assert 0 < item["window_coverage"] <= 1
+                window_percent = f"{presence['window_coverage'] * 100:.1f}%"
                 assert not nodes[empty]["has_report"]
                 version = call("/api/version")["data"]
 
@@ -153,6 +160,7 @@ def run(binary):
                                     node = page.locator(f'[data-testid="sla-node"][data-entity-id="{observed}"]')
                                     expect(node.get_by_test_id("sla-node-presence")).to_contain_text(strings["nodePingSpan"])
                                     expect(node.get_by_test_id("sla-node-presence")).to_contain_text("2/2")
+                                    expect(node.get_by_test_id("sla-node-window-coverage")).to_contain_text(window_percent)
                                     for testid in ("sla-node-observed-range", "sla-task-observed-range"):
                                         expect(node.get_by_test_id(testid)).to_contain_text(strings["firstBucket"])
                                         expect(node.get_by_test_id(testid)).to_contain_text(strings["lastBucket"])
