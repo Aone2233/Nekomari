@@ -18,7 +18,53 @@ recovery remains unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
 schedule and 14-node acceptance statements below are history.
 
-## Current checkpoint (2026-11-03 14:20 UTC)
+## Current checkpoint (2026-11-03 15:25 UTC)
+
+OC424 runs **v1.7.25/05e7fe2**, immutable source
+`05e7fe2ff321501542aa645c09968d65ffdca0b4`, in the pinned arm64 image
+`ghcr.io/aone2233/nekomari:v1.7.25@sha256:2f6bbfdeed1b2b2e6b0654c4689f0a6c19a0fde052e92aa0eceb56bcf2b245c1`.
+The controlled switch started at approximately 15:25 UTC 2026-11-03 and the
+container is healthy with zero restarts at this checkpoint.
+
+- Saved load-alert rules get a bounded, rate-limited real test send: a Send
+  button beside the read-only preview asks for confirmation, then
+  `POST /api/admin/notification/load/test` delivers one `[TEST]` alert
+  through the configured channel behind a fleet-wide 60-second gate. The
+  send never writes `last_notified`, so a channel test cannot suppress or
+  reset the rule's real alert cooldown. See `docs/ALERT-RULE-PREVIEW.md`.
+- Pull-request CI41657862603 passes 8/8, exact merge CI41659496229 8/8,
+  release41660958531 10/10 and Docker41662404758 2/2. The released arm64
+  asset verifies against `SHA256SUMS.txt` (`8d461a46…8f546`) and the
+  extracted image binary matches it natively on OC424. OCI index digest
+  `sha256:2f6bbfde…245c1`; per-platform manifests
+  `sha256:e49861c7…5749` (amd64) and `sha256:86e32aab…9fc3` (arm64).
+- OC424 upgrade9/9 passes: healthy/restart0, `/api/version` v1.7.25/05e7fe2,
+  public and front page 200, `komari.db` quick_check ok, upgrade archives
+  present, zero ERROR lines in the last five minutes. All 13 registered
+  clients keep byte-identical `uuid`/`token` rows before and after the switch
+  (digest `55bc6191…d2bde`); schema, key permissions/lifetime and GeoIP
+  settings are unchanged. The local Agent (PID 499631, NRestarts 2) is
+  unchanged. Public entry points serve v1.7.25 through Cloudflare. Owner
+  UI acceptance and the owner's receipt of one real test notification remain
+  open.
+- Manual pre archive `/root/nekomari-v1725-pre/oc424.tar.gz.age` has SHA-256
+  `dcb1b5a89b4a990820c31d23076748e65a69d89506fd5649908e5ab1e92bd503`; post
+  archive `/root/nekomari-v1725-post/oc424.tar.gz.age` has SHA-256
+  `a81b284efcfbd167de6fecf4f9a204e02d3908cb43544377b2c83f8f6807f596`. Both
+  reached MAC-WAN's private `manual/v1725-recovery-20261103/` with matching
+  sidecars, and two isolated restore drills pass with `--network=none`, no
+  host ports and scratch-only plaintext: the pre state boots the v1.7.24
+  amd64 image (`sha256:15ac6807…3ff7a`) and serves v1.7.24/64b8f57, and the
+  post state boots v1.7.25 and serves v1.7.25/05e7fe2. Scratch plaintext and
+  drill containers were removed.
+- OC424 disk is 49%. Rollback: restore
+  `rollbacks/v1.7.25-20261103T152453Z-82a63f14/docker-compose.before.yml`
+  as `/opt/nekomari/docker-compose.yml` and run
+  `docker compose up -d --no-deps nekomari`; the previous image
+  `ghcr.io/aone2233/nekomari:v1.7.24@sha256:597f6314…52e6a3` remains on the
+  host. Never overwrite the live databases with older snapshots.
+
+## Previous checkpoint (2026-11-03 14:20 UTC)
 
 OC424 runs **v1.7.24/64b8f57**, immutable source
 `64b8f577462fcf272a8242a55b94266b11b9bebd`, in the pinned arm64 image

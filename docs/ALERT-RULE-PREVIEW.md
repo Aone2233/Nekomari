@@ -6,6 +6,20 @@ press **Run preview**. It never sends a notification, edits the rule, reloads
 the scheduler or writes `last_notified`; it is not a notification-channel test.
 The existing channel test in notification settings is a separate, real send.
 
+## v1.7.25 rule test send
+
+The saved-rule editor now also has a Send button beside the preview. After an
+explicit confirmation dialog, `admin:testLoadNotification`
+(`POST /api/admin/notification/load/test`) delivers one real
+`[TEST] <rule name>` alert through the configured channel. A fleet-wide
+60-second rate limit applies across all rules, so the button cannot turn the
+channel into a repeat-trigger; refusal returns `Unavailable` with a
+`retry in …` message. The send reads the saved rule but never writes
+`last_notified` and never edits the rule, so a channel test cannot consume or
+reset the rule's real alert cooldown. This is a delivery check, not proof of
+receipt: the recipient must acknowledge the message for the release exit
+criteria to close.
+
 Preview uses the same current-window bucket maxima, baseline calculation,
 host ratio rounding and ping whole-window comparison as the current scheduler.
 It reports each ping task/node pair rather than merging matched tasks by node.

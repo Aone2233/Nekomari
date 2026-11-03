@@ -11,6 +11,17 @@ watcher. The receiver keeps 14 scheduled pairs in a dedicated directory;
 retention set. Actual incident delivery and independent-media restore remain
 separate; a manual success is not proof of a scheduled trigger.
 
+## 2026-11-03 v1.7.25 delivery
+
+The v1.7.25 pre archive (`dcb1b5a8…b503`) and post archive
+(`a81b284e…f596`) reached the private `manual/v1725-recovery-20261103/`
+directory with sidecars; `sha256sum -c` passes for both. Two isolated
+restore drills pass with `--network=none`, no host ports and scratch-only
+plaintext: the pre archive (v1.7.24 state) boots the v1.7.24 amd64 image
+`sha256:15ac6807…3ff7a` and serves v1.7.24/64b8f57, and the post archive
+boots v1.7.25 and serves `/api/version` v1.7.25/05e7fe2. Scratch plaintext,
+extracted tars and drill containers were removed.
+
 ## 2026-11-03 v1.7.22/v1.7.23 recovery close-out
 
 The recurring MAC-WAN SSH timeouts cleared long enough to finish the deferred

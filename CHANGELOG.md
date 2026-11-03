@@ -6,6 +6,39 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v1.7.25] - 2026-11-03
+
+- **Published and deployed on OC424 at approximately 15:25 UTC 2026-11-03.**
+  Immutable `05e7fe2ff321501542aa645c09968d65ffdca0b4`; pull-request
+  CI41657862603 passes 8/8, exact merge CI41659496229 8/8,
+  release41660958531 10/10 and Docker41662404758 2/2. The released arm64
+  asset verifies against `SHA256SUMS.txt` (`8d461a46…8f546`) and the
+  extracted image binary matches it natively on OC424. OCI index digest
+  `sha256:2f6bbfde…245c1`; per-platform manifests
+  `sha256:e49861c7…5749` (amd64) and `sha256:86e32aab…9fc3` (arm64).
+  OC424 upgrade9/9 passes and all 13 registered clients keep byte-identical
+  `uuid`/`token` rows (digest `55bc6191…d2bde` before and after). Manual pre
+  archive `oc424-20261103T152303Z-v1725pre.tar.gz.age` has SHA-256
+  `dcb1b5a89b4a990820c31d23076748e65a69d89506fd5649908e5ab1e92bd503`; post
+  archive `oc424-20261103T152517Z-v1725post.tar.gz.age` has SHA-256
+  `a81b284efcfbd167de6fecf4f9a204e02d3908cb43544377b2c83f8f6807f596`. Both
+  reached MAC-WAN's `manual/v1725-recovery-20261103/` with matching sidecars,
+  and two isolated restore drills pass: the pre state boots the v1.7.24 amd64
+  image (`sha256:15ac6807…3ff7a`) and serves v1.7.24/64b8f57, and the post
+  state boots v1.7.25 and serves v1.7.25/05e7fe2. See `docs/DEPLOY-OC424.md`
+  and `docs/MAC-WAN-BACKUP.md`.
+- Saved load-alert rules get a bounded test send. A Send button beside the
+  read-only preview opens an explicit confirmation, and
+  `admin:testLoadNotification` (`POST /api/admin/notification/load/test`)
+  then delivers one real `[TEST]` alert through the configured channel
+  behind a fleet-wide 60-second rate limit. The send never writes
+  `last_notified`, so a channel test cannot suppress or reset the rule's
+  real alert cooldown. Permission isolation, missing rules, event contents,
+  cooldown neutrality and the rate-limit refusal are covered in Go tests and
+  in the 13-case browser suite (the load-preview fixture now mounts the
+  sonner Toaster so success and error toasts are both asserted). The owner's
+  acknowledged receipt of one real test notification remains the exit gate.
+
 ## [v1.7.24] - 2026-11-03
 
 - **Published and deployed on OC424 at approximately 14:12 UTC 2026-11-03.**

@@ -61,7 +61,7 @@ decides at the gates marked **[Owner]**.
 
 | Phase | Window | Slices | Exit gate |
 |---|---|---|---|
-| `v1.7.25` | 2026-11-03 → 06 | Alert-rule test button: one bounded, rate-limited real send from the saved-rule editor, five locales | CI green; OC424 9/9; one owner-acknowledged real test receipt **[Owner]** |
+| `v1.7.25` | 2026-11-03 → 06 | Alert-rule test button: one bounded, rate-limited real send from the saved-rule editor, five locales — **delivered 2026-11-03** | CI green; OC424 9/9; one owner-acknowledged real test receipt **[Owner]** |
 | `v1.7.2x` patches | as needed | CVE, dependency and bug fixes only | standard delivery gates |
 | `v1.8.0` | 2026-11 → 12 | Uptime restart-count metric; 50-node capacity/memory gate; second off-host destination decision **[Owner]** | each slice deployed and accepted; 50-node gate passes |
 | `v1.9.0` | 2027-01 → 02 | metric/record CSV export, exec-result history, roles UI, frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
@@ -89,6 +89,25 @@ decides at the gates marked **[Owner]**.
 
 ## Current Delivery Checkpoint (2026-11-03)
 
+**Latest bounded delivery: v1.7.25 (2026-11-03 approximately 15:25 UTC).**
+Saved load-alert rules get a bounded, rate-limited real test send: a Send
+button beside the read-only preview asks for confirmation and
+`admin:testLoadNotification` (`POST /api/admin/notification/load/test`)
+delivers one `[TEST]` alert through the configured channel behind a
+fleet-wide 60-second gate, without writing `last_notified`. Pull-request
+CI41657862603 passes 8/8, exact merge CI41659496229 8/8,
+release41660958531 10/10 and Docker41662404758 2/2; the arm64 image binary
+matches the release asset natively on OC424 and the image is pinned by the
+index digest `sha256:2f6bbfde…245c1`. OC424 upgrade9/9 passes with the live
+13-client node set byte-identical (digest `55bc6191…d2bde`), and fresh
+encrypted pre/post archives exist with matching MAC-WAN copies and two
+passing isolated restore drills (pre boots v1.7.24, post boots v1.7.25).
+Owner-session UI acceptance and the owner's receipt of one real test
+notification remain open. The next slice is the v1.8.0 remainder; see
+[`OPEN-WORK.md`](./OPEN-WORK.md).
+
+## Previous Delivery Checkpoint (2026-11-03)
+
 **Latest bounded delivery: v1.7.24 (2026-11-03 approximately 14:12 UTC).**
 SLA reports carry `cadence_seconds`, `window_buckets` and `window_coverage`
 beside the pinned span `coverage`; the window denominator is
@@ -104,7 +123,8 @@ natively on OC424 and the image is pinned by the index digest
 node set byte-identical, and fresh encrypted pre/post archives exist with
 matching MAC-WAN copies and two passing isolated restore drills. Owner-session
 UI acceptance of the window figure remains open. The next slice is the
-v1.7.25 alert-rule test button; see [`OPEN-WORK.md`](./OPEN-WORK.md).
+alert-rule test button, since delivered as v1.7.25; see
+[`OPEN-WORK.md`](./OPEN-WORK.md).
 
 ## Previous Delivery Checkpoint (2026-11-02)
 
