@@ -2,6 +2,17 @@
 
 ## Cut a release
 
+**Latest delivery: v1.7.24 (2026-11-03).** Immutable `64b8f57`, pull-request
+CI41646180928 and exact merge CI41647810219 8/8, release41649086456 10/10,
+and Docker41650325053 2/2. Published arm64 asset/checksums and the extracted
+image binary verify natively on OC424; the image is pinned by the index
+digest `sha256:597f6314…52e6a3`. Fresh encrypted pre/post recovery with
+matching MAC-WAN copies and two isolated restore drills, OC424 upgrade9/9,
+public entry points through Cloudflare and 13 byte-identical client rows
+pass. Owner-session UI acceptance of the new window-coverage figure remains
+unverified. Stable publication may trigger Agent self-updates. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for pinned images and rollback.
+
 **Latest delivery: v1.7.18 (2026-10-30).** Immutable `8dbfd8c`, candidate
 CI41066053281 and exact merge CI41067514587 8/8, release41068843126 10/10,
 and Docker41071110757 2/2. Published checksums/attestations and dual-platform

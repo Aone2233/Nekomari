@@ -40,11 +40,11 @@ original failure remains part of the record.
 runs `v1.7.23/1e4d22a` with upgrade9/9 and identical client rows. The next
 bounded releases and operational gates, in order:
 
-1. **v1.7.24 SLA window coverage (next code slice).** Add `window_coverage`
-   next to the pinned observed-span `coverage`, together with the inferred
-   cadence and window-bucket count, exactly per the compatible shape in
-   [`SLA-COVERAGE.md`](./SLA-COVERAGE.md); no existing field changes meaning.
-   Exit: CI green, wire contract tests, UI shows both numbers side by side.
+1. **v1.7.24 SLA window coverage — done (2026-11-03).** `window_coverage`,
+   the inferred cadence and the window-bucket count ship next to the pinned
+   observed-span `coverage`; the UI shows both figures side by side in five
+   locales. Deployed on OC424 with upgrade9/9 and identical client rows. The
+   owner's on-page acceptance of the new figure is open.
 2. **v1.7.25 alert-rule test button.** One bounded real test notification
    through the existing channel from the saved-rule editor; the preview stays
    read-only and the send is rate-limited. Exit: CI green and one actual
@@ -67,6 +67,21 @@ Deferred by owner decision: 200-node capacity work stays on hold; a stable
 release may still trigger agent auto-updates. OVH is sold and its disk
 sanitization is no longer possible — that item is closed with the residual
 credential-exposure risk recorded, not re-opened.
+
+**Current operational checkpoint (2026-11-03 14:20 UTC):** OC424 is
+healthy/restart0 on **v1.7.24/64b8f57**. Pull-request CI41646180928 passes
+8/8, exact merge CI41647810219 8/8, release41649086456 10/10 and
+Docker41650325053 2/2. The released arm64 asset and the extracted image
+binary verify natively on OC424; the arm64 image is pinned by the index
+digest `sha256:597f6314…52e6a3`. OC424 upgrade9/9 passes and all 13 clients
+keep byte-identical `uuid`/`token` rows (digest `8e0928f3…6790`). Fresh
+encrypted pre/post archives exist with matching hashes, both reached MAC-WAN's
+`manual/v1724-recovery-20261103/` with sidecars, and two isolated drills pass
+(v1.7.23 pre boots v1.7.24 amd64 with the migration applied; post boots and
+serves v1.7.24/64b8f57). Owner-session UI acceptance of the window-coverage
+figure and real remote alert receipt remain unverified. The next bounded
+slice is the v1.7.25 alert-rule test button.
+See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
 **Current operational checkpoint (2026-11-03 01:00 UTC):** OC424 is
 healthy/restart0 on **v1.7.23/1e4d22a**. Pull-request CI41484802139 passes

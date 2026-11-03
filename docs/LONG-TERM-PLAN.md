@@ -46,12 +46,10 @@ recovery close-out:
   exact-merge CI, tag/release with SBOM/provenance, Docker, then OC424
   upgrade9/9 with byte-identical client rows and fresh pre/post archives.
   No two independent features share one release.
-- **Next slices.** v1.7.24 adds `window_coverage`, the inferred cadence and
-  the window-bucket count as new SLA fields beside the pinned `coverage`
-  (shape agreed in `SLA-COVERAGE.md`). v1.7.25 adds the alert-rule test
-  button (one bounded, rate-limited real send). Then the v1.8.0 remainder:
-  uptime restart-count metric, 50-node capacity gate, second off-host
-  destination decision.
+- **Next slices.** v1.7.24 shipped the window-coverage fields (delivered
+  2026-11-03, below). v1.7.25 adds the alert-rule test button (one bounded,
+  rate-limited real send). Then the v1.8.0 remainder: uptime restart-count
+  metric, 50-node capacity gate, second off-host destination decision.
 - **Backlog trim.** Forecast reset/overflow fixes (`#92`), backup-freshness
   load rules (v1.7.21), timezone labels (v1.7.23), the read-only load-rule
   preview (v1.7.18) and the panel self-metrics history (v1.7.13/v1.7.14) are
@@ -63,7 +61,26 @@ recovery close-out:
   backup age, upgrade success and memory trend, recorded in the delivery
   checkpoints below.
 
-## Current Delivery Checkpoint (2026-11-02)
+## Current Delivery Checkpoint (2026-11-03)
+
+**Latest bounded delivery: v1.7.24 (2026-11-03 approximately 14:12 UTC).**
+SLA reports carry `cadence_seconds`, `window_buckets` and `window_coverage`
+beside the pinned span `coverage`; the window denominator is
+`floor(window/cadence)` from the same inferred cadence, so a perfect span and
+its window figure answer different questions without any existing field
+changing meaning. The status page renders the window figure beside the span
+figure for nodes and tasks in all five locales and stays silent for
+older-server or evidence-free series. Pull-request CI41646180928 passes 8/8,
+exact merge CI41647810219 8/8, release41649086456 10/10 and
+Docker41650325053 2/2; the arm64 image binary matches the release asset
+natively on OC424 and the image is pinned by the index digest
+`sha256:597f6314…52e6a3`. OC424 upgrade9/9 passes with the live 13-client
+node set byte-identical, and fresh encrypted pre/post archives exist with
+matching MAC-WAN copies and two passing isolated restore drills. Owner-session
+UI acceptance of the window figure remains open. The next slice is the
+v1.7.25 alert-rule test button; see [`OPEN-WORK.md`](./OPEN-WORK.md).
+
+## Previous Delivery Checkpoint (2026-11-02)
 
 **Latest bounded delivery: v1.7.23 (2026-11-03 approximately 01:00 UTC).**
 Zone-labelled timestamps pulled forward from the v1.9 UX column: a single
