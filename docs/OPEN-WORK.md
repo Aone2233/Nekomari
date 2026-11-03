@@ -36,23 +36,21 @@ not a proven root cause of that particular failure. Test-fix candidate
 CI41113452947 and the subsequent exact merge CI41114880987 pass 8/8; the
 original failure remains part of the record.
 
-**Current phase, newly designed (2026-11-03):** v1.7.22 is the deployed
-baseline. The next bounded releases and operational gates, in order:
+**Current phase, newly designed (2026-11-03):** v1.7.23 is delivered; OC424
+runs `v1.7.23/1e4d22a` with upgrade9/9 and identical client rows. The next
+bounded releases and operational gates, in order:
 
-1. **v1.7.23 zone-labelled timestamps.** The frontend change is complete
-   locally (lint, typecheck, build and the 197 script tests pass) and goes
-   through the normal PR/exact-merge/release/Docker flow before OC424.
-   Exit: CI 8/8, release and Docker green, OC424 upgrade9/9 with the live
-   13-client node set byte-identical, owner-session UI acceptance.
-2. **Backup close-out.** Push the post-v1.7.22 archive to MAC-WAN `incoming/`
-   and run the deferred isolated restore drills once MAC-WAN SSH is reachable
-   again. Exit: matching ciphertext on MAC-WAN and a booted restore comparison
-   with no missing in-retention rows.
-3. **v1.8.0 next increments, one at a time.** Alert-rule test button (the
+1. **Backup close-out (the only deferred gate).** Push the v1.7.22 post and
+   v1.7.23 pre/post archives to MAC-WAN `incoming/` and run the isolated
+   restore drills once MAC-WAN SSH (59.66.23.138:52022) stays reachable; its
+   health channel to OC424 is already fresh/ok. Exit: matching ciphertext on
+   MAC-WAN and a booted restore comparison with no missing in-retention rows.
+2. **v1.8.0 next increment, one at a time.** Alert-rule test button (the
    existing preview is read-only), panel self-metrics trend view,
    full-window SLA coverage semantics, and the forecast reset/overflow fixes.
    Exit per increment: bounded change, CI green, no P0 regression.
-4. **Still open acceptance.** Real remote notification receipt (not just
+3. **Still open acceptance.** Owner-session UI acceptance for v1.7.23, real
+   remote notification receipt (not just
    synthetic delivery) and MegaBox provider-billing equivalence; the latter
    needs provider-side data and must never be claimed from panel numbers alone.
 
@@ -60,6 +58,19 @@ Deferred by owner decision: 200-node capacity work stays on hold; a stable
 release may still trigger agent auto-updates. OVH is sold and its disk
 sanitization is no longer possible — that item is closed with the residual
 credential-exposure risk recorded, not re-opened.
+
+**Current operational checkpoint (2026-11-03 01:00 UTC):** OC424 is
+healthy/restart0 on **v1.7.23/1e4d22a**. Pull-request CI41484802139 passes
+8/8, exact merge CI41554085010 8/8, release41554944654 10/10 and
+Docker41555850720 2/2. The arm64 image binary matches the release asset
+natively on OC424 and the multi-arch OCI index verifies. OC424 upgrade9/9
+passes; all 13 clients keep byte-identical `uuid`/`token` rows. Fresh
+encrypted pre/post archives exist with matching OC424-root and executor
+copies. The MAC-WAN `incoming/` copy and isolated restore drills remain
+deferred by the recurring SSH reachability gap while its health report to
+OC424 stays `ok`; retry the push and drills whenever the host is reachable.
+Owner-session UI and real remote notification receipt remain unverified.
+See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
 **Current operational checkpoint (2026-11-03 00:08 Asia/Shanghai):** OC424 is
 healthy/restart0 on **v1.7.22/5a81d96**. Pull-request CI41468164541 passes

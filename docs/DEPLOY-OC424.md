@@ -18,6 +18,49 @@ recovery remains unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
 schedule and 14-node acceptance statements below are history.
 
+## Current checkpoint (2026-11-03 01:00 UTC)
+
+OC424 runs **v1.7.23/1e4d22a**, immutable source
+`1e4d22a2f9e01607874a4cf6a81ed46d96f8883e`, in the pinned arm64 image
+`ghcr.io/aone2233/nekomari:v1.7.23@sha256:027dccbb567a7a52312b18aeca7b02b31fbf11e77068f41d63c065d95caaa7dc`.
+The controlled switch started at approximately 00:56 UTC 2026-11-03 and the
+container is healthy with zero restarts at this checkpoint.
+
+- Zone-labelled timestamps pulled forward from the v1.9 UX column: a single
+  formatter family in `frontend/src/components/status/slaFormat.ts` renders
+  expiry dates, logs, sessions, chart axes/tooltips, load-rule preview
+  windows and the home-page clock with the time zone named beside each
+  instant; invalid or missing values render "—" instead of "Invalid Date".
+- Pull-request CI41484802139 passes 8/8, exact merge CI41554085010 8/8,
+  release41554944654 10/10 and Docker41555850720 2/2. The released arm64
+  asset verifies against `SHA256SUMS.txt` (`236b14a3…d1db9c`) and the
+  extracted image binary matches it natively on OC424. OCI index digest
+  `sha256:027dccbb…aa7dc`; per-platform manifests
+  `sha256:718e6efa…5943` (amd64) and `sha256:bd887d58…719c` (arm64).
+- OC424 upgrade9/9 passes: healthy/restart0, `/api/version` v1.7.23/1e4d22a,
+  public and front page 200, `komari.db` quick_check ok, upgrade archives
+  present, zero ERROR lines in the last five minutes. All 13 registered
+  clients keep byte-identical `uuid`/`token` rows before and after the switch
+  (exact row diff). The local Agent (PID 499631, NRestarts 2) is unchanged.
+  Public entry points serve 200 through Cloudflare. Owner-session UI
+  acceptance and real remote alert receipt remain unverified.
+- Manual pre archive `oc424-20261103T005200000000Z-v1723pre.tar.gz.age` has
+  SHA-256 `a3126cc451c44e762c99a2c833941d95d7c8db60b168fa4984b3040ce59285af`;
+  post archive `oc424-20261103T010200000000Z-v1723post.tar.gz.age` has SHA-256
+  `eaec116f6e6c7417b845035d6881d8d38dfbe69b8b46c58db5099d99a7212b28`. Both
+  have matching OC424-root and executor ciphertext copies. The MAC-WAN
+  `incoming/` copy and isolated restore drills are still deferred: MAC-WAN
+  SSH (59.66.23.138:52022) answered briefly, then timed out again during the
+  transfer, while its own health report to OC424 was fresh (`ok`,
+  checked_at 2026-11-03T01:15 UTC). This is recorded as a reachability gap,
+  not a backup failure. Decryption identity stays on MAC-WAN.
+- OC424 disk is 48%. Rollback: restore
+  `rollbacks/v1.7.23-20261103T005559Z-1e4d22a2f9e01607/docker-compose.before.yml`
+  (SHA-256 `c3f7bcb8…497c20`) as `/opt/nekomari/docker-compose.yml` and run
+  `docker compose up -d --no-deps nekomari`; the previous image
+  `ghcr.io/aone2233/nekomari:v1.7.22@sha256:6801484b…86bfe` remains on the
+  host. Never overwrite the live databases with older snapshots.
+
 ## Current checkpoint (2026-11-03 00:08 Asia/Shanghai)
 
 OC424 runs **v1.7.22/5a81d96**, immutable source
