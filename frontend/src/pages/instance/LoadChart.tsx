@@ -35,6 +35,7 @@ import {
   Activity,
   CalendarDays,
   ChartLine,
+  Download,
   Eye,
   EyeOff,
   Menu,
@@ -92,6 +93,7 @@ import {
 } from "@/utils/metricSeries";
 import { formatBytes } from "@/utils/unitHelper";
 import { formatUptime } from "@/utils/timeFormat";
+import { metricSeriesToCsv } from "@/utils/metricCsv";
 import type { RecordFormat } from "@/utils/RecordHelper";
 
 type LoadChartProps = {
@@ -1358,6 +1360,22 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
     }
   };
 
+  const exportMetricCsv = () => {
+    if (!uuid || metricSeries.length === 0) return;
+    const csv = metricSeriesToCsv(metricSeries);
+    const date = new Date().toISOString().slice(0, 10);
+    const filename = `nekomari-${uuid}-${selectedView.key}-${date}.csv`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const addMetric = (chartId: string, metricKey: string) => {
     updateChart(chartId, (chart) => {
       if (!metricKey || chart.metrics.includes(metricKey)) return chart;
@@ -1526,6 +1544,16 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
                 {t("chart.saveGlobalTemplate")}
               </Button>
             )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={exportMetricCsv}
+              disabled={loading || metricSeries.length === 0}
+            >
+              <Download className="size-4" />
+              {t("chart.exportCsv")}
+            </Button>
             <Button type="button" variant="outline" size="sm" onClick={resetDashboard}>
               <RotateCcw className="size-4" />
               {t("common.reset", "Reset")}

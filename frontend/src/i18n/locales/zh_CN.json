@@ -189,6 +189,7 @@
     "days_other": "{{count}} 天",
     "downsampleAlgorithm": "降采样",
     "endTime": "结束时间",
+    "exportCsv": "导出 CSV",
     "fillEmpty": "补空值",
     "globalTemplateSaved": "全局图表模板已保存",
     "globalTemplateSaveFailed": "保存全局图表模板失败",

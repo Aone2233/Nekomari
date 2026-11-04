@@ -8,6 +8,13 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **v1.7.27 in progress (2026-11-04): metric CSV export on node charts.** The
+  chart page gets an Export CSV button that downloads the loaded window as a
+  wide CSV (time + one column per metric series, tags preserved, raw values,
+  BOM + CRLF). Cell quoting moves to `frontend/src/utils/csv.ts` shared with
+  the log export; `chart.exportCsv` added in five locales; vm-based tests in
+  `frontend/script/metric-export.test.mjs`.
+
 - **50-node capacity/memory gate passes (2026-11-04).** New
   `deploy/capacity50.py` harness plus `deploy/capacity50_test.py`: 50
   synthetic v2 nodes soak a scratch panel for 30 minutes. 30047/30047 reports

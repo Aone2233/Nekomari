@@ -189,6 +189,7 @@
     "days_other": "{{count}} Hari",
     "downsampleAlgorithm": "Downsample",
     "endTime": "Waktu selesai",
+    "exportCsv": "Ekspor CSV",
     "fillEmpty": "Isi celah",
     "globalTemplateSaved": "Templat grafik global disimpan",
     "globalTemplateSaveFailed": "Gagal menyimpan templat grafik global",

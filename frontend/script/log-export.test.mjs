@@ -20,6 +20,19 @@ import ts from 'typescript';
  */
 
 const srcRoot = fileURLToPath(new URL('../src/', import.meta.url));
+
+const csvCode = ts.transpileModule(
+  readFileSync(path.join(srcRoot, 'utils/csv.ts'), 'utf8'),
+  {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  },
+).outputText;
+const csvModule = { exports: {} };
+vm.runInNewContext(csvCode, { module: csvModule, exports: csvModule.exports }, { filename: 'csv.ts' });
+
 const code = ts.transpileModule(
   readFileSync(path.join(srcRoot, 'pages/admin/logCsv.ts'), 'utf8'),
   {
@@ -34,7 +47,15 @@ const code = ts.transpileModule(
 const module = { exports: {} };
 vm.runInNewContext(
   code,
-  { module, exports: module.exports, URLSearchParams },
+  {
+    module,
+    exports: module.exports,
+    URLSearchParams,
+    require: (id) => {
+      if (id === '@/utils/csv') return csvModule.exports;
+      throw new Error(`unexpected require in logCsv.ts: ${id}`);
+    },
+  },
   { filename: 'logCsv.ts' },
 );
 const {
