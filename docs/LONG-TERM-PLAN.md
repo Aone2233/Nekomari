@@ -32,7 +32,7 @@ its exit criteria are met, not when the calendar says so.
 |---|---|---|---|---|
 | `v1.6.x` | ongoing | Patch/soak | Bug fixes, dependency and CVE updates, backup/monitoring tweaks | CI green; no P0 regression; panel check 9/9 |
 | `v1.7.0` | 2026-11 | Security and invariants | API-key scopes + rotation, scoped/step-up policy for `exec`/`roll`/`getClientToken`; input caps for `getRecords`/`getLogs`; `v2EventQueues` cleanup; `used > total` clamp; encrypted off-host backups (`age`/`gpg`) with key-management decision; token rotation API/UI | No unbounded admin inputs; no global all-powerful API key; every sensitive method gated or scoped; backup encrypted and restore drill automated; zero P0 |
-| `v1.8.0` | 2026-12 → 2027-01 | Observability and SLOs | uptime/restart-count metric; alert-rule test button; SLA window-coverage fields; second off-host destination decision. Shipped in v1.7.x already: panel self-metrics history/trend view, backup-freshness alerts (`backup_age`/`backup_ok`), forecast reset/overflow fixes, SLA coverage clarification | SLO dashboard/measurement exists; stale-backup and agent-offline alerts tested; SLA numbers reproducible against raw points; 50-node capacity test |
+| `v1.8.0` | 2026-12 → 2027-01 | Observability and SLOs | uptime/restart-count metric; alert-rule test button; SLA window-coverage fields; second off-host destination decision. Shipped in v1.7.x already: panel self-metrics history/trend view, backup-freshness alerts (`backup_age`/`backup_ok`), forecast reset/overflow fixes, SLA coverage clarification | SLO dashboard/measurement exists; stale-backup and agent-offline alerts tested; SLA numbers reproducible against raw points; 50-node capacity test (passes 2026-11-04) |
 | `v1.9.0` | 2027-02 → 2027-03 | Operator features and UX | metric/record CSV export; exec-result history; cost-forecast column; roles (viewer/operator/admin) if not in v1.7; frontend entry < 160 KB gzip, < 35 JS requests, PWA precache < 3 MB; timezone labels, raw-HTML locale hardening, TerminalDialog focus trap; screen-reader pass | Feature acceptance tests; a11y checklist signed off; budget targets met on a production build |
 | `v2.0.0` | 2027-Q2 | Agent and platform v2 | non-root agent default with capability/ICMP strategy; Windows/macOS agent support and footprint measurement; single protocol source (remove root/agent duplication); agent updater/rollback hardening; secrets at rest (session/2FA) with key management; optional DB encryption; 200-node capacity | Migration guide; protocol compatibility policy (two-minor deprecation); 200-node benchmark; no plaintext session/2FA secrets on new installs |
 | `v2.1.0` | 2027-Q3 | Scale and ecosystem | HA/read-replica evaluation, plugin/theme marketplace signing, multi-region backup, optional external metrics export | Scale/HA runbook; marketplace signature verification; backup across two providers |
@@ -63,7 +63,7 @@ decides at the gates marked **[Owner]**.
 |---|---|---|---|
 | `v1.7.25` | 2026-11-03 → 04 | Alert-rule test button: one bounded, rate-limited real send from the saved-rule editor, five locales — **delivered 2026-11-03, owner-acknowledged receipt 2026-11-04** | CI green; OC424 9/9; one owner-acknowledged real test receipt **[Owner]** |
 | `v1.7.2x` patches | as needed | CVE, dependency and bug fixes only | standard delivery gates |
-| `v1.8.0` | 2026-11 → 12 | Uptime restart-count metric; 50-node capacity/memory gate; second off-host destination decision **[Owner]** | each slice deployed and accepted; 50-node gate passes |
+| `v1.8.0` | 2026-11 → 12 | Uptime restart-count metric; 50-node capacity/memory gate (passes 2026-11-04); second off-host destination decision **[Owner]** | each slice deployed and accepted; 50-node gate passes |
 | `v1.9.0` | 2027-01 → 02 | metric/record CSV export, exec-result history, roles UI, frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
 | `v2.0.0` | 2027-Q2 | non-root agent default, protocol consolidation, secrets at rest, 200-node benchmark | migration guide; two-minor compat policy; benchmark |
 
@@ -87,7 +87,23 @@ decides at the gates marked **[Owner]**.
 - Quarterly panel rollback drill (< 5 min) and monthly restore check
   (RPO ≤ 24 h, RTO ≤ 30 min).
 
-## Current Delivery Checkpoint (2026-11-03)
+## Current Delivery Checkpoint (2026-11-04)
+
+**50-node capacity/memory gate (2026-11-04 approximately 05:10 UTC).** The
+v1.8.0 capacity exit criterion is measured with the new
+`deploy/capacity50.py` harness against a scratch panel built from `2cf1cc8`
+(v1.7.26 code): 50 synthetic v2 nodes reporting every 3 s for 30 minutes.
+30047/30047 reports are accepted (100%), report RPC p95 2.0 ms / p99 2.5 ms,
+`/api/public` p95 2.6 ms, panel RSS peaks at 101.4 MiB during provisioning
+and plateaus at 92–96 MiB with a flat Go heap (20–21 MB live) and zero ERROR
+log lines; the early climb is allocator high-water mark plus SQLite cache
+fill, not a leak. All gates pass; the `< 1 MiB/day` drift SLO stays the
+standing weekly OC424 measurement. Method and limits are recorded in
+[`CAPACITY-50NODE.md`](./CAPACITY-50NODE.md). Remaining before v1.8.0 closes:
+the second off-host destination decision **[Owner]**. OC424 itself is
+unchanged on `v1.7.26/60b4524`.
+
+## Previous Delivery Checkpoint (2026-11-04)
 
 **Latest bounded delivery: v1.7.26 (2026-11-04 approximately 02:16 UTC).**
 Conservative per-node restart counting ships as `system.restarts`: a restart

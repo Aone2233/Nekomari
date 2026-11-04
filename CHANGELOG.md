@@ -6,6 +6,16 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [Unreleased]
+
+- **50-node capacity/memory gate passes (2026-11-04).** New
+  `deploy/capacity50.py` harness plus `deploy/capacity50_test.py`: 50
+  synthetic v2 nodes soak a scratch panel for 30 minutes. 30047/30047 reports
+  accepted, report p95 2.0 ms / p99 2.5 ms, `/api/public` p95 2.6 ms, RSS
+  plateau 92–96 MiB with flat Go heap and zero ERROR lines. No product code
+  change; this closes the v1.8.0 capacity exit criterion, documented in
+  `docs/CAPACITY-50NODE.md`.
+
 ## [v1.7.26] - 2026-11-04
 
 - **Published and deployed on OC424 at approximately 02:16 UTC 2026-11-04.**
