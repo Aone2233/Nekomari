@@ -3,6 +3,26 @@
 Status: v1.7.8 published and deployed on OC424 on 2026-10-28. This is one
 bounded part of v1.8 observability, not reboot counting or v1.8 completion.
 
+## Restart counting (next bounded slice)
+
+The `system.restarts` metric records a cumulative, per-node restart count.
+The panel infers a restart when a newly accepted uptime reading is more than
+300 seconds below the last accepted reading for that node: reports arrive
+once a minute, so the floor absorbs reordered or delayed samples while any
+genuine reboot still lands far below it. A detected restart increments the
+counter, writes one point, and rebases the detector on the new reading so the
+post-reboot climb cannot re-trigger. The detector restores its baseline from
+the stored uptime series after a panel restart, so a reboot that happened
+while the panel was down is still counted on the first sample after recovery.
+
+Semantics are deliberately conservative. A regression smaller than the floor
+is treated as jitter, not a restart; a second reboot within five minutes of a
+first is indistinguishable from the post-reboot climb and is not double
+counted; samples rejected by the existing uptime quality rule are never used.
+The counter is retention-limited like the uptime series, so very old counts
+age out. It is a detected-count observation, not an SLO or an availability
+calculation, and it never changes the uptime curve itself.
+
 ## Meaning and use
 
 The built-in `system.uptime_seconds` records uptime already reported by an

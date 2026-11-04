@@ -53,8 +53,11 @@ client rows. The next bounded releases and operational gates, in order:
    passing isolated restore drills. Exit closed 2026-11-04: the owner
    sent a test notification from the button and acknowledged the real
    receipt.
-3. **v1.8.0 remainder.** Uptime restart-count metric, then the 50-node
-   capacity/memory gate and the second off-host destination decision (owner).
+3. **v1.8.0 remainder.** The uptime restart-count metric (`system.restarts`)
+   is implemented with conservative 300 s uptime-regression detection,
+   restart-durable baselines and unit tests; it is in review before delivery.
+   Then the 50-node capacity/memory gate and the second off-host destination
+   decision (owner).
 4. **Still open acceptance.** Real remote notification receipt (a genuine
    incident, not the acknowledged test send) and MegaBox provider-billing
    equivalence; the latter needs provider-side data and must never be

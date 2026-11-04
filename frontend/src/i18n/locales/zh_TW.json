@@ -1047,7 +1047,9 @@
     "noData": "此時間範圍內沒有運作時間記錄",
     "error": "無法載入運作時間歷史",
     "loading": "正在載入運作時間歷史…",
-    "retention": "指標保留 {{days}} 天；較早的歷史使用較粗的時間區間。"
+    "retention": "指標保留 {{days}} 天；較早的歷史使用較粗的時間區間。",
+    "restarts": "偵測到重新啟動：{{count}}",
+    "restartsNote": "根據運作時間大幅回退（閾值 300 秒）推斷的累計重新啟動次數；受保留期限制。"
   },
   "rpc2": {
     "automatic_connection_failed": "自動連線失敗:",

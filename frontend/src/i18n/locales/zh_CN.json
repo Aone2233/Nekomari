@@ -1047,7 +1047,9 @@
     "noData": "此时间范围内没有运行时间记录",
     "error": "无法加载运行时间历史",
     "loading": "正在加载运行时间历史…",
-    "retention": "指标保留 {{days}} 天；较早的历史使用更粗的时间桶。"
+    "retention": "指标保留 {{days}} 天；较早的历史使用更粗的时间桶。",
+    "restarts": "检测到重启：{{count}}",
+    "restartsNote": "根据运行时间大幅回退（阈值 300 秒）推断的累计重启次数；受保留期限制。"
   },
   "rpc2": {
     "automatic_connection_failed": "自动连接失败:",

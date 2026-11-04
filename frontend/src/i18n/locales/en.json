@@ -1047,7 +1047,9 @@
     "noData": "No recorded uptime in this range",
     "error": "Unable to load uptime history",
     "loading": "Loading uptime history...",
-    "retention": "Metric retention: {{days}} days; older history uses coarser buckets."
+    "retention": "Metric retention: {{days}} days; older history uses coarser buckets.",
+    "restarts": "Restarts detected: {{count}}",
+    "restartsNote": "Cumulative restart count inferred from large uptime regressions (300 s floor); retention-limited."
   },
   "rpc2": {
     "automatic_connection_failed": "Automatic connection failed:",

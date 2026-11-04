@@ -29,6 +29,9 @@ type reportTrafficValues struct {
 	totalDown   int64
 	epoch       string
 	uptime      int64
+	uptimeLast  float64
+	hasUptime   bool
+	restarts    float64
 }
 
 var reportTrafficStates sync.Map
@@ -40,6 +43,11 @@ const (
 	pingBatchMaxRecords     = 512
 	reportBatchWriteTimeout = 10 * time.Second
 	reportBatchMaxRecords   = 256
+	// restartDetectDecreaseSeconds is the smallest uptime decrease treated as
+	// a node restart. Reports arrive once a minute, so five minutes of
+	// regression tolerates reordered or delayed samples without swallowing a
+	// real reboot, whose reading drops to roughly the elapsed time.
+	restartDetectDecreaseSeconds = 300.0
 )
 
 var (
@@ -413,6 +421,19 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 				values.totalDown = totalDown
 				values.hasDown = hasDown
 			}
+			uptimeLast, hasUptime, err := latestReportValue(ctx, s, MetricUptime, report.UUID, report.UpdatedAt)
+			if err != nil {
+				logger.Errorf("metricstore", "failed to restore previous uptime for %s: %v", report.UUID, err)
+			} else {
+				values.uptimeLast = uptimeLast
+				values.hasUptime = hasUptime
+			}
+			restarts, hasRestarts, err := latestReportValue(ctx, s, MetricRestarts, report.UUID, report.UpdatedAt)
+			if err != nil {
+				logger.Errorf("metricstore", "failed to restore restart count for %s: %v", report.UUID, err)
+			} else if hasRestarts {
+				values.restarts = restarts
+			}
 			values.initialized = true
 			// Cache only the restored baseline before persistence. Advancing
 			// counters on a failed write corrupts deltas when the batch retries.
@@ -437,6 +458,25 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 		//   * `traffic.*`   —— 周期累计，直接存，读取方取最后值即可；求和或求差都是误用
 		points = append(points, reportMetricPoints(report)...)
 		points = append(points, reportIntervalPoints(report, values)...)
+		// A large, durable uptime regression means the OS rebooted. Count it
+		// once per detected event and rebase so the post-reboot climb does not
+		// re-trigger. Skipped/out-of-order samples never reach this point.
+		if validReportUptime(report) {
+			uptime := float64(report.Uptime)
+			if values.hasUptime && uptime < values.uptimeLast-restartDetectDecreaseSeconds {
+				values.restarts++
+				points = append(points, metric.Point{
+					MetricName: MetricRestarts,
+					EntityID:   report.UUID,
+					Timestamp:  report.UpdatedAt,
+					Value:      values.restarts,
+				})
+				values.uptimeLast = uptime
+			} else if !values.hasUptime || uptime > values.uptimeLast {
+				values.uptimeLast = uptime
+			}
+			values.hasUptime = true
+		}
 		values.timestamp = report.UpdatedAt
 		values.hasUp = true
 		values.totalUp = report.Network.TotalUp
