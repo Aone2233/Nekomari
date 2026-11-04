@@ -2,6 +2,21 @@
 
 ## Cut a release
 
+**Latest delivery: v1.7.25 (2026-11-03).** Immutable `05e7fe2`, pull-request
+CI41657862603 and exact merge CI41659496229 8/8, release41660958531 10/10,
+and Docker41662404758 2/2. Published arm64 asset/checksums and the extracted
+image binary verify natively on OC424; the image is pinned by the index
+digest `sha256:2f6bbfde…245c1`. Saved load-alert rules get a bounded,
+rate-limited real test send (`POST /api/admin/notification/load/test`)
+behind a fleet-wide 60-second gate that never writes `last_notified`.
+OC424 upgrade9/9, public entry points through Cloudflare and 13
+byte-identical client rows pass; fresh encrypted pre/post archives exist
+with matching MAC-WAN copies and two passing isolated restore drills (pre
+boots v1.7.24, post boots v1.7.25). Owner-session UI acceptance and the
+owner's receipt of one real test notification remain unverified. Stable
+publication may trigger Agent self-updates. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for pinned images and rollback.
+
 **Latest delivery: v1.7.24 (2026-11-03).** Immutable `64b8f57`, pull-request
 CI41646180928 and exact merge CI41647810219 8/8, release41649086456 10/10,
 and Docker41650325053 2/2. Published arm64 asset/checksums and the extracted
