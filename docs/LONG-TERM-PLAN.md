@@ -89,6 +89,24 @@ decides at the gates marked **[Owner]**.
 
 ## Current Delivery Checkpoint (2026-11-03)
 
+**Latest bounded delivery: v1.7.26 (2026-11-04 approximately 02:16 UTC).**
+Conservative per-node restart counting ships as `system.restarts`: a restart
+is recorded when an accepted uptime reading drops more than 300 seconds
+below the previous accepted reading, the detector rebases after each event
+and restores its baseline from the stored series after a panel restart, and
+the uptime history page shows the count in five locales. Pull-request
+CI41756421918 passes 8/8, exact merge CI41757342465 8/8,
+release41758329063 10/10 and Docker41759156088 2/2; the arm64 image binary
+matches the release asset natively on OC424 and the image is pinned by the
+index digest `sha256:7a666e3e…65d6a`. OC424 upgrade9/9 passes with the live
+13-client node set byte-identical (digest `55bc6191…d2bde`), and fresh
+encrypted pre/post archives exist with matching MAC-WAN copies and two
+passing isolated restore drills. The next slice is the 50-node
+capacity/memory gate, then the second-destination decision; see
+[`OPEN-WORK.md`](./OPEN-WORK.md).
+
+## Previous Delivery Checkpoint (2026-11-03)
+
 **Latest bounded delivery: v1.7.25 (2026-11-03 approximately 15:25 UTC).**
 Saved load-alert rules get a bounded, rate-limited real test send: a Send
 button beside the read-only preview asks for confirmation and

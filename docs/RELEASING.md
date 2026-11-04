@@ -2,6 +2,19 @@
 
 ## Cut a release
 
+**Latest delivery: v1.7.26 (2026-11-04).** Immutable `60b4524`, pull-request
+CI41756421918 and exact merge CI41757342465 8/8, release41758329063 10/10,
+and Docker41759156088 2/2. Published arm64 asset/checksums and the extracted
+image binary verify natively on OC424; the image is pinned by the index
+digest `sha256:7a666e3e…65d6a`. `system.restarts` records a conservative,
+per-node cumulative restart count from large uptime regressions, and the
+uptime history page shows it in five locales. OC424 upgrade9/9, public entry
+points through Cloudflare and 13 byte-identical client rows pass; fresh
+encrypted pre/post archives exist with matching MAC-WAN copies and two
+passing isolated restore drills (pre boots v1.7.25, post boots v1.7.26).
+Stable publication may trigger Agent self-updates. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for pinned images and rollback.
+
 **Latest delivery: v1.7.25 (2026-11-03).** Immutable `05e7fe2`, pull-request
 CI41657862603 and exact merge CI41659496229 8/8, release41660958531 10/10,
 and Docker41662404758 2/2. Published arm64 asset/checksums and the extracted
