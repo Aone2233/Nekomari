@@ -57,7 +57,11 @@ client rows. The next bounded releases and operational gates, in order:
    is delivered in v1.7.26 (2026-11-04): conservative 300 s
    uptime-regression detection, restart-durable baselines, `last` API
    aggregation, an uptime-page count in five locales, unit tests and OC424
-   acceptance with restore drills. Then the 50-node capacity/memory gate and
+   acceptance with restore drills. The 50-node capacity/memory gate is
+   measured and passes (2026-11-04): `deploy/capacity50.py` drives 50
+   synthetic nodes against a scratch panel for 30 minutes — 30047/30047
+   reports accepted, report p95 2.0 ms, RSS plateau 92–96 MiB, no ERROR
+   lines; see [`CAPACITY-50NODE.md`](./CAPACITY-50NODE.md). Remaining:
    the second off-host destination decision (owner).
 4. **Still open acceptance.** Real remote notification receipt (a genuine
    incident, not the acknowledged test send) and MegaBox provider-billing
@@ -76,7 +80,16 @@ release may still trigger agent auto-updates. OVH is sold and its disk
 sanitization is no longer possible — that item is closed with the residual
 credential-exposure risk recorded, not re-opened.
 
-**Current operational checkpoint (2026-11-04 02:16 UTC):** OC424 is
+**Current operational checkpoint (2026-11-04 05:10 UTC):** the v1.8.0
+50-node capacity/memory gate passes on a scratch panel built from
+`2cf1cc8` (v1.7.26 code): 50/50 nodes, 30047 reports accepted, report p95
+2.0 ms / p99 2.5 ms, `/api/public` p95 2.6 ms, RSS plateau 92–96 MiB with
+flat Go heap and zero ERROR lines. Full method, results and limits in
+[`CAPACITY-50NODE.md`](./CAPACITY-50NODE.md). The next bounded slice is the
+second off-host destination decision **[Owner]**, then v1.9.0 planning. The
+`< 1 MiB/day` drift SLO and the 200-node benchmark stay standing items.
+
+**Prior operational checkpoint (2026-11-04 02:16 UTC):** OC424 is
 healthy/restart0 on **v1.7.26/60b4524**. Pull-request CI41756421918 passes
 8/8, exact merge CI41757342465 8/8, release41758329063 10/10 and
 Docker41759156088 2/2. The released arm64 asset and the extracted image
