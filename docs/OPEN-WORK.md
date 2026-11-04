@@ -36,9 +36,10 @@ not a proven root cause of that particular failure. Test-fix candidate
 CI41113452947 and the subsequent exact merge CI41114880987 pass 8/8; the
 original failure remains part of the record.
 
-**Current phase, designed 2026-11-03 and updated after the v1.7.25
-delivery:** OC424 runs `v1.7.25/05e7fe2` with upgrade9/9 and identical
-client rows. The next bounded releases and operational gates, in order:
+**Current phase, updated 2026-11-04:** the last observed OC424 panel is
+`v1.7.27/24faa9d`. `v1.7.28` is published, not deployed to that panel;
+its CSV correctness fixes are in local development. The next bounded
+releases and operational gates, in order:
 
 1. **v1.7.24 SLA window coverage — done (2026-11-03).** `window_coverage`,
    the inferred cadence and the window-bucket count ship next to the pinned
@@ -74,11 +75,11 @@ client rows. The next bounded releases and operational gates, in order:
    and five-locale button. Deployed on OC424 with upgrade9/9, identical
    client rows, fresh pre/post archives and two passing isolated restore
    drills. Owner on-page acceptance (Export CSV on a node chart) remains
-   open. The ping/record CSV export slice is in development as v1.7.28
-   (2026-11-04): `GET /api/records/load.csv` and `/api/records/ping.csv`
-   stream retained records as BOM + CRLF CSV attachments with the JSON
-   endpoints' visibility, metric read budget and a max_rows guard, plus
-   export buttons in five locales. Remaining v1.9.0 slices after it:
+   open. The ping/record CSV endpoints were published in v1.7.28, but their
+   reconstructed rows can misrepresent missing fields and cumulative cycle
+   traffic; a bucket-semantics correction is in local development and has
+   not been released or deployed. See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md).
+   Remaining v1.9.0 slices after it:
    exec-result history, cost-forecast column, roles UI, frontend budgets
    and a11y pass.
 
@@ -86,15 +87,28 @@ client rows. The next bounded releases and operational gates, in order:
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds
 the two older verified copies, and four isolated restore drills pass (see
 [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md) and
-[`DEPLOY-OC424.md`](./DEPLOY-OC424.md)). The recurring MAC-WAN SSH timeouts
-remain an operational note, not an open gate.
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md)). Historical success does not prove
+current access: the latest SSH attempt timed out, so validate the receiver
+and fresh off-host backups before another OC424 release.
 
 Deferred by owner decision: 200-node capacity work stays on hold; a stable
 release may still trigger agent auto-updates. OVH is sold and its disk
 sanitization is no longer possible — that item is closed with the residual
 credential-exposure risk recorded, not re-opened.
 
-**Current operational checkpoint (2026-11-04 05:10 UTC):** OC424 is
+**Production release gate (2026-11-04):** the last read-only check still
+observed v1.7.27 with 13 nodes, but the live UUID/token digest
+`55bc6191…d2bde` does not match the recorded v1.7.27 deployment digest
+`a2737fd0…d0ce`. It also matches the documented v1.7.26 digest; a faulty
+record and a real identity change are both possible. The owner was asked
+whether they or Hermes changed nodes or Agent tokens after v1.7.27; no answer
+to that specific question has yet been recorded. Do not overwrite or rotate
+the live state. MAC-WAN SSH timed out on the latest attempt; neither current
+backup connectivity nor the older copies' retrievability is verified. Resolve
+both before a production switch. `v1.7.28` is a stable published tag and can
+trigger Agent auto-update; post-publication fleet versions are unverified.
+
+**Prior operational checkpoint (2026-11-04 05:10 UTC):** OC424 was
 healthy/restart0 on **v1.7.27/24faa9d** (metric CSV export on node charts).
 Pull-request CI41773313554 passes 8/8, exact merge CI41774384405 8/8,
 release41775304251 10/10 and Docker41775869827 2/2; the released arm64 asset
@@ -105,8 +119,8 @@ byte-identical `uuid`/`token` rows (digest `a2737fd0…d0ce`); fresh encrypted
 pre (`5c142e5d…4b86`) and post (`9e8a312b…26bf`) archives reached MAC-WAN's
 `manual/v1727-recovery-20261104/` with sidecars, and two isolated drills pass
 (pre boots v1.7.26, post boots v1.7.27). Owner on-page acceptance of the CSV
-export is the next gate, then the second off-host destination decision
-**[Owner]**. The alert-rule send path is regression-checked on v1.7.27: the
+export and the second off-host destination decision remain. The alert-rule
+send path was regression-checked on v1.7.27: the
 owner sent a test notification from the saved load rule and acknowledged the
 real `[TEST]` receipt (2026-11-04). The v1.8.0 50-node gate passes as recorded in
 [`CAPACITY-50NODE.md`](./CAPACITY-50NODE.md); the `< 1 MiB/day` drift SLO and

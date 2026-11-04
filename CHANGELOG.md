@@ -8,16 +8,17 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- **Ping/record CSV export (v1.7.28 slice, in development).** New
-  `GET /api/records/load.csv` and `GET /api/records/ping.csv` endpoints
-  stream the retained load and ping records as BOM + CRLF CSV attachments
-  under the same visibility rules and metric read budget as the JSON
-  endpoints, with a `max_rows` guard (default 100000, hard cap 250000)
-  that returns 413 instead of silently truncating. Totals columns the
-  metric store does not retain (`ram_total`, `swap_total`, `disk_total`)
-  are omitted rather than exported as zeros. Export buttons appear on the
-  node chart header (load records) and the mini ping chart (ping records)
-  in five locales.
+- **CSV correctness patch, in development (not released or deployed).**
+  Quote tagged chart headers, prevent spreadsheet formula injection and
+  reject duplicate series rather than merging them. History exports preserve
+  explicit custom time ranges, export actual retained metric buckets rather
+  than reconstructed records, and report bucket interval, aggregation,
+  sample count and tags. Cycle traffic and backup status use `last`, not a
+  sum or an average of cumulative/status samples. Incomplete edge buckets
+  are excluded; samples missing from the store are not fabricated as zeros.
+  The long CSV schema intentionally differs from the new v1.7.28 endpoint;
+  it is not a raw-sample export or a provider billing reconciliation. See
+  `docs/METRIC-CSV-EXPORT.md` for semantics and migration notes.
 
 - **50-node capacity/memory gate passes (2026-11-04).** New
   `deploy/capacity50.py` harness plus `deploy/capacity50_test.py`: 50
@@ -26,6 +27,19 @@ Nekomari's own.
   plateau 92–96 MiB with flat Go heap and zero ERROR lines. No product code
   change; this closes the v1.8.0 capacity exit criterion, documented in
   `docs/CAPACITY-50NODE.md`.
+
+## [v1.7.28] - 2026-11-04
+
+- **Published at 05:44 UTC, not deployed to OC424.** Tag `545d3ac` (PR
+  #162); exact-merge CI41779704989, release41780606142 and
+  Docker41781201777 completed successfully. The first release and Docker
+  workflow attempts failed; these are part of the record. The published
+  ping/load CSV endpoints reconstruct compatibility records, so their
+  apparent raw rows are aggregated, absent metrics can be represented as
+  zeros, and cumulative cycle traffic can be overstated. The follow-up
+  correctness patch above is required before production adoption. A stable
+  release may separately trigger Agent auto-updates; fleet status after this
+  tag has not been verified.
 
 ## [v1.7.27] - 2026-11-04
 
@@ -39,15 +53,15 @@ Nekomari's own.
   `SHA256SUMS.txt` (`c6deb156…41ee`) and the image's `/app/nekomari` hashes
   identically on OC424.
 - The node chart page gets an Export CSV button downloading the loaded window
-  as a wide CSV (time + one column per metric series, tags preserved, raw
-  values, BOM + CRLF for Excel); cell quoting is shared with the log export
+  as a wide CSV (time + one column per metric series, tags preserved, values
+  may already be aggregated, BOM + CRLF for Excel); cell quoting is shared with the log export
   via `frontend/src/utils/csv.ts`. `chart.exportCsv` added in five locales;
   vm-based tests in `frontend/script/metric-export.test.mjs` and the updated
   `log-export.test.mjs`.
 - OC424 upgrade9/9 passes and all 13 registered clients keep byte-identical
-  `uuid`/`token` rows (digest `a2737fd0…d0ce` before and after; the digest
-  differs from the v1.7.26 checkpoint because the owner edited the node set
-  between releases). Manual pre archive `oc424-v1727-pre.tar.gz.age` has
+  `uuid`/`token` rows (recorded digest `a2737fd0…d0ce` before and after).
+  A later live read differs and the reason is unverified; see the current
+  gate in `docs/OPEN-WORK.md`. Manual pre archive `oc424-v1727-pre.tar.gz.age` has
   SHA-256 `5c142e5d…4b86`; post archive `oc424-v1727-post.tar.gz.age` has
   SHA-256 `9e8a312b…26bf`. Both reached MAC-WAN's
   `manual/v1727-recovery-20261104/` with matching sidecars, and two isolated

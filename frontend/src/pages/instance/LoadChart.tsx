@@ -94,6 +94,7 @@ import {
 import { formatBytes } from "@/utils/unitHelper";
 import { formatUptime } from "@/utils/timeFormat";
 import { metricSeriesToCsv } from "@/utils/metricCsv";
+import { downloadRecordCsv, recordCsvUrl } from "@/utils/recordCsv";
 import type { RecordFormat } from "@/utils/RecordHelper";
 
 type LoadChartProps = {
@@ -1362,7 +1363,13 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
 
   const exportMetricCsv = () => {
     if (!uuid || metricSeries.length === 0) return;
-    const csv = metricSeriesToCsv(metricSeries);
+    let csv: string;
+    try {
+      csv = metricSeriesToCsv(metricSeries);
+    } catch {
+      toast.error(t("chart.exportFailed"));
+      return;
+    }
     const date = new Date().toISOString().slice(0, 10);
     const filename = `nekomari-${uuid}-${selectedView.key}-${date}.csv`;
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -1373,19 +1380,19 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
-  const exportRecordsCsv = () => {
+  const exportRecordsCsv = async () => {
     if (!uuid) return;
-    // The endpoint takes whole hours and enforces the 366-day window itself.
-    const hours = Math.max(1, Math.min(Math.ceil(displayRangeHours ?? 1), 8784));
-    const anchor = document.createElement("a");
-    anchor.href = `/api/records/load.csv?uuid=${encodeURIComponent(uuid)}&hours=${hours}`;
-    anchor.download = "";
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
+    if (isCustomRange && !queryRange) return;
+    const range = isCustomRange && queryRange ? queryRange : { hours: displayRangeHours ?? 1 };
+    try {
+      await downloadRecordCsv(recordCsvUrl("load", uuid, range), "nekomari-load-buckets.csv");
+    } catch (error) {
+      toast.error(t(error instanceof Error && error.message === "csv_too_large"
+        ? "chart.exportRecordsTooLarge" : "chart.exportRecordsFailed"));
+    }
   };
 
   const addMetric = (chartId: string, metricKey: string) => {
@@ -1571,7 +1578,8 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
               variant="outline"
               size="sm"
               onClick={exportRecordsCsv}
-              disabled={!uuid}
+              disabled={!uuid || (isCustomRange && !queryRange)}
+              title={t("chart.exportBucketsHelp")}
             >
               <Download className="size-4" />
               {t("chart.exportRecordsCsv")}

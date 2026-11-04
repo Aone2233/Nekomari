@@ -63,16 +63,16 @@ decides at the gates marked **[Owner]**.
 |---|---|---|---|
 | `v1.7.25` | 2026-11-03 → 04 | Alert-rule test button: one bounded, rate-limited real send from the saved-rule editor, five locales — **delivered 2026-11-03, owner-acknowledged receipt 2026-11-04** | CI green; OC424 9/9; one owner-acknowledged real test receipt **[Owner]** |
 | `v1.7.2x` patches | as needed | CVE, dependency and bug fixes only | standard delivery gates |
-| `v1.7.27` | 2026-11-04 → 05 | First v1.9.0 slice: metric CSV export on the node chart page — wide table (time + one column per metric series, tags preserved), raw values, BOM + CRLF, five locales — **delivered 2026-11-04** | CI green; OC424 9/9; owner on-page acceptance **[Owner]** |
-| `v1.7.28` | 2026-11-04 → 05 | Second v1.9.0 slice: ping/record CSV export — streaming BOM + CRLF CSV of retained load (`/api/records/load.csv`) and ping (`/api/records/ping.csv`) records with the JSON endpoints' visibility, metric read budget and a max_rows guard; export buttons in five locales | CI green; OC424 9/9; owner on-page acceptance **[Owner]** |
+| `v1.7.27` | 2026-11-04 → 05 | First v1.9.0 slice: metric CSV export on the node chart page — wide table of chart series, BOM + CRLF, five locales — **deployed 2026-11-04**; tagged headers need the follow-up fix | CI green; OC424 9/9; owner on-page acceptance **[Owner]** |
+| `v1.7.28` and correction | 2026-11-04 onward | Ping/load CSV export is published, not deployed; a follow-up replaces misleading reconstructed values with explicit historical bucket semantics | correctness patch, CI and release; backup/identity gate; OC424 acceptance **[Owner]** |
 | `v1.8.0` | 2026-11 → 12 | Uptime restart-count metric; 50-node capacity/memory gate (passes 2026-11-04); second off-host destination decision **[Owner]** | each slice deployed and accepted; 50-node gate passes |
-| `v1.9.0` | 2026-11 → 2027-01 | First slice (metric CSV export) ships as v1.7.27; remaining: ping/record CSV export, exec-result history, cost-forecast column, roles (viewer/operator/admin), frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
+| `v1.9.0` | 2026-11 → 2027-01 | Metric CSV ships as v1.7.27; remaining: correct and deploy history-bucket CSV, exec-result history, cost-forecast column, roles (viewer/operator/admin), frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
 | `v2.0.0` | 2027-Q2 | non-root agent default, protocol consolidation, secrets at rest, 200-node benchmark | migration guide; two-minor compat policy; benchmark |
 
 ### Owner decision calendar
 
-1. **v1.7.25 acceptance** — acknowledge one real test notification sent from
-   the saved-rule editor (needed this week).
+1. **v1.7.25 acceptance** — closed: the owner confirmed receipt of the real
+   `[TEST]` notification on 2026-11-04. A real incident remains unverified.
 2. **Second off-host destination** — decide whether a second receiver is
    wanted and where; until then MAC-WAN stays the sole off-host receiver
    (needed before v1.8.0 closes). OVH is sold and removed from all plans.
@@ -91,10 +91,18 @@ decides at the gates marked **[Owner]**.
 
 ## Current Delivery Checkpoint (2026-11-04)
 
-**Latest bounded delivery: v1.7.27 (2026-11-04 approximately 05:02 UTC).**
+**Current release gate:** v1.7.28/`545d3ac` was published at 05:44 UTC but
+not deployed to OC424. The last read-only production check found 13 nodes but
+an identity digest different from the v1.7.27 checkpoint. Do not overwrite or
+rotate live identities: owner confirmation of any node/token changes is
+pending. MAC-WAN SSH timed out; validate a fresh off-host backup before a
+switch. Stable v1.7.28 can trigger Agent auto-updates, whose fleet status has
+not been verified. See [`OPEN-WORK.md`](./OPEN-WORK.md).
+
+**Latest OC424 delivery: v1.7.27 (2026-11-04 approximately 05:02 UTC).**
 The node chart page gains metric CSV export: an Export CSV button downloads
 the loaded window as a wide CSV (time + one column per metric series, tags
-preserved, raw values, BOM + CRLF) in five locales, with cell quoting shared
+preserved, values may already be aggregated, BOM + CRLF) in five locales, with cell quoting shared
 with the log export. Pull-request CI41773313554 passes 8/8, exact merge
 CI41774384405 8/8, release41775304251 10/10 and Docker41775869827 2/2; the
 released arm64 asset and the image's `/app/nekomari` hash identically
@@ -109,13 +117,13 @@ sent a test notification from the saved load rule and acknowledged the real
 `[TEST]` receipt (2026-11-04). See
 [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
-**In development: v1.7.28 ping/record CSV export.** `GET
-/api/records/load.csv` and `GET /api/records/ping.csv` stream retained
-records as BOM + CRLF CSV attachments with the same visibility and read
-budget as the JSON endpoints and a `max_rows` guard (413 on overflow);
-totals the store does not retain are omitted. Buttons ship in five locales
-on the node chart header and the mini ping chart. CI and OC424 acceptance
-follow.
+**In development: CSV correctness follow-up.** The published v1.7.28
+history endpoints reconstructed compatibility records rather than raw samples;
+missing fields and cycle counters can consequently be misleading. The local
+patch exports retained buckets with aggregation, interval, sample count and
+tags, fixes chart-header quoting and preserves custom time windows. Its schema
+changes v1.7.28's new CSV schema; see [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md).
+CI, release and OC424 acceptance remain pending.
 
 **50-node capacity/memory gate (2026-11-04 approximately 05:10 UTC).** The
 v1.8.0 capacity exit criterion is measured with the new

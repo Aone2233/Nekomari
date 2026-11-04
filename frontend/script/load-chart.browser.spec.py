@@ -14,6 +14,7 @@ import time
 import unittest
 from pathlib import Path
 from urllib.error import URLError
+from urllib.parse import parse_qs, urlsplit
 from urllib.request import urlopen
 
 from playwright.sync_api import expect, sync_playwright
@@ -133,6 +134,39 @@ class LoadChartBrowserTest(unittest.TestCase):
         self.page.evaluate(
             "() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))"
         )
+
+    def test_history_csv_download_and_error_do_not_navigate(self):
+        self.page.wait_for_function("loadChartFixture.pending('mount')")
+        button = self.page.get_by_role("button", name="Export history buckets CSV")
+        self.page.route("**/api/records/load.csv?*", lambda route: route.fulfill(
+            status=413, content_type="application/json", body='{"status":"error"}'
+        ))
+        button.click()
+        expect(self.page.get_by_text("Export is too large. Select a shorter time range.")).to_be_visible()
+        self.assertEqual(self.page.url, self.url)
+        self.page.unroute("**/api/records/load.csv?*")
+        self.page.route("**/api/records/load.csv?*", lambda route: route.fulfill(
+            status=200, content_type="text/csv", body="time,value\r\n2026-01-01,5\r\n"
+        ))
+        with self.page.expect_download() as download_info:
+            button.click()
+        download = download_info.value
+        self.assertEqual(download.suggested_filename, "nekomari-load-buckets.csv")
+        self.assertEqual(Path(download.path()).read_bytes(), b"time,value\r\n2026-01-01,5\r\n")
+        self.assertEqual(self.page.url, self.url)
+
+        self.page.locator('[role="radio"]').filter(has_text="Custom range").click()
+        self.page.get_by_label("Start time").fill("2026-09-01T08:15")
+        self.page.get_by_label("End time").fill("2026-09-02T09:30")
+        self.page.get_by_role("button", name="Query", exact=True).click()
+        with self.page.expect_request("**/api/records/load.csv?*") as request_info:
+            with self.page.expect_download():
+                button.click()
+        query = parse_qs(urlsplit(request_info.value.url).query)
+        self.assertEqual(query["uuid"], ["node-1"])
+        self.assertEqual(query["start"], [self.page.evaluate("new Date('2026-09-01T08:15').toISOString()")])
+        self.assertEqual(query["end"], [self.page.evaluate("new Date('2026-09-02T09:30').toISOString()")])
+        self.assertNotIn("hours", query)
 
     def test_older_sampling_response_cannot_replace_the_newer_one(self):
         self.page.wait_for_function("loadChartFixture.pending('mount')")

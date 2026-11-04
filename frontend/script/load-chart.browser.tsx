@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import i18next from "i18next";
 import { I18nextProvider } from "react-i18next";
 import { Theme } from "@radix-ui/themes";
+import { Toaster } from "sonner";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { AccountContext, type Account } from "../src/contexts/AccountContext";
 import {
@@ -30,6 +31,12 @@ await i18n.init({
         "chart.hours": "{{count}} h",
         "chart.days": "{{count}} d",
         "chart.customRange": "Custom range",
+        "chart.startTime": "Start time",
+        "chart.endTime": "End time",
+        "chart.query": "Query",
+        "chart.exportRecordsCsv": "Export history buckets CSV",
+        "chart.exportRecordsTooLarge": "Export is too large. Select a shorter time range.",
+        "chart.exportRecordsFailed": "History export failed. Please try again.",
         "chart.samplingAlgorithm": "Sampling algorithm",
         "chart.avg": "Average",
         "chart.sampling.min": "Min",
@@ -198,6 +205,7 @@ Object.assign(window, {
 createRoot(document.getElementById("root")!).render(
   <I18nextProvider i18n={i18n}>
     <Theme>
+      <Toaster />
       <RPC2Context.Provider
         value={{
           client,
