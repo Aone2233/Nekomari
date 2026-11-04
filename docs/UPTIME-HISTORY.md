@@ -1,9 +1,10 @@
 # Node uptime history
 
-Status: v1.7.8 published and deployed on OC424 on 2026-10-28. This is one
-bounded part of v1.8 observability, not reboot counting or v1.8 completion.
+Status: v1.7.8 published and deployed on OC424 on 2026-10-28; the restart
+count described below shipped in v1.7.26 on 2026-11-04. The uptime curve is
+still not a reboot count; `system.restarts` is the separate restart record.
 
-## Restart counting (next bounded slice)
+## Restart counting (shipped in v1.7.26)
 
 The `system.restarts` metric records a cumulative, per-node restart count.
 The panel infers a restart when a newly accepted uptime reading is more than

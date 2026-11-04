@@ -6,6 +6,40 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [v1.7.26] - 2026-11-04
+
+- **Published and deployed on OC424 at approximately 02:16 UTC 2026-11-04.**
+  Immutable `60b452461c5ac85b3dbec902be468ee810d30066`; pull-request
+  CI41756421918 passes 8/8, exact merge CI41757342465 8/8,
+  release41758329063 10/10 and Docker41759156088 2/2. The released arm64
+  asset verifies against `SHA256SUMS.txt` (`0a2e5ed9…26f57`) and the
+  extracted image binary matches it natively on OC424. OCI index digest
+  `sha256:7a666e3e…65d6a`; per-platform manifests
+  `sha256:c43743d0…635cf` (amd64) and `sha256:f86627b9…1035` (arm64).
+  OC424 upgrade9/9 passes and all 13 registered clients keep byte-identical
+  `uuid`/`token` rows (digest `55bc6191…d2bde` before and after); the
+  `system.restarts` definition exists post-switch. Manual pre archive
+  `oc424-20261104T021453Z-v1726pre.tar.gz.age` has SHA-256
+  `15f15879172f09340bf7d4af11a9fdbc755d2365787f5c0937c747e93cd218eb`; post
+  archive `oc424-20261104T021617Z-v1726post.tar.gz.age` has SHA-256
+  `fb4f2233924a2e0911bcb70cbb9dc8dabd29aa5872b958ec8c55d69d170ea24d`. Both
+  reached MAC-WAN's `manual/v1726-recovery-20261104/` with matching sidecars,
+  and two isolated restore drills pass: the pre state boots the v1.7.25 amd64
+  image and serves v1.7.25/05e7fe2, and the post state boots v1.7.26 and
+  serves v1.7.26/60b4524. See `docs/DEPLOY-OC424.md` and
+  `docs/MAC-WAN-BACKUP.md`.
+- Conservative per-node restart counting. `system.restarts` records a
+  cumulative restart when an accepted uptime reading drops more than 300
+  seconds below the previous accepted reading; the detector rebases after
+  each event and restores baselines and the count from the stored series
+  after a panel restart. Samples rejected by the uptime quality rule never
+  feed the detector. The public metric API defaults the metric to `last`
+  aggregation with explicit semantics, and the uptime history page shows the
+  detected count for the selected node in all five locales. A regression
+  smaller than the floor, a second reboot within five minutes and
+  retention-expired history are outside detection. See
+  `docs/UPTIME-HISTORY.md`.
+
 ## [v1.7.25] - 2026-11-03
 
 - **Published and deployed on OC424 at approximately 15:25 UTC 2026-11-03.**
