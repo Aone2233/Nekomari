@@ -99,6 +99,27 @@ func latestReportCounter(ctx context.Context, s *metric.Store, metricName, entit
 	return int64(point.Value), true, nil
 }
 
+// latestReportValue reads the latest retained value of a per-node metric
+// before a boundary, without a counter cast. It is how the restart detector
+// restores its baseline after a panel restart.
+func latestReportValue(ctx context.Context, s *metric.Store, metricName, entityID string, before time.Time) (float64, bool, error) {
+	point, ok, err := s.LatestBefore(ctx, metricName, entityID, before)
+	if err != nil {
+		return 0, false, err
+	}
+	if !ok {
+		return 0, false, nil
+	}
+	return point.Value, true, nil
+}
+
+// validReportUptime mirrors the uptime acceptance rule in reportMetricPoints so
+// the restart detector never counts a sample the writer itself rejected.
+func validReportUptime(report v2.Report) bool {
+	quality, hasQuality := report.Quality["uptime"]
+	return report.Uptime > 0 && (!hasQuality || quality == "ok")
+}
+
 // GetLatestTrafficBefore returns the latest retained upload/download counters
 // before a boundary, transparently reading raw points or rollup summaries.
 func GetLatestTrafficBefore(ctx context.Context, entityIDs []string, before time.Time) (map[string]models.Record, error) {

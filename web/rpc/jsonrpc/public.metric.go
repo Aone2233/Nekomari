@@ -411,6 +411,9 @@ func publicQueryMetricsWithStore(ctx context.Context, params publicMetricQueryPa
 		} else if spec.storageKey == metricstore.MetricUptime {
 			item.Semantics = "node_uptime_seconds;not_reboot_count"
 			item.Quality = "positive_ok_or_legacy;zero_missing_unknown"
+		} else if spec.storageKey == metricstore.MetricRestarts {
+			item.Semantics = "cumulative_restart_count;conservative_uptime_decrease_detection"
+			item.Quality = "monotonic_per_entity;retention_limited"
 		}
 		if specRaw {
 			points := rawValues[spec.storageKey]
@@ -1319,6 +1322,9 @@ func resolveMetricAggregation(metricKey string, params publicMetricQueryParams) 
 			return metric.AggSum
 		}
 		if metricKey == metricstore.MetricUptime {
+			return metric.AggLast
+		}
+		if metricKey == metricstore.MetricRestarts {
 			return metric.AggLast
 		}
 		raw = string(metric.AggAvg)

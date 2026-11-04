@@ -1047,7 +1047,9 @@
     "noData": "Tidak ada riwayat waktu aktif pada rentang ini",
     "error": "Riwayat waktu aktif tidak dapat dimuat",
     "loading": "Memuat riwayat waktu aktif…",
-    "retention": "Retensi metrik: {{days}} hari; riwayat lama memakai interval yang lebih besar."
+    "retention": "Retensi metrik: {{days}} hari; riwayat lama memakai interval yang lebih besar.",
+    "restarts": "Restart terdeteksi: {{count}}",
+    "restartsNote": "Jumlah restart kumulatif dari penurunan uptime besar (ambang 300 d); dibatasi retensi."
   },
   "rpc2": {
     "automatic_connection_failed": "Koneksi otomatis gagal:",

@@ -14,9 +14,11 @@ import type { MetricSeries, QueryMetricsResponse } from "@/types/metrics";
 import { formatUptime } from "@/utils/timeFormat";
 
 const METRIC = "system.uptime_seconds";
+const RESTARTS_METRIC = "system.restarts";
 const RANGES = [1, 24, 168] as const;
 
 type Loaded = { key: string; series: MetricSeries | null; error: string | null };
+type Restarts = { key: string; count: number | null; error: string | null };
 
 export default function UptimeHistoryPage() {
   const { t } = useTranslation();
@@ -26,6 +28,7 @@ export default function UptimeHistoryPage() {
   const [hours, setHours] = React.useState<number>(24);
   const [revision, setRevision] = React.useState(0);
   const [loaded, setLoaded] = React.useState<Loaded | null>(null);
+  const [restarts, setRestarts] = React.useState<Restarts | null>(null);
   const uuid = nodeList?.some((node) => node.uuid === selected) ? selected : nodeList?.[0]?.uuid ?? "";
   const requestKey = `${uuid}:${hours}:${revision}`;
 
@@ -38,6 +41,24 @@ export default function UptimeHistoryPage() {
       if (active) setLoaded({ key: requestKey, series: response?.series?.find((item) => item.metric_key === METRIC && item.entity_id === uuid) ?? null, error: null });
     }).catch((error: unknown) => {
       if (active) setLoaded({ key: requestKey, series: null, error: error instanceof Error ? error.message : String(error) });
+    });
+    return () => { active = false; };
+  }, [call, hours, requestKey, uuid]);
+
+  React.useEffect(() => {
+    if (!uuid) return;
+    let active = true;
+    const restartsKey = requestKey;
+    call<unknown, QueryMetricsResponse>("public:queryMetrics", {
+      metric_key: RESTARTS_METRIC, entity_id: uuid, hours, max_points: 1, aggregation: "last",
+    }, { timeout: 30000 }).then((response) => {
+      if (!active) return;
+      const series = response?.series?.find((item) => item.metric_key === RESTARTS_METRIC && item.entity_id === uuid) ?? null;
+      const last = series?.points?.at(-1)?.value;
+      const count = typeof last === "number" && Number.isFinite(last) ? Math.round(last) : null;
+      setRestarts({ key: restartsKey, count, error: null });
+    }).catch((error: unknown) => {
+      if (active) setRestarts({ key: restartsKey, count: null, error: error instanceof Error ? error.message : String(error) });
     });
     return () => { active = false; };
   }, [call, hours, requestKey, uuid]);
@@ -88,6 +109,9 @@ export default function UptimeHistoryPage() {
             <Text as="div" size="2" color="gray">{selectedNode?.name || t("uptimeHistory.node")}</Text>
             <Text as="div" size="5" weight="bold" data-testid="uptime-latest">{latest ? formatUptime(latest.uptime, t) : "-"}</Text>
             <Text as="div" size="1" color="gray">{latest ? t("uptimeHistory.latestAt", { time: formatTime(latest.time) }) : current?.error ? t("uptimeHistory.error") : t("uptimeHistory.noData")}</Text>
+            <Text as="div" size="2" color="gray" data-testid="uptime-restarts">
+              {restarts?.key === requestKey ? t("uptimeHistory.restarts", { count: restarts.count ?? "-" }) : t("uptimeHistory.restarts", { count: "-" })}
+            </Text>
           </div>
           {nodesError && <Text color="red" size="2" role="alert">{nodesError}</Text>}
           {current?.error && <Text color="red" size="2" role="alert">{t("uptimeHistory.error")}: {current.error}</Text>}
@@ -108,6 +132,7 @@ export default function UptimeHistoryPage() {
             </ChartContainer>
           )}
           <Text as="p" size="2" color="gray" data-testid="uptime-history-note">{t("chart.uptimeHistoryNote")}</Text>
+          <Text as="p" size="1" color="gray">{t("uptimeHistory.restartsNote")}</Text>
           <Text as="p" size="1" color="gray">{t("uptimeHistory.retention", { days: current?.series?.retention_days ?? "-" })}</Text>
         </Flex>
       </Card>
