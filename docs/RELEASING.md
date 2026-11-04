@@ -2,6 +2,22 @@
 
 ## Cut a release
 
+**Latest delivery: v1.7.27 (2026-11-04).** Immutable `24faa9d`, pull-request
+CI41773313554 and exact merge CI41774384405 8/8, release41775304251 10/10,
+and Docker41775869827 2/2. The node chart page gets an Export CSV button
+downloading the loaded window as a wide CSV (time + one column per metric
+series, tags preserved, raw values, BOM + CRLF) in five locales; cell
+quoting is shared with the log export via `frontend/src/utils/csv.ts`.
+Published arm64 asset/checksums and the extracted image binary verify
+natively on OC424; the image is pinned by the index digest
+`sha256:b706f097e7941cb611dc9673f7fb39b55a1335aad971ea094fe8f077254bbad0`.
+OC424 upgrade9/9, public entry points through Cloudflare and 13
+byte-identical client rows pass; fresh encrypted pre/post archives exist
+with matching MAC-WAN copies and two passing isolated restore drills (pre
+boots v1.7.26, post boots v1.7.27). Owner on-page acceptance of the export
+remains open. Stable publication may trigger Agent self-updates. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for pinned images and rollback.
+
 **Latest delivery: v1.7.26 (2026-11-04).** Immutable `60b4524`, pull-request
 CI41756421918 and exact merge CI41757342465 8/8, release41758329063 10/10,
 and Docker41759156088 2/2. Published arm64 asset/checksums and the extracted
