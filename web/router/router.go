@@ -64,6 +64,9 @@ func registerPublicRoutes(r *gin.Engine) {
 	r.GET("/api/records/load", jsonRpc.Bind("public:getRecordsByUUID", jsonRpc.WithQuery("uuid", "load_type", "hours")))
 	r.GET("/api/records/ping", jsonRpc.Bind("public:getPingRecords", jsonRpc.WithQuery("uuid", "task_id", "hours")))
 	r.GET("/api/task/ping", jsonRpc.Bind("public:getPublicPingTasks"))
+	// CSV 下载需要自己的 Content-Type 与流式输出，不走 JSON 桥。
+	r.GET("/api/records/load.csv", jsonRpc.LoadRecordsCSV)
+	r.GET("/api/records/ping.csv", jsonRpc.PingRecordsCSV)
 
 	// JSON-RPC 直连入口。
 	r.GET("/api/rpc2", jsonRpc.OnRpcRequest)

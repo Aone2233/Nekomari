@@ -67,13 +67,20 @@ client rows. The next bounded releases and operational gates, in order:
    incident, not the acknowledged test send) and MegaBox provider-billing
    equivalence; the latter needs provider-side data and must never be
    claimed from panel numbers alone.
-5. **v1.9.0 begins (in v1.7.27, 2026-11-04).** First slice: metric CSV
-   export on the node chart page — a wide CSV (time plus one column per
-   metric series with tags preserved) of the loaded window, built from the
-   same `public:queryMetrics` data the charts draw, with a shared quoting
-   util and five-locale button. Remaining v1.9.0 slices after it:
-   ping/record CSV export, exec-result history, cost-forecast column,
-   roles UI, frontend budgets and a11y pass.
+5. **v1.9.0 begins (delivered as v1.7.27, 2026-11-04).** Metric CSV export
+   on the node chart page — a wide CSV (time plus one column per metric
+   series with tags preserved) of the loaded window, built from the same
+   `public:queryMetrics` data the charts draw, with a shared quoting util
+   and five-locale button. Deployed on OC424 with upgrade9/9, identical
+   client rows, fresh pre/post archives and two passing isolated restore
+   drills. Owner on-page acceptance (Export CSV on a node chart) remains
+   open. The ping/record CSV export slice is in development as v1.7.28
+   (2026-11-04): `GET /api/records/load.csv` and `/api/records/ping.csv`
+   stream retained records as BOM + CRLF CSV attachments with the JSON
+   endpoints' visibility, metric read budget and a max_rows guard, plus
+   export buttons in five locales. Remaining v1.9.0 slices after it:
+   exec-result history, cost-forecast column, roles UI, frontend budgets
+   and a11y pass.
 
 **Backup close-out: done (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds
@@ -87,7 +94,25 @@ release may still trigger agent auto-updates. OVH is sold and its disk
 sanitization is no longer possible — that item is closed with the residual
 credential-exposure risk recorded, not re-opened.
 
-**Current operational checkpoint (2026-11-04 05:10 UTC):** the v1.8.0
+**Current operational checkpoint (2026-11-04 05:10 UTC):** OC424 is
+healthy/restart0 on **v1.7.27/24faa9d** (metric CSV export on node charts).
+Pull-request CI41773313554 passes 8/8, exact merge CI41774384405 8/8,
+release41775304251 10/10 and Docker41775869827 2/2; the released arm64 asset
+and the image's `/app/nekomari` hash identically (`c6deb156…41ee`) on OC424,
+and the image is pinned by the index digest
+`sha256:b706f097…bad0`. OC424 upgrade9/9 passes and all 13 clients keep
+byte-identical `uuid`/`token` rows (digest `a2737fd0…d0ce`); fresh encrypted
+pre (`5c142e5d…4b86`) and post (`9e8a312b…26bf`) archives reached MAC-WAN's
+`manual/v1727-recovery-20261104/` with sidecars, and two isolated drills pass
+(pre boots v1.7.26, post boots v1.7.27). Owner on-page acceptance of the CSV
+export is the next gate, then the second off-host destination decision
+**[Owner]**. The alert-rule send path is regression-checked on v1.7.27: the
+owner sent a test notification from the saved load rule and acknowledged the
+real `[TEST]` receipt (2026-11-04). The v1.8.0 50-node gate passes as recorded in
+[`CAPACITY-50NODE.md`](./CAPACITY-50NODE.md); the `< 1 MiB/day` drift SLO and
+the 200-node benchmark stay standing items.
+
+**Prior operational checkpoint (2026-11-04, 50-node gate):** the v1.8.0
 50-node capacity/memory gate passes on a scratch panel built from
 `2cf1cc8` (v1.7.26 code): 50/50 nodes, 30047 reports accepted, report p95
 2.0 ms / p99 2.5 ms, `/api/public` p95 2.6 ms, RSS plateau 92–96 MiB with

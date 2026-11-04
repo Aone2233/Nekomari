@@ -62,7 +62,9 @@ const (
 
 func classifyQuery(method string) queryClass {
 	switch method {
-	case "common:getRecords", "public:queryMetrics", "public:getPingMetricStats", "public:getRecordsByUUID", "public:getPingRecords":
+	case "common:getRecords", "public:queryMetrics", "public:getPingMetricStats",
+		"public:getRecordsByUUID", "public:getPingRecords",
+		"csv:loadRecords", "csv:pingRecords":
 		return queryMetricHistory
 	case "admin:dbQuery":
 		return queryAdminConsole

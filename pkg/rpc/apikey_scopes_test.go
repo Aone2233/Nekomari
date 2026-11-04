@@ -43,4 +43,14 @@ func TestAPIKeyScopesNeverProvideAnAdministratorEscape(t *testing.T) {
 			t.Errorf("all scopes allowed unreviewed route %s", route)
 		}
 	}
+	// The CSV record exports are the same data and visibility as their JSON
+	// siblings, which keys may already read.
+	for _, route := range []string{"/api/records/load.csv", "/api/records/ping.csv"} {
+		if !APIKeyHTTPAllowed(all, "GET", route) {
+			t.Errorf("all scopes denied the CSV sibling of %s", route)
+		}
+		if APIKeyHTTPAllowed(all, "POST", route) {
+			t.Errorf("POST %s must stay closed for keys", route)
+		}
+	}
 }

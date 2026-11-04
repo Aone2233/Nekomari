@@ -8,12 +8,16 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- **v1.7.27 in progress (2026-11-04): metric CSV export on node charts.** The
-  chart page gets an Export CSV button that downloads the loaded window as a
-  wide CSV (time + one column per metric series, tags preserved, raw values,
-  BOM + CRLF). Cell quoting moves to `frontend/src/utils/csv.ts` shared with
-  the log export; `chart.exportCsv` added in five locales; vm-based tests in
-  `frontend/script/metric-export.test.mjs`.
+- **Ping/record CSV export (v1.7.28 slice, in development).** New
+  `GET /api/records/load.csv` and `GET /api/records/ping.csv` endpoints
+  stream the retained load and ping records as BOM + CRLF CSV attachments
+  under the same visibility rules and metric read budget as the JSON
+  endpoints, with a `max_rows` guard (default 100000, hard cap 250000)
+  that returns 413 instead of silently truncating. Totals columns the
+  metric store does not retain (`ram_total`, `swap_total`, `disk_total`)
+  are omitted rather than exported as zeros. Export buttons appear on the
+  node chart header (load records) and the mini ping chart (ping records)
+  in five locales.
 
 - **50-node capacity/memory gate passes (2026-11-04).** New
   `deploy/capacity50.py` harness plus `deploy/capacity50_test.py`: 50
@@ -22,6 +26,34 @@ Nekomari's own.
   plateau 92–96 MiB with flat Go heap and zero ERROR lines. No product code
   change; this closes the v1.8.0 capacity exit criterion, documented in
   `docs/CAPACITY-50NODE.md`.
+
+## [v1.7.27] - 2026-11-04
+
+- **Published and deployed on OC424 at approximately 05:02 UTC 2026-11-04.**
+  Immutable `24faa9d` (merge of PR #161); pull-request CI41773313554 passes
+  8/8, exact merge CI41774384405 8/8, release41775304251 10/10 and
+  Docker41775869827 2/2. OCI index digest
+  `sha256:b706f097e7941cb611dc9673f7fb39b55a1335aad971ea094fe8f077254bbad0`;
+  per-platform manifests `sha256:4379df49…8db` (amd64) and
+  `sha256:e65b36d7…4cd` (arm64). The released arm64 asset verifies against
+  `SHA256SUMS.txt` (`c6deb156…41ee`) and the image's `/app/nekomari` hashes
+  identically on OC424.
+- The node chart page gets an Export CSV button downloading the loaded window
+  as a wide CSV (time + one column per metric series, tags preserved, raw
+  values, BOM + CRLF for Excel); cell quoting is shared with the log export
+  via `frontend/src/utils/csv.ts`. `chart.exportCsv` added in five locales;
+  vm-based tests in `frontend/script/metric-export.test.mjs` and the updated
+  `log-export.test.mjs`.
+- OC424 upgrade9/9 passes and all 13 registered clients keep byte-identical
+  `uuid`/`token` rows (digest `a2737fd0…d0ce` before and after; the digest
+  differs from the v1.7.26 checkpoint because the owner edited the node set
+  between releases). Manual pre archive `oc424-v1727-pre.tar.gz.age` has
+  SHA-256 `5c142e5d…4b86`; post archive `oc424-v1727-post.tar.gz.age` has
+  SHA-256 `9e8a312b…26bf`. Both reached MAC-WAN's
+  `manual/v1727-recovery-20261104/` with matching sidecars, and two isolated
+  restore drills pass: the pre state boots v1.7.26 and the post state boots
+  and serves v1.7.27/24faa9d. See `docs/DEPLOY-OC424.md` and
+  `docs/MAC-WAN-BACKUP.md`.
 
 ## [v1.7.26] - 2026-11-04
 

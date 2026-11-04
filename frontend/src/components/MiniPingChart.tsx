@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Card, Switch } from "@radix-ui/themes";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { useTranslation } from "react-i18next";
+import { Download } from "lucide-react";
 import Loading from "@/components/loading";
 import MetricBoundaryAxisTick from "@/components/MetricBoundaryAxisTick";
 import PingMetricStatContent from "@/components/PingMetricStatContent";
@@ -312,6 +313,15 @@ const MiniPingChart = ({
                 </div>
               );
             })}
+            <a
+              href={`/api/records/ping.csv?uuid=${encodeURIComponent(uuid)}&hours=${hours}`}
+              download=""
+              className="ml-auto inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent-3 hover:text-accent-12"
+              title={t("ping.exportRecordsCsv")}
+              aria-label={t("ping.exportRecordsCsv")}
+            >
+              <Download className="size-3.5" />
+            </a>
           </div>
 
           <ChartContainer

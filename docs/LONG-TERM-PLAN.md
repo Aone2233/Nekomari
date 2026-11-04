@@ -63,7 +63,8 @@ decides at the gates marked **[Owner]**.
 |---|---|---|---|
 | `v1.7.25` | 2026-11-03 → 04 | Alert-rule test button: one bounded, rate-limited real send from the saved-rule editor, five locales — **delivered 2026-11-03, owner-acknowledged receipt 2026-11-04** | CI green; OC424 9/9; one owner-acknowledged real test receipt **[Owner]** |
 | `v1.7.2x` patches | as needed | CVE, dependency and bug fixes only | standard delivery gates |
-| `v1.7.27` | 2026-11-04 → 05 | First v1.9.0 slice: metric CSV export on the node chart page — wide table (time + one column per metric series, tags preserved), raw values, BOM + CRLF, five locales | CI green; OC424 9/9; owner on-page acceptance |
+| `v1.7.27` | 2026-11-04 → 05 | First v1.9.0 slice: metric CSV export on the node chart page — wide table (time + one column per metric series, tags preserved), raw values, BOM + CRLF, five locales — **delivered 2026-11-04** | CI green; OC424 9/9; owner on-page acceptance **[Owner]** |
+| `v1.7.28` | 2026-11-04 → 05 | Second v1.9.0 slice: ping/record CSV export — streaming BOM + CRLF CSV of retained load (`/api/records/load.csv`) and ping (`/api/records/ping.csv`) records with the JSON endpoints' visibility, metric read budget and a max_rows guard; export buttons in five locales | CI green; OC424 9/9; owner on-page acceptance **[Owner]** |
 | `v1.8.0` | 2026-11 → 12 | Uptime restart-count metric; 50-node capacity/memory gate (passes 2026-11-04); second off-host destination decision **[Owner]** | each slice deployed and accepted; 50-node gate passes |
 | `v1.9.0` | 2026-11 → 2027-01 | First slice (metric CSV export) ships as v1.7.27; remaining: ping/record CSV export, exec-result history, cost-forecast column, roles (viewer/operator/admin), frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
 | `v2.0.0` | 2027-Q2 | non-root agent default, protocol consolidation, secrets at rest, 200-node benchmark | migration guide; two-minor compat policy; benchmark |
@@ -89,6 +90,64 @@ decides at the gates marked **[Owner]**.
   (RPO ≤ 24 h, RTO ≤ 30 min).
 
 ## Current Delivery Checkpoint (2026-11-04)
+
+**Latest bounded delivery: v1.7.27 (2026-11-04 approximately 05:02 UTC).**
+The node chart page gains metric CSV export: an Export CSV button downloads
+the loaded window as a wide CSV (time + one column per metric series, tags
+preserved, raw values, BOM + CRLF) in five locales, with cell quoting shared
+with the log export. Pull-request CI41773313554 passes 8/8, exact merge
+CI41774384405 8/8, release41775304251 10/10 and Docker41775869827 2/2; the
+released arm64 asset and the image's `/app/nekomari` hash identically
+(`c6deb156…41ee`) on OC424 and the image is pinned by the index digest
+`sha256:b706f097…bad0`. OC424 upgrade9/9 passes with the live 13-client node
+set byte-identical (digest `a2737fd0…d0ce`), and fresh encrypted pre/post
+archives exist with matching MAC-WAN copies and two passing isolated restore
+drills (pre boots v1.7.26, post boots v1.7.27). Owner on-page acceptance of
+the export and the second off-host destination decision remain. The
+alert-rule send path is regression-checked on the current release: the owner
+sent a test notification from the saved load rule and acknowledged the real
+`[TEST]` receipt (2026-11-04). See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+**In development: v1.7.28 ping/record CSV export.** `GET
+/api/records/load.csv` and `GET /api/records/ping.csv` stream retained
+records as BOM + CRLF CSV attachments with the same visibility and read
+budget as the JSON endpoints and a `max_rows` guard (413 on overflow);
+totals the store does not retain are omitted. Buttons ship in five locales
+on the node chart header and the mini ping chart. CI and OC424 acceptance
+follow.
+
+**50-node capacity/memory gate (2026-11-04 approximately 05:10 UTC).** The
+v1.8.0 capacity exit criterion is measured with the new
+`deploy/capacity50.py` harness against a scratch panel built from `2cf1cc8`
+(v1.7.26 code): 50 synthetic v2 nodes reporting every 3 s for 30 minutes.
+30047/30047 reports are accepted (100%), report RPC p95 2.0 ms / p99 2.5 ms,
+`/api/public` p95 2.6 ms, panel RSS peaks at 101.4 MiB during provisioning
+and plateaus at 92–96 MiB with a flat Go heap (20–21 MB live) and zero ERROR
+log lines; the early climb is allocator high-water mark plus SQLite cache
+fill, not a leak. All gates pass; the `< 1 MiB/day` drift SLO stays the
+standing weekly OC424 measurement. Method and limits are recorded in
+[`CAPACITY-50NODE.md`](./CAPACITY-50NODE.md). Remaining before v1.8.0 closes:
+the second off-host destination decision **[Owner]**. OC424 itself is
+unchanged on `v1.7.26/60b4524`.
+
+## Previous Delivery Checkpoint (2026-11-04, 50-node gate detail)
+
+**50-node capacity/memory gate (2026-11-04 approximately 05:10 UTC).** The
+v1.8.0 capacity exit criterion is measured with the new
+`deploy/capacity50.py` harness against a scratch panel built from `2cf1cc8`
+(v1.7.26 code): 50 synthetic v2 nodes reporting every 3 s for 30 minutes.
+30047/30047 reports are accepted (100%), report RPC p95 2.0 ms / p99 2.5 ms,
+`/api/public` p95 2.6 ms, panel RSS peaks at 101.4 MiB during provisioning
+and plateaus at 92–96 MiB with a flat Go heap (20–21 MB live) and zero ERROR
+log lines; the early climb is allocator high-water mark plus SQLite cache
+fill, not a leak. All gates pass; the `< 1 MiB/day` drift SLO stays the
+standing weekly OC424 measurement. Method and limits are recorded in
+[`CAPACITY-50NODE.md`](./CAPACITY-50NODE.md). Remaining before v1.8.0 closes:
+the second off-host destination decision **[Owner]**. OC424 itself is
+unchanged on `v1.7.26/60b4524`.
+
+## Previous Delivery Checkpoint (2026-11-04, 50-node gate)
 
 **50-node capacity/memory gate (2026-11-04 approximately 05:10 UTC).** The
 v1.8.0 capacity exit criterion is measured with the new
