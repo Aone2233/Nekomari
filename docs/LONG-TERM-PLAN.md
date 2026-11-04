@@ -63,8 +63,9 @@ decides at the gates marked **[Owner]**.
 |---|---|---|---|
 | `v1.7.25` | 2026-11-03 → 04 | Alert-rule test button: one bounded, rate-limited real send from the saved-rule editor, five locales — **delivered 2026-11-03, owner-acknowledged receipt 2026-11-04** | CI green; OC424 9/9; one owner-acknowledged real test receipt **[Owner]** |
 | `v1.7.2x` patches | as needed | CVE, dependency and bug fixes only | standard delivery gates |
+| `v1.7.27` | 2026-11-04 → 05 | First v1.9.0 slice: metric CSV export on the node chart page — wide table (time + one column per metric series, tags preserved), raw values, BOM + CRLF, five locales | CI green; OC424 9/9; owner on-page acceptance |
 | `v1.8.0` | 2026-11 → 12 | Uptime restart-count metric; 50-node capacity/memory gate (passes 2026-11-04); second off-host destination decision **[Owner]** | each slice deployed and accepted; 50-node gate passes |
-| `v1.9.0` | 2027-01 → 02 | metric/record CSV export, exec-result history, roles UI, frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
+| `v1.9.0` | 2026-11 → 2027-01 | First slice (metric CSV export) ships as v1.7.27; remaining: ping/record CSV export, exec-result history, cost-forecast column, roles (viewer/operator/admin), frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
 | `v2.0.0` | 2027-Q2 | non-root agent default, protocol consolidation, secrets at rest, 200-node benchmark | migration guide; two-minor compat policy; benchmark |
 
 ### Owner decision calendar

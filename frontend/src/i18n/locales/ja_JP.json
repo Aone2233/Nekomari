@@ -189,6 +189,7 @@
     "days_other": "{{count}} 日",
     "downsampleAlgorithm": "ダウンサンプル",
     "endTime": "終了時刻",
+    "exportCsv": "CSV エクスポート",
     "fillEmpty": "欠損を補完",
     "globalTemplateSaved": "グローバルグラフテンプレートを保存しました",
     "globalTemplateSaveFailed": "グローバルグラフテンプレートを保存できませんでした",

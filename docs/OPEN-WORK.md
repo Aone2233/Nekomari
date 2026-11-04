@@ -67,6 +67,13 @@ client rows. The next bounded releases and operational gates, in order:
    incident, not the acknowledged test send) and MegaBox provider-billing
    equivalence; the latter needs provider-side data and must never be
    claimed from panel numbers alone.
+5. **v1.9.0 begins (in v1.7.27, 2026-11-04).** First slice: metric CSV
+   export on the node chart page — a wide CSV (time plus one column per
+   metric series with tags preserved) of the loaded window, built from the
+   same `public:queryMetrics` data the charts draw, with a shared quoting
+   util and five-locale button. Remaining v1.9.0 slices after it:
+   ping/record CSV export, exec-result history, cost-forecast column,
+   roles UI, frontend budgets and a11y pass.
 
 **Backup close-out: done (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds
