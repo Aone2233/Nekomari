@@ -169,6 +169,35 @@ func TestCSVHistoricalAlignedBucketsAndCounterSemantics(t *testing.T) {
 	}
 }
 
+func TestCSVHistoricalBucketAtTierRetentionBoundary(t *testing.T) {
+	const uuid = "csv-retention-boundary"
+	seedVisibilityClients(t, uuid, uuid+"-hidden")
+	store := openCsvTestStore(t)
+	now := time.Now().UTC()
+	// The unaligned request begins just outside the 10-hour minute-tier
+	// retention, but its first whole 5-minute bucket begins inside it.
+	cutoff := now.Add(-10 * time.Hour)
+	firstBucket := cutoff.Truncate(5 * time.Minute).Add(5 * time.Minute)
+	start := firstBucket.Add(-5*time.Minute + time.Second)
+	if !start.Before(cutoff) {
+		start = cutoff.Add(-time.Nanosecond)
+	}
+	ctx := context.Background()
+	if err := store.ImportRollups(ctx, []metric.PersistedRollup{{
+		MetricName: metricstore.MetricCPU, EntityID: uuid, Resolution: 5 * time.Minute,
+		Bucket: firstBucket, Count: 1, Sum: 20, SumSq: 400, Min: 20, Max: 20,
+		FirstValue: 20, FirstTime: firstBucket.Add(time.Second), LastValue: 20,
+		LastTime: firstBucket.Add(time.Second), CreatedAt: now,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	rows := parseRecordCSV(t, csvGet(t, newCsvTestRouter(nil), "/api/records/load.csv",
+		explicitCsvWindow(uuid, start, firstBucket.Add(5*time.Minute))))
+	if len(rows) != 2 || rows[1][1] != "300" || rows[1][9] != "20" {
+		t.Fatalf("retention boundary lost coarse bucket: %v", rows)
+	}
+}
+
 func TestCSVCycleCountersAndBackupStatusUseLastSample(t *testing.T) {
 	const uuid = "csv-last-counters"
 	seedVisibilityClients(t, uuid, uuid+"-hidden")

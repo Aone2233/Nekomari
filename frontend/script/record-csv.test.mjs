@@ -66,3 +66,35 @@ test('history download saves only a bounded successful CSV response', async () =
   assert.equal(filename, 'test.csv');
   assert.equal(clicked, true);
 });
+
+test('history download aborts and cancels an oversized streaming response', async () => {
+  let cancelled = false;
+  let calls = 0;
+  const context = {
+    module: { exports: {} }, URLSearchParams, AbortController, Blob, URL,
+    window: { setTimeout, clearTimeout },
+    fetch: async () => ({
+      status: 200, ok: true, headers: { get: () => 'text/csv' },
+      body: { getReader: () => ({
+        read: async () => ({ done: false, value: { byteLength: ++calls === 1 ? 32 * 1024 * 1024 : 1 } }),
+        cancel: async () => { cancelled = true; },
+      }) },
+    }),
+  };
+  context.exports = context.module.exports;
+  vm.runInNewContext(code, context);
+  await assert.rejects(context.module.exports.downloadRecordCsv('/csv', 'test.csv'), /csv_too_large/);
+  assert.equal(calls, 2);
+  assert.equal(cancelled, true);
+});
+
+test('history download rejects non-CSV success responses', async () => {
+  const context = {
+    module: { exports: {} }, URLSearchParams, AbortController, Blob, URL,
+    window: { setTimeout, clearTimeout },
+    fetch: async () => new Response('<html>login</html>', { headers: { 'content-type': 'text/html' } }),
+  };
+  context.exports = context.module.exports;
+  vm.runInNewContext(code, context);
+  await assert.rejects(context.module.exports.downloadRecordCsv('/csv', 'test.csv'), /csv_download_failed/);
+});

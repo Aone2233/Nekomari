@@ -27,8 +27,12 @@ export async function downloadRecordCsv(url: string, filename: string): Promise<
       headers: { Accept: "text/csv" },
       signal: controller.signal,
     });
-    if (response.status === 413) throw new Error("csv_too_large");
+    if (response.status === 413) {
+      controller.abort();
+      throw new Error("csv_too_large");
+    }
     if (!response.ok || !response.headers.get("content-type")?.toLowerCase().startsWith("text/csv") || !response.body) {
+      controller.abort();
       throw new Error("csv_download_failed");
     }
     const reader = response.body.getReader();

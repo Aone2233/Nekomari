@@ -287,16 +287,20 @@ func exportRecordBuckets(c *gin.Context, ctx context.Context, uuid string, tags 
 				!clientHistoryReadable(hidden, loggedIn, point.EntityID) {
 				continue
 			}
-			tagIdentity, _ := json.Marshal(point.Tags)
-			if point.Tags == nil {
-				tagIdentity = []byte("{}")
-			}
-			rows = append(rows, recordCsvRow{point: point, aggregation: item.aggregation, interval: interval, tagIdentity: string(tagIdentity)})
+			rows = append(rows, recordCsvRow{point: point, aggregation: item.aggregation, interval: interval})
 			if len(rows) > maxRows {
 				csvRespondError(c, http.StatusRequestEntityTooLarge, fmt.Sprintf("record count exceeds max_rows %d; narrow the window", maxRows))
 				return
 			}
 		}
+	}
+	// Only serialize tags after the row cap is known to pass.
+	for i := range rows {
+		encoded, _ := json.Marshal(rows[i].point.Tags)
+		if rows[i].point.Tags == nil {
+			encoded = []byte("{}")
+		}
+		rows[i].tagIdentity = string(encoded)
 	}
 	sort.Slice(rows, func(i, j int) bool {
 		a, b := rows[i].point, rows[j].point

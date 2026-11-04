@@ -38,8 +38,8 @@ original failure remains part of the record.
 
 **Current phase, updated 2026-11-04:** the last observed OC424 panel is
 `v1.7.27/24faa9d`. `v1.7.28` is published, not deployed to that panel;
-its CSV correctness fixes are in local development. The next bounded
-releases and operational gates, in order:
+its CSV correctness fixes are in draft PR #163, not yet released or deployed.
+The next bounded releases and operational gates, in order:
 
 1. **v1.7.24 SLA window coverage — done (2026-11-03).** `window_coverage`,
    the inferred cadence and the window-bucket count ship next to the pinned
@@ -77,8 +77,8 @@ releases and operational gates, in order:
    drills. Owner on-page acceptance (Export CSV on a node chart) remains
    open. The ping/record CSV endpoints were published in v1.7.28, but their
    reconstructed rows can misrepresent missing fields and cumulative cycle
-   traffic; a bucket-semantics correction is in local development and has
-   not been released or deployed. See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md).
+   traffic; a bucket-semantics correction is in draft PR #163 and has not
+   been released or deployed. See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md).
    Remaining v1.9.0 slices after it:
    exec-result history, cost-forecast column, roles UI, frontend budgets
    and a11y pass.
