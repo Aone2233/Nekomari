@@ -1376,6 +1376,18 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
     URL.revokeObjectURL(url);
   };
 
+  const exportRecordsCsv = () => {
+    if (!uuid) return;
+    // The endpoint takes whole hours and enforces the 366-day window itself.
+    const hours = Math.max(1, Math.min(Math.ceil(displayRangeHours ?? 1), 8784));
+    const anchor = document.createElement("a");
+    anchor.href = `/api/records/load.csv?uuid=${encodeURIComponent(uuid)}&hours=${hours}`;
+    anchor.download = "";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  };
+
   const addMetric = (chartId: string, metricKey: string) => {
     updateChart(chartId, (chart) => {
       if (!metricKey || chart.metrics.includes(metricKey)) return chart;
@@ -1553,6 +1565,16 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
             >
               <Download className="size-4" />
               {t("chart.exportCsv")}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={exportRecordsCsv}
+              disabled={!uuid}
+            >
+              <Download className="size-4" />
+              {t("chart.exportRecordsCsv")}
             </Button>
             <Button type="button" variant="outline" size="sm" onClick={resetDashboard}>
               <RotateCcw className="size-4" />
