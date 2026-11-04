@@ -12,8 +12,9 @@ behind a fleet-wide 60-second gate that never writes `last_notified`.
 OC424 upgrade9/9, public entry points through Cloudflare and 13
 byte-identical client rows pass; fresh encrypted pre/post archives exist
 with matching MAC-WAN copies and two passing isolated restore drills (pre
-boots v1.7.24, post boots v1.7.25). Owner-session UI acceptance and the
-owner's receipt of one real test notification remain unverified. Stable
+boots v1.7.24, post boots v1.7.25). The owner confirmed the v1.7.24
+window-coverage figure and acknowledged a real test notification receipt on
+2026-11-04. Stable
 publication may trigger Agent self-updates. See
 [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) for pinned images and rollback.
 

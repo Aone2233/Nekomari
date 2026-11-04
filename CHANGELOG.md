@@ -36,8 +36,9 @@ Nekomari's own.
   real alert cooldown. Permission isolation, missing rules, event contents,
   cooldown neutrality and the rate-limit refusal are covered in Go tests and
   in the 13-case browser suite (the load-preview fixture now mounts the
-  sonner Toaster so success and error toasts are both asserted). The owner's
-  acknowledged receipt of one real test notification remains the exit gate.
+  sonner Toaster so success and error toasts are both asserted). The owner
+  sent a test notification from the button and acknowledged the real receipt
+  on 2026-11-04, closing the exit gate.
 
 ## [v1.7.24] - 2026-11-03
 

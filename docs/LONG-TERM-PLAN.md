@@ -61,7 +61,7 @@ decides at the gates marked **[Owner]**.
 
 | Phase | Window | Slices | Exit gate |
 |---|---|---|---|
-| `v1.7.25` | 2026-11-03 → 06 | Alert-rule test button: one bounded, rate-limited real send from the saved-rule editor, five locales — **delivered 2026-11-03** | CI green; OC424 9/9; one owner-acknowledged real test receipt **[Owner]** |
+| `v1.7.25` | 2026-11-03 → 04 | Alert-rule test button: one bounded, rate-limited real send from the saved-rule editor, five locales — **delivered 2026-11-03, owner-acknowledged receipt 2026-11-04** | CI green; OC424 9/9; one owner-acknowledged real test receipt **[Owner]** |
 | `v1.7.2x` patches | as needed | CVE, dependency and bug fixes only | standard delivery gates |
 | `v1.8.0` | 2026-11 → 12 | Uptime restart-count metric; 50-node capacity/memory gate; second off-host destination decision **[Owner]** | each slice deployed and accepted; 50-node gate passes |
 | `v1.9.0` | 2027-01 → 02 | metric/record CSV export, exec-result history, roles UI, frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
@@ -102,8 +102,9 @@ index digest `sha256:2f6bbfde…245c1`. OC424 upgrade9/9 passes with the live
 13-client node set byte-identical (digest `55bc6191…d2bde`), and fresh
 encrypted pre/post archives exist with matching MAC-WAN copies and two
 passing isolated restore drills (pre boots v1.7.24, post boots v1.7.25).
-Owner-session UI acceptance and the owner's receipt of one real test
-notification remain open. The next slice is the v1.8.0 remainder; see
+Owner on-page acceptance of the v1.7.24 window figure and of the v1.7.25
+test notification receipt are both confirmed on 2026-11-04, closing the
+v1.7.25 exit gate. The next slice is the v1.8.0 remainder; see
 [`OPEN-WORK.md`](./OPEN-WORK.md).
 
 ## Previous Delivery Checkpoint (2026-11-03)
