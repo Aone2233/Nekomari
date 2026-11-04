@@ -100,7 +100,8 @@ func APIKeyHTTPAllowed(p *Principal, verb, route string) bool {
 	}
 	switch route {
 	case "/ping", "/api/me", "/api/nodes", "/api/public", "/api/version", "/api/recent/:uuid",
-		"/api/records/load", "/api/records/ping", "/api/task/ping", "/api/clients":
+		"/api/records/load", "/api/records/ping", "/api/records/load.csv", "/api/records/ping.csv",
+		"/api/task/ping", "/api/clients":
 		return true
 	default:
 		return false
