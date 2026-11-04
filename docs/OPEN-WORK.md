@@ -43,22 +43,22 @@ client rows. The next bounded releases and operational gates, in order:
 1. **v1.7.24 SLA window coverage — done (2026-11-03).** `window_coverage`,
    the inferred cadence and the window-bucket count ship next to the pinned
    observed-span `coverage`; the UI shows both figures side by side in five
-   locales. Deployed on OC424 with upgrade9/9 and identical client rows. The
-   owner's on-page acceptance of the new figure is open.
+   locales. Deployed on OC424 with upgrade9/9 and identical client rows.
+   Owner on-page acceptance of the window figure: confirmed 2026-11-04.
 2. **v1.7.25 alert-rule test button — delivered (2026-11-03).** One bounded
    real test notification through the existing channel from the saved-rule
    editor; the preview stays read-only and the send is rate-limited globally
    (60 s) and never writes `last_notified`. Deployed on OC424 with
    upgrade9/9, identical client rows, fresh pre/post archives and two
-   passing isolated restore drills. Exit still open: one actual
-   owner-acknowledged test receipt from the button.
+   passing isolated restore drills. Exit closed 2026-11-04: the owner
+   sent a test notification from the button and acknowledged the real
+   receipt.
 3. **v1.8.0 remainder.** Uptime restart-count metric, then the 50-node
    capacity/memory gate and the second off-host destination decision (owner).
-4. **Still open acceptance.** Owner-session UI acceptance for v1.7.24 and
-   v1.7.25, one owner-acknowledged real test receipt from the v1.7.25
-   button, real remote notification receipt (not just synthetic delivery)
-   and MegaBox provider-billing equivalence; the latter needs provider-side
-   data and must never be claimed from panel numbers alone.
+4. **Still open acceptance.** Real remote notification receipt (a genuine
+   incident, not the acknowledged test send) and MegaBox provider-billing
+   equivalence; the latter needs provider-side data and must never be
+   claimed from panel numbers alone.
 
 **Backup close-out: done (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds

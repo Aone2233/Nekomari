@@ -44,9 +44,10 @@ container is healthy with zero restarts at this checkpoint.
   clients keep byte-identical `uuid`/`token` rows before and after the switch
   (digest `55bc6191…d2bde`); schema, key permissions/lifetime and GeoIP
   settings are unchanged. The local Agent (PID 499631, NRestarts 2) is
-  unchanged. Public entry points serve v1.7.25 through Cloudflare. Owner
-  UI acceptance and the owner's receipt of one real test notification remain
-  open.
+  unchanged. Public entry points serve v1.7.25 through Cloudflare. The
+  owner confirmed the v1.7.24 window-coverage figure on the SLA page and
+  sent a real test notification from the v1.7.25 button with acknowledged
+  receipt on 2026-11-04.
 - Manual pre archive `/root/nekomari-v1725-pre/oc424.tar.gz.age` has SHA-256
   `dcb1b5a89b4a990820c31d23076748e65a69d89506fd5649908e5ab1e92bd503`; post
   archive `/root/nekomari-v1725-post/oc424.tar.gz.age` has SHA-256
