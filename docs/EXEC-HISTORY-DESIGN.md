@@ -129,7 +129,10 @@ backfill error aborts startup rather than silently selecting an ambiguous row.
 The identity is internal and omitted from existing task JSON; its value is not
 an authorization credential. Missing/malformed identities fail closed. A
 privileged administrator who deliberately rewrites identities through raw SQL
-can invalidate the guarantee. Refresh the list after an invalidated cursor.
+can invalidate the guarantee. A detail-page error offers both retry and an
+explicit refresh from the first result page, so an expired cursor does not
+trap the operator in repeated retries. This rereads the current task's result
+metadata and does not rerun the command or automatically display its output.
 Results can update or expire between requests, and output can change between
 chunks without its cursor changing; the UI warns that chunk reads are not a
 snapshot. Old parent commands do not gain a retention guarantee.
