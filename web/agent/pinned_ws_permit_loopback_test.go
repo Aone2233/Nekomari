@@ -35,11 +35,12 @@ func TestPinnedPermitLoopbackRoundTrip(t *testing.T) {
 			ConsumePinnedWSPermitResponse(uuid, conn, message)
 		}
 	}))
-	t.Cleanup(func() { server.Close(); <-readerDone })
 	peer, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http"), nil)
 	if err != nil {
+		server.Close()
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { server.Close(); <-readerDone })
 	t.Cleanup(func() { _ = peer.Close() })
 	conn := <-serverConn
 	SetConnectedClients(uuid, conn)
