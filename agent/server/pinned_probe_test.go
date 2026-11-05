@@ -67,7 +67,7 @@ func TestPinnedProbeDistinguishesDNSAndActualFailures(t *testing.T) {
 				return nil, dialErr
 			},
 		},
-		icmp: func(ip string, _ time.Duration, _ bool) (int64, bool, error) {
+		icmp: func(_ context.Context, ip string, _ time.Duration, _ bool) (int64, bool, error) {
 			icmpCalls++
 			if ip != "2001:db8::1" {
 				t.Errorf("ICMP target = %q", ip)
@@ -114,7 +114,7 @@ func TestPinnedProbeICMPFallbackAndActualFamily(t *testing.T) {
 		resolver: pinnedResolver{lookup: func(context.Context, string) ([]netip.Addr, error) {
 			return testAddresses("192.0.2.1", "2001:db8::7"), nil
 		}},
-		icmp: func(ip string, _ time.Duration, privileged bool) (int64, bool, error) {
+		icmp: func(_ context.Context, ip string, _ time.Duration, privileged bool) (int64, bool, error) {
 			if ip != "2001:db8::7" {
 				t.Errorf("ICMP target = %q", ip)
 			}
@@ -149,7 +149,9 @@ func TestPinnedProbeLocalSocketErrorsAreNotNetworkLoss(t *testing.T) {
 	}
 	r := pinnedProbeRunner{
 		resolver: pinnedResolver{lookup: func(context.Context, string) ([]netip.Addr, error) { return testAddresses("2001:db8::1"), nil }},
-		icmp:     func(string, time.Duration, bool) (int64, bool, error) { return -1, false, syscall.EACCES },
+		icmp: func(context.Context, string, time.Duration, bool) (int64, bool, error) {
+			return -1, false, syscall.EACCES
+		},
 	}
 	out := r.probeICMP(context.Background(), "target.test", pinnedIPv6, time.Second)
 	if out.attempted || !errors.Is(out.err, errPinnedNoICMPSocket) {
@@ -170,7 +172,9 @@ func TestPinnedAutoFallsBackWhenICMPUnavailable(t *testing.T) {
 				return a, nil
 			},
 		},
-		icmp: func(string, time.Duration, bool) (int64, bool, error) { return -1, false, syscall.EACCES },
+		icmp: func(context.Context, string, time.Duration, bool) (int64, bool, error) {
+			return -1, false, syscall.EACCES
+		},
 	}
 	result := r.probe(context.Background(), "auto", "target.test", pinnedIPv6, time.Second, nil)
 	if len(result) != 1 || result[0].kind != "tcp" || !result[0].outcome.attempted || result[0].outcome.err != nil {
@@ -202,7 +206,7 @@ func TestPinnedProbeAutoCacheAndDualDoNotMixFamilies(t *testing.T) {
 				return a, nil
 			},
 		},
-		icmp: func(ip string, _ time.Duration, _ bool) (int64, bool, error) {
+		icmp: func(_ context.Context, ip string, _ time.Duration, _ bool) (int64, bool, error) {
 			icmpTargets = append(icmpTargets, ip)
 			return 20, ip == "192.0.2.10", nil
 		},
@@ -238,13 +242,54 @@ func TestPinnedProbeRetriesDoNotTurnDNSChangeIntoLoss(t *testing.T) {
 			}
 			return testAddresses("192.0.2.1"), nil
 		}},
-		icmp: func(string, time.Duration, bool) (int64, bool, error) {
+		icmp: func(context.Context, string, time.Duration, bool) (int64, bool, error) {
 			return highLatencyThreshold + 1, true, nil
 		},
 	}
 	result := r.probe(context.Background(), "icmp", "changing.test", pinnedIPv6, time.Second, nil)
 	if len(result) != 1 || result[0].outcome.attempted || !errors.Is(result[0].outcome.err, errPinnedNoAddress) || calls != 2 {
 		t.Fatalf("result=%+v lookups=%d; retry DNS failure must not be loss", result, calls)
+	}
+}
+
+func TestPinnedProbeCancellationNeverBecomesLoss(t *testing.T) {
+	for _, kind := range []string{"icmp", "tcp", "http"} {
+		t.Run(kind, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			started := make(chan struct{}, 1)
+			r := pinnedProbeRunner{
+				resolver: pinnedResolver{
+					lookup: func(context.Context, string) ([]netip.Addr, error) { return testAddresses("2001:db8::1"), nil },
+					dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
+						started <- struct{}{}
+						<-ctx.Done()
+						return nil, ctx.Err()
+					},
+				},
+				icmp: func(ctx context.Context, _ string, _ time.Duration, _ bool) (int64, bool, error) {
+					started <- struct{}{}
+					<-ctx.Done()
+					return -1, false, ctx.Err()
+				},
+			}
+			done := make(chan []pinnedProbeResult, 1)
+			go func() { done <- r.probe(ctx, kind, "target.test:80", pinnedIPv6, time.Minute, nil) }()
+			select {
+			case <-started:
+			case <-time.After(time.Second):
+				t.Fatal("probe did not start")
+			}
+			cancel()
+			select {
+			case results := <-done:
+				if len(results) != 1 || results[0].outcome.attempted || !errors.Is(results[0].outcome.err, context.Canceled) {
+					t.Fatalf("canceled result = %+v", results)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("canceled probe did not return")
+			}
+		})
 	}
 }
 
@@ -258,7 +303,7 @@ func TestPinnedProbeReferenceUsesIndependentLegacyRunner(t *testing.T) {
 				return nil, errors.New("synthetic dial failure")
 			},
 		},
-		icmp: func(string, time.Duration, bool) (int64, bool, error) { return 10, true, nil },
+		icmp: func(context.Context, string, time.Duration, bool) (int64, bool, error) { return 10, true, nil },
 	}
 	var refCalls int
 	reference := func(kind, target string, _ time.Duration) pinnedProbeOutcome {
@@ -401,6 +446,52 @@ func TestPinnedProbeHTTPRedirectAndLocalTCP(t *testing.T) {
 	result := r.probeHTTP(context.Background(), "http://start.test:"+port+"/", pinnedIPv4, time.Second, nil)
 	if result.attempted || result.family != "" || !errors.Is(result.err, errPinnedNoAddress) || requests != 1 {
 		t.Fatalf("redirect result=%+v requests=%d; no-v4 redirect is not packet loss", result, requests)
+	}
+}
+
+func TestPinnedProbeRedirectPolicyErrorIsNotLoss(t *testing.T) {
+	requests := 0
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		http.Redirect(w, r, "/loop", http.StatusFound)
+	}))
+	defer s.Close()
+	_, port, err := net.SplitHostPort(s.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := pinnedProbeRunner{resolver: pinnedResolver{lookup: func(context.Context, string) ([]netip.Addr, error) {
+		return testAddresses("127.0.0.1"), nil
+	}}}
+	out := r.probeHTTP(context.Background(), "http://loop.test:"+port+"/", pinnedIPv4, time.Second, nil)
+	if out.attempted || out.family != "" || out.err == nil || !strings.Contains(out.err.Error(), "stopped after 10 redirects") || requests != 10 {
+		t.Fatalf("redirect limit outcome=%+v requests=%d", out, requests)
+	}
+}
+
+func TestPinnedProbeRejectsInvalidRedirectBeforeDial(t *testing.T) {
+	requests := 0
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Location", "http://redirect.test:0/")
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer s.Close()
+	_, port, err := net.SplitHostPort(s.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lookups := 0
+	r := pinnedProbeRunner{resolver: pinnedResolver{lookup: func(_ context.Context, host string) ([]netip.Addr, error) {
+		lookups++
+		if host != "start.test" {
+			t.Errorf("invalid redirect reached DNS: %q", host)
+		}
+		return testAddresses("127.0.0.1"), nil
+	}}}
+	out := r.probeHTTP(context.Background(), "http://start.test:"+port, pinnedIPv4, time.Second, nil)
+	if out.attempted || out.family != "" || !errors.Is(out.err, errPinnedInvalidTarget) || requests != 1 || lookups != 1 {
+		t.Fatalf("outcome=%+v requests=%d lookups=%d", out, requests, lookups)
 	}
 }
 

@@ -88,8 +88,11 @@ The next bounded releases and operational gates, in order:
 multi-node IPv6 hostname is rejected by the conservative mixed-family guard.
 [`PING-DOMAIN-FAMILY-DESIGN.md`](./PING-DOMAIN-FAMILY-DESIGN.md) records a
 proposed end-to-end, fail-closed solution and its Agent compatibility and
-rollback gates. No task, Agent or production configuration was changed, and no
-release is authorized by that design alone.
+rollback gates. The transport-specific race and test plan is in
+[`PING-FAMILY-TRANSPORT-DESIGN.md`](./PING-FAMILY-TRANSPORT-DESIGN.md).
+An isolated Agent probe engine exists in draft PR #170 but is not connected to
+event delivery or result upload. No task, Agent or production configuration
+was changed, and neither the designs nor the draft authorize a release.
 
 **Prior backup close-out (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds

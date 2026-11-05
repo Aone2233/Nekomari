@@ -12,6 +12,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	ping "github.com/prometheus-community/pro-bing"
 )
 
 // Pinned probes remain disconnected from event handling and result upload.
@@ -26,7 +28,7 @@ type pinnedProbeOutcome struct {
 
 type pinnedProbeRunner struct {
 	resolver pinnedResolver
-	icmp     func(string, time.Duration, bool) (int64, bool, error)
+	icmp     func(context.Context, string, time.Duration, bool) (int64, bool, error)
 }
 
 var (
@@ -83,6 +85,34 @@ func pinnedTCPTarget(target string) (string, error) {
 	return net.JoinHostPort(host, "80"), nil
 }
 
+func pinnedHTTPAuthorityAllowed(u *url.URL, family string) bool {
+	if u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
+		return false
+	}
+	if port := u.Port(); port != "" && !pinnedPortValid(port) {
+		return false
+	}
+	if addr, err := netip.ParseAddr(u.Hostname()); err == nil && !pinnedAddressMatches(addr, family) {
+		return false
+	}
+	return true
+}
+
+func runPinnedICMP(ctx context.Context, ip string, timeout time.Duration, privileged bool) (int64, bool, error) {
+	pinger, err := ping.NewPinger(ip)
+	if err != nil {
+		return -1, false, err
+	}
+	pinger.Count = 1
+	pinger.Timeout = timeout
+	pinger.SetPrivileged(privileged)
+	if err := pinger.RunWithContext(ctx); err != nil {
+		return -1, false, err
+	}
+	stats := pinger.Statistics()
+	return stats.AvgRtt.Microseconds(), stats.PacketsRecv != 0, nil
+}
+
 func (r pinnedProbeRunner) probeICMP(ctx context.Context, target, family string, timeout time.Duration) pinnedProbeOutcome {
 	if !validPinnedFamily(family) {
 		return pinnedProbeOutcome{err: errPinnedInvalidFamily}
@@ -111,10 +141,13 @@ func (r pinnedProbeRunner) probeICMP(ctx context.Context, target, family string,
 	}
 	icmp := r.icmp
 	if icmp == nil {
-		icmp = runICMP
+		icmp = runPinnedICMP
 	}
 	out := pinnedProbeOutcome{family: addressFamilyOf(addr.String()), attempted: true}
-	latency, replied, err := icmp(addr.String(), timeout, true)
+	latency, replied, err := icmp(ctx, addr.String(), timeout, true)
+	if ctx.Err() != nil {
+		return pinnedProbeOutcome{err: ctx.Err()}
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return pinnedProbeOutcome{err: ctx.Err()}
@@ -128,7 +161,10 @@ func (r pinnedProbeRunner) probeICMP(ctx context.Context, target, family string,
 				timeout = remaining
 			}
 		}
-		latency, replied, err = icmp(addr.String(), timeout, false)
+		latency, replied, err = icmp(ctx, addr.String(), timeout, false)
+		if ctx.Err() != nil {
+			return pinnedProbeOutcome{err: ctx.Err()}
+		}
 		if err != nil {
 			return pinnedProbeOutcome{err: errors.Join(errPinnedNoICMPSocket, err)}
 		}
@@ -148,7 +184,8 @@ func (r pinnedProbeRunner) probeTCP(ctx context.Context, target, family string, 
 	if err != nil {
 		return pinnedProbeOutcome{err: err}
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	parent := ctx
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	resolver := r.resolver
 	dial := resolver.dial
@@ -162,6 +199,12 @@ func (r pinnedProbeRunner) probeTCP(ctx context.Context, target, family string, 
 	}
 	conn, addr, attempted, err := resolver.dialTCPWithAddress(ctx, "tcp", address, family)
 	out := pinnedProbeOutcome{attempted: attempted, err: err}
+	if parent.Err() != nil {
+		if conn != nil {
+			_ = conn.Close()
+		}
+		return pinnedProbeOutcome{err: parent.Err()}
+	}
 	if attempted {
 		out.family = addressFamilyOf(addr.String())
 	}
@@ -196,7 +239,7 @@ func (r pinnedProbeRunner) probeHTTP(ctx context.Context, target, family string,
 		target = "http://" + target
 	}
 	u, err := url.Parse(target)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || (u.Port() != "" && !pinnedPortValid(u.Port())) {
+	if err != nil || !pinnedHTTPAuthorityAllowed(u, family) {
 		return pinnedProbeOutcome{err: errPinnedInvalidTarget}
 	}
 	transport := &http.Transport{}
@@ -210,13 +253,17 @@ func (r pinnedProbeRunner) probeHTTP(ctx context.Context, target, family string,
 	transport.DisableKeepAlives = true
 	var mu sync.Mutex
 	var last pinnedProbeOutcome
-	transport.DialContext = func(ctx context.Context, network, target string) (net.Conn, error) {
-		conn, addr, attempted, err := r.resolver.dialTCPWithAddress(ctx, network, target, family)
+	var hop uint64
+	transport.DialContext = func(dialCtx context.Context, network, target string) (net.Conn, error) {
+		mu.Lock()
+		generation := hop
+		mu.Unlock()
+		conn, addr, attempted, err := r.resolver.dialTCPWithAddress(dialCtx, network, target, family)
 		out := pinnedProbeOutcome{attempted: attempted, err: err}
 		if addr.IsValid() {
 			out.family = addressFamilyOf(addr.String())
 		}
-		if err != nil && (errors.Is(err, syscall.EAFNOSUPPORT) || errors.Is(err, syscall.EPROTONOSUPPORT) || isPermissionErr(err) || (ctx.Err() != nil && !errors.Is(ctx.Err(), context.DeadlineExceeded))) {
+		if err != nil && (errors.Is(err, syscall.EAFNOSUPPORT) || errors.Is(err, syscall.EPROTONOSUPPORT) || isPermissionErr(err) || (dialCtx.Err() != nil && !errors.Is(dialCtx.Err(), context.DeadlineExceeded))) {
 			out.attempted, out.family = false, ""
 		}
 		if err == nil {
@@ -230,12 +277,26 @@ func (r pinnedProbeRunner) probeHTTP(ctx context.Context, target, family string,
 			}
 		}
 		mu.Lock()
-		last = out
+		if generation == hop {
+			last = out
+		}
 		mu.Unlock()
 		return conn, err
 	}
 	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport, Timeout: timeout}
+	client := &http.Client{Transport: transport, Timeout: timeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		mu.Lock()
+		hop++
+		last = pinnedProbeOutcome{}
+		mu.Unlock()
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		if !pinnedHTTPAuthorityAllowed(req.URL, family) {
+			return errPinnedInvalidTarget
+		}
+		return nil
+	}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return pinnedProbeOutcome{err: err}
@@ -243,6 +304,12 @@ func (r pinnedProbeRunner) probeHTTP(ctx context.Context, target, family string,
 	start := time.Now()
 	resp, err := client.Do(req)
 	latency := time.Since(start).Microseconds()
+	if ctx.Err() != nil {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		return pinnedProbeOutcome{err: ctx.Err()}
+	}
 	mu.Lock()
 	out := last
 	mu.Unlock()
