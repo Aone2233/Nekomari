@@ -8,9 +8,8 @@ import (
 	v2 "github.com/Aone2233/nekomari/agent/protocol/v2"
 )
 
-// These helpers are not attached to processV2Event or result upload. The
-// current session and one-use, agent-issued freshness ticket must be checked
-// atomically when a probe starts; syntactic validation does not authorize it.
+// Syntactic validation does not authorize a probe. The current session and
+// one-use, agent-issued ticket must also be checked atomically at launch.
 func validatePinnedProbeEnvelope(p v2.PingFamilyProbeParams, instance, session string) error {
 	if p.TaskID == 0 || !pinnedValidID(p.ConfigGeneration) || !pinnedValidID(p.Instance) || !pinnedValidID(p.Session) ||
 		!pinnedValidID(p.DispatchID) || !pinnedValidID(p.FreshnessTicket) ||
@@ -40,7 +39,7 @@ func pinnedProbeDiagnostic(out pinnedProbeOutcome) string {
 		return "family_mismatch"
 	case errors.Is(out.err, errPinnedFamilyDrift):
 		return "family_drift"
-	case errors.Is(out.err, errPinnedNoICMPSocket):
+	case errors.Is(out.err, errPinnedNoICMPSocket), errors.Is(out.err, errPinnedLocalSocket):
 		return "local_socket"
 	case errors.Is(out.err, errPinnedInvalidTarget), errors.Is(out.err, errPinnedInvalidFamily):
 		return "invalid_target"

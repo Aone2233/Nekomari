@@ -55,6 +55,9 @@ type pinnedWSController struct {
 	tickets        map[string]pinnedProbeTicket
 	ticketSequence uint64
 	activeProbes   int
+	probeRunner    pinnedProbeRunner
+	probeCache     pinnedProbeCache
+	probeDispatch  func(v2.PingFamilyProbeParams)
 }
 
 // Registry identity is the socket, never the Agent instance alone. It remains

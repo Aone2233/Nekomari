@@ -445,6 +445,14 @@ func handleWebSocketMessagesWithHandshake(conn pinnedHandshakeConn, done chan<- 
 			if handled {
 				continue
 			}
+			handled, err = controller.handleProbe(message_raw)
+			if err != nil {
+				conn.Abort()
+				return
+			}
+			if handled {
+				continue
+			}
 		}
 		var message v2.Request
 		err = json.Unmarshal(message_raw, &message)

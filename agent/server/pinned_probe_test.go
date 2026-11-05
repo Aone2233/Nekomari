@@ -142,7 +142,7 @@ func TestPinnedProbeLocalSocketErrorsAreNotNetworkLoss(t *testing.T) {
 		}}
 		for _, kind := range []string{"tcp", "http"} {
 			result := r.probe(context.Background(), kind, "target.test:80", pinnedIPv6, time.Second, nil)
-			if len(result) != 1 || result[0].outcome.attempted || !errors.Is(result[0].outcome.err, dialErr) {
+			if len(result) != 1 || result[0].outcome.attempted || !errors.Is(result[0].outcome.err, dialErr) || pinnedProbeDiagnostic(result[0].outcome) != "local_socket" {
 				t.Fatalf("%s error %v result %+v", kind, dialErr, result)
 			}
 		}
@@ -306,7 +306,7 @@ func TestPinnedProbeReferenceUsesIndependentLegacyRunner(t *testing.T) {
 		icmp: func(context.Context, string, time.Duration, bool) (int64, bool, error) { return 10, true, nil },
 	}
 	var refCalls int
-	reference := func(kind, target string, _ time.Duration) pinnedProbeOutcome {
+	reference := func(_ context.Context, kind, target string, _ time.Duration) pinnedProbeOutcome {
 		refCalls++
 		if kind != "icmp" || target != "gateway.test" {
 			t.Errorf("reference kind=%q target=%q", kind, target)
@@ -320,6 +320,32 @@ func TestPinnedProbeReferenceUsesIndependentLegacyRunner(t *testing.T) {
 	bad := r.probeWithReference(context.Background(), "icmp", "primary.test", "gateway.test", "", time.Second, nil, reference)
 	if len(bad) != 1 || !errors.Is(bad[0].outcome.err, errPinnedInvalidFamily) || refCalls != 1 {
 		t.Fatalf("invalid family must not run any reference probe: %+v calls=%d", bad, refCalls)
+	}
+}
+
+func TestPinnedReferenceSelectsOwnFamilyAndCancels(t *testing.T) {
+	var network, target string
+	r := pinnedProbeRunner{resolver: pinnedResolver{
+		lookup: func(_ context.Context, host string) ([]netip.Addr, error) {
+			if host != "reference.test" {
+				t.Fatalf("unexpected host %q", host)
+			}
+			return testAddresses("192.0.2.1", "2001:db8::1"), nil
+		},
+		dial: func(_ context.Context, netw, addr string) (net.Conn, error) {
+			network, target = netw, addr
+			return nil, errors.New("connection refused")
+		},
+	}}
+	out := r.probeReference(context.Background(), "tcp", "reference.test:80", time.Second)
+	if !out.attempted || out.family != pinnedIPv4 || network != "tcp4" || target != "192.0.2.1:80" {
+		t.Fatalf("reference outcome=%+v dial=%s %s", out, network, target)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	out = r.probeReference(ctx, "tcp", "reference.test:80", time.Second)
+	if out.attempted || !errors.Is(out.err, context.Canceled) {
+		t.Fatalf("canceled reference became loss: %+v", out)
 	}
 }
 
@@ -407,7 +433,7 @@ func TestPinnedProbeHTTPRejectsWrongCertificateAndInvalidPorts(t *testing.T) {
 	if !out.attempted || !errors.As(out.err, &hostnameErr) {
 		t.Fatalf("outcome = %+v, expected certificate hostname error", out)
 	}
-	for _, target := range []string{"http://bad.test:0", "http://bad.test:65536", "http://user:secret@bad.test"} {
+	for _, target := range []string{"http://bad.test:", "http://bad.test:0", "http://bad.test:65536", "http://user:secret@bad.test"} {
 		out := r.probeHTTP(context.Background(), target, pinnedIPv4, time.Second, nil)
 		if out.attempted || !errors.Is(out.err, errPinnedInvalidTarget) {
 			t.Errorf("%q outcome = %+v", target, out)

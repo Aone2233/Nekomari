@@ -2,14 +2,71 @@ package ws
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
+
+func TestWriteJSONContextRestoresDeadline(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		for {
+			kind, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			if err := conn.WriteMessage(kind, data); err != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+	raw, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn := NewSafeConn(raw)
+	defer conn.Close()
+	if err := conn.WriteJSONContext(context.Background(), "missing deadline"); err == nil {
+		t.Fatal("accepted missing deadline")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if err := conn.WriteJSONContext(ctx, "first"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatal(err)
+	}
+	<-ctx.Done()
+	if err := conn.WriteJSON("after deadline"); err != nil {
+		t.Fatalf("old deadline broke normal writes: %v", err)
+	}
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWriteJSONContextSkipsBusyWriter(t *testing.T) {
+	conn := &SafeConn{}
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := conn.WriteJSONContext(ctx, "busy"); err == nil {
+		t.Fatal("busy writer accepted")
+	}
+}
 
 func TestReadMessageLimitedCountsDecompressedBytes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"context"
 	"errors"
 	"io"
 	"sync"
@@ -33,6 +34,56 @@ func (sc *SafeConn) WriteJSON(v interface{}) error {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	return sc.conn.WriteJSON(v)
+}
+
+// WriteJSONContext does not queue behind a busy writer. Cancellation closes
+// the socket to interrupt an in-progress network write.
+func (sc *SafeConn) WriteJSONContext(ctx context.Context, v interface{}) error {
+	if ctx == nil {
+		return errors.New("nil write context")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return errors.New("websocket context write requires a deadline")
+	}
+	if !sc.mu.TryLock() {
+		return errors.New("websocket writer busy")
+	}
+	if sc.conn == nil {
+		sc.mu.Unlock()
+		return errors.New("nil websocket")
+	}
+	done := make(chan error, 1)
+	go func() {
+		defer sc.mu.Unlock()
+		if err := ctx.Err(); err != nil {
+			done <- err
+			return
+		}
+		if err := sc.conn.SetWriteDeadline(deadline); err != nil {
+			sc.Abort()
+			done <- err
+			return
+		}
+		err := sc.conn.WriteJSON(v)
+		if restoreErr := sc.conn.SetWriteDeadline(time.Time{}); err == nil {
+			err = restoreErr
+		}
+		if err != nil {
+			sc.Abort()
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		sc.Abort()
+		return ctx.Err()
+	}
 }
 
 func (sc *SafeConn) Close() error {

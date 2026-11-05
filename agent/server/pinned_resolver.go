@@ -38,6 +38,34 @@ func pinnedAddressMatches(addr netip.Addr, family string) bool {
 	return (family == pinnedIPv4 && addr.Is4()) || (family == pinnedIPv6 && addr.Is6())
 }
 
+func (r pinnedResolver) resolveAny(ctx context.Context, host string) (netip.Addr, error) {
+	if host == "" || strings.TrimSpace(host) != host {
+		return netip.Addr{}, errPinnedInvalidTarget
+	}
+	if addr, err := netip.ParseAddr(host); err == nil {
+		return addr.Unmap(), nil
+	}
+	if strings.ContainsAny(host, "[]:") {
+		return netip.Addr{}, errPinnedInvalidTarget
+	}
+	lookup := r.lookup
+	if lookup == nil {
+		lookup = func(ctx context.Context, host string) ([]netip.Addr, error) {
+			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+		}
+	}
+	addrs, err := lookup(ctx, host)
+	if err != nil {
+		return netip.Addr{}, fmt.Errorf("%w: %w", errPinnedDNS, err)
+	}
+	for _, addr := range addrs {
+		if addr.IsValid() {
+			return addr.Unmap(), nil
+		}
+	}
+	return netip.Addr{}, errPinnedNoAddress
+}
+
 // resolve chooses an address on every invocation. In particular, a cached
 // protocol decision must never cache an address or allow fallback to another
 // family after DNS changes.

@@ -16,9 +16,8 @@ import (
 	ping "github.com/prometheus-community/pro-bing"
 )
 
-// Pinned probes remain disconnected from event handling and result upload.
-// Their outcomes distinguish non-probes from failures after an address was
-// selected; future wire code must preserve that distinction.
+// Outcomes distinguish non-probes from failures after an address was
+// selected; the wire code must preserve that distinction.
 type pinnedProbeOutcome struct {
 	latencyUS int64
 	family    string
@@ -34,6 +33,7 @@ type pinnedProbeRunner struct {
 var (
 	errPinnedFamilyDrift  = errors.New("actual connection family differs from pinned family")
 	errPinnedNoICMPSocket = errors.New("could not create an ICMP socket")
+	errPinnedLocalSocket  = errors.New("local socket is unavailable")
 )
 
 func validPinnedFamily(family string) bool {
@@ -87,6 +87,9 @@ func pinnedTCPTarget(target string) (string, error) {
 
 func pinnedHTTPAuthorityAllowed(u *url.URL, family string) bool {
 	if u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
+		return false
+	}
+	if strings.HasSuffix(u.Host, ":") {
 		return false
 	}
 	if port := u.Port(); port != "" && !pinnedPortValid(port) {
@@ -211,6 +214,9 @@ func (r pinnedProbeRunner) probeTCP(ctx context.Context, target, family string, 
 	if err != nil {
 		if errors.Is(err, syscall.EAFNOSUPPORT) || errors.Is(err, syscall.EPROTONOSUPPORT) || isPermissionErr(err) || (ctx.Err() != nil && !errors.Is(ctx.Err(), context.DeadlineExceeded)) {
 			out.attempted, out.family = false, ""
+			if errors.Is(err, syscall.EAFNOSUPPORT) || errors.Is(err, syscall.EPROTONOSUPPORT) || isPermissionErr(err) {
+				out.err = errors.Join(errPinnedLocalSocket, err)
+			}
 		}
 		return out
 	}
@@ -265,6 +271,9 @@ func (r pinnedProbeRunner) probeHTTP(ctx context.Context, target, family string,
 		}
 		if err != nil && (errors.Is(err, syscall.EAFNOSUPPORT) || errors.Is(err, syscall.EPROTONOSUPPORT) || isPermissionErr(err) || (dialCtx.Err() != nil && !errors.Is(dialCtx.Err(), context.DeadlineExceeded))) {
 			out.attempted, out.family = false, ""
+			if errors.Is(err, syscall.EAFNOSUPPORT) || errors.Is(err, syscall.EPROTONOSUPPORT) || isPermissionErr(err) {
+				out.err = errors.Join(errPinnedLocalSocket, err)
+			}
 		}
 		if err == nil {
 			if remote, ok := conn.RemoteAddr().(*net.TCPAddr); ok && remote != nil {
@@ -313,7 +322,10 @@ func (r pinnedProbeRunner) probeHTTP(ctx context.Context, target, family string,
 	mu.Lock()
 	out := last
 	mu.Unlock()
-	out.latencyUS, out.err = latency, err
+	out.latencyUS = latency
+	if out.attempted || out.err == nil {
+		out.err = err
+	}
 	if resp != nil {
 		defer resp.Body.Close()
 		if err == nil && (resp.StatusCode < 200 || resp.StatusCode >= 400) {
@@ -502,11 +514,14 @@ func (r pinnedProbeRunner) probePrimary(ctx context.Context, kind, target, famil
 
 // The family pin applies only to the primary target. The separately injected
 // reference runner preserves the legacy reference protocol and resolution.
-func (r pinnedProbeRunner) probeWithReference(ctx context.Context, kind, target, reference, family string, timeout time.Duration, cache *pinnedProbeCache, referenceProbe func(string, string, time.Duration) pinnedProbeOutcome) []pinnedProbeResult {
+func (r pinnedProbeRunner) probeWithReference(ctx context.Context, kind, target, reference, family string, timeout time.Duration, cache *pinnedProbeCache, referenceProbe func(context.Context, string, string, time.Duration) pinnedProbeOutcome) []pinnedProbeResult {
 	if !validPinnedFamily(family) {
 		return []pinnedProbeResult{{kind: kind, role: "primary", outcome: pinnedProbeOutcome{err: errPinnedInvalidFamily}}}
 	}
 	results := r.probe(ctx, kind, target, family, timeout, cache)
+	if ctx.Err() != nil {
+		return results
+	}
 	reference = strings.TrimSpace(reference)
 	if reference == "" {
 		return results
@@ -518,5 +533,55 @@ func (r pinnedProbeRunner) probeWithReference(ctx context.Context, kind, target,
 	if referenceProbe == nil {
 		return append(results, pinnedProbeResult{kind: refKind, role: "reference", outcome: pinnedProbeOutcome{err: errors.New("reference probe unavailable")}})
 	}
-	return append(results, pinnedProbeResult{kind: refKind, role: "reference", outcome: referenceProbe(refKind, reference, timeout)})
+	return append(results, pinnedProbeResult{kind: refKind, role: "reference", outcome: referenceProbe(ctx, refKind, reference, timeout)})
+}
+
+// Reference targets are resolved independently, with the legacy first-address
+// selection, then constrained to that address's family for the actual probe.
+// Unlike the primary target, a reference is never forced to the task's pin.
+func (r pinnedProbeRunner) probeReference(ctx context.Context, kind, target string, timeout time.Duration) pinnedProbeOutcome {
+	var host string
+	if kind == "http" {
+		urlTarget := target
+		if !strings.Contains(urlTarget, "://") {
+			if addr, err := netip.ParseAddr(urlTarget); err == nil && addr.Is6() && !addr.Is4In6() {
+				urlTarget = "[" + urlTarget + "]"
+			}
+			urlTarget = "http://" + urlTarget
+		}
+		u, err := url.Parse(urlTarget)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil || strings.HasSuffix(u.Host, ":") || (u.Port() != "" && !pinnedPortValid(u.Port())) {
+			return pinnedProbeOutcome{err: errPinnedInvalidTarget}
+		}
+		host = u.Hostname()
+	} else {
+		var err error
+		host, err = pinnedTargetHost(target)
+		if err != nil {
+			return pinnedProbeOutcome{err: err}
+		}
+	}
+	dnsCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	addr, err := r.resolver.resolveAny(dnsCtx, host)
+	if err != nil {
+		return pinnedProbeOutcome{err: err}
+	}
+	if err := dnsCtx.Err(); err != nil {
+		return pinnedProbeOutcome{err: err}
+	}
+	family := addressFamilyOf(addr.String())
+	resolver := r.resolver
+	lookup := resolver.lookup
+	resolver.lookup = func(ctx context.Context, next string) ([]netip.Addr, error) {
+		if next == host {
+			return []netip.Addr{addr}, nil
+		}
+		if lookup != nil {
+			return lookup(ctx, next)
+		}
+		return net.DefaultResolver.LookupNetIP(ctx, "ip", next)
+	}
+	r.resolver = resolver
+	return r.probeOnce(dnsCtx, kind, target, family, timeout)
 }

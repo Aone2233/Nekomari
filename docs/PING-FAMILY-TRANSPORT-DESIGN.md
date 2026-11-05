@@ -1,10 +1,11 @@
 # Family-pinned probes: transport fencing design
 
 Status: draft implementation and test plan. The feature branch has a WS-only
-challenge/ack handshake and an isolated permit round trip; its Agent start
-fence remains isolated. No scheduler dispatches a pinned task or admits a
-pinned result. POST sessions, delivery and result fencing remain unimplemented.
-None of this authorizes a release or changes live tasks.
+challenge/ack handshake, an isolated permit round trip, and a probe/result
+execution path behind a disabled Agent dispatch hook. No scheduler dispatches a
+pinned task or admits a pinned result. POST sessions, delivery and panel-side
+result fencing remain unimplemented. None of this authorizes a release or
+changes live tasks.
 The parent contract is [PING-DOMAIN-FAMILY-DESIGN.md](./PING-DOMAIN-FAMILY-DESIGN.md).
 
 ## Why a capability flag is insufficient
@@ -92,7 +93,8 @@ activate the wire helpers based solely on syntactically valid identifiers.
   expiry also retires tickets and cancels work; a delayed renewal cannot revive
   the expired session. A target-free permit request is handled over WebSocket,
   and an isolated panel helper sends it, but no production scheduler invokes
-  the helper and no probe uses the ticket yet.
+  the helper. The Agent execution path consumes the ticket only when its
+  dispatch hook is explicitly enabled by a test; it is nil in production.
 - An isolated panel reservation map allocates per-session sequence numbers,
   tracks a bounded number of pending permit responses, and wakes waiters on
   replacement, re-handshake, disconnect, token reset or observed lease expiry.
@@ -107,6 +109,15 @@ activate the wire helpers based solely on syntactically valid identifiers.
   they finish. A loopback test exercises the panel's target-free wire request
   and response with a simulated peer, not a real Agent probe. An isolated
   permit is not authorization to send a target or write a result.
+- The Agent can parse a strictly bounded distinct probe frame and, in tests,
+  consume its one-use ticket, execute the resolver and emit a result only over
+  the same WebSocket. Its dispatch hook defaults to nil: enabling it requires
+  the missing panel fences and a deliberate Agent rollout. Result writes have
+  bounded deadlines, never use the generic POST fallback and abort/retire the
+  socket on write failure. Session cancellation stops the context-aware primary
+  and independently resolved reference probe. A reference selects its own
+  first address and family; HTTP redirect handling stays in that family, which
+  is stricter than the legacy reference when redirects change families.
 - The panel registers the dispatch ID for a bounded time using its own
   monotonic clock, binding it to the active session, assignment and config
   generation. Result admission and consumption of each expected role/leg must
