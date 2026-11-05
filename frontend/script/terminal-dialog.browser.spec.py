@@ -113,6 +113,24 @@ class TerminalDialogBrowserTest(unittest.TestCase):
         expect(page.get_by_test_id("results")).to_have_attribute("data-submit", "1")
         expect(field).to_have_value("beta.txt")
 
+    def test_composition_keys_do_not_select_suggestions_or_close(self):
+        page = self.open_page()
+        page.get_by_test_id("outside").click()
+        dialog = page.get_by_role("dialog", name="Quick open")
+        field = dialog.get_by_placeholder("File path")
+        expect(field).to_be_focused()
+        for key in ("ArrowDown", "Enter", "Escape"):
+            allowed = field.evaluate("""(element, key) => element.dispatchEvent(new KeyboardEvent('keydown', {
+                key, bubbles: true, cancelable: true, isComposing: true,
+            }))""", key)
+            self.assertTrue(allowed, f"composing {key} must not be preventDefaulted")
+        expect(dialog).to_be_visible()
+        expect(page.get_by_test_id("results")).to_have_attribute("data-submit", "0")
+        expect(page.get_by_test_id("results")).to_have_attribute("data-selected", "")
+        expect(page.get_by_test_id("results")).to_have_attribute("data-outer-escape", "0")
+        field.press("Enter")
+        expect(page.get_by_test_id("results")).to_have_attribute("data-selected", "alpha.txt")
+
     def test_destructive_default_focus_traps_and_restores(self):
         page = self.open_page()
         page.get_by_test_id("delete").click()
@@ -206,6 +224,48 @@ class TerminalDialogBrowserTest(unittest.TestCase):
         expect(trigger).to_be_focused()
         page.get_by_test_id("outside").focus()
         expect(page.get_by_test_id("outside")).to_be_focused()
+
+    def test_rapid_reopen_never_steals_focus_from_new_dialog(self):
+        page = self.open_page()
+        page.get_by_test_id("outside").click()
+        dialog = page.get_by_role("dialog", name="Quick open")
+        expect(dialog.get_by_placeholder("File path")).to_be_focused()
+        page.evaluate("""() => {
+            const clock = window.setTimeout.bind(window);
+            window.setTimeout = (callback, delay, ...args) => {
+              const stack = new Error().stack || '';
+              return clock(callback, stack.includes('focus-scope') && delay === 0 ? 150 : delay, ...args);
+            };
+        }""")
+        page.keyboard.press("Escape")
+        expect(dialog).to_have_count(0)
+        page.get_by_test_id("outside").click()
+        expect(dialog.get_by_placeholder("File path")).to_be_focused()
+        expect(page.get_by_test_id("results")).to_have_attribute("data-closed", "1")
+        expect(dialog.get_by_placeholder("File path")).to_be_focused()
+        page.keyboard.press("Escape")
+        expect(dialog).to_have_count(0)
+        expect(page.get_by_test_id("outside")).to_be_focused()
+
+    def test_close_does_not_override_a_successful_action_focus(self):
+        page = self.open_page()
+        trigger = page.get_by_test_id("transfer")
+        trigger.click()
+        dialog = page.get_by_role("alertdialog", name="Submit and focus another control")
+        expect(dialog.get_by_role("button", name="OK")).to_be_focused()
+        page.evaluate("""() => {
+            const clock = window.setTimeout.bind(window);
+            window.setTimeout = (callback, delay, ...args) => {
+              const stack = new Error().stack || '';
+              return clock(callback, stack.includes('focus-scope') && delay === 0 ? 150 : delay, ...args);
+            };
+        }""")
+        page.keyboard.press("Enter")
+        expect(dialog).to_have_count(0)
+        target = page.get_by_test_id("transfer-target")
+        expect(target).to_be_focused()
+        page.wait_for_timeout(250)
+        expect(target).to_be_focused()
 
 
 if __name__ == "__main__":

@@ -91,8 +91,12 @@ It also fixes the separately reproducible quick-open bug where Enter on Cancel
 could select a highlighted suggestion and open a file. Mounted Chromium tests
 exercise the actual file-manager delete and editor quick-open paths with stubbed
 RPC, plus suggestion buttons, disabled submission, nested dialogs and mobile.
-This is not a screen-reader audit and is not yet merged, released or deployed;
-the CSV owner gate and the normal release/backup gates still apply.
+Follow-up preserves deliberate post-close focus and checks that submitting Go
+to Line/Column focuses the real Monaco editor with the requested cursor;
+cancelling still returns to the launcher. Synthetic composition-key tests cover
+event routing, but real input methods have not been tested. This is not a
+screen-reader audit and is not yet merged, released or deployed; the CSV owner
+gate and the normal release/backup gates still apply.
 
 **Prior backup close-out (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds

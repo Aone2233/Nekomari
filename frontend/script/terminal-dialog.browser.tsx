@@ -3,8 +3,8 @@ import { createRoot } from "react-dom/client";
 import TerminalDialog from "../src/pages/terminal/TerminalDialog";
 import "../src/global.css";
 
-function Fixture() {
-  const [kind, setKind] = useState<"quick" | "delete" | "nested" | "removed" | "unmount" | null>(null);
+export function Fixture() {
+  const [kind, setKind] = useState<"quick" | "delete" | "nested" | "removed" | "unmount" | "transfer" | null>(null);
   const [child, setChild] = useState(false);
   const [immediateChild, setImmediateChild] = useState(false);
   const [triggerVisible, setTriggerVisible] = useState(true);
@@ -14,6 +14,7 @@ function Fixture() {
   const [selected, setSelected] = useState("");
   const [submitted, setSubmitted] = useState(0);
   const [cancelled, setCancelled] = useState(0);
+  const [closed, setClosed] = useState(0);
   const [outerEscape, setOuterEscape] = useState(0);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -29,6 +30,8 @@ function Fixture() {
       <button type="button" data-testid="outside" onClick={() => setKind("quick")}>Open quick</button>
       <button type="button" data-testid="delete" onClick={() => setKind("delete")}>Open delete</button>
       <button type="button" data-testid="nested" onClick={() => setKind("nested")}>Open nested</button>
+      <button type="button" data-testid="transfer" onClick={() => setKind("transfer")}>Open transfer</button>
+      <button type="button" data-testid="transfer-target">Post-submit target</button>
       {triggerVisible && (
         <button type="button" data-testid="removed" onClick={() => setKind("removed")}>
           Open and remove trigger on close
@@ -36,7 +39,7 @@ function Fixture() {
       )}
       <button type="button" data-testid="unmount" onClick={() => setKind("unmount")}>Open unmount dialog</button>
       <button type="button" data-testid="busy" onClick={() => setBusy((current) => !current)}>Toggle busy</button>
-      <output data-testid="results" data-submit={submitted} data-cancel={cancelled} data-selected={selected} data-outer-escape={outerEscape} />
+      <output data-testid="results" data-submit={submitted} data-cancel={cancelled} data-selected={selected} data-outer-escape={outerEscape} data-closed={closed} />
       <TerminalDialog
         open={kind === "quick"}
         title="Quick open"
@@ -50,6 +53,7 @@ function Fixture() {
         submitting={busy}
         onSubmit={() => setSubmitted((count) => count + 1)}
         onCancel={close}
+        onCloseAutoFocus={() => setClosed((count) => count + 1)}
       />
       <TerminalDialog
         open={kind === "delete" || kind === "removed"}
@@ -90,6 +94,15 @@ function Fixture() {
           onCancel={() => setKind(null)}
         />
       )}
+      <TerminalDialog
+        open={kind === "transfer"}
+        title="Submit and focus another control"
+        onSubmit={() => {
+          setKind(null);
+          setTimeout(() => document.querySelector<HTMLElement>('[data-testid="transfer-target"]')?.focus(), 0);
+        }}
+        onCancel={close}
+      />
     </main>
   );
 }

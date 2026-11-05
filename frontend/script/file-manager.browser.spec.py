@@ -121,6 +121,71 @@ class FileManagerBrowserTest(unittest.TestCase):
         finally:
             page.close()
 
+    def test_editor_go_to_position_restores_editor_focus(self):
+        page = self.open_page()
+        try:
+            page.evaluate("fileFixture.setView('editor')")
+            editor = page.get_by_role("dialog", name="/one.md")
+            editor.wait_for()
+            monaco = page.locator(".monaco-editor [role=textbox][aria-roledescription=editor]")
+            monaco.wait_for(state="attached", timeout=20000)
+            monaco.focus()
+            expect(monaco).to_be_focused()
+            page.get_by_title("Go to Line/Column").click()
+            dialog = page.get_by_role("dialog", name="Go to Line/Column")
+            line = dialog.get_by_role("textbox", name="Line")
+            expect(line).to_be_focused()
+            line.fill("1")
+            dialog.get_by_role("textbox", name="Column").fill("5")
+            dialog.get_by_role("button", name="Confirm").click()
+            expect(dialog).to_have_count(0)
+            expect(monaco).to_be_focused()
+            expect(page.get_by_title("Go to Line/Column")).to_have_text("Ln 1, Col 5")
+            page.keyboard.type("X")
+            expect(page.locator(".monaco-editor .view-lines")).to_contain_text("contXent of /one.md")
+        finally:
+            page.close()
+
+    def test_editor_go_to_position_cancel_does_not_move_focus_to_editor(self):
+        page = self.open_page()
+        try:
+            page.evaluate("fileFixture.setView('editor')")
+            trigger = page.get_by_title("Go to Line/Column")
+            trigger.click()
+            dialog = page.get_by_role("dialog", name="Go to Line/Column")
+            expect(dialog.get_by_role("textbox", name="Line")).to_be_focused()
+            page.keyboard.press("Escape")
+            expect(dialog).to_have_count(0)
+            expect(trigger).to_be_focused()
+            expect(trigger).to_have_text("Ln 1, Col 1")
+        finally:
+            page.close()
+
+    def test_editor_go_to_position_does_not_steal_new_focus(self):
+        page = self.open_page()
+        try:
+            page.evaluate("fileFixture.setView('editor')")
+            trigger = page.get_by_title("Go to Line/Column")
+            trigger.click()
+            dialog = page.get_by_role("dialog", name="Go to Line/Column")
+            expect(dialog.get_by_role("textbox", name="Line")).to_be_focused()
+            page.evaluate("""() => {
+                const clock = window.setTimeout.bind(window);
+                window.setTimeout = (callback, delay, ...args) => {
+                  const stack = new Error().stack || '';
+                  return clock(callback, stack.includes('focus-scope') && delay === 0 ? 150 : delay, ...args);
+                };
+            }""")
+            dialog.get_by_role("button", name="Confirm").click()
+            expect(dialog).to_have_count(0)
+            next_target = page.get_by_title("Undo", exact=True)
+            next_target.focus()
+            expect(next_target).to_be_focused()
+            page.wait_for_timeout(250)
+            expect(next_target).to_be_focused()
+        finally:
+            page.close()
+
     def test_rename_and_delete_refresh_the_actual_directory(self):
         page = self.open_page()
         try:

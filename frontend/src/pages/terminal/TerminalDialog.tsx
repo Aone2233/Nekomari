@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 
 import { shouldSubmitOnEnter } from "./dialogKeys";
@@ -37,6 +37,7 @@ export interface TerminalDialogProps {
   onSecondary?: () => void;
   onSubmit: () => void;
   onCancel: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 export function TerminalDialog({
@@ -54,10 +55,12 @@ export function TerminalDialog({
   onSecondary,
   onSubmit,
   onCancel,
+  onCloseAutoFocus,
 }: TerminalDialogProps) {
   const firstInputRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const descriptionId = useId();
   const fieldId = useId();
@@ -72,6 +75,19 @@ export function TerminalDialog({
   // is part of the effect's dependency set — closing and reopening the same
   // dialog must reset the selection again.
   const [resetKey, setResetKey] = useState<{ open: boolean; firstFieldKey: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleCompositionEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && event.isComposing && event.target instanceof Node && contentRef.current?.contains(event.target)) {
+        // Radix handles Escape in document capture. Stop it there without
+        // cancelling the browser's default input-method action.
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener("keydown", handleCompositionEscape, true);
+    return () => window.removeEventListener("keydown", handleCompositionEscape, true);
+  }, [open]);
 
   const activeSuggestions = useMemo(() => {
     if (!activeField) return [];
@@ -104,6 +120,7 @@ export function TerminalDialog({
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[100010] bg-black/60" />
         <Dialog.Content
+          ref={contentRef}
           className={`fixed left-1/2 top-[12vh] z-[100011] h-fit w-[calc(100%-2rem)] -translate-x-1/2 ${isInput ? "max-w-[440px]" : "max-w-[320px]"} ${dialogSurface} max-w-[92vw]`}
           role={isInput ? "dialog" : "alertdialog"}
           aria-modal="true"
@@ -119,11 +136,20 @@ export function TerminalDialog({
             (target && !target.matches(":disabled") ? target : cancelRef.current)?.focus();
           }}
           onCloseAutoFocus={(event) => {
+            // An action or another dialog may have deliberately taken focus
+            // before Radix's asynchronous close callback runs.
+            const active = document.activeElement;
+            if (active && active !== document.body && active !== document.documentElement && active.isConnected) {
+              event.preventDefault();
+            }
+            onCloseAutoFocus?.(event);
+            if (event.defaultPrevented) return;
             event.preventDefault();
             if (previousFocusRef.current?.isConnected) previousFocusRef.current.focus();
           }}
           onPointerDownOutside={(event) => event.preventDefault()}
           onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
             // A button's Enter belongs to that button, even when a suggestion is highlighted.
             const confirmKey = shouldSubmitOnEnter(event, { submitting });
             const onInput = event.target instanceof HTMLInputElement;
