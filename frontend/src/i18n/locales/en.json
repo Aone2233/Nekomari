@@ -292,7 +292,7 @@
     "ordering": "Ordered by recorded database insertion, not execution time; history may change while paging or after database maintenance.",
     "loading": "Loading history…",
     "error": "History could not be read. Try again.",
-    "largeField": "This command or output exceeds the 8 MiB viewing limit. The stored data has not been changed.",
+    "unsupportedField": "This command or output has an unsupported format and cannot be viewed. The stored data has not been changed.",
     "retry": "Retry",
     "empty": "No execution history.",
     "targets": "Targets: {{count}}",

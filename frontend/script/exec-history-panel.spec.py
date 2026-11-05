@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise built-in execution history against a disposable real panel."""
 import argparse
+import base64
 from contextlib import closing
 import json
 import os
@@ -66,11 +67,11 @@ def run(binary):
                                   VALUES(?,?,?,?,?,?)""", ("synthetic-history", "node",
                         "<img src=x onerror=alert(1)>synthetic-output", 0,
                         "2026-11-05 02:00:01+00:00", "2026-11-05 02:00:00+00:00"))
-                    db.execute("INSERT INTO tasks(task_id,clients,command,history_order) VALUES(?,?,CAST(zeroblob(?) AS TEXT),?)",
-                               ("synthetic-oversized", '["node"]', (8 << 20) + 1, 2))
+                    db.execute("INSERT INTO tasks(task_id,clients,command,history_order) VALUES(?,?,CAST(? || zeroblob(?) AS TEXT),?)",
+                               ("synthetic-oversized", '["node"]', "large-command-marker", (16 << 20) + 1, 2))
                     db.execute("""INSERT INTO task_results(task_id,client,result,created_at)
-                                  VALUES(?,?,CAST(zeroblob(?) AS TEXT),?)""",
-                               ("synthetic-oversized", "node", (8 << 20) + 1, "2026-11-05 02:01:00+00:00"))
+                                  VALUES(?,?,CAST(? || zeroblob(?) AS TEXT),?)""",
+                               ("synthetic-oversized", "node", "large-output-marker", (16 << 20) + 1, "2026-11-05 02:01:00+00:00"))
                 with sync_playwright() as pw:
                     browser = pw.chromium.launch(headless=True)
                     try:
@@ -121,14 +122,22 @@ def run(binary):
                                 large = history.locator(".rt-Card").filter(has_text="synthetic-oversized").last
                                 large.get_by_role("button", name="View details" if locale == "en-US" else "查看详情",
                                                   exact=True).click()
-                                expect(large).to_contain_text("8 MiB")
-                                assert large.get_by_role("button", name="Show output" if locale == "en-US" else "显示输出",
-                                                         exact=True).count() == 0
                                 large.get_by_role("button", name="Show command" if locale == "en-US" else "显示命令",
                                                   exact=True).click()
-                                expect(large.get_by_text("8 MiB", exact=False)).to_have_count(2)
-                                assert large.locator("pre").count() == 0
-                                assert calls.count("admin:readExecHistoryChunk") == 3, calls
+                                expect(large.locator("pre").first).to_contain_text("large-command-marker")
+                                large.get_by_role("button", name="Show output" if locale == "en-US" else "显示输出",
+                                                  exact=True).click()
+                                expect(large.locator("pre").nth(1)).to_contain_text("large-output-marker")
+                                assert calls.count("admin:readExecHistoryChunk") == 4, calls
+                                detail = context.request.post(origin + "/api/rpc2", data={"jsonrpc": "2.0", "id": 1,
+                                    "method": "admin:getExecHistoryDetail", "params": {"task_id": "synthetic-oversized"}}).json()["result"]
+                                for kind, cursor in [("command", ""), ("output", detail["results"][0]["cursor"])]:
+                                    tail = context.request.post(origin + "/api/rpc2", data={"jsonrpc": "2.0", "id": 1,
+                                        "method": "admin:readExecHistoryChunk", "params": {"task_id": "synthetic-oversized",
+                                            "kind": kind, "result_cursor": cursor, "offset": (16 << 20)}}).json()["result"]
+                                    data = base64.b64decode(tail["data_base64"])
+                                    assert tail["available"] and len(data) <= 16384 and not tail["has_more"]
+                                    assert tail["next_offset"] == tail["total_bytes"] and data.endswith(b"\0")
                                 assert not errors, errors
                                 if width == 390:
                                     assert page.evaluate("document.documentElement.scrollWidth") <= width

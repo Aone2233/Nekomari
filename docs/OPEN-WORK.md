@@ -94,11 +94,14 @@ startup drill preserves old and rollback-era task data; rollback-era rows were
 injected as SQL fixtures, not dispatched to an agent. CSV owner acceptance and
 the normal release/backup gates remain open; this is not a production rollout.
 An additional scratch stress check showed SQLite may materialize an entire
-legacy output despite the 16 KiB response cap. The development branch now
-limits the leased SQLite connection and makes fields above 8 MiB explicitly
-unavailable without altering stored data; see the design document for the
-measured behavior, compatibility tradeoff and limits. This follow-up still
-requires current-commit CI before any release.
+legacy output despite the 16 KiB response cap. The next candidate uses SQLite
+incremental blob reads on the same connection and snapshot to preserve bounded
+access to large TEXT/BLOB records; malformed non-text values fail closed. A
+16 MiB connection limit still guards other materialized fields. See the design
+document for local measurements, security boundaries and remaining portability
+gates. The previous commit `9e6f7c3` passed 8/8 CI; those checks do not validate
+the subsequent changes, which require their own current-commit CI before any
+release. CSV owner acceptance remains a separate release gate.
 
 **Read-only production identity/task recheck (2026-11-05 04:02 UTC):** 13
 current node UUID/token pairs match the previously audited `55bc6191…d2bde`
