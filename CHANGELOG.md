@@ -8,6 +8,15 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **Execution-history candidate, not released or deployed.** Add a paged,
+  `tasks:read`-scoped view with explicit bounded command/output reads, warning
+  labels and five locales. Startup backfills a stable task order, including
+  tasks written during a rollback. Synthetic browser, focused Go and isolated
+  old/new/old/new startup checks cover the implementation; the rollback-era
+  tasks were SQL fixtures, not Agent-dispatched commands. The CSV owner
+  acceptance and normal release/backup gates still apply. See
+  `docs/EXEC-HISTORY-DESIGN.md`.
+
 ### v1.8.1 candidate — probe correctness
 
 - Build CI and release artifacts with Go 1.27.4 to address GO-2026-6859 in
