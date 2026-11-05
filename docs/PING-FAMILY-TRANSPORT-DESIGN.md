@@ -1,9 +1,10 @@
 # Family-pinned probes: transport fencing design
 
 Status: draft implementation and test plan. The feature branch has a WS-only
-challenge/ack handshake on both sides; no pinned event or result consumes it.
-POST sessions, delivery and result fencing remain unimplemented. None of this
-authorizes a release or changes live tasks.
+challenge/ack handshake and Agent permit-request handling; its Agent start
+fence remains isolated. No scheduler dispatches a pinned task or admits a
+pinned result. POST sessions, delivery and result fencing remain unimplemented.
+None of this authorizes a release or changes live tasks.
 The parent contract is [PING-DOMAIN-FAMILY-DESIGN.md](./PING-DOMAIN-FAMILY-DESIGN.md).
 
 ## Why a capability flag is insufficient
@@ -20,8 +21,8 @@ connects. Checking only when enqueueing would be racy.
 Use a distinct wire method such as `agent.pingFamilyV1`; old Agents do not
 recognize it. This is a second safety boundary, not a substitute for the
 generation and result checks. A new Agent must reject a missing or malformed
-pin, task/config generation, session token, or expiration without issuing any
-probe. Legacy `agent.ping` and its wire shape stay unchanged.
+pin, task/config generation, session token, or freshness ticket without issuing
+any probe. Legacy `agent.ping` and its wire shape stay unchanged.
 
 ## Runtime identities and leases
 
@@ -68,7 +69,7 @@ This contract permits temporary skipped probes during an ambiguous transition;
 it does not permit the panel to guess which process is current. Session state is
 bounded by active node count and expires/sweeps independently of metrics.
 
-## Clock-independent freshness (proposed, not implemented)
+## Clock-independent freshness (partial Agent implementation)
 
 A three-second panel-issued absolute expiration is not a reliable execution
 boundary: the Agent and panel may disagree on wall-clock time. Likewise an
@@ -83,6 +84,14 @@ activate the wire helpers based solely on syntactically valid identifiers.
   the session, the Agent verifies and consumes the ticket exactly once before
   starting work. An expired, reused or wrong-session ticket starts nothing.
   Session retirement cancels the work already admitted.
+- The Agent controller implements local ticket issuance and an isolated atomic
+  start boundary with finite pending/active limits. Permit requests
+  include a strictly increasing, session-bound sequence, so replaying an old
+  request cannot mint a fresh ticket. Concurrent permit writes from the panel
+  must preserve that sequence order or tolerate a skipped probe. Local lease
+  expiry also retires tickets and cancels work; a delayed renewal cannot revive
+  the expired session. A target-free permit request is handled over WebSocket,
+  but the panel does not send it and no probe uses the ticket yet.
 - The panel registers the dispatch ID for a bounded time using its own
   monotonic clock, binding it to the active session, assignment and config
   generation. Result admission and consumption of each expected role/leg must
@@ -94,9 +103,9 @@ activate the wire helpers based solely on syntactically valid identifiers.
   panel's dispatch or receive time before integrating with historical metrics.
   A result missing its pending dispatch must fail closed, even after restart.
 
-This describes required invariants, not a finished bootstrap or queue. The
-ticket issuer, transport ordering, permit store, per-leg consumption and
-deadline/cancellation tests are all still required before connecting delivery.
+This is not a finished bootstrap or queue. Panel sequencing/transport ordering,
+the panel dispatch store, per-leg consumption and end-to-end
+deadline/cancellation tests are still required before connecting delivery.
 
 ## Queue and direct delivery
 
@@ -110,9 +119,9 @@ existing acknowledgement and reconnect semantics.
 
 If the guarded event has already been selected when the session changes, it
 must not be returned to a replacement consumer. A late response can still
-arrive at its original Agent; therefore the Agent checks the session and event
-expiration at **execution** time, not only at decoding. Its current session is
-cleared immediately when the transport transitions or disconnects. Concurrent
+arrive at its original Agent; therefore the Agent checks the session and local
+ticket expiration at **execution** time, not only at decoding. Its current
+session is cleared immediately when the transport transitions or disconnects. Concurrent
 checks and transition must be serialized with the start of a probe; cancellation
 of an already-started old probe must not be mistaken for a network loss. A
 panel-side session/assignment/config check must reject any result after the

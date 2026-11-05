@@ -15,6 +15,7 @@ const (
 	MethodAgentExec              = "agent.exec"
 	MethodAgentPing              = "agent.ping"
 	MethodAgentPingFamilySession = "agent.pingFamily.session.v1"
+	MethodAgentPingFamilyPermit  = "agent.pingFamily.permit.v1"
 	MethodAgentPingFamilyProbe   = "agent.pingFamily.probe.v1"
 	MethodAgentPingFamilyResult  = "agent.pingFamily.result.v1"
 	MethodAgentMessage           = "agent.message"
@@ -41,6 +42,19 @@ type PingFamilySessionParams struct {
 
 type PingFamilySessionResult struct {
 	Challenge string `json:"challenge"`
+}
+
+type PingFamilyPermitParams struct {
+	Instance   string `json:"instance"`
+	Session    string `json:"session"`
+	DispatchID string `json:"dispatch_id"`
+	Sequence   uint64 `json:"sequence"`
+}
+
+type PingFamilyPermitResult struct {
+	DispatchID      string `json:"dispatch_id"`
+	Sequence        uint64 `json:"sequence"`
+	FreshnessTicket string `json:"freshness_ticket"`
 }
 
 // PingFamilyProbeParams is separate from legacy agent.ping. Old Agents must

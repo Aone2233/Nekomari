@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -45,11 +46,15 @@ type pinnedHandshakeConn interface {
 }
 
 type pinnedWSController struct {
-	mu           sync.Mutex
-	handshake    *pinnedWSHandshake
-	conn         pinnedHandshakeConn
-	stopped      bool
-	activeCancel chan struct{}
+	mu             sync.Mutex
+	handshake      *pinnedWSHandshake
+	conn           pinnedHandshakeConn
+	stopped        bool
+	sessionContext context.Context
+	sessionCancel  context.CancelFunc
+	tickets        map[string]pinnedProbeTicket
+	ticketSequence uint64
+	activeProbes   int
 }
 
 // Registry identity is the socket, never the Agent instance alone. It remains
@@ -70,6 +75,22 @@ func detachPinnedWSSession(conn *ws.SafeConn, controller *pinnedWSController) {
 	defer pinnedSocketSessions.Unlock()
 	if pinnedSocketSessions.byConn[conn] == controller {
 		delete(pinnedSocketSessions.byConn, conn)
+	}
+}
+
+// A transport failure can be observed by the writer before the reader exits.
+// Abort first to release any blocked handshake write, then synchronously retire
+// the associated controller before a replacement connection can be started.
+func abortPinnedWSSocket(conn *ws.SafeConn) {
+	if conn == nil {
+		return
+	}
+	conn.Abort()
+	pinnedSocketSessions.RLock()
+	controller := pinnedSocketSessions.byConn[conn]
+	pinnedSocketSessions.RUnlock()
+	if controller != nil {
+		controller.clear()
 	}
 }
 
@@ -98,6 +119,7 @@ func (c *pinnedWSController) begin() error {
 	if c.stopped {
 		return nil
 	}
+	c.retireLocked()
 	return c.send(c.handshake.begin())
 }
 
@@ -107,6 +129,7 @@ func (c *pinnedWSController) maintain() error {
 	if c.stopped || c.handshake.unsupported {
 		return nil
 	}
+	c.expireLocked(time.Now())
 	request := c.handshake.renew()
 	if !c.handshake.active {
 		c.retireLocked()
@@ -132,13 +155,14 @@ func (c *pinnedWSController) handle(data []byte) (bool, error) {
 	if json.Unmarshal(data, &frame) != nil || frame.Method != "" {
 		return false, nil
 	}
+	c.expireLocked(time.Now())
 	wasActive := c.handshake.active
 	next, handled := c.handshake.handle(data)
 	if wasActive && !c.handshake.active {
 		c.retireLocked()
 	}
 	if !wasActive && c.handshake.active {
-		c.activeCancel = make(chan struct{})
+		c.sessionContext, c.sessionCancel = context.WithCancel(context.Background())
 	}
 	if next != nil {
 		return handled, c.send(*next)
@@ -155,19 +179,31 @@ func (c *pinnedWSController) clear() {
 }
 
 func (c *pinnedWSController) retireLocked() {
-	if c.activeCancel != nil {
-		close(c.activeCancel)
-		c.activeCancel = nil
+	if c.sessionCancel != nil {
+		c.sessionCancel()
+		c.sessionCancel = nil
+	}
+	c.sessionContext = nil
+	clear(c.tickets)
+	c.ticketSequence = 0
+}
+
+// A late renewal must not revive a locally expired session or its permits.
+func (c *pinnedWSController) expireLocked(now time.Time) {
+	if c.handshake != nil && c.handshake.active && !now.Before(c.handshake.validUntil) {
+		c.retireLocked()
+		c.handshake.clear()
 	}
 }
 
 func (c *pinnedWSController) current(now time.Time) (string, string, time.Time, <-chan struct{}, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.stopped || !c.handshake.active || !now.Before(c.handshake.validUntil) || c.activeCancel == nil {
+	c.expireLocked(now)
+	if c.stopped || !c.handshake.active || c.sessionContext == nil {
 		return "", "", time.Time{}, nil, false
 	}
-	return c.handshake.instance, c.handshake.challenge, c.handshake.validUntil, c.activeCancel, true
+	return c.handshake.instance, c.handshake.challenge, c.handshake.validUntil, c.sessionContext.Done(), true
 }
 
 func pinnedValidID(id string) bool {

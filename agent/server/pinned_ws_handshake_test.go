@@ -1,14 +1,19 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	v2 "github.com/Aone2233/nekomari/agent/protocol/v2"
 	"github.com/Aone2233/nekomari/agent/ws"
+	"github.com/gorilla/websocket"
 )
 
 func pinnedResponse(t *testing.T, id any, challenge string, rpcErr *v2.RPCError) []byte {
@@ -69,14 +74,14 @@ func TestPinnedWSClientHandshakeFailsClosedOnOldPanel(t *testing.T) {
 
 type pinnedFakeConn struct {
 	inbound    chan []byte
-	outbound   chan v2.Request
+	outbound   chan any
 	closed     chan struct{}
 	once       sync.Once
 	blockWrite bool
 }
 
 func newPinnedFakeConn(blockWrite bool) *pinnedFakeConn {
-	return &pinnedFakeConn{inbound: make(chan []byte, 8), outbound: make(chan v2.Request, 8), closed: make(chan struct{}), blockWrite: blockWrite}
+	return &pinnedFakeConn{inbound: make(chan []byte, 8), outbound: make(chan any, 8), closed: make(chan struct{}), blockWrite: blockWrite}
 }
 
 func (c *pinnedFakeConn) ReadMessageLimited(int64) (int, []byte, error) {
@@ -94,7 +99,7 @@ func (c *pinnedFakeConn) WriteJSON(data interface{}) error {
 		return errors.New("closed")
 	}
 	select {
-	case c.outbound <- data.(v2.Request):
+	case c.outbound <- data:
 		return nil
 	case <-c.closed:
 		return errors.New("closed")
@@ -106,7 +111,11 @@ func (c *pinnedFakeConn) Abort() { c.once.Do(func() { close(c.closed) }) }
 func takePinnedRequest(t *testing.T, c *pinnedFakeConn) v2.Request {
 	t.Helper()
 	select {
-	case req := <-c.outbound:
+	case msg := <-c.outbound:
+		req, ok := msg.(v2.Request)
+		if !ok {
+			t.Fatalf("unexpected handshake message %T", msg)
+		}
 		return req
 	case <-time.After(time.Second):
 		t.Fatal("handshake request not sent")
@@ -220,7 +229,7 @@ func TestPinnedWSSessionRegistryFencesOldDetach(t *testing.T) {
 	current.handshake.active = true
 	current.handshake.challenge = challenge
 	current.handshake.validUntil = time.Now().Add(time.Minute)
-	current.activeCancel = make(chan struct{})
+	current.sessionContext, current.sessionCancel = context.WithCancel(context.Background())
 	attachPinnedWSSession(conn, old)
 	attachPinnedWSSession(conn, current)
 	detachPinnedWSSession(conn, old)
@@ -238,4 +247,35 @@ func TestPinnedWSSessionRegistryFencesOldDetach(t *testing.T) {
 		t.Fatal("retired controller was still current")
 	}
 	detachPinnedWSSession(conn, current)
+}
+
+func TestPinnedWSWriterAbortRetiresSessionBeforeReturn(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _, _ = conn.ReadMessage()
+	}))
+	defer server.Close()
+	raw, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	socket := ws.NewSafeConn(raw)
+	c, p := activePinnedController(t)
+	attachPinnedWSSession(socket, c)
+	t.Cleanup(func() { detachPinnedWSSession(socket, c) })
+	issueTestPermit(t, c, &p, 1)
+	started, canceled := make(chan struct{}), make(chan struct{})
+	if err := c.launchProbe(p, func(ctx context.Context) { close(started); <-ctx.Done(); close(canceled) }); err != nil {
+		t.Fatal(err)
+	}
+	awaitPinnedSignal(t, started)
+	abortPinnedWSSocket(socket)
+	if _, err := c.issueProbePermit(permitFor(p, 2), time.Now()); err == nil {
+		t.Fatal("writer abort returned while old session could authorize work")
+	}
+	awaitPinnedSignal(t, canceled)
 }

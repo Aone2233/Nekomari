@@ -110,7 +110,7 @@ func EstablishWebSocketConnection() {
 			err = conn.WriteMessage(websocket.TextMessage, data)
 			if err != nil {
 				log.Println("Failed to send WebSocket message:", err)
-				conn.Abort()
+				abortPinnedWSSocket(conn)
 				conn = nil // Mark connection as dead
 				readDone = nil
 				continue
@@ -120,7 +120,7 @@ func EstablishWebSocketConnection() {
 				err := conn.WriteMessage(websocket.PingMessage, nil)
 				if err != nil {
 					log.Println("Failed to send heartbeat:", err)
-					conn.Abort()
+					abortPinnedWSSocket(conn)
 					conn = nil // Mark connection as dead
 					readDone = nil
 				}
@@ -430,6 +430,15 @@ func handleWebSocketMessagesWithHandshake(conn pinnedHandshakeConn, done chan<- 
 			handled, err := controller.handle(message_raw)
 			if err != nil {
 				log.Printf("Pinned-probe handshake acknowledgement failed: %v", err)
+				conn.Abort()
+				return
+			}
+			if handled {
+				continue
+			}
+			handled, err = controller.handleProbePermit(message_raw)
+			if err != nil {
+				log.Printf("Pinned-probe permit response failed: %v", err)
 				conn.Abort()
 				return
 			}
