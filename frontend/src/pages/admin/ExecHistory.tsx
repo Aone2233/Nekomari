@@ -127,30 +127,38 @@ function TaskDetail({ taskID }: { taskID: string }) {
   const { nodeDetail } = useNodeDetails();
   const [detail, setDetail] = useState<Detail | null>(null);
   const [cursorStack, setCursorStack] = useState<string[]>([""]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
 
-  const load = useCallback(async (cursorValue: string, stack: string[]) => {
+  const fetchDetail = useCallback(async (cursorValue: string, stack: string[], controller: AbortController) => {
+    return readHistory("admin:getExecHistoryDetail", { task_id: taskID, cursor: cursorValue }, detailSchema, controller.signal).then((value) => {
+      if (value.task_id !== taskID) throw new Error("mismatched task");
+      if (!controller.signal.aborted) { setDetail(value); setCursorStack(stack); }
+    }).catch(() => {
+      if (!controller.signal.aborted) setError(true);
+    }).finally(() => {
+      if (!controller.signal.aborted) setLoading(false);
+    });
+  }, [taskID]);
+
+  const load = (cursorValue: string, stack: string[]) => {
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
     setLoading(true);
     setError(false);
     setDetail(null);
-    try {
-      const value = await readHistory("admin:getExecHistoryDetail", { task_id: taskID, cursor: cursorValue }, detailSchema, controller.signal);
-      if (value.task_id !== taskID) throw new Error("mismatched task");
-      if (!controller.signal.aborted) { setDetail(value); setCursorStack(stack); }
-    } catch {
-      if (!controller.signal.aborted) setError(true);
-    } finally {
-      if (!controller.signal.aborted) setLoading(false);
-    }
-  }, [taskID]);
+    void fetchDetail(cursorValue, stack, controller);
+  };
 
-  useEffect(() => { void load("", [""]); return () => request.current?.abort(); }, [load]);
+  useEffect(() => {
+    const controller = new AbortController();
+    request.current = controller;
+    void fetchDetail("", [""], controller);
+    return () => controller.abort();
+  }, [fetchDetail]);
   return <div className="min-w-0 space-y-3 border-t border-[var(--gray-a5)] pt-3">
     <Text as="p" size="2" weight="medium">{t("execHistory.command")}</Text>
     <ChunkViewer taskID={taskID} kind="command" />
