@@ -8,7 +8,9 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- **CSV correctness patch, in development (not released or deployed).**
+## [v1.7.29] - 2026-11-05
+
+- **CSV correctness patch, pending release and OC424 deployment.**
   Quote tagged chart headers, prevent spreadsheet formula injection and
   reject duplicate series rather than merging them. History exports preserve
   explicit custom time ranges, export actual retained metric buckets rather
@@ -59,9 +61,11 @@ Nekomari's own.
   vm-based tests in `frontend/script/metric-export.test.mjs` and the updated
   `log-export.test.mjs`.
 - OC424 upgrade9/9 passes and all 13 registered clients keep byte-identical
-  `uuid`/`token` rows (recorded digest `a2737fd0…d0ce` before and after).
-  A later live read differs and the reason is unverified; see the current
-  gate in `docs/OPEN-WORK.md`. Manual pre archive `oc424-v1727-pre.tar.gz.age` has
+  `uuid`/`token` rows. The recorded digest `a2737fd0…d0ce` was corrected in a
+  2026-11-04 recheck: the v1.7.26 post, v1.7.27 pre/post and live snapshots
+  all match `55bc6191…d2bde` using one method. The discrepancy's cause is
+  unknown; snapshots cannot rule out a later-reversed change. See
+  `docs/DEPLOY-OC424.md`. Manual pre archive `oc424-v1727-pre.tar.gz.age` has
   SHA-256 `5c142e5d…4b86`; post archive `oc424-v1727-post.tar.gz.age` has
   SHA-256 `9e8a312b…26bf`. Both reached MAC-WAN's
   `manual/v1727-recovery-20261104/` with matching sidecars, and two isolated

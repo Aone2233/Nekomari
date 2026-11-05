@@ -36,9 +36,10 @@ not a proven root cause of that particular failure. Test-fix candidate
 CI41113452947 and the subsequent exact merge CI41114880987 pass 8/8; the
 original failure remains part of the record.
 
-**Current phase, updated 2026-11-04:** the last observed OC424 panel is
+**Current phase, updated 2026-11-05:** the last observed OC424 panel is
 `v1.7.27/24faa9d`. `v1.7.28` is published, not deployed to that panel;
-its CSV correctness fixes are in draft PR #163, not yet released or deployed.
+its CSV correctness fixes are the v1.7.29 candidate in PR #163, not yet
+released or deployed.
 The next bounded releases and operational gates, in order:
 
 1. **v1.7.24 SLA window coverage — done (2026-11-03).** `window_coverage`,
@@ -88,25 +89,37 @@ pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds
 the two older verified copies, and four isolated restore drills pass (see
 [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md) and
 [`DEPLOY-OC424.md`](./DEPLOY-OC424.md)). Historical success does not prove
-current access: the latest SSH attempt timed out, so validate the receiver
-and fresh off-host backups before another OC424 release.
+current access: MAC-WAN SSH was reachable again on 2026-11-04; three older
+archives passed ciphertext checksum, decryption and database quick checks.
+Validate a fresh off-host backup before another OC424 release.
 
 Deferred by owner decision: 200-node capacity work stays on hold; a stable
 release may still trigger agent auto-updates. OVH is sold and its disk
 sanitization is no longer possible — that item is closed with the residual
 credential-exposure risk recorded, not re-opened.
 
-**Production release gate (2026-11-04):** the last read-only check still
-observed v1.7.27 with 13 nodes, but the live UUID/token digest
-`55bc6191…d2bde` does not match the recorded v1.7.27 deployment digest
-`a2737fd0…d0ce`. It also matches the documented v1.7.26 digest; a faulty
-record and a real identity change are both possible. The owner was asked
-whether they or Hermes changed nodes or Agent tokens after v1.7.27; no answer
-to that specific question has yet been recorded. Do not overwrite or rotate
-the live state. MAC-WAN SSH timed out on the latest attempt; neither current
-backup connectivity nor the older copies' retrievability is verified. Resolve
-both before a production switch. `v1.7.28` is a stable published tag and can
-trigger Agent auto-update; post-publication fleet versions are unverified.
+**Production release gate (2026-11-04, rechecked 13:38–13:42 UTC):** OC424
+remains healthy on v1.7.27 with 13 clients. A consistent identity digest over
+the live database, v1.7.27 pre/post archives and v1.7.26 post archive matches
+(`55bc6191…d2bde`) in all four snapshots; the earlier recorded v1.7.27 digest
+`a2737fd0…d0ce` is inconsistent with those archives. Its cause or original
+method is not established. The owner is unsure about any intervening change;
+the snapshots cannot rule out a change subsequently reversed. Do not overwrite
+or rotate live identities. MAC-WAN SSH works and the three older archives pass
+checksum, decryption and SQLite quick checks, but a fresh off-host backup still
+needs validation before a production switch. `v1.7.28` is a stable published
+tag and can trigger Agent auto-update; post-publication fleet versions are
+unverified. Comparison method and archive details: [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+
+**Pre-release recheck (2026-11-05):** OC424 remains healthy/restart0 on
+v1.7.27, both production databases pass read-only `quick_check`, and the
+13-client identity digest still matches the audited snapshots. A fresh
+encrypted pre-release archive reached MAC-WAN and passes ciphertext checksum,
+authenticated decryption, all 1,345 manifest file checks and both database
+integrity checks. The first isolated drill used a mistyped image digest and
+failed to start the container; the retry with the inspected pinned v1.7.27
+image passes with networking disabled. This verifies the pre-release archive,
+not a later post-upgrade backup. No production node or credential was changed.
 
 **Prior operational checkpoint (2026-11-04 05:10 UTC):** OC424 was
 healthy/restart0 on **v1.7.27/24faa9d** (metric CSV export on node charts).
@@ -115,7 +128,8 @@ release41775304251 10/10 and Docker41775869827 2/2; the released arm64 asset
 and the image's `/app/nekomari` hash identically (`c6deb156…41ee`) on OC424,
 and the image is pinned by the index digest
 `sha256:b706f097…bad0`. OC424 upgrade9/9 passes and all 13 clients keep
-byte-identical `uuid`/`token` rows (digest `a2737fd0…d0ce`); fresh encrypted
+matching `uuid`/`token` rows (originally recorded as `a2737fd0…d0ce`; the
+later audit corrects this to `55bc6191…d2bde`); fresh encrypted
 pre (`5c142e5d…4b86`) and post (`9e8a312b…26bf`) archives reached MAC-WAN's
 `manual/v1727-recovery-20261104/` with sidecars, and two isolated drills pass
 (pre boots v1.7.26, post boots v1.7.27). Owner on-page acceptance of the CSV

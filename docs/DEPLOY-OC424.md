@@ -18,6 +18,39 @@ recovery remains unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
 schedule and 14-node acceptance statements below are history.
 
+## Pre-release recheck (2026-11-05)
+
+OC424 remains healthy/restart0 on v1.7.27 with 13 clients and the matching
+`55bc6191…d2bde` identity digest; both databases pass read-only `quick_check`.
+The fresh MAC-WAN pre-release archive
+`manual/v1729-pre-20261105T0217Z/oc424-20261105T021731029133Z-8f9f93289d16.tar.gz.age`
+has SHA-256 `348223db54dc13d27bfbcb08e8571499a3f100a0f8f6dded2285aa56ae2c4dfd`.
+Its sidecar, authenticated archive, all 1,345 manifest files and both database
+integrity checks pass. A first restore attempt used a mistyped image digest and
+failed to start; the retry boots the inspected pinned v1.7.27 amd64 image in a
+network-free isolated drill. No node or token is modified. This pre-release
+backup does not replace the required post-upgrade backup.
+
+## Identity and backup recheck (2026-11-04 13:38–13:42 UTC)
+
+The owner was unsure whether any intervening node or Agent-token change had
+occurred. A read-only comparison found 13 clients and the same UUID/token
+digest (`55bc6191…d2bde`) in the live OC424 database, the v1.7.27 pre and
+post archives and the v1.7.26 post archive. Each comparison sorted rows by
+UUID and hashed each UTF-8 UUID and token as an eight-byte big-endian length
+followed by its bytes. The snapshots do not exclude a change later reversed.
+The previously recorded v1.7.27 digest `a2737fd0…d0ce` is inconsistent with
+the rechecked archives; its cause or original method is unknown. The earlier
+attribution to an owner edit was unsupported and is withdrawn.
+
+MAC-WAN SSH was reachable. Its three encrypted archives matched their recorded
+SHA-256 checksums, decrypted successfully and yielded databases passing
+SQLite `quick_check`. Temporary plaintext was confined to MAC-WAN's tmpfs and
+removed. This does not establish a new pre-upgrade backup or a current restore
+drill; validate a fresh off-host backup before the next production switch.
+OC424 was healthy with zero container restarts, running v1.7.27, with root
+filesystem usage at 50%. No live identities or production state were changed.
+
 ## Current checkpoint (2026-11-04 05:02 UTC)
 
 OC424 runs **v1.7.27/24faa9d**, immutable source
@@ -41,12 +74,11 @@ container is healthy with zero restarts at this checkpoint.
 - OC424 upgrade9/9 passes: healthy/restart0, `/api/version` v1.7.27/24faa9d,
   public and front page 200, `komari.db` quick_check ok, upgrade archives
   present, zero ERROR lines in the last five minutes. All 13 registered
-  clients keep byte-identical `uuid`/`token` rows before and after the switch
-  (digest `a2737fd0…d0ce`); this digest differs from the v1.7.26 checkpoint
-  (`55bc6191…d2bde`) because the owner edited the node set between releases,
-  not because of this upgrade. The `system.restarts` definition is present
-  post-switch and the local Agent is unchanged. Public entry points serve
-  v1.7.27 through Cloudflare.
+  clients have matching `uuid`/`token` rows before and after the switch
+  (originally recorded as `a2737fd0…d0ce`; corrected to
+  `55bc6191…d2bde` by the later audit above). The `system.restarts` definition
+  is present post-switch and the local Agent is unchanged. Public entry points
+  serve v1.7.27 through Cloudflare.
 - Manual pre archive `oc424-v1727-pre.tar.gz.age` has SHA-256
   `5c142e5d…4b86`; post archive `oc424-v1727-post.tar.gz.age` has SHA-256
   `9e8a312b…26bf`. Both reached MAC-WAN's private

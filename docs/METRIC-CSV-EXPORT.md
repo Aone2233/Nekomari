@@ -1,8 +1,9 @@
 # Metric CSV exports
 
-The fixes described here are in development, not yet released or deployed.
-The published v1.7.28 record CSV schema differs; do not treat that version's
-reconstructed records as raw observations or use them for traffic billing.
+The fixes described here are the v1.7.29 release candidate; release and OC424
+deployment are separate gates. The published v1.7.28 record CSV schema
+differs; do not treat that version's reconstructed records as raw observations
+or use them for traffic billing. See `OPEN-WORK.md` for current delivery state.
 
 ## History bucket endpoints
 

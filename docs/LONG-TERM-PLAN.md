@@ -69,6 +69,19 @@ decides at the gates marked **[Owner]**.
 | `v1.9.0` | 2026-11 → 2027-01 | Metric CSV ships as v1.7.27; remaining: correct and deploy history-bucket CSV, exec-result history, cost-forecast column, roles (viewer/operator/admin), frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
 | `v2.0.0` | 2027-Q2 | non-root agent default, protocol consolidation, secrets at rest, 200-node benchmark | migration guide; two-minor compat policy; benchmark |
 
+### Immediate delivery sequence (2026-11-05)
+
+1. Release the v1.7.29 CSV correction only after exact-merge CI, verified
+   release artifacts and a fresh recoverable MAC-WAN pre-backup pass; deploy
+   the pinned image to OC424, verify node identities/report freshness and make
+   a fresh post-backup. Do not claim owner UI acceptance until acknowledged.
+2. Once that gate is closed, pursue the next v1.9.0 operator slice separately,
+   starting with bounded exec-result history and an explicit retention and
+   authorization contract; keep CSV correctness fixes independent of it.
+3. Keep the second off-host destination as an owner decision; maintain MAC-WAN
+   recovery checks in the meantime. The 200-node work remains deferred and
+   existing Agent tokens are not rotated as part of these releases.
+
 ### Owner decision calendar
 
 1. **v1.7.25 acceptance** — closed: the owner confirmed receipt of the real
@@ -92,12 +105,13 @@ decides at the gates marked **[Owner]**.
 ## Current Delivery Checkpoint (2026-11-04)
 
 **Current release gate:** v1.7.28/`545d3ac` was published at 05:44 UTC but
-not deployed to OC424. The last read-only production check found 13 nodes but
-an identity digest different from the v1.7.27 checkpoint. Do not overwrite or
-rotate live identities: owner confirmation of any node/token changes is
-pending. MAC-WAN SSH timed out; validate a fresh off-host backup before a
-switch. Stable v1.7.28 can trigger Agent auto-updates, whose fleet status has
-not been verified. See [`OPEN-WORK.md`](./OPEN-WORK.md).
+not deployed to OC424. A 2026-11-04 recheck found matching identity digests
+across the live 13-client database and three older backup snapshots; it
+corrects an inconsistent v1.7.27 record but cannot rule out an intervening
+change later reversed. Do not overwrite or rotate live identities. MAC-WAN
+SSH is reachable again; validate a fresh off-host backup before a switch.
+Stable v1.7.28 can trigger Agent auto-updates, whose fleet status has not been
+verified. See [`OPEN-WORK.md`](./OPEN-WORK.md).
 
 **Latest OC424 delivery: v1.7.27 (2026-11-04 approximately 05:02 UTC).**
 The node chart page gains metric CSV export: an Export CSV button downloads
@@ -107,11 +121,12 @@ with the log export. Pull-request CI41773313554 passes 8/8, exact merge
 CI41774384405 8/8, release41775304251 10/10 and Docker41775869827 2/2; the
 released arm64 asset and the image's `/app/nekomari` hash identically
 (`c6deb156…41ee`) on OC424 and the image is pinned by the index digest
-`sha256:b706f097…bad0`. OC424 upgrade9/9 passes with the live 13-client node
-set byte-identical (digest `a2737fd0…d0ce`), and fresh encrypted pre/post
-archives exist with matching MAC-WAN copies and two passing isolated restore
-drills (pre boots v1.7.26, post boots v1.7.27). Owner on-page acceptance of
-the export and the second off-host destination decision remain. The
+`sha256:b706f097…bad0`. OC424 upgrade9/9 passes with the 13-client node
+set matching across the pre/post snapshots (the original `a2737fd0…d0ce`
+record was corrected to `55bc6191…d2bde` by the later recheck), and fresh
+encrypted pre/post archives exist with matching MAC-WAN copies and two passing
+isolated restore drills (pre boots v1.7.26, post boots v1.7.27). Owner on-page
+acceptance of the export and the second off-host destination decision remain. The
 alert-rule send path is regression-checked on the current release: the owner
 sent a test notification from the saved load rule and acknowledged the real
 `[TEST]` receipt (2026-11-04). See
