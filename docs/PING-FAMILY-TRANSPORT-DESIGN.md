@@ -1,7 +1,7 @@
 # Family-pinned probes: transport fencing design
 
 Status: draft implementation and test plan. The feature branch has a WS-only
-challenge/ack handshake and Agent permit-request handling; its Agent start
+challenge/ack handshake and an isolated permit round trip; its Agent start
 fence remains isolated. No scheduler dispatches a pinned task or admits a
 pinned result. POST sessions, delivery and result fencing remain unimplemented.
 None of this authorizes a release or changes live tasks.
@@ -91,15 +91,22 @@ activate the wire helpers based solely on syntactically valid identifiers.
   must preserve that sequence order or tolerate a skipped probe. Local lease
   expiry also retires tickets and cancels work; a delayed renewal cannot revive
   the expired session. A target-free permit request is handled over WebSocket,
-  but the panel does not send it and no probe uses the ticket yet.
+  and an isolated panel helper sends it, but no production scheduler invokes
+  the helper and no probe uses the ticket yet.
 - An isolated panel reservation map allocates per-session sequence numbers,
   tracks a bounded number of pending permit responses, and wakes waiters on
   replacement, re-handshake, disconnect, token reset or observed lease expiry.
   It rejects mismatched responses and never evicts an unexpired reservation.
-  It is not connected to socket writes or the scheduler: future sending must
-  serialize reservation and writing together so sequence numbers cannot reach
-  the Agent in reverse order. An isolated reservation is not authorization to
-  send a target or write a result.
+  An isolated helper serializes reservation and direct socket writes and
+  recognizes replies on the credential-admitted WS reader; it is not called
+  by the scheduler and never enters the generic queue. Busy session/socket
+  writers skip rather than build an unbounded wait queue. The bounded write
+  restores the previous deadline; a failed or canceled write aborts the socket.
+  A blocked plugin hook cannot be forcibly interrupted, so a process-wide
+  limit of 64 such workers causes further pinned requests to fail closed until
+  they finish. A loopback test exercises the panel's target-free wire request
+  and response with a simulated peer, not a real Agent probe. An isolated
+  permit is not authorization to send a target or write a result.
 - The panel registers the dispatch ID for a bounded time using its own
   monotonic clock, binding it to the active session, assignment and config
   generation. Result admission and consumption of each expected role/leg must
@@ -111,9 +118,9 @@ activate the wire helpers based solely on syntactically valid identifiers.
   panel's dispatch or receive time before integrating with historical metrics.
   A result missing its pending dispatch must fail closed, even after restart.
 
-This is not a finished bootstrap or queue. Panel transport ordering,
-the panel dispatch/result store, per-leg consumption and end-to-end
-deadline/cancellation tests are still required before connecting delivery.
+This is not a finished bootstrap or queue. The panel dispatch/result store,
+per-leg consumption and end-to-end deadline/cancellation tests with the real
+Agent remain required before connecting delivery.
 
 ## Queue and direct delivery
 

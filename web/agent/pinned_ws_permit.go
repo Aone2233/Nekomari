@@ -1,7 +1,11 @@
 package agent
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"time"
 
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
@@ -11,6 +15,7 @@ import (
 const (
 	pinnedPermitLimit = 64
 	pinnedPermitTTL   = 5 * time.Second
+	pinnedWriteWait   = 2 * time.Second
 )
 
 var errPinnedReservation = errors.New("pinned permit reservation unavailable")
@@ -24,6 +29,15 @@ type pinnedPermitEntry struct {
 type pinnedPermitOutcome struct {
 	permit v2.PingFamilyPermitResult
 	err    error
+}
+
+type pinnedPermitLease struct {
+	conn     *connection.SafeConn
+	instance string
+	session  string
+	dispatch string
+	ticket   string
+	sequence uint64
 }
 
 // retirePinnedWSLocked wakes pending reservations before dropping their
@@ -47,9 +61,13 @@ func prunePinnedPermitsLocked(s *pinnedWSSession, now time.Time) {
 }
 
 // reservePinnedPermit is an isolated state primitive, not authorization to
-// write to a socket or execute a probe. Sequence reservation and actual
-// WebSocket writes must be serialized together by the future transport.
+// write to a socket or execute a probe. Production senders must use the
+// session lock to serialize sequence reservation and the actual write.
 func reservePinnedPermit(uuid string) (*connection.SafeConn, v2.Request, <-chan pinnedPermitOutcome, error) {
+	return reservePinnedPermitForSession(uuid, nil, "")
+}
+
+func reservePinnedPermitForSession(uuid string, expectedConn *connection.SafeConn, expectedSession string) (*connection.SafeConn, v2.Request, <-chan pinnedPermitOutcome, error) {
 	dispatchID, err := newPinnedWSChallenge()
 	if err != nil {
 		return nil, v2.Request{}, nil, errPinnedReservation
@@ -58,6 +76,9 @@ func reservePinnedPermit(uuid string) (*connection.SafeConn, v2.Request, <-chan 
 	defer mu.Unlock()
 	now := time.Now()
 	s, ok := pinnedWSSessions[uuid]
+	if expectedConn != nil && (!ok || s.conn != expectedConn || s.challenge != expectedSession) {
+		return nil, v2.Request{}, nil, errPinnedReservation
+	}
 	if !ok || s.conn == nil || connectedClients[uuid] != s.conn || !s.active || !now.Before(s.expires) {
 		if ok && s.conn != nil && connectedClients[uuid] == s.conn && !now.Before(s.expires) {
 			retirePinnedWSLocked(uuid)
@@ -109,6 +130,57 @@ func resolvePinnedPermit(uuid string, conn *connection.SafeConn, requestID strin
 	return true
 }
 
+// ConsumePinnedWSPermitResponse recognizes only a pending response on this
+// socket. The RPC reader must call it under current-credential admission.
+// A nonempty method is never a response, even when its ID matches a permit.
+func ConsumePinnedWSPermitResponse(uuid string, conn *connection.SafeConn, data []byte) bool {
+	if len(data) > 4096 {
+		return false
+	}
+	var frame struct {
+		JSONRPC string          `json:"jsonrpc"`
+		Method  string          `json:"method"`
+		ID      json.RawMessage `json:"id"`
+		Result  json.RawMessage `json:"result"`
+		Error   json.RawMessage `json:"error"`
+	}
+	if json.Unmarshal(data, &frame) != nil || frame.JSONRPC != v2.Version || frame.Method != "" ||
+		(len(frame.Result) == 0 && len(frame.Error) == 0) {
+		return false
+	}
+	var id string
+	if json.Unmarshal(frame.ID, &id) != nil || !validPinnedWSID(id) {
+		return false
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	now := time.Now()
+	s, ok := pinnedWSSessions[uuid]
+	if !ok || conn == nil || connectedClients[uuid] != conn || s.conn != conn || !s.active {
+		return false
+	}
+	entry, ok := s.pending[id]
+	if !ok {
+		return false
+	}
+	if !now.Before(s.expires) {
+		retirePinnedWSLocked(uuid)
+		return true
+	}
+	delete(s.pending, id)
+	var result v2.PingFamilyPermitResult
+	decoder := json.NewDecoder(bytes.NewReader(frame.Result))
+	decoder.DisallowUnknownFields()
+	err := decoder.Decode(&result)
+	if !now.Before(entry.expires) || len(frame.Error) != 0 ||
+		err != nil || decoder.Decode(new(any)) != io.EOF || result.DispatchID != id || result.Sequence != entry.sequence || !validPinnedWSID(result.FreshnessTicket) {
+		entry.result <- pinnedPermitOutcome{err: errPinnedReservation}
+		return true
+	}
+	entry.result <- pinnedPermitOutcome{permit: result}
+	return true
+}
+
 func cancelPinnedPermit(uuid string, conn *connection.SafeConn, requestID string) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -119,5 +191,72 @@ func cancelPinnedPermit(uuid string, conn *connection.SafeConn, requestID string
 	if entry, ok := s.pending[requestID]; ok {
 		delete(s.pending, requestID)
 		entry.result <- pinnedPermitOutcome{err: errPinnedReservation}
+	}
+}
+
+// requestPinnedWSPermit is deliberately unexported and is not called by the
+// scheduler. It never enters the generic event queue. One session write lock
+// covers both sequence allocation and transmission to preserve wire order.
+func requestPinnedWSPermit(ctx context.Context, uuid string) (pinnedPermitLease, error) {
+	return requestPinnedWSPermitWithWriter(ctx, uuid, func(ctx context.Context, conn *connection.SafeConn, req v2.Request) error {
+		return conn.WriteJSONContext(ctx, req)
+	})
+}
+
+func requestPinnedWSPermitWithWriter(ctx context.Context, uuid string, write func(context.Context, *connection.SafeConn, v2.Request) error) (pinnedPermitLease, error) {
+	if ctx == nil || write == nil {
+		return pinnedPermitLease{}, errPinnedReservation
+	}
+	mu.RLock()
+	s, ok := pinnedWSSessions[uuid]
+	if !ok || s.conn == nil || connectedClients[uuid] != s.conn || !s.active || s.writeLock == nil || !time.Now().Before(s.expires) {
+		mu.RUnlock()
+		return pinnedPermitLease{}, errPinnedReservation
+	}
+	conn, session, lock := s.conn, s.challenge, s.writeLock
+	mu.RUnlock()
+	return requestPinnedWSPermitLocked(ctx, uuid, conn, session, lock, write)
+}
+
+func requestPinnedWSPermitLocked(ctx context.Context, uuid string, conn *connection.SafeConn, session string, lock chan struct{}, write func(context.Context, *connection.SafeConn, v2.Request) error) (pinnedPermitLease, error) {
+	// Do not queue an unbounded number of goroutines behind a slow connection.
+	select {
+	case lock <- struct{}{}:
+	default:
+		return pinnedPermitLease{}, errPinnedReservation
+	}
+	if ctx.Err() != nil {
+		<-lock
+		return pinnedPermitLease{}, errPinnedReservation
+	}
+	reservedConn, req, waiter, err := reservePinnedPermitForSession(uuid, conn, session)
+	if err != nil {
+		<-lock
+		return pinnedPermitLease{}, errPinnedReservation
+	}
+	p := req.Params.(v2.PingFamilyPermitParams)
+	writeCtx, cancelWrite := context.WithTimeout(ctx, pinnedWriteWait)
+	err = write(writeCtx, reservedConn, req)
+	cancelWrite()
+	<-lock
+	if err != nil {
+		cancelPinnedPermit(uuid, conn, p.DispatchID)
+		return pinnedPermitLease{}, errPinnedReservation
+	}
+	timer := time.NewTimer(pinnedPermitTTL)
+	defer timer.Stop()
+	select {
+	case outcome := <-waiter:
+		if outcome.err != nil || ctx.Err() != nil || !PinnedWSSessionCurrent(uuid, conn, p.Instance, session, time.Now()) {
+			return pinnedPermitLease{}, errPinnedReservation
+		}
+		return pinnedPermitLease{conn: conn, instance: p.Instance, session: p.Session,
+			dispatch: p.DispatchID, ticket: outcome.permit.FreshnessTicket, sequence: p.Sequence}, nil
+	case <-ctx.Done():
+		cancelPinnedPermit(uuid, conn, p.DispatchID)
+		return pinnedPermitLease{}, errPinnedReservation
+	case <-timer.C:
+		cancelPinnedPermit(uuid, conn, p.DispatchID)
+		return pinnedPermitLease{}, errPinnedReservation
 	}
 }

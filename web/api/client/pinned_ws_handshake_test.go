@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -19,6 +20,24 @@ func pinnedHandshakeRequest(t *testing.T, params v2.PingFamilySessionParams) v2.
 		t.Fatal(err)
 	}
 	return v2.RawRequest{JSONRPC: v2.Version, ID: "test", Method: v2.MethodAgentPingFamilySession, Params: b}
+}
+
+func TestPinnedPermitResponseRequiresCredentialAdmission(t *testing.T) {
+	const uuid = "pinned-permit-credential"
+	conn := &connection.SafeConn{}
+	agentruntime.SetConnectedClients(uuid, conn)
+	t.Cleanup(func() { agentruntime.ResetClient(uuid) })
+	ran := false
+	retired := func(context.Context, func() error) error { return api.ErrClientCredentialRetired }
+	consumed, err := consumePinnedPermitResponse(t.Context(), uuid, conn, []byte(`{"jsonrpc":"2.0","id":"x","result":{}}`), retired)
+	if consumed || !errors.Is(err, api.ErrClientCredentialRetired) {
+		t.Fatalf("retired credential: consumed=%v err=%v", consumed, err)
+	}
+	admitted := func(_ context.Context, fn func() error) error { ran = true; return fn() }
+	consumed, err = consumePinnedPermitResponse(t.Context(), uuid, conn, []byte(`{"jsonrpc":"2.0","id":"x","result":{}}`), admitted)
+	if !ran || consumed || err != nil {
+		t.Fatalf("unmatched response: called=%v consumed=%v err=%v", ran, consumed, err)
+	}
 }
 
 func TestPinnedWSHandlerRequiresCurrentSocketAndCredential(t *testing.T) {

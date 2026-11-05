@@ -93,13 +93,15 @@ rollback gates. The transport-specific race and test plan is in
 An isolated Agent probe engine and WS handshake on both sides exist in draft
 PR #170; neither event delivery nor result upload uses the handshake. POST
 sessions and the delivery/result fences remain open. The Agent has a
-clock-independent, one-use permit/start fence; permit requests are recognized
-over WebSocket but no panel dispatch or Agent probe consumes them. Panel
-has an isolated bounded permit-reservation primitive, but socket write ordering,
-pending dispatch/result tracking, and task/session atomic fences remain
-unimplemented. The wire shape and result guard do not constitute dispatch or
-metric admission. No task, Agent or production configuration was changed, and
-neither the designs nor the draft authorize a release.
+clock-independent, one-use permit/start fence. An isolated panel helper sends
+a target-free permit request directly over the current WebSocket, orders its
+sequence/write and consumes a bounded response under credential admission;
+local race and simulated-peer loopback tests pass. The scheduler does not call
+it and no Agent probe consumes its ticket. Pending dispatch/result tracking and
+task/session atomic fences remain unimplemented. The wire shape and result
+guard do not constitute dispatch or metric admission. No task, Agent or
+production configuration was changed, and neither the designs nor the draft
+authorize a release.
 
 **Prior backup close-out (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds

@@ -18,6 +18,7 @@ type pinnedWSSession struct {
 	active    bool
 	sequence  uint64
 	pending   map[string]pinnedPermitEntry
+	writeLock chan struct{}
 }
 
 const pinnedWSLease = 90 * time.Second
@@ -64,7 +65,7 @@ func beginPinnedWSHandshakeAt(uuid string, conn *connection.SafeConn, instance s
 		return "", false
 	}
 	retirePinnedWSLocked(uuid)
-	pinnedWSSessions[uuid] = pinnedWSSession{conn: conn, instance: instance, challenge: challenge, expires: now().Add(pinnedWSLease)}
+	pinnedWSSessions[uuid] = pinnedWSSession{conn: conn, instance: instance, challenge: challenge, expires: now().Add(pinnedWSLease), writeLock: make(chan struct{}, 1)}
 	return challenge, true
 }
 

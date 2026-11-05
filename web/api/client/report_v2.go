@@ -311,9 +311,14 @@ func WebSocketV2RPC(c *gin.Context) {
 		}
 		message = bytes.TrimSpace(message)
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
-		if err := currentOperation(ctx, func() error { return nil }); err != nil {
+		consumed, err := consumePinnedPermitResponse(ctx, uuid, conn, message, currentOperation)
+		if err != nil {
 			cancel()
 			return
+		}
+		if consumed {
+			cancel()
+			continue
 		}
 		var req v2.RawRequest
 		if err := json.Unmarshal(message, &req); err != nil {
@@ -347,6 +352,15 @@ func WebSocketV2RPC(c *gin.Context) {
 			}
 		}
 	}
+}
+
+func consumePinnedPermitResponse(ctx context.Context, uuid string, conn *connection.SafeConn, message []byte, operation clientOperation) (bool, error) {
+	consumed := false
+	err := operation(ctx, func() error {
+		consumed = agent_runtime.ConsumePinnedWSPermitResponse(uuid, conn, message)
+		return nil
+	})
+	return consumed, err
 }
 
 // This handshake establishes connection identity only. No pinned dispatch or

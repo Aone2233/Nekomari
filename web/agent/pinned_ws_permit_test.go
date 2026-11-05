@@ -1,6 +1,10 @@
 package agent
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -207,5 +211,199 @@ func TestPinnedPanelPermitLeaseExpiryWakesAllWaiters(t *testing.T) {
 			}
 			awaitPanelPermit(t, waiter, false)
 		})
+	}
+}
+
+func TestPinnedPanelConsumesOnlyPendingWSResponses(t *testing.T) {
+	const uuid = "pinned-panel-response"
+	conn, _ := activePanelPinnedSession(t, uuid)
+	_, req, waiter, err := reservePinnedPermit(uuid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := permitResultForRequest(t, req)
+	marshal := func(v any) []byte {
+		t.Helper()
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	response := marshal(v2.Response{JSONRPC: v2.Version, ID: result.DispatchID, Result: result})
+	if ConsumePinnedWSPermitResponse(uuid, &connection.SafeConn{}, response) {
+		t.Fatal("different socket consumed response")
+	}
+	request := marshal(v2.Request{JSONRPC: v2.Version, ID: result.DispatchID, Method: v2.MethodAgentMessage, Params: result})
+	if ConsumePinnedWSPermitResponse(uuid, conn, request) {
+		t.Fatal("request consumed pending response")
+	}
+	if !ConsumePinnedWSPermitResponse(uuid, conn, response) {
+		t.Fatal("matching response not consumed")
+	}
+	if got := awaitPanelPermit(t, waiter, true); got.permit != result {
+		t.Fatalf("got %+v", got)
+	}
+	if ConsumePinnedWSPermitResponse(uuid, conn, response) {
+		t.Fatal("replayed response consumed")
+	}
+}
+
+func TestPinnedPanelRejectsMalformedWSResponses(t *testing.T) {
+	const uuid = "pinned-panel-bad-response"
+	conn, _ := activePanelPinnedSession(t, uuid)
+	for _, makeBody := range []func(string, uint64) string{
+		func(id string, seq uint64) string {
+			return `{"jsonrpc":"2.0","id":"` + id + `","error":{"code":-32602}}`
+		},
+		func(id string, seq uint64) string { return `{"jsonrpc":"2.0","id":"` + id + `","result":null}` },
+		func(id string, seq uint64) string {
+			return `{"jsonrpc":"2.0","id":"` + id + `","result":{"dispatch_id":"` + id + `","sequence":1,"freshness_ticket":"bad"}}`
+		},
+		func(id string, seq uint64) string {
+			return `{"jsonrpc":"2.0","id":"` + id + `","result":{"dispatch_id":"` + id + `","sequence":1,"freshness_ticket":"` + pinnedTestInstanceB + `","extra":1}}`
+		},
+		func(id string, seq uint64) string {
+			return `{"jsonrpc":"2.0","id":"` + id + `","result":{"dispatch_id":"` + id + `","sequence":` + fmt.Sprint(seq) + `,"freshness_ticket":"` + pinnedTestInstanceB + `"},"error":null}`
+		},
+	} {
+		_, req, waiter, err := reservePinnedPermit(uuid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := req.Params.(v2.PingFamilyPermitParams)
+		if !ConsumePinnedWSPermitResponse(uuid, conn, []byte(makeBody(p.DispatchID, p.Sequence))) {
+			t.Fatal("malformed pending response not consumed")
+		}
+		awaitPanelPermit(t, waiter, false)
+	}
+}
+
+func TestPinnedPanelRequestPermitOrderedAndNoProbe(t *testing.T) {
+	const uuid = "pinned-panel-request"
+	conn, challenge := activePanelPinnedSession(t, uuid)
+	for want := uint64(1); want <= 2; want++ {
+		lease, err := requestPinnedWSPermitWithWriter(t.Context(), uuid, func(_ context.Context, got *connection.SafeConn, req v2.Request) error {
+			if got != conn || req.Method != v2.MethodAgentPingFamilyPermit {
+				t.Fatalf("unexpected permit write: conn=%p request=%+v", got, req)
+			}
+			result := permitResultForRequest(t, req)
+			if result.Sequence != want || !resolvePinnedPermit(uuid, conn, result.DispatchID, &result) {
+				t.Fatalf("sequence=%d want=%d or response rejected", result.Sequence, want)
+			}
+			return nil
+		})
+		if err != nil || lease.conn != conn || lease.session != challenge || lease.sequence != want || lease.ticket != pinnedTestInstanceB {
+			t.Fatalf("lease=%+v err=%v", lease, err)
+		}
+	}
+}
+
+func TestPinnedPanelPermitWriteFailsClosed(t *testing.T) {
+	for _, mode := range []string{"write failure", "timeout", "replacement", "retire after reply"} {
+		t.Run(mode, func(t *testing.T) {
+			uuid := "pinned-request-" + mode
+			conn, _ := activePanelPinnedSession(t, uuid)
+			ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+			defer cancel()
+			_, err := requestPinnedWSPermitWithWriter(ctx, uuid, func(ctx context.Context, got *connection.SafeConn, req v2.Request) error {
+				result := permitResultForRequest(t, req)
+				switch mode {
+				case "write failure":
+					return errors.New("broken write")
+				case "timeout":
+					<-ctx.Done()
+					return ctx.Err()
+				case "replacement":
+					SetConnectedClients(uuid, &connection.SafeConn{})
+				case "retire after reply":
+					if !resolvePinnedPermit(uuid, got, result.DispatchID, &result) {
+						t.Fatal("valid reply rejected")
+					}
+					ResetClient(uuid)
+				}
+				return nil
+			})
+			if err == nil {
+				t.Fatal("failed, timed out or retired request succeeded")
+			}
+			mu.RLock()
+			s := pinnedWSSessions[uuid]
+			mu.RUnlock()
+			if len(s.pending) != 0 {
+				t.Fatalf("pending permits leaked: %d", len(s.pending))
+			}
+			if conn == nil {
+				t.Fatal("missing test connection")
+			}
+		})
+	}
+}
+
+func TestPinnedPanelPermitBusyDoesNotReserveOrWait(t *testing.T) {
+	const uuid = "pinned-request-busy"
+	conn, challenge := activePanelPinnedSession(t, uuid)
+	mu.RLock()
+	lock := pinnedWSSessions[uuid].writeLock
+	mu.RUnlock()
+	lock <- struct{}{}
+	defer func() { <-lock }()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	for _, candidate := range []context.Context{t.Context(), ctx} {
+		_, err := requestPinnedWSPermitWithWriter(candidate, uuid, func(context.Context, *connection.SafeConn, v2.Request) error {
+			t.Fatal("busy session wrote a permit")
+			return nil
+		})
+		if err == nil {
+			t.Fatal("busy or canceled request succeeded")
+		}
+	}
+	mu.RLock()
+	s := pinnedWSSessions[uuid]
+	mu.RUnlock()
+	if s.conn != conn || s.challenge != challenge || s.sequence != 0 || len(s.pending) != 0 {
+		t.Fatalf("busy request changed session: %+v", s)
+	}
+}
+
+func TestPinnedPanelPermitConcurrentWritesStayOrdered(t *testing.T) {
+	const uuid = "pinned-request-concurrent"
+	conn, _ := activePanelPinnedSession(t, uuid)
+	entered, release := make(chan struct{}), make(chan struct{})
+	first := make(chan error, 1)
+	go func() {
+		_, err := requestPinnedWSPermitWithWriter(t.Context(), uuid, func(_ context.Context, got *connection.SafeConn, req v2.Request) error {
+			close(entered)
+			<-release
+			result := permitResultForRequest(t, req)
+			if result.Sequence != 1 || !resolvePinnedPermit(uuid, got, result.DispatchID, &result) {
+				return errPinnedReservation
+			}
+			return nil
+		})
+		first <- err
+	}()
+	<-entered
+	var secondWrites int
+	if _, err := requestPinnedWSPermitWithWriter(t.Context(), uuid, func(context.Context, *connection.SafeConn, v2.Request) error {
+		secondWrites++
+		return nil
+	}); err == nil || secondWrites != 0 {
+		t.Fatal("concurrent request overtook the first write")
+	}
+	close(release)
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	lease, err := requestPinnedWSPermitWithWriter(t.Context(), uuid, func(_ context.Context, got *connection.SafeConn, req v2.Request) error {
+		result := permitResultForRequest(t, req)
+		if got != conn || result.Sequence != 2 || !resolvePinnedPermit(uuid, got, result.DispatchID, &result) {
+			return errPinnedReservation
+		}
+		return nil
+	})
+	if err != nil || lease.sequence != 2 {
+		t.Fatalf("next lease=%+v err=%v", lease, err)
 	}
 }
