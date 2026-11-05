@@ -36,6 +36,17 @@ not a proven root cause of that particular failure. Test-fix candidate
 CI41113452947 and the subsequent exact merge CI41114880987 pass 8/8; the
 original failure remains part of the record.
 
+**CI follow-up (2026-11-05):** draft commit `6d765c9` CI42025602346 fails
+7/8 in the synthetic backup-health recovery-notice smoke, timing out while
+waiting for the second message. A race is possible in that fixture: its fake
+receiver appends a message before the panel has persisted `Notified`, while
+the fixture immediately terminates the process. The fixture now waits for
+both the expected message and persisted `Notified` before each stop; this is
+a plausible fix, not a proven root cause of that particular failure. Three
+local synthetic runs passed both before and after the change; exact-commit CI
+`42027687020` for `804208d` passed 8/8. This does not establish the original
+failure's root cause. No production backup or alert state was touched.
+
 **Current phase, updated 2026-11-05:** OC424 runs `v1.7.29/94e1973`.
 `v1.7.28` was published but skipped for deployment; its CSV correctness
 fixes were released in v1.7.29. OC424 checks pass 9/9 and fresh MAC-WAN
@@ -84,12 +95,30 @@ The next bounded releases and operational gates, in order:
    [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md). Later slices include
    the cost-forecast column, roles UI, frontend budgets and an a11y pass.
 
-**Hostname probe family selection (design only, 2026-11-05):** the reported
+**Hostname probe family selection (draft, 2026-11-05):** the reported
 multi-node IPv6 hostname is rejected by the conservative mixed-family guard.
 [`PING-DOMAIN-FAMILY-DESIGN.md`](./PING-DOMAIN-FAMILY-DESIGN.md) records a
 proposed end-to-end, fail-closed solution and its Agent compatibility and
-rollback gates. No task, Agent or production configuration was changed, and no
-release is authorized by that design alone.
+rollback gates. The transport-specific race and test plan is in
+[`PING-FAMILY-TRANSPORT-DESIGN.md`](./PING-FAMILY-TRANSPORT-DESIGN.md).
+An isolated Agent probe engine and WS handshake on both sides exist in draft
+PR #170; the production dispatch hook is disabled. POST sessions and the
+panel delivery/result fences remain open. The Agent has a
+clock-independent, one-use permit/start fence. An isolated panel helper sends
+a target-free permit request directly over the current WebSocket, orders its
+sequence/write and consumes a bounded response under credential admission;
+local race and simulated-peer loopback tests pass. The scheduler does not call
+it. Agent probe execution and same-socket result writing now exist behind a
+disabled-by-default dispatch hook, tested with injected DNS/dials; no
+production probe consumes its ticket. Production dispatch/result tracking and
+task/session atomic fences remain unimplemented. An isolated per-session
+registration now bounds pending dispatches and retains completed/canceled
+tombstones until expiry; it rejects duplicate legs, expired leases and results
+from retired sessions. Its current task/assignment inputs are not yet fenced
+with task mutations and it is not connected to delivery or metric writes.
+The wire shape and result guard do not constitute panel metric admission. No
+task, Agent or production configuration was changed, and neither the designs
+nor the draft authorize a release.
 
 **Prior backup close-out (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds

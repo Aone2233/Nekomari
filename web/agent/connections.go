@@ -49,9 +49,18 @@ func GetConnectedClient(uuid string) *connection.SafeConn {
 }
 
 func SetConnectedClients(uuid string, conn *connection.SafeConn) {
+	ReplaceConnectedClient(uuid, conn)
+}
+
+// ReplaceConnectedClient makes connection replacement and generation fencing
+// atomic. A concurrent handshake cannot leave an untracked old socket current.
+func ReplaceConnectedClient(uuid string, conn *connection.SafeConn) *connection.SafeConn {
 	mu.Lock()
 	defer mu.Unlock()
+	old := connectedClients[uuid]
+	retirePinnedWSLocked(uuid)
 	connectedClients[uuid] = conn
+	return old
 }
 
 func MarkV2Client(uuid string) {
@@ -78,6 +87,7 @@ func DeleteClientConditionally(uuid string, connToRemove *connection.SafeConn) {
 	if currentConn, exists := connectedClients[uuid]; exists && currentConn == connToRemove {
 		delete(connectedClients, uuid)
 		delete(v2Clients, uuid)
+		retirePinnedWSLocked(uuid)
 	}
 }
 func DeleteConnectedClients(uuid string) {
@@ -86,6 +96,7 @@ func DeleteConnectedClients(uuid string) {
 	// 只从 map 中删除，不再负责关闭连接
 	delete(connectedClients, uuid)
 	delete(v2Clients, uuid)
+	retirePinnedWSLocked(uuid)
 }
 
 // ResetClient retires connection/presence/commands but preserves measurements.
@@ -95,6 +106,7 @@ func ResetClient(uuid string) {
 	conn := connectedClients[uuid]
 	delete(connectedClients, uuid)
 	delete(v2Clients, uuid)
+	retirePinnedWSLocked(uuid)
 	delete(presenceOnly, uuid)
 	delete(reportClamps, uuid)
 	DeleteV2EventQueue(uuid)

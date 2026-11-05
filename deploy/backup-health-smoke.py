@@ -85,6 +85,21 @@ def main():
                 time.sleep(0.05)
             raise RuntimeError("synthetic backup-watch readiness/notification timed out")
 
+        def wait_delivery(count, reason):
+            # The fake receiver sees the message before the panel persists its
+            # delivered state. Do not terminate the process in that gap.
+            def delivered():
+                with message_lock:
+                    received = len(messages) == count
+                if not received:
+                    return False
+                try:
+                    state = json.loads((health_dir / "alert-state.json").read_text())
+                except (FileNotFoundError, json.JSONDecodeError):
+                    return False
+                return state.get("notified") == reason
+            wait(delivered)
+
         def stop():
             if server is not None and server.poll() is None:
                 server.terminate()
@@ -138,7 +153,7 @@ def main():
                 stop()
                 write_report(backup_hours=27)
                 start(watch=True)
-                wait(lambda: len(messages) == 1)
+                wait_delivery(1, "backup_stale")
                 assert "backup_stale" in messages[0]
                 checks.append("stale encrypted-backup timestamp delivers an alert")
                 stop()
@@ -150,13 +165,13 @@ def main():
                 stop()
                 write_report()
                 start(watch=True)
-                wait(lambda: len(messages) == 2)
+                wait_delivery(2, "ok")
                 assert "recovered" in messages[1]
                 checks.append("fresh check delivers a single recovery")
                 stop()
                 write_report(report_minutes=46)
                 start(watch=True)
-                wait(lambda: len(messages) == 3)
+                wait_delivery(3, "report_stale")
                 assert "report_stale" in messages[2]
                 checks.append("missing OVH reporting heartbeat is an independent alert")
                 assert report_path.is_file() and (health_dir / "alert-state.json").is_file()

@@ -260,8 +260,7 @@ func WebSocketV2RPC(c *gin.Context) {
 	setupCtx, setupCancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	var oldConn *connection.SafeConn
 	err = operation(setupCtx, func() error {
-		oldConn = agent_runtime.GetConnectedClient(uuid)
-		agent_runtime.SetConnectedClients(uuid, conn)
+		oldConn = agent_runtime.ReplaceConnectedClient(uuid, conn)
 		agent_runtime.MarkV2Client(uuid)
 		return nil
 	})
@@ -312,9 +311,14 @@ func WebSocketV2RPC(c *gin.Context) {
 		}
 		message = bytes.TrimSpace(message)
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
-		if err := currentOperation(ctx, func() error { return nil }); err != nil {
+		consumed, err := consumePinnedPermitResponse(ctx, uuid, conn, message, currentOperation)
+		if err != nil {
 			cancel()
 			return
+		}
+		if consumed {
+			cancel()
+			continue
 		}
 		var req v2.RawRequest
 		if err := json.Unmarshal(message, &req); err != nil {
@@ -330,7 +334,12 @@ func WebSocketV2RPC(c *gin.Context) {
 			conn.WriteJSON(v2.Error(req.ID, -32600, "control message exceeds body limit", nil))
 			continue
 		}
-		resp := handleV2RPCOperation(ctx, uuid, req, false, currentOperation)
+		var resp v2.Response
+		if req.Method == v2.MethodAgentPingFamilySession {
+			resp = handlePinnedWSHandshake(ctx, uuid, conn, req, currentOperation)
+		} else {
+			resp = handleV2RPCOperation(ctx, uuid, req, false, currentOperation)
+		}
 		err = currentOperation(ctx, func() error { return nil })
 		cancel()
 		if err != nil {
@@ -343,6 +352,53 @@ func WebSocketV2RPC(c *gin.Context) {
 			}
 		}
 	}
+}
+
+func consumePinnedPermitResponse(ctx context.Context, uuid string, conn *connection.SafeConn, message []byte, operation clientOperation) (bool, error) {
+	consumed := false
+	err := operation(ctx, func() error {
+		consumed = agent_runtime.ConsumePinnedWSPermitResponse(uuid, conn, message)
+		return nil
+	})
+	return consumed, err
+}
+
+// This handshake establishes connection identity only. No pinned dispatch or
+// result admission consumes it until those paths also implement their fences.
+func handlePinnedWSHandshake(ctx context.Context, uuid string, conn *connection.SafeConn, req v2.RawRequest, operation clientOperation) v2.Response {
+	if req.JSONRPC != v2.Version || req.ID == nil {
+		return v2.Error(req.ID, -32600, "invalid handshake request", nil)
+	}
+	var p v2.PingFamilySessionParams
+	if err := req.DecodeParams(&p); err != nil || p.Version != 1 {
+		return v2.Error(req.ID, -32602, "invalid handshake params", nil)
+	}
+	var result v2.PingFamilySessionResult
+	ok := false
+	err := operation(ctx, func() error {
+		switch p.Action {
+		case "begin":
+			if p.Challenge == "" {
+				result.Challenge, ok = agent_runtime.BeginPinnedWSHandshake(uuid, conn, p.Instance, p.Version)
+			}
+		case "ack":
+			ok = agent_runtime.AckPinnedWSHandshake(uuid, conn, p.Instance, p.Challenge)
+			if ok {
+				result.Challenge = p.Challenge
+			}
+		}
+		return nil
+	})
+	if errors.Is(err, api.ErrClientCredentialRetired) {
+		return v2.Error(req.ID, -32001, "invalid token", nil)
+	}
+	if err != nil {
+		return v2.Error(req.ID, -32000, "handshake failed", nil)
+	}
+	if !ok {
+		return v2.Error(req.ID, -32602, "invalid or expired handshake", nil)
+	}
+	return v2.Success(req.ID, result)
 }
 
 // agentUpdateTargetWriter is the part of a v2 connection the rollout re-send needs. Taking the interface
