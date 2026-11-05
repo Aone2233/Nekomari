@@ -84,6 +84,13 @@ The next bounded releases and operational gates, in order:
    [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md). Later slices include
    the cost-forecast column, roles UI, frontend budgets and an a11y pass.
 
+**Hostname probe family selection (design only, 2026-11-05):** the reported
+multi-node IPv6 hostname is rejected by the conservative mixed-family guard.
+[`PING-DOMAIN-FAMILY-DESIGN.md`](./PING-DOMAIN-FAMILY-DESIGN.md) records a
+proposed end-to-end, fail-closed solution and its Agent compatibility and
+rollback gates. No task, Agent or production configuration was changed, and no
+release is authorized by that design alone.
+
 **Prior backup close-out (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds
 the two older verified copies, and four isolated restore drills pass (see
