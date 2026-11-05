@@ -25,6 +25,36 @@ func TestMetricQueryBudgets(t *testing.T) {
 	}
 }
 
+func TestExecHistoryHasIndependentBoundedQueryPool(t *testing.T) {
+	var releases []func()
+	for i := 0; i < cap(historyQuerySlots); i++ {
+		ctx, release, rpcErr := queryBudget(context.Background(), "admin:listExecHistory")
+		if rpcErr != nil {
+			releaseAll(releases)
+			t.Fatal(rpcErr)
+		}
+		if _, ok := ctx.Deadline(); !ok {
+			release()
+			releaseAll(releases)
+			t.Fatal("missing history deadline")
+		}
+		releases = append(releases, release)
+	}
+	defer releaseAll(releases)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, release, rpcErr := queryBudget(ctx, "admin:readExecHistoryChunk")
+	release()
+	if rpcErr == nil || rpcErr.Code != rpc.Cancelled {
+		t.Fatalf("history pool saturation bypassed: %v", rpcErr)
+	}
+	_, release, rpcErr = queryBudget(context.Background(), "public:queryMetrics")
+	release()
+	if rpcErr != nil {
+		t.Fatalf("history pool blocked chart queries: %v", rpcErr)
+	}
+}
+
 func TestCommonRecordsSharesHistoricalQueryBudget(t *testing.T) {
 	ctx, done, rpcErr := queryBudget(context.Background(), "common:getRecords")
 	if rpcErr != nil {

@@ -833,7 +833,13 @@ func doInitialize() error {
 		&models.Task{},
 		&models.TaskResult{},
 	); err != nil {
-		logger.Errorf("dbcore", "Failed to create Task and TaskResult table, it may already exist: %v", err)
+		return fmt.Errorf("failed to migrate task history indexes: %w", err)
+	}
+	if err := backfillTaskHistoryOrder(instance); err != nil {
+		return fmt.Errorf("failed to backfill task history order: %w", err)
+	}
+	if err := backfillTaskResultHistoryIdentity(instance); err != nil {
+		return fmt.Errorf("failed to backfill task result history identity: %w", err)
 	}
 
 	// 完整性检查放在所有 AutoMigrate 之后：这时看到的才是本进程实际要用的 schema。

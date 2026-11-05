@@ -1,6 +1,7 @@
 package jsonrpc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -177,6 +178,14 @@ func servePost(c *gin.Context) {
 	if len(requests) > 32 {
 		c.JSON(http.StatusBadRequest, rpc.ErrorResponse(nil, rpc.InvalidRequest, "batch exceeds 32 calls", nil))
 		return
+	}
+	if bytes.HasPrefix(bytes.TrimSpace(body), []byte{'['}) {
+		for _, request := range requests {
+			if isExecHistoryMethod(request.Method) {
+				c.JSON(http.StatusBadRequest, rpc.ErrorResponse(nil, rpc.InvalidRequest, "execution history requests cannot be batched", nil))
+				return
+			}
+		}
 	}
 	meta := buildContextMeta(c)
 
