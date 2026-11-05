@@ -57,6 +57,21 @@ is still open; no public-page check substitutes for it.
   with an older snapshot. MAC-WAN direct SSH timed out; the existing pinned
   reverse tunnel worked. See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
 
+### Read-only identity and execution-record recheck (04:02 UTC)
+
+The 13 live UUID/token pairs still match the prior audited digest
+`55bc6191…d2bde`; no credential value was printed. No new node/token is
+detected relative to that snapshot, although a change later reversed cannot be
+ruled out. The earlier inconsistent digest has no established explanation.
+All six currently retained task parents have matching retained execution audit
+entries; the latest retained result creation and audit both date from
+2026-10-25, with no later entry since the v1.7.29 switch. Three older results
+from 2026-10-20 have no finish time, which does not prove active execution.
+Logs/results can be removed or expire, and host-side activity outside the
+panel is not covered; this is not a complete forensic audit. The largest
+retained command and result are 3,100 and 14,406 bytes respectively. No
+production credentials, nodes, tasks or panel configuration were changed.
+
 ## Pre-release recheck (2026-11-05)
 
 OC424 was healthy/restart0 on v1.7.27 with 13 clients and the matching

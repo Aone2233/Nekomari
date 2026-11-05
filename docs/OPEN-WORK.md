@@ -93,6 +93,22 @@ mobile/dark. A network-isolated synthetic v1.7.29/candidate/rollback/candidate
 startup drill preserves old and rollback-era task data; rollback-era rows were
 injected as SQL fixtures, not dispatched to an agent. CSV owner acceptance and
 the normal release/backup gates remain open; this is not a production rollout.
+An additional scratch stress check showed SQLite may materialize an entire
+legacy output despite the 16 KiB response cap. The development branch now
+limits the leased SQLite connection and makes fields above 8 MiB explicitly
+unavailable without altering stored data; see the design document for the
+measured behavior, compatibility tradeoff and limits. This follow-up still
+requires current-commit CI before any release.
+
+**Read-only production identity/task recheck (2026-11-05 04:02 UTC):** 13
+current node UUID/token pairs match the previously audited `55bc6191…d2bde`
+snapshot; this does not rule out an intervening change subsequently reversed.
+All six retained task parents have matching retained audit entries; the latest
+task-result creation and execution audit are dated 2026-10-25, and none are
+newer than the v1.7.29 switch. Three 2026-10-20 results lack a completion time,
+which does not establish they are still executing. These checks cannot prove
+the absence of deleted or unrecorded activity; the old digest discrepancy
+remains unexplained. No production credential, node or task was changed.
 
 **Prior backup close-out (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds

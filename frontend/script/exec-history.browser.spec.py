@@ -72,7 +72,7 @@ class ExecHistoryBrowserTest(unittest.TestCase):
         self.errors = []
         self.page.on("pageerror", lambda error: self.errors.append(str(error)))
         self.page.add_init_script("""
-          window.requests = []; window.failList = false; window.holdDetail = false;
+          window.requests = []; window.failList = false; window.holdDetail = false; window.largeCommand = false; window.largeOutput = false;
           window.fetch = async (input, init = {}) => {
             const json = (result, status=200) => new Response(JSON.stringify(result), {status, headers:{'Content-Type':'application/json'}});
             if (String(input) === '/api/admin/client/list') return json([{uuid:'node-a',name:'Alpha',weight:0,billing_cycle:0}]);
@@ -85,15 +85,16 @@ class ExecHistoryBrowserTest(unittest.TestCase):
             }
             if (call.method === 'admin:getExecHistoryDetail') {
               if (window.holdDetail) await new Promise(resolve => { window.releaseDetail = resolve; });
-              return json({jsonrpc:'2.0',id:1,result:{task_id:call.params.task_id,results:[{cursor:'7',client:'deleted-node',client_truncated:false,created_at:'2026-11-05T02:00:00Z',finished_at:null,exit_code:null,output_bytes:41}]}});
+              return json({jsonrpc:'2.0',id:1,result:{task_id:call.params.task_id,results:[{cursor:'7',client:'deleted-node',client_truncated:false,created_at:'2026-11-05T02:00:00Z',finished_at:null,exit_code:null,output_bytes:window.largeOutput ? 9000000 : 41,output_available:!window.largeOutput}]}});
             }
             if (call.method === 'admin:readExecHistoryChunk') {
+              if (call.params.kind === 'command' && window.largeCommand) return json({jsonrpc:'2.0',id:1,result:{data_base64:'',offset:call.params.offset,next_offset:call.params.offset,total_bytes:9000000,has_more:false,available:false}});
               const text = call.params.kind === 'command' ? '<img src=x onerror="window.pwned=1">' : '<script>window.pwned=1</script>secret';
               const all = new TextEncoder().encode(text);
               const start = call.params.offset || 0;
               const end = Math.min(start + 16, all.length);
               const data = all.slice(start,end);
-              return json({jsonrpc:'2.0',id:1,result:{data_base64:btoa(String.fromCharCode(...data)),offset:start,next_offset:end,total_bytes:all.length,has_more:end<all.length}});
+              return json({jsonrpc:'2.0',id:1,result:{data_base64:btoa(String.fromCharCode(...data)),offset:start,next_offset:end,total_bytes:all.length,has_more:end<all.length,available:true}});
             }
             throw Error('Unexpected method: ' + call.method);
           };
@@ -171,6 +172,18 @@ class ExecHistoryBrowserTest(unittest.TestCase):
         self.page.keyboard.press("Enter")
         expect(history).to_contain_text("deleted-node")
         self.assertLessEqual(self.page.evaluate("document.documentElement.scrollWidth"), 390)
+
+    def test_oversized_fields_are_explicit_and_not_read(self):
+        history = self.page.get_by_test_id("exec-history")
+        self.page.evaluate("window.largeCommand = true; window.largeOutput = true")
+        history.get_by_role("button", name="View history").click()
+        history.get_by_role("button", name="View details").click()
+        expect(history).to_contain_text("exceeds the 8 MiB viewing limit")
+        self.assertEqual(history.get_by_role("button", name="Show output").count(), 0)
+        history.get_by_role("button", name="Show command").click()
+        expect(history.get_by_text("This command or output exceeds", exact=False)).to_have_count(2)
+        self.assertEqual(history.locator("pre").count(), 0)
+        self.assertEqual(self.page.evaluate("window.requests.filter(r => r.method === 'admin:readExecHistoryChunk').length"), 1)
 
 
 if __name__ == "__main__":

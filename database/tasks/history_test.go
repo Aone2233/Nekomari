@@ -3,6 +3,7 @@ package tasks
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"github.com/Aone2233/nekomari/cmd/flags"
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
+	"github.com/mattn/go-sqlite3"
 	"gorm.io/gorm"
 )
 
@@ -100,6 +102,8 @@ func TestHistoryPagingBoundsAndRetention(t *testing.T) {
 }
 
 func TestHistoryIndexSupportsBoundedKeyset(t *testing.T) {
+	flags.DatabaseType = flags.DatabaseTypeSQLite
+	flags.DatabaseFile = "file:task-history-test?mode=memory&cache=shared"
 	db := dbcore.GetDBInstance()
 	var plan []struct{ Detail string }
 	if err := db.Raw(`EXPLAIN QUERY PLAN SELECT rowid, CAST(substr(CAST(client AS BLOB), 1, 37) AS TEXT) AS client FROM task_results AS r WHERE task_id = ? AND (r.client, rowid) > (?, ?) ORDER BY r.client, rowid LIMIT ?`, "task", "client", 1, HistoryResultPageSize+1).Scan(&plan).Error; err != nil {
@@ -116,6 +120,14 @@ func TestHistoryIndexSupportsBoundedKeyset(t *testing.T) {
 	raw, _ = json.Marshal(plan)
 	if !bytes.Contains(raw, []byte("idx_tasks_history_order")) || bytes.Contains(raw, []byte("TEMP B-TREE")) {
 		t.Fatalf("unbounded task query plan: %s", raw)
+	}
+	plan = nil
+	if err := db.Raw(`EXPLAIN QUERY PLAN SELECT created_at, finished_at, exit_code FROM task_results WHERE task_id = ? ORDER BY rowid LIMIT ?`, "task", HistoryCountLimit+1).Scan(&plan).Error; err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = json.Marshal(plan)
+	if !bytes.Contains(raw, []byte("idx_task_results_task_id")) || bytes.Contains(raw, []byte("TEMP B-TREE")) {
+		t.Fatalf("unbounded summary query plan: %s", raw)
 	}
 }
 
@@ -428,5 +440,140 @@ func TestHistorySummaryCapsResultScans(t *testing.T) {
 	}
 	if page.Tasks[0].TaskID != id || !page.Tasks[0].CountsTruncated || !page.Tasks[0].TimeIncomplete || page.Tasks[0].ResultCount != HistoryCountLimit {
 		t.Fatalf("oversized summary: %+v", page.Tasks[0])
+	}
+}
+
+func TestHistoryOversizedFieldsDoNotMaterialize(t *testing.T) {
+	flags.DatabaseType = flags.DatabaseTypeSQLite
+	flags.DatabaseFile = "file:task-history-test?mode=memory&cache=shared"
+	db := dbcore.GetDBInstance()
+	const id = "history-oversized-test"
+	t.Cleanup(func() {
+		db.Exec("DELETE FROM task_results WHERE task_id = ?", id)
+		db.Exec("DELETE FROM tasks WHERE task_id = ?", id)
+	})
+	if err := CreateTask(id, []string{"node"}, "safe"); err != nil {
+		t.Fatal(err)
+	}
+	// Generate the values inside SQLite rather than allocating them in Go.
+	const oversized = HistorySQLiteMaxBytes * 2
+	if err := db.Exec(`UPDATE tasks SET clients = CAST(zeroblob(?) AS TEXT), command = CAST(zeroblob(?) AS TEXT) WHERE task_id = ?`, oversized, oversized, id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`UPDATE task_results SET result = CAST(zeroblob(?) AS TEXT) WHERE task_id = ?`, oversized, id).Error; err != nil {
+		t.Fatal(err)
+	}
+	page, err := ListHistory(t.Context(), "")
+	if err != nil || len(page.Tasks) == 0 || page.Tasks[0].TaskID != id || page.Tasks[0].TargetCount != nil || page.Tasks[0].Status != "incomplete" {
+		t.Fatalf("oversized targets should remain unknown: %+v %v", page, err)
+	}
+	detail, err := GetHistoryDetail(t.Context(), id, "")
+	if err != nil || len(detail.Results) != 1 || detail.Results[0].OutputAvailable || detail.Results[0].OutputBytes != oversized {
+		t.Fatalf("oversized output metadata: %+v %v", detail, err)
+	}
+	for _, item := range []struct{ kind, cursor string }{{"command", ""}, {"output", detail.Results[0].Cursor}} {
+		chunk, err := ReadHistoryChunk(t.Context(), id, item.kind, item.cursor, 0)
+		if err != nil || chunk.Available || chunk.HasMore || len(chunk.Data) != 0 || chunk.TotalBytes != oversized {
+			t.Fatalf("oversized %s: %+v %v", item.kind, chunk, err)
+		}
+	}
+	// The read guard must not truncate or rewrite a historical field.
+	var lengths struct{ Command, Output int64 }
+	if err := db.Raw(`SELECT octet_length(command) AS command, (SELECT octet_length(result) FROM task_results WHERE task_id = ?) AS output FROM tasks WHERE task_id = ?`, id, id).Scan(&lengths).Error; err != nil || lengths.Command != oversized || lengths.Output != oversized {
+		t.Fatalf("history changed stored data: %+v %v", lengths, err)
+	}
+}
+
+func TestHistoryFieldLimitBoundaries(t *testing.T) {
+	flags.DatabaseType = flags.DatabaseTypeSQLite
+	flags.DatabaseFile = "file:task-history-test?mode=memory&cache=shared"
+	db := dbcore.GetDBInstance()
+	const id = "history-field-limit"
+	t.Cleanup(func() {
+		db.Exec("DELETE FROM task_results WHERE task_id = ?", id)
+		db.Exec("DELETE FROM tasks WHERE task_id = ?", id)
+	})
+	if err := CreateTask(id, []string{"node"}, "safe"); err != nil {
+		t.Fatal(err)
+	}
+	for _, size := range []int{HistoryFieldMaxBytes, HistoryFieldMaxBytes + 1} {
+		if err := db.Exec(`UPDATE tasks SET command = CAST(zeroblob(?) AS TEXT) WHERE task_id = ?`, size, id).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Exec(`UPDATE task_results SET result = CAST(zeroblob(?) AS TEXT) WHERE task_id = ?`, size, id).Error; err != nil {
+			t.Fatal(err)
+		}
+		detail, err := GetHistoryDetail(t.Context(), id, "")
+		if err != nil || len(detail.Results) != 1 || detail.Results[0].OutputAvailable != (size == HistoryFieldMaxBytes) {
+			t.Fatalf("metadata at size %d: %+v %v", size, detail, err)
+		}
+		for _, item := range []struct{ kind, cursor string }{{"command", ""}, {"output", detail.Results[0].Cursor}} {
+			chunk, err := ReadHistoryChunk(t.Context(), id, item.kind, item.cursor, 0)
+			if err != nil || chunk.Available != (size == HistoryFieldMaxBytes) || chunk.TotalBytes != int64(size) {
+				t.Fatalf("%s at size %d: %+v %v", item.kind, size, chunk, err)
+			}
+			if chunk.Available && (len(chunk.Data) != HistoryChunkBytes || !chunk.HasMore) {
+				t.Fatalf("bounded chunk at limit: %+v", chunk)
+			}
+		}
+	}
+}
+
+func TestHistoryConnectionLimitRestored(t *testing.T) {
+	flags.DatabaseType = flags.DatabaseTypeSQLite
+	flags.DatabaseFile = "file:task-history-test?mode=memory&cache=shared"
+	db := dbcore.GetDBInstance()
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var previous int
+	if err := db.Connection(func(tx *gorm.DB) error {
+		return tx.Statement.ConnPool.(*sql.Conn).Raw(func(driverConn any) error {
+			previous = driverConn.(*sqlite3.SQLiteConn).GetLimit(sqlite3.SQLITE_LIMIT_LENGTH)
+			return nil
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if stats := sqlDB.Stats(); stats.MaxOpenConnections != 1 {
+		t.Fatalf("expected the configured single SQLite connection, got %+v", stats)
+	}
+	if _, err := ReadHistoryChunk(t.Context(), "missing", "command", "", 0); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("missing task: %v", err)
+	}
+	if err := db.Connection(func(tx *gorm.DB) error {
+		return tx.Statement.ConnPool.(*sql.Conn).Raw(func(driverConn any) error {
+			got := driverConn.(*sqlite3.SQLiteConn).GetLimit(sqlite3.SQLITE_LIMIT_LENGTH)
+			if got != previous {
+				t.Errorf("history leaked SQLite length limit: got %d, want %d", got, previous)
+			}
+			return nil
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), time.Millisecond)
+	err = withHistoryLimit(historyDB(ctx), func(tx *gorm.DB) error {
+		var value int64
+		return tx.Raw(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x + 1 FROM n WHERE x < 100000000) SELECT sum(x) FROM n`).Scan(&value).Error
+	})
+	cancel()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("running query did not honor deadline: %v", err)
+	}
+	if _, err := ListHistory(t.Context(), ""); err != nil {
+		t.Fatalf("history connection unusable after cancellation: %v", err)
+	}
+	if err := db.Connection(func(tx *gorm.DB) error {
+		return tx.Statement.ConnPool.(*sql.Conn).Raw(func(driverConn any) error {
+			got := driverConn.(*sqlite3.SQLiteConn).GetLimit(sqlite3.SQLITE_LIMIT_LENGTH)
+			if got != previous {
+				t.Errorf("canceled history leaked SQLite length limit: got %d, want %d", got, previous)
+			}
+			return nil
+		})
+	}); err != nil {
+		t.Fatal(err)
 	}
 }

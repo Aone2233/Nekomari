@@ -69,6 +69,30 @@ transport cannot amplify the response budget 32-fold. History has its own two
 query slots, a bounded queue and a ten-second work deadline. Only the current
 chunk remains rendered; cursor navigation retains at most 100 page positions.
 
+The chunk response limit is not a SQLite memory limit: SQLite materializes a
+text field before applying `substr(CAST(... AS BLOB))`. History requests lease
+the main SQLite connection exclusively and temporarily set its
+`SQLITE_LIMIT_LENGTH` to 16 MiB, restoring the original value even after an
+error or cancellation. Existing panels use one main SQLite connection, so
+history still competes with other main-database operations; its two admission
+slots do not imply separate database connections. The request deadline can
+interrupt a running statement but is not a hard wall-clock bound for every
+SQLite operation.
+
+`octet_length` checks command/output field sizes without reading their contents.
+Fields of at most 8 MiB are readable in 16 KiB chunks; a larger legacy/imported
+field is explicitly unavailable in this viewer rather than silently
+truncated or deleted. `output_available` and `available` expose the decision;
+the UI explains it in every supported locale. Malformed fields that exceed the
+connection-wide 16 MiB SQLite limit fail closed. This limits individual SQLite
+values, not total process RSS or all possible CPU work. On a scratch SQLite
+3.46.1 database, a synthetic 64 MiB output caused the original 16 KiB query to
+peak around 75 MiB RSS; the revised size check and query reported the output as
+unavailable at around 13 MiB RSS in separate test processes. A canceled
+1 ms synthetic query had taken around 16 ms with the original full-field read,
+so cancellation must not be presented as an instantaneous guarantee. These
+are local measurements, not production performance or memory SLOs.
+
 SQLite's implicit `rowid` is not stable across `VACUUM`, and legacy task IDs
 are random. The upgrade adds nullable `tasks.history_order` and two indexes,
 backfills previously unnumbered parent rows transactionally on startup using
@@ -92,8 +116,8 @@ On local scratch SQLite with 10,000 synthetic tasks and 300,000 results
 column/indexes and rank-based backfill was approximately 68 ms; an indexed result seek
 returned 21 rows in 0.06 ms and a capped 1,001-result summary in 0.94 ms.
 These are small-host measurements, not production latency guarantees. The
-parent keyset and result keyset query plans are asserted to use their respective
-indexes without a temporary sort. Upgrade tests must confirm existing data,
+parent keyset, result keyset and capped summary query plans are asserted to use
+their respective indexes without a temporary sort. Upgrade tests must confirm existing data,
 restart, VACUUM and rollback behavior; index construction is a real schema
 and startup cost, not a no-migration change. A rollback to the prior panel
 must retain the live databases and must be tested on an isolated copy first;
@@ -121,6 +145,11 @@ secrecy claim: existing Agent code logs commands during execution, and older
 task APIs/write paths predate this feature and retain their existing behavior.
 The new UI does not dispatch or rerun commands, copy text automatically, or
 persist it in URLs/localStorage.
+
+The checked-in Go-only embedded frontend fallback is also regenerated from the
+current frontend source. CI and release rebuild their own archive; rebuilding
+was done in an isolated scratch tree so the packer's staging-directory cleanup
+could not remove unrelated workspace files.
 
 ## Acceptance
 

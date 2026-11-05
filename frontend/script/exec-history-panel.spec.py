@@ -66,6 +66,11 @@ def run(binary):
                                   VALUES(?,?,?,?,?,?)""", ("synthetic-history", "node",
                         "<img src=x onerror=alert(1)>synthetic-output", 0,
                         "2026-11-05 02:00:01+00:00", "2026-11-05 02:00:00+00:00"))
+                    db.execute("INSERT INTO tasks(task_id,clients,command,history_order) VALUES(?,?,CAST(zeroblob(?) AS TEXT),?)",
+                               ("synthetic-oversized", '["node"]', (8 << 20) + 1, 2))
+                    db.execute("""INSERT INTO task_results(task_id,client,result,created_at)
+                                  VALUES(?,?,CAST(zeroblob(?) AS TEXT),?)""",
+                               ("synthetic-oversized", "node", (8 << 20) + 1, "2026-11-05 02:01:00+00:00"))
                 with sync_playwright() as pw:
                     browser = pw.chromium.launch(headless=True)
                     try:
@@ -100,18 +105,30 @@ def run(binary):
                                 history.get_by_role("button", name="View history" if locale == "en-US" else "查看历史",
                                                     exact=True).click()
                                 expect(history).to_contain_text("synthetic-history")
-                                history.get_by_role("button", name="View details" if locale == "en-US" else "查看详情",
-                                                    exact=True).click()
-                                expect(history).to_contain_text("node")
-                                history.get_by_role("button", name="Show command" if locale == "en-US" else "显示命令",
-                                                    exact=True).click()
-                                expect(history.locator("pre").first).to_contain_text("<script>synthetic-command</script>")
-                                history.get_by_role("button", name="Show output" if locale == "en-US" else "显示输出",
-                                                    exact=True).click()
-                                expect(history.locator("pre").nth(1)).to_contain_text("<img src=x onerror=alert(1)>synthetic-output")
+                                task = history.locator(".rt-Card").filter(has_text="synthetic-history").last
+                                task.get_by_role("button", name="View details" if locale == "en-US" else "查看详情",
+                                                 exact=True).click()
+                                expect(task).to_contain_text("node")
+                                task.get_by_role("button", name="Show command" if locale == "en-US" else "显示命令",
+                                                 exact=True).click()
+                                expect(task.locator("pre").first).to_contain_text("<script>synthetic-command</script>")
+                                task.get_by_role("button", name="Show output" if locale == "en-US" else "显示输出",
+                                                 exact=True).click()
+                                expect(task.locator("pre").nth(1)).to_contain_text("<img src=x onerror=alert(1)>synthetic-output")
                                 assert history.locator("img").count() == 0
                                 assert "admin:exec" not in calls, calls
                                 assert calls.count("admin:readExecHistoryChunk") == 2, calls
+                                large = history.locator(".rt-Card").filter(has_text="synthetic-oversized").last
+                                large.get_by_role("button", name="View details" if locale == "en-US" else "查看详情",
+                                                  exact=True).click()
+                                expect(large).to_contain_text("8 MiB")
+                                assert large.get_by_role("button", name="Show output" if locale == "en-US" else "显示输出",
+                                                         exact=True).count() == 0
+                                large.get_by_role("button", name="Show command" if locale == "en-US" else "显示命令",
+                                                  exact=True).click()
+                                expect(large.get_by_text("8 MiB", exact=False)).to_have_count(2)
+                                assert large.locator("pre").count() == 0
+                                assert calls.count("admin:readExecHistoryChunk") == 3, calls
                                 assert not errors, errors
                                 if width == 390:
                                     assert page.evaluate("document.documentElement.scrollWidth") <= width

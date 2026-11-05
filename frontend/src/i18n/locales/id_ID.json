@@ -506,6 +506,7 @@
     "ordering": "Diurutkan menurut penyisipan database yang dicatat, bukan waktu eksekusi; riwayat dapat berubah saat berpindah halaman atau setelah pemeliharaan database.",
     "loading": "Memuat riwayat…",
     "error": "Riwayat tidak dapat dibaca. Coba lagi.",
+    "largeField": "Perintah atau keluaran ini melebihi batas tampilan 8 MiB. Data yang tersimpan tidak diubah.",
     "retry": "Coba lagi",
     "empty": "Tidak ada riwayat eksekusi.",
     "targets": "Target: {{count}}",

@@ -20,12 +20,12 @@ const summarySchema = z.object({
 const pageSchema = z.object({ tasks: z.array(summarySchema).max(20), next_cursor: taskCursor.optional() });
 const resultSchema = z.object({
   cursor: resultCursor, client: z.string().max(128), client_truncated: z.boolean(), created_at: date,
-  finished_at: date, exit_code: z.number().int().nullable(), output_bytes: nonnegative,
+  finished_at: date, exit_code: z.number().int().nullable(), output_bytes: nonnegative, output_available: z.boolean(),
 });
 const detailSchema = z.object({ task_id: z.string().min(1).max(36), results: z.array(resultSchema).max(20), next_cursor: resultCursor.optional() });
 const chunkSchema = z.object({
   data_base64: z.string().max(22000), offset: nonnegative, next_offset: nonnegative,
-  total_bytes: nonnegative, has_more: z.boolean(),
+  total_bytes: nonnegative, has_more: z.boolean(), available: z.boolean(),
 });
 type Page = z.infer<typeof pageSchema>;
 type Detail = z.infer<typeof detailSchema>;
@@ -76,8 +76,8 @@ function ChunkViewer({ taskID, kind, resultCursor }: { taskID: string; kind: "co
       }, chunkSchema, controller.signal);
       const binary = atob(value.data_base64);
       const bytes = Uint8Array.from(binary, (item) => item.charCodeAt(0));
-      if (value.offset !== offset || value.next_offset !== offset + bytes.length ||
-          bytes.length > 16384 || value.has_more !== (value.next_offset < value.total_bytes)) {
+      if (value.offset !== offset || value.next_offset !== offset + bytes.length || bytes.length > 16384 ||
+          (value.available ? value.has_more !== (value.next_offset < value.total_bytes) : bytes.length !== 0 || value.has_more)) {
         throw new Error("invalid chunk boundaries");
       }
       if (controller.signal.aborted) return;
@@ -102,7 +102,13 @@ function ChunkViewer({ taskID, kind, resultCursor }: { taskID: string; kind: "co
       </Button>}
       {loading && <Text size="2" role="status">{t("execHistory.loading")}</Text>}
       {error && <Text size="2" color="red" role="alert">{t("execHistory.error")}</Text>}
-      {chunk && <>
+      {chunk && !chunk.available && <>
+        <Text size="2" color="orange" role="status">{t("execHistory.largeField")}</Text>
+        <Button size="1" variant="ghost" onClick={() => { request.current?.abort(); setChunk(null); setText(""); setLoading(false); setError(false); setOffsets([0]); }}>
+          {t("execHistory.hide")}
+        </Button>
+      </>}
+      {chunk?.available && <>
         <Text as="p" size="1" color="gray">{t("execHistory.chunkPosition", { start: chunk.offset, end: chunk.next_offset, total: chunk.total_bytes })}</Text>
         <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--gray-2)] p-3 font-mono text-sm">{text || t("execHistory.emptyText")}</pre>
         <Flex gap="2" wrap="wrap">
@@ -175,7 +181,8 @@ function TaskDetail({ taskID }: { taskID: string }) {
             <Flex align="center" gap="2" wrap="wrap"><Text weight="medium" className="break-all">{name}{result.client_truncated ? "…" : ""}</Text><Badge color={state === "failed" ? "red" : state === "success" ? "green" : "gray"}>{t(`execHistory.${state}`)}</Badge></Flex>
             {result.exit_code !== null && <Text size="1" color="gray">{t("execHistory.exitCode", { code: result.exit_code })}</Text>}
             {result.finished_at && <Text size="1" color="gray">{t("execHistory.finishedAt", { time: formatTime(result.finished_at) ?? t("execHistory.unknown") })}</Text>}
-            <ChunkViewer taskID={taskID} kind="output" resultCursor={result.cursor} />
+            {result.output_available ? <ChunkViewer taskID={taskID} kind="output" resultCursor={result.cursor} /> :
+              <Text size="2" color="orange">{t("execHistory.largeField")}</Text>}
           </Flex>
         </Card>;
       })}
