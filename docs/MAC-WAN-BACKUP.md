@@ -1,4 +1,4 @@
-# MAC-WAN backup receiver (updated 2026-10-31)
+# MAC-WAN backup receiver (updated 2026-11-05)
 
 This replaces the relinquished OVH receiver, not the separate offline-media
 requirement. On MAC-WAN, the `macos` systemd user manager has lingering enabled.
@@ -10,6 +10,30 @@ watcher. The receiver keeps 14 scheduled pairs in a dedicated directory;
 `incoming/`, the initial executor copy and prior release copies are not in that
 retention set. Actual incident delivery and independent-media restore remain
 separate; a manual success is not proof of a scheduled trigger.
+
+## 2026-11-05 v1.7.29 delivery
+
+Fresh encrypted archives were received with checksum sidecars in separate
+private manual directories:
+
+- Pre: `manual/v1729-pre-20261105T0217Z/oc424-20261105T021731029133Z-8f9f93289d16.tar.gz.age`,
+  SHA-256 `348223db54dc13d27bfbcb08e8571499a3f100a0f8f6dded2285aa56ae2c4dfd`.
+- Post: `manual/v1729-post-20261105T0248Z/oc424-20261105T024834645114Z-102d2ee872c2.tar.gz.age`,
+  SHA-256 `864d9c38637a90067196ee80e24a4034c03fb2ee06af45c30a7cbb48bb857c36`.
+
+Both sidecars, authenticated decryption, manifest checks and both database
+checks pass. Network-free isolated drills boot v1.7.27 from the pre archive
+and v1.7.29 from the post archive; a separate pre-archive drill also boots
+v1.7.29. An initial pre-archive attempt used a mistyped digest and could not
+start the container; the corrected retries passed. Temporary plaintext and
+restore containers were removed; the identity never left MAC-WAN.
+
+Direct SSH to MAC-WAN timed out during this delivery; the existing OC424
+reverse tunnel with the pinned host key worked. Both backup and health user
+timers were active after the drill; the last observed OC424 health report was
+`ok` at 02:45 UTC. Manual backups and active timers do not prove the next
+scheduled 03:30 UTC trigger or an independent-media restore. Neither the
+schedule nor the keep=14 policy was changed.
 
 ## 2026-11-04 v1.7.27 delivery
 

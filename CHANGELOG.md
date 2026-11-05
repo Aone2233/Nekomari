@@ -10,7 +10,13 @@ Nekomari's own.
 
 ## [v1.7.29] - 2026-11-05
 
-- **CSV correctness patch, pending release and OC424 deployment.**
+- **CSV correctness patch, published and deployed on OC424 at approximately
+  02:48 UTC.** PR #163 and exact-merge CI pass 8/8; release workflow
+  41956360390 passes 10/10 and Docker workflow 41957110804 passes 2/2.
+  The pinned arm64 image is `sha256:0807496e…1d9ae`; OC424 upgrade checks
+  pass 9/9, the 13 client identities match, and fresh MAC-WAN pre/post
+  encrypted backups pass isolated recovery. Owner browser acceptance remains
+  open. See `docs/DEPLOY-OC424.md` for evidence and rollback details.
   Quote tagged chart headers, prevent spreadsheet formula injection and
   reject duplicate series rather than merging them. History exports preserve
   explicit custom time ranges, export actual retained metric buckets rather

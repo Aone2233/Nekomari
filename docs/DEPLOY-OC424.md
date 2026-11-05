@@ -18,9 +18,48 @@ recovery remains unverified.
 See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md). The dated OVH availability/
 schedule and 14-node acceptance statements below are history.
 
+## Current checkpoint (2026-11-05 02:48 UTC)
+
+OC424 runs **v1.7.29/94e1973** from PR #163 in the pinned arm64 image
+`ghcr.io/aone2233/nekomari:v1.7.29@sha256:0807496ef8237e00c21ff7b561f74cb00b5a8cb421808e828ac7e2bccea1d9ae`.
+The switch started at approximately 02:48 UTC; v1.7.28 was published but not
+deployed. CSV history now exports retained buckets with explicit aggregation,
+not reconstructed raw records. Signed-in owner acceptance of both CSV buttons
+is still open; no public-page check substitutes for it.
+
+- PR CI41954478429 and exact-merge CI41955405744 pass 8/8; release41956360390
+  passes 10/10 and Docker41957110804 passes 2/2. Linux amd64/arm64 panel and
+  Agent release assets pass SHA-256 and provenance verification against the
+  release workflow, tag and source. The binaries in both platform images
+  match the corresponding release panel assets. A synthetic test against the
+  published amd64 panel checks CPU averages, cycle-counter `last`, missing
+  fields, hidden-node visibility and bucket headers; an initial readiness-race
+  404 in the test was corrected by waiting for installation to finish.
+- OC424 upgrade9/9 passes: healthy, no container restarts or recent ERRORs,
+  `/api/version` v1.7.29/94e1973, both production databases pass read-only
+  `quick_check` and 13/13 clients have fresh CPU/uptime readings. All 13
+  UUID/token pairs match the pre-switch and audited historical snapshots.
+  The local `komari-agent-oc424-original-node` service remains running with
+  PID 499631 and NRestarts 2. Public entry points and five same-origin JS/CSS
+  resources return 200; this is not authenticated UI acceptance.
+- Fresh pre archive in `manual/v1729-pre-20261105T0217Z/` has SHA-256
+  `348223db54dc13d27bfbcb08e8571499a3f100a0f8f6dded2285aa56ae2c4dfd`;
+  post archive in `manual/v1729-post-20261105T0248Z/` has SHA-256
+  `864d9c38637a90067196ee80e24a4034c03fb2ee06af45c30a7cbb48bb857c36`.
+  Both are encrypted on MAC-WAN, match their sidecars, pass authenticated
+  manifest and DB checks, and boot their respective v1.7.27/v1.7.29 panels
+  in network-free isolated drills. Drill plaintext and containers are removed.
+  The pre backup also booted v1.7.29 in a separate isolated drill.
+- OC424 root disk is 50%; MAC-WAN is 37%. The previous compose and image are
+  in `/opt/nekomari/rollbacks/v1.7.29-20261105T024801Z-d37zkJzn` and
+  the v1.7.27 image remains available. If rollback is required, restore the
+  recorded compose and recreate only the panel; never replace live databases
+  with an older snapshot. MAC-WAN direct SSH timed out; the existing pinned
+  reverse tunnel worked. See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
+
 ## Pre-release recheck (2026-11-05)
 
-OC424 remains healthy/restart0 on v1.7.27 with 13 clients and the matching
+OC424 was healthy/restart0 on v1.7.27 with 13 clients and the matching
 `55bc6191…d2bde` identity digest; both databases pass read-only `quick_check`.
 The fresh MAC-WAN pre-release archive
 `manual/v1729-pre-20261105T0217Z/oc424-20261105T021731029133Z-8f9f93289d16.tar.gz.age`
@@ -29,7 +68,7 @@ Its sidecar, authenticated archive, all 1,345 manifest files and both database
 integrity checks pass. A first restore attempt used a mistyped image digest and
 failed to start; the retry boots the inspected pinned v1.7.27 amd64 image in a
 network-free isolated drill. No node or token is modified. This pre-release
-backup does not replace the required post-upgrade backup.
+backup did not replace the post-upgrade backup, which is recorded above.
 
 ## Identity and backup recheck (2026-11-04 13:38–13:42 UTC)
 
@@ -51,7 +90,7 @@ drill; validate a fresh off-host backup before the next production switch.
 OC424 was healthy with zero container restarts, running v1.7.27, with root
 filesystem usage at 50%. No live identities or production state were changed.
 
-## Current checkpoint (2026-11-04 05:02 UTC)
+## Previous checkpoint (2026-11-04 05:02 UTC)
 
 OC424 runs **v1.7.27/24faa9d**, immutable source
 `24faa9d` (merge of PR #161), in the pinned arm64 image
