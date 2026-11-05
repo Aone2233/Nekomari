@@ -86,13 +86,20 @@ func adminDeletePingTask(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.
 }
 
 func adminEditPingTask(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
-	var params struct {
-		Tasks []*models.PingTask `json:"tasks"`
+	type pingTaskEdit struct {
+		models.PingTask
+		Reference *string `json:"reference"`
 	}
-	req.BindParams(&params)
+	var params struct {
+		Tasks []*pingTaskEdit `json:"tasks"`
+	}
+	if err := req.BindParams(&params); err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request data", nil)
+	}
 	if len(params.Tasks) == 0 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request data", nil)
 	}
+	edits := make([]tasks.PingTaskEdit, 0, len(params.Tasks))
 	for _, task := range params.Tasks {
 		if task == nil {
 			return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request data", nil)
@@ -101,8 +108,9 @@ func adminEditPingTask(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.Js
 		if err := utils.ValidatePingTaskTargetFamily(task.Target, task.DefaultOn, task.Clients); err != nil {
 			return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
 		}
+		edits = append(edits, tasks.PingTaskEdit{Task: &task.PingTask, Reference: task.Reference})
 	}
-	if err := tasks.EditPingTask(params.Tasks); err != nil {
+	if err := tasks.EditPingTask(edits); err != nil {
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
 	}
 	return nil, nil

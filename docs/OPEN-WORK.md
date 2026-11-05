@@ -84,6 +84,13 @@ The next bounded releases and operational gates, in order:
    [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md). Later slices include
    the cost-forecast column, roles UI, frontend budgets and an a11y pass.
 
+**Ping reference-edit fix (candidate, 2026-11-05):** the edit form previously
+returned success without updating the stored reference target. A separate
+unreleased patch persists explicit changes and clears while preserving the
+stored reference when older clients omit it. A synthetic scheduler/queue test
+checks that the updated value reaches a scheduled event; no production tasks
+were modified. Normal CI, owner CSV acceptance and release gates still apply.
+
 **Prior backup close-out (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds
 the two older verified copies, and four isolated restore drills pass (see

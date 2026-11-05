@@ -8,6 +8,11 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **Ping reference target edits:** save explicit changes and clears to the
+  reference target. Requests from older clients that omit `reference` leave the
+  existing target unchanged; malformed edits are rejected instead of partly
+  decoded. Existing tasks are not modified automatically.
+
 ## [v1.7.29] - 2026-11-05
 
 - **CSV correctness patch, published and deployed on OC424 at approximately
