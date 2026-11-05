@@ -72,7 +72,7 @@ class ExecHistoryBrowserTest(unittest.TestCase):
         self.errors = []
         self.page.on("pageerror", lambda error: self.errors.append(str(error)))
         self.page.add_init_script("""
-          window.requests = []; window.failList = false; window.holdDetail = false; window.largeCommand = false; window.largeOutput = false; window.unsupportedCommand = false; window.unsupportedOutput = false;
+          window.requests = []; window.failList = false; window.holdDetail = false; window.largeCommand = false; window.largeOutput = false; window.unsupportedCommand = false; window.unsupportedOutput = false; window.detailPaging = false; window.expireResults = false;
           window.fetch = async (input, init = {}) => {
             const json = (result, status=200) => new Response(JSON.stringify(result), {status, headers:{'Content-Type':'application/json'}});
             if (String(input) === '/api/admin/client/list') return json([{uuid:'node-a',name:'Alpha',weight:0,billing_cycle:0}]);
@@ -85,7 +85,9 @@ class ExecHistoryBrowserTest(unittest.TestCase):
             }
             if (call.method === 'admin:getExecHistoryDetail') {
               if (window.holdDetail) await new Promise(resolve => { window.releaseDetail = resolve; });
-              return json({jsonrpc:'2.0',id:1,result:{task_id:call.params.task_id,results:[{cursor:'7',client:'deleted-node',client_truncated:false,created_at:'2026-11-05T02:00:00Z',finished_at:null,exit_code:null,output_bytes:window.largeOutput ? 9000000 : 41,output_available:!window.unsupportedOutput}]}});
+              if (window.detailPaging && window.expireResults && call.params.cursor) return json({jsonrpc:'2.0',id:1,error:{code:-32000,message:'History not found'}});
+              const next = window.detailPaging ? (call.params.cursor ? 'page-3' : 'page-2') : undefined;
+              return json({jsonrpc:'2.0',id:1,result:{task_id:call.params.task_id,results:[{cursor:'7',client:'deleted-node',client_truncated:false,created_at:'2026-11-05T02:00:00Z',finished_at:null,exit_code:null,output_bytes:window.largeOutput ? 9000000 : 41,output_available:!window.unsupportedOutput}],...(next ? {next_cursor:next} : {})}});
             }
             if (call.method === 'admin:readExecHistoryChunk') {
               if (call.params.kind === 'command' && window.unsupportedCommand) return json({jsonrpc:'2.0',id:1,result:{data_base64:'',offset:call.params.offset,next_offset:call.params.offset,total_bytes:2,has_more:false,available:false}});
@@ -176,6 +178,25 @@ class ExecHistoryBrowserTest(unittest.TestCase):
         self.page.keyboard.press("Enter")
         expect(history).to_contain_text("deleted-node")
         self.assertLessEqual(self.page.evaluate("document.documentElement.scrollWidth"), 390)
+
+    def test_expired_detail_cursor_can_return_to_first_page(self):
+        history = self.page.get_by_test_id("exec-history")
+        self.page.evaluate("window.detailPaging = true")
+        history.get_by_role("button", name="View history").click()
+        history.get_by_role("button", name="View details").click()
+        history.get_by_role("button", name="Next page").click()
+        self.page.wait_for_function("window.requests.some(r => r.method === 'admin:getExecHistoryDetail' && r.params.cursor === 'page-2')")
+        expect(history.get_by_role("button", name="Next page")).to_be_enabled()
+        self.page.evaluate("window.expireResults = true")
+        history.get_by_role("button", name="Next page").click()
+        alert = history.get_by_role("alert")
+        expect(alert).to_contain_text("could not be read")
+        alert.locator("..").get_by_role("button", name="Retry").click()
+        expect(alert).to_contain_text("could not be read")
+        alert.locator("..").get_by_role("button", name="Refresh", exact=True).click(timeout=5000)
+        expect(history).to_contain_text("deleted-node")
+        self.assertEqual(self.page.evaluate("window.requests.filter(r => r.method === 'admin:getExecHistoryDetail').at(-1).params.cursor"), "")
+        self.assertTrue(all(item["method"] != "admin:exec" for item in self.page.evaluate("window.requests")))
 
     def test_large_fields_remain_readable_in_chunks(self):
         history = self.page.get_by_test_id("exec-history")

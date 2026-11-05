@@ -170,7 +170,11 @@ function TaskDetail({ taskID }: { taskID: string }) {
     <ChunkViewer taskID={taskID} kind="command" />
     <Text as="p" size="1" color="gray">{t("execHistory.liveChunks")}</Text>
     {loading && <Text size="2" role="status">{t("execHistory.loading")}</Text>}
-    {error && <Flex gap="2" align="center"><Text size="2" color="red" role="alert">{t("execHistory.error")}</Text><Button size="1" onClick={() => void load(cursorStack[cursorStack.length - 1], cursorStack)}>{t("execHistory.retry")}</Button></Flex>}
+    {error && <Flex gap="2" align="center" wrap="wrap">
+      <Text size="2" color="red" role="alert">{t("execHistory.error")}</Text>
+      <Button size="1" onClick={() => void load(cursorStack[cursorStack.length - 1], cursorStack)}>{t("execHistory.retry")}</Button>
+      <Button size="1" variant="soft" onClick={() => void load("", [""])}>{t("execHistory.refresh")}</Button>
+    </Flex>}
     {detail && <>
       {detail.results.length === 0 && <Text size="2" color="gray">{t("execHistory.noResults")}</Text>}
       {detail.results.map((result) => {
