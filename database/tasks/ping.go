@@ -65,10 +65,17 @@ func DeletePingTask(id []uint) error {
 	return result.Error
 }
 
+// PingTaskEdit keeps an omitted reference distinct from an explicit clear.
+type PingTaskEdit struct {
+	Task      *models.PingTask
+	Reference *string
+}
+
 // EditPingTask 批量更新延迟监测任务配置。
-func EditPingTask(tasks []*models.PingTask) error {
+func EditPingTask(tasks []PingTaskEdit) error {
 	db := dbcore.GetDBInstance()
-	for _, task := range tasks {
+	for _, edit := range tasks {
+		task := edit.Task
 		task.Clients = normalizePingClients(task.Clients)
 		// 使用 map 显式更新，避免 GORM struct Updates 跳过 false/0/空切片等零值。
 		updates := map[string]interface{}{
@@ -78,6 +85,9 @@ func EditPingTask(tasks []*models.PingTask) error {
 			"type":        task.Type,
 			"target":      task.Target,
 			"interval":    task.Interval,
+		}
+		if edit.Reference != nil {
+			updates["reference"] = strings.TrimSpace(*edit.Reference)
 		}
 		result := db.Model(&models.PingTask{}).Where("id = ?", task.Id).Updates(updates)
 		if result.RowsAffected == 0 {
