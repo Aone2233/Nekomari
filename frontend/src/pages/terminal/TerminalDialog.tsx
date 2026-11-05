@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 
 import { shouldSubmitOnEnter } from "./dialogKeys";
 
@@ -37,6 +37,7 @@ export interface TerminalDialogProps {
   onSecondary?: () => void;
   onSubmit: () => void;
   onCancel: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 export function TerminalDialog({
@@ -54,9 +55,15 @@ export function TerminalDialog({
   onSecondary,
   onSubmit,
   onCancel,
+  onCloseAutoFocus,
 }: TerminalDialogProps) {
   const firstInputRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const descriptionId = useId();
+  const fieldId = useId();
   const [activeField, setActiveField] = useState<string | null>(null);
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const firstFieldKey = fields[0]?.key ?? null;
@@ -68,6 +75,19 @@ export function TerminalDialog({
   // is part of the effect's dependency set — closing and reopening the same
   // dialog must reset the selection again.
   const [resetKey, setResetKey] = useState<{ open: boolean; firstFieldKey: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleCompositionEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && event.isComposing && event.target instanceof Node && contentRef.current?.contains(event.target)) {
+        // Radix handles Escape in document capture. Stop it there without
+        // cancelling the browser's default input-method action.
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener("keydown", handleCompositionEscape, true);
+    return () => window.removeEventListener("keydown", handleCompositionEscape, true);
+  }, [open]);
 
   const activeSuggestions = useMemo(() => {
     if (!activeField) return [];
@@ -93,178 +113,169 @@ export function TerminalDialog({
     setActiveSuggestion(-1);
   }
 
-  // `firstFieldKey` stays in this dependency list even though the focus timer
-  // does not read it: the reset above used to live in this same effect, so
-  // changing the first field's key (with the field count unchanged) re-armed the
-  // focus timer. Dropping it would change where focus lands.
-  useEffect(() => {
-    if (!open) return;
-    const timer = window.setTimeout(() => {
-      (fields.length ? firstInputRef.current : confirmRef.current)?.focus();
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [fields.length, firstFieldKey, open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      onCancel();
-    };
-    document.addEventListener("keydown", handleEscape, true);
-    return () => document.removeEventListener("keydown", handleEscape, true);
-  }, [onCancel, open]);
-
-  if (!open) {
-    return null;
-  }
-
   const isInput = fields.length > 0;
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[100010] flex items-start justify-center bg-black/60 px-4"
-      onKeyDown={(event) => {
-        // 回车只在「这次 keydown 不是来自某个按钮」时才当作确认。
-        //
-        // 这段处理挂在全屏 backdrop 上，而「取消」按钮是它的子节点。回车激活聚焦的按钮
-        // 是那次 keydown 的【默认行为】，冒泡阶段的 preventDefault() 会把它抑制掉 ——
-        // 于是焦点在「取消」上按回车反而执行了确认，而这个对话框用 destructive 删文件。
-        // 判定在 dialogKeys.ts 里，有单测（script/dialogKeys.test.mjs）。
-        const confirmKey = shouldSubmitOnEnter(event, { submitting });
-        if (event.key === "Enter" && !isInput && confirmKey) {
-          event.preventDefault();
-          onSubmit();
-        }
-        if (event.key === "Enter" && selectedIndex >= 0) {
-          event.preventDefault();
-          const field = fields.find((item) => item.key === activeField);
-          const suggestion = activeSuggestions[selectedIndex];
-          if (field && suggestion) {
-            field.onChange(suggestion);
-            field.onSelectSuggestion?.(suggestion);
-            setActiveSuggestion(selectedIndex);
-            if (selectSubmits && !submitting) onSubmit();
-          }
-          return;
-        }
-        if (event.key === "Enter" && isInput && confirmKey) {
-          event.preventDefault();
-          onSubmit();
-          return;
-        }
-        if (event.key === "ArrowDown") {
-          event.preventDefault();
-          setActiveSuggestion((current) => {
-            const base = autoHighlight && current === -1 ? 0 : current;
-            return activeSuggestions.length === 0 ? -1 : (base + 1) % activeSuggestions.length;
-          });
-        }
-        if (event.key === "ArrowUp") {
-          event.preventDefault();
-          setActiveSuggestion((current) => {
-            const base = autoHighlight && current === -1 ? 0 : current;
-            return activeSuggestions.length === 0 ? -1 : (base - 1 + activeSuggestions.length) % activeSuggestions.length;
-          });
-        }
-      }}
-    >
-      <div
-        className={`mt-[12vh] h-fit w-full ${isInput ? "max-w-[440px]" : "max-w-[320px]"} ${dialogSurface} max-w-[92vw]`}
-        onMouseDown={(event) => event.stopPropagation()}
-        role={isInput ? "dialog" : "alertdialog"}
-        aria-modal="true"
-        aria-label={title}
-      >
-        <div className="px-4 pb-3 pt-4">
-          <h2 className="text-sm font-medium text-[#eeeeee]">{title}</h2>
-          {description && (
-            <p className="mt-2 text-xs leading-5 text-[#bdbdbd]">{description}</p>
-          )}
-          {fields.length > 0 && (
-            <div className="mt-3 grid gap-3">
-              {fields.map((field, fieldIndex) => {
-                const suggestions = activeField === field.key
-                  ? activeSuggestions
-                  : field.suggestions?.slice(0, 24) ?? [];
-                return (
-                  <label key={field.key} className="block text-xs text-[#bdbdbd]">
-                    {field.label && <span className="mb-1 block">{field.label}</span>}
-                    <div className="relative">
-                      <input
-                        ref={fieldIndex === 0 ? firstInputRef : undefined}
-                        value={field.value}
-                        placeholder={field.placeholder}
-                        onFocus={() => {
-                          setActiveField(field.key);
-                          setActiveSuggestion(-1);
-                        }}
-                        onChange={(event) => {
-                          field.onChange(event.target.value);
-                          setActiveSuggestion(-1);
-                        }}
-                        className="h-8 w-full rounded-[4px] border border-[#3c3c3c] bg-[#1e1e1e] px-2 text-xs text-[#eeeeee] outline-none focus:border-[#007acc]"
-                      />
-                      {suggestions.length > 0 && (
-                        <div className="absolute inset-x-0 top-full z-10 mt-1 max-h-[min(55vh,480px)] overflow-y-auto overscroll-contain rounded-md border border-neutral-800 bg-[#161616] p-1 shadow-2xl">
-                          {suggestions.map((suggestion, index) => (
-                            <button
-                              key={suggestion}
-                              type="button"
-                              className={`block w-full truncate rounded-[4px] border-0 px-2 py-1.5 text-left text-xs transition-colors ${
-                                index === selectedIndex
-                                  ? "bg-neutral-800 text-white"
-                                  : "bg-transparent text-neutral-200 hover:bg-neutral-800 hover:text-white"
-                              }`}
-                              onMouseEnter={() => setActiveSuggestion(index)}
-                              onClick={() => {
-                                field.onChange(suggestion);
-                                field.onSelectSuggestion?.(suggestion);
-                                setActiveSuggestion(-1);
-                                if (selectSubmits && !submitting) onSubmit();
-                              }}
-                            >
-                              {suggestion}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+  return (
+    <Dialog.Root open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onCancel(); }}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-[100010] bg-black/60" />
+        <Dialog.Content
+          ref={contentRef}
+          className={`fixed left-1/2 top-[12vh] z-[100011] h-fit w-[calc(100%-2rem)] -translate-x-1/2 ${isInput ? "max-w-[440px]" : "max-w-[320px]"} ${dialogSurface} max-w-[92vw]`}
+          role={isInput ? "dialog" : "alertdialog"}
+          aria-modal="true"
+          aria-describedby={description ? descriptionId : undefined}
+          onEscapeKeyDown={(event) => {
+            // Prevent the editor's document/window handlers from acting on the same Escape.
+            event.stopImmediatePropagation();
+          }}
+          onOpenAutoFocus={(event) => {
+            previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+            event.preventDefault();
+            const target = isInput ? firstInputRef.current : destructive ? cancelRef.current : confirmRef.current;
+            (target && !target.matches(":disabled") ? target : cancelRef.current)?.focus();
+          }}
+          onCloseAutoFocus={(event) => {
+            // An action or another dialog may have deliberately taken focus
+            // before Radix's asynchronous close callback runs.
+            const active = document.activeElement;
+            if (active && active !== document.body && active !== document.documentElement && active.isConnected) {
+              event.preventDefault();
+            }
+            onCloseAutoFocus?.(event);
+            if (event.defaultPrevented) return;
+            event.preventDefault();
+            if (previousFocusRef.current?.isConnected) previousFocusRef.current.focus();
+          }}
+          onPointerDownOutside={(event) => event.preventDefault()}
+          onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
+            // A button's Enter belongs to that button, even when a suggestion is highlighted.
+            const confirmKey = shouldSubmitOnEnter(event, { submitting });
+            const onInput = event.target instanceof HTMLInputElement;
+            if (event.key === "Enter" && onInput && selectedIndex >= 0) {
+              event.preventDefault();
+              if (submitting) return;
+              const field = fields.find((item) => item.key === activeField);
+              const suggestion = activeSuggestions[selectedIndex];
+              if (field && suggestion) {
+                field.onChange(suggestion);
+                field.onSelectSuggestion?.(suggestion);
+                setActiveSuggestion(selectedIndex);
+                if (selectSubmits) onSubmit();
+              }
+              return;
+            }
+            if (confirmKey) {
+              event.preventDefault();
+              onSubmit();
+              return;
+            }
+            if (onInput && activeSuggestions.length > 0 && event.key === "ArrowDown") {
+              event.preventDefault();
+              setActiveSuggestion((current) => {
+                const base = autoHighlight && current === -1 ? 0 : current;
+                return (base + 1) % activeSuggestions.length;
+              });
+            }
+            if (onInput && activeSuggestions.length > 0 && event.key === "ArrowUp") {
+              event.preventDefault();
+              setActiveSuggestion((current) => {
+                const base = autoHighlight && current === -1 ? 0 : current;
+                return (base - 1 + activeSuggestions.length) % activeSuggestions.length;
+              });
+            }
+          }}
+        >
+          <div className="px-4 pb-3 pt-4">
+            <Dialog.Title className="text-sm font-medium text-[#eeeeee]">{title}</Dialog.Title>
+            {description && (
+              <Dialog.Description id={descriptionId} className="mt-2 text-xs leading-5 text-[#bdbdbd]">{description}</Dialog.Description>
+            )}
+            {fields.length > 0 && (
+              <div className="mt-3 grid gap-3">
+                {fields.map((field, fieldIndex) => {
+                  const suggestions = activeField === field.key
+                    ? activeSuggestions
+                    : field.suggestions?.slice(0, 24) ?? [];
+                  return (
+                    <div key={field.key} className="block text-xs text-[#bdbdbd]">
+                      {field.label && <label htmlFor={`${fieldId}-${fieldIndex}`} className="mb-1 block">{field.label}</label>}
+                      <div className="relative">
+                        <input
+                          id={`${fieldId}-${fieldIndex}`}
+                          ref={fieldIndex === 0 ? firstInputRef : undefined}
+                          value={field.value}
+                          placeholder={field.placeholder}
+                          onFocus={() => {
+                            setActiveField(field.key);
+                            setActiveSuggestion(-1);
+                          }}
+                          onChange={(event) => {
+                            field.onChange(event.target.value);
+                            setActiveSuggestion(-1);
+                          }}
+                          className="h-8 w-full rounded-[4px] border border-[#3c3c3c] bg-[#1e1e1e] px-2 text-xs text-[#eeeeee] outline-none focus:border-[#007acc]"
+                        />
+                        {suggestions.length > 0 && (
+                          <div className="absolute inset-x-0 top-full z-10 mt-1 max-h-[min(55vh,480px)] overflow-y-auto overscroll-contain rounded-md border border-neutral-800 bg-[#161616] p-1 shadow-2xl">
+                            {suggestions.map((suggestion, index) => (
+                              <button
+                                key={suggestion}
+                                type="button"
+                                disabled={submitting}
+                                className={`block w-full truncate rounded-[4px] border-0 px-2 py-1.5 text-left text-xs transition-colors ${
+                                  index === selectedIndex
+                                    ? "bg-neutral-800 text-white"
+                                    : "bg-transparent text-neutral-200 hover:bg-neutral-800 hover:text-white"
+                                }`}
+                                onMouseEnter={() => setActiveSuggestion(index)}
+                                onClick={() => {
+                                  field.onChange(suggestion);
+                                  field.onSelectSuggestion?.(suggestion);
+                                  setActiveSuggestion(-1);
+                                  if (selectSubmits) onSubmit();
+                                }}
+                              >
+                                {suggestion}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </label>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center justify-end gap-2 border-t border-[#2b2b2b] px-3 py-3">
-          <button type="button" className={secondaryButton} onClick={onCancel}>
-            {cancelLabel}
-          </button>
-          {secondaryLabel && onSecondary && (
-            <button
-              type="button"
-              className={dangerButton}
-              disabled={submitting}
-              onClick={onSecondary}
-            >
-              {secondaryLabel}
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t border-[#2b2b2b] px-3 py-3">
+            <button ref={cancelRef} type="button" className={secondaryButton} onClick={onCancel}>
+              {cancelLabel}
             </button>
-          )}
-          <button
-            ref={isInput ? undefined : confirmRef}
-            type="button"
-            disabled={submitting}
-            className={destructive && !isInput && !onSecondary ? dangerButton : primaryButton}
-            onClick={onSubmit}
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
+            {secondaryLabel && onSecondary && (
+              <button
+                type="button"
+                className={dangerButton}
+                disabled={submitting}
+                onClick={onSecondary}
+              >
+                {secondaryLabel}
+              </button>
+            )}
+            <button
+              ref={confirmRef}
+              type="button"
+              disabled={submitting}
+              className={destructive && !isInput && !onSecondary ? dangerButton : primaryButton}
+              onClick={onSubmit}
+            >
+              {confirmLabel}
+            </button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 

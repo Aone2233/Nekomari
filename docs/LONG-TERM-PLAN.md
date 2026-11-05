@@ -64,20 +64,22 @@ decides at the gates marked **[Owner]**.
 | `v1.7.25` | 2026-11-03 → 04 | Alert-rule test button: one bounded, rate-limited real send from the saved-rule editor, five locales — **delivered 2026-11-03, owner-acknowledged receipt 2026-11-04** | CI green; OC424 9/9; one owner-acknowledged real test receipt **[Owner]** |
 | `v1.7.2x` patches | as needed | CVE, dependency and bug fixes only | standard delivery gates |
 | `v1.7.27` | 2026-11-04 → 05 | First v1.9.0 slice: metric CSV export on the node chart page — wide table of chart series, BOM + CRLF, five locales — **deployed 2026-11-04**; tagged headers need the follow-up fix | CI green; OC424 9/9; owner on-page acceptance **[Owner]** |
-| `v1.7.28` and correction | 2026-11-04 onward | Ping/load CSV export is published, not deployed; a follow-up replaces misleading reconstructed values with explicit historical bucket semantics | correctness patch, CI and release; backup/identity gate; OC424 acceptance **[Owner]** |
+| `v1.7.28` / `v1.7.29` | 2026-11-04 → 05 | Ping/load CSV export was published in v1.7.28 but skipped in production; the v1.7.29 correction deploys explicit historical bucket semantics | CI and release complete; backup/identity gates pass; signed-in OC424 CSV acceptance **[Owner]** |
 | `v1.8.0` | 2026-11 → 12 | Uptime restart-count metric; 50-node capacity/memory gate (passes 2026-11-04); second off-host destination decision **[Owner]** | each slice deployed and accepted; 50-node gate passes |
-| `v1.9.0` | 2026-11 → 2027-01 | Metric CSV ships as v1.7.27; remaining: correct and deploy history-bucket CSV, exec-result history, cost-forecast column, roles (viewer/operator/admin), frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
+| `v1.9.0` | 2026-11 → 2027-01 | Metric CSV ships as v1.7.27 and corrected history-bucket CSV as v1.7.29; remaining: exec-result history, cost-forecast column, roles (viewer/operator/admin), frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
 | `v2.0.0` | 2027-Q2 | non-root agent default, protocol consolidation, secrets at rest, 200-node benchmark | migration guide; two-minor compat policy; benchmark |
 
 ### Immediate delivery sequence (2026-11-05)
 
-1. Release the v1.7.29 CSV correction only after exact-merge CI, verified
-   release artifacts and a fresh recoverable MAC-WAN pre-backup pass; deploy
-   the pinned image to OC424, verify node identities/report freshness and make
-   a fresh post-backup. Do not claim owner UI acceptance until acknowledged.
-2. Once that gate is closed, pursue the next v1.9.0 operator slice separately,
-   starting with bounded exec-result history and an explicit retention and
-   authorization contract; keep CSV correctness fixes independent of it.
+1. v1.7.29 is released and deployed with exact-merge CI, verified artifacts,
+   node-identity and freshness checks and isolated pre/post MAC-WAN recovery.
+   Owner UI acceptance of chart and history-bucket CSV remains open.
+2. Develop the next v1.9.0 slice separately, starting with bounded exec-result
+   history and an explicit retention and authorization contract. Do not release
+   the next operator-visible slice until CSV owner acceptance is complete.
+   A separate unreleased terminal-dialog candidate adds focus confinement and
+   restores Cancel behavior with highlighted suggestions; mounted browser tests
+   do not substitute for the planned assistive-technology pass.
 3. Keep the second off-host destination as an owner decision; maintain MAC-WAN
    recovery checks in the meantime. The 200-node work remains deferred and
    existing Agent tokens are not rotated as part of these releases.
@@ -102,18 +104,37 @@ decides at the gates marked **[Owner]**.
 - Quarterly panel rollback drill (< 5 min) and monthly restore check
   (RPO ≤ 24 h, RTO ≤ 30 min).
 
-## Current Delivery Checkpoint (2026-11-04)
+## Current Delivery Checkpoint (2026-11-05)
 
-**Current release gate:** v1.7.28/`545d3ac` was published at 05:44 UTC but
+**Latest OC424 delivery: v1.7.29/94e1973**, switched approximately 02:48 UTC.
+PR #163 and exact-merge CI pass 8/8; release and Docker workflows pass 10/10
+and 2/2, respectively. Upgrade checks pass 9/9; both databases pass read-only
+checks, the same 13 UUID/token pairs remain and all 13 have fresh CPU/uptime
+data. Fresh encrypted MAC-WAN pre/post backups pass isolated recovery.
+v1.7.28 was published but not deployed. The corrected CSV exports need owner
+on-page acceptance. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and
+[`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md).
+
+**Next design:** [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md) records
+the bounded, authorization-aware history contract. The current unbounded N+1
+task listing is not the UI backend, result cleanup does not imply command
+retention, and sensitive outputs require explicit access. Coding can proceed
+on a separate branch, but the next operator-visible release waits for CSV UI
+acceptance. The second off-host destination remains an owner decision; 200-node
+work and token rotation remain deferred.
+
+## Previous Delivery Checkpoint (2026-11-04, CSV gate)
+
+**Release gate at that time:** v1.7.28/`545d3ac` was published at 05:44 UTC but
 not deployed to OC424. A 2026-11-04 recheck found matching identity digests
 across the live 13-client database and three older backup snapshots; it
 corrects an inconsistent v1.7.27 record but cannot rule out an intervening
 change later reversed. Do not overwrite or rotate live identities. MAC-WAN
-SSH is reachable again; validate a fresh off-host backup before a switch.
+SSH was reachable; a fresh off-host backup was required before a switch.
 Stable v1.7.28 can trigger Agent auto-updates, whose fleet status has not been
 verified. See [`OPEN-WORK.md`](./OPEN-WORK.md).
 
-**Latest OC424 delivery: v1.7.27 (2026-11-04 approximately 05:02 UTC).**
+**OC424 delivery at that time: v1.7.27 (2026-11-04 approximately 05:02 UTC).**
 The node chart page gains metric CSV export: an Export CSV button downloads
 the loaded window as a wide CSV (time + one column per metric series, tags
 preserved, values may already be aggregated, BOM + CRLF) in five locales, with cell quoting shared
@@ -127,18 +148,18 @@ record was corrected to `55bc6191…d2bde` by the later recheck), and fresh
 encrypted pre/post archives exist with matching MAC-WAN copies and two passing
 isolated restore drills (pre boots v1.7.26, post boots v1.7.27). Owner on-page
 acceptance of the export and the second off-host destination decision remain. The
-alert-rule send path is regression-checked on the current release: the owner
+alert-rule send path was regression-checked on that release: the owner
 sent a test notification from the saved load rule and acknowledged the real
 `[TEST]` receipt (2026-11-04). See
 [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
-**In development: CSV correctness follow-up.** The published v1.7.28
+**Then in development: CSV correctness follow-up.** The published v1.7.28
 history endpoints reconstructed compatibility records rather than raw samples;
 missing fields and cycle counters can consequently be misleading. The local
 patch exports retained buckets with aggregation, interval, sample count and
 tags, fixes chart-header quoting and preserves custom time windows. Its schema
 changes v1.7.28's new CSV schema; see [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md).
-CI, release and OC424 acceptance remain pending.
+CI, release and OC424 acceptance were pending at that checkpoint.
 
 **50-node capacity/memory gate (2026-11-04 approximately 05:10 UTC).** The
 v1.8.0 capacity exit criterion is measured with the new
@@ -151,8 +172,8 @@ log lines; the early climb is allocator high-water mark plus SQLite cache
 fill, not a leak. All gates pass; the `< 1 MiB/day` drift SLO stays the
 standing weekly OC424 measurement. Method and limits are recorded in
 [`CAPACITY-50NODE.md`](./CAPACITY-50NODE.md). Remaining before v1.8.0 closes:
-the second off-host destination decision **[Owner]**. OC424 itself is
-unchanged on `v1.7.26/60b4524`.
+the second off-host destination decision **[Owner]**. At the benchmark's
+earlier checkpoint OC424 was unchanged on `v1.7.26/60b4524`.
 
 ## Previous Delivery Checkpoint (2026-11-04, 50-node gate detail)
 

@@ -384,6 +384,7 @@ const FileEditorDialog = ({
     canRedo: false,
   });
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const focusEditorAfterPositionRef = useRef(false);
   const programmaticEditorValueRef = useRef<string | null>(null);
   const documentsRef = useRef<EditorDocument[]>([]);
   const activePathRef = useRef<string | null>(null);
@@ -1102,8 +1103,8 @@ const FileEditorDialog = ({
     const column = Math.min(Math.max(1, requestedColumn), model.getLineMaxColumn(lineNumber));
     editor.setPosition({ lineNumber, column });
     editor.revealPositionInCenter({ lineNumber, column });
-    editor.focus();
     setCursor({ line: lineNumber, column });
+    focusEditorAfterPositionRef.current = true;
     setPositionOpen(false);
   }, [positionColumn, positionLine]);
 
@@ -1782,6 +1783,14 @@ const FileEditorDialog = ({
                 confirmLabel={t("common.confirm", "Confirm")}
                 onSubmit={submitPosition}
                 onCancel={() => setPositionOpen(false)}
+                onCloseAutoFocus={(event) => {
+                  if (!focusEditorAfterPositionRef.current) return;
+                  focusEditorAfterPositionRef.current = false;
+                  if (!event.defaultPrevented && editorRef.current) {
+                    event.preventDefault();
+                    editorRef.current.focus();
+                  }
+                }}
               />
 
               <div className="relative min-h-0 flex-1">

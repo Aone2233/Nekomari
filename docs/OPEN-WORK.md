@@ -36,10 +36,11 @@ not a proven root cause of that particular failure. Test-fix candidate
 CI41113452947 and the subsequent exact merge CI41114880987 pass 8/8; the
 original failure remains part of the record.
 
-**Current phase, updated 2026-11-05:** the last observed OC424 panel is
-`v1.7.27/24faa9d`. `v1.7.28` is published, not deployed to that panel;
-its CSV correctness fixes are the v1.7.29 candidate in PR #163, not yet
-released or deployed.
+**Current phase, updated 2026-11-05:** OC424 runs `v1.7.29/94e1973`.
+`v1.7.28` was published but skipped for deployment; its CSV correctness
+fixes were released in v1.7.29. OC424 checks pass 9/9 and fresh MAC-WAN
+pre/post encrypted backups pass isolated restore drills. The owner still needs
+to verify chart and history-bucket CSV downloads in the signed-in UI.
 The next bounded releases and operational gates, in order:
 
 1. **v1.7.24 SLA window coverage — done (2026-11-03).** `window_coverage`,
@@ -69,49 +70,64 @@ The next bounded releases and operational gates, in order:
    incident, not the acknowledged test send) and MegaBox provider-billing
    equivalence; the latter needs provider-side data and must never be
    claimed from panel numbers alone.
-5. **v1.9.0 begins (delivered as v1.7.27, 2026-11-04).** Metric CSV export
+5. **v1.9.0 begins (v1.7.27 and v1.7.29, 2026-11-04/05).** Metric CSV export
    on the node chart page — a wide CSV (time plus one column per metric
    series with tags preserved) of the loaded window, built from the same
    `public:queryMetrics` data the charts draw, with a shared quoting util
    and five-locale button. Deployed on OC424 with upgrade9/9, identical
    client rows, fresh pre/post archives and two passing isolated restore
-   drills. Owner on-page acceptance (Export CSV on a node chart) remains
-   open. The ping/record CSV endpoints were published in v1.7.28, but their
-   reconstructed rows can misrepresent missing fields and cumulative cycle
-   traffic; a bucket-semantics correction is in draft PR #163 and has not
-   been released or deployed. See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md).
-   Remaining v1.9.0 slices after it:
-   exec-result history, cost-forecast column, roles UI, frontend budgets
-   and a11y pass.
+   drills. The v1.7.29 correction replaces misleading v1.7.28 reconstructed
+   history rows with retained bucket data and is now deployed. Owner on-page
+   acceptance of both Export CSV and Export history-bucket CSV remains open.
+   See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md). Next: bounded
+   exec-result history, designed separately in
+   [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md). Later slices include
+   the cost-forecast column, roles UI, frontend budgets and an a11y pass.
 
-**Backup close-out: done (2026-11-03).** The v1.7.22 post and v1.7.23
+**Unreleased terminal-dialog accessibility candidate (2026-11-05):** the
+independent `codex/terminal-dialog-focus` branch traps Tab focus, restores the
+previous element where possible, and defaults destructive dialogs to Cancel.
+It also fixes the separately reproducible quick-open bug where Enter on Cancel
+could select a highlighted suggestion and open a file. Mounted Chromium tests
+exercise the actual file-manager delete and editor quick-open paths with stubbed
+RPC, plus suggestion buttons, disabled submission, nested dialogs and mobile.
+Follow-up preserves deliberate post-close focus and checks that submitting Go
+to Line/Column focuses the real Monaco editor with the requested cursor;
+cancelling still returns to the launcher. Synthetic composition-key tests cover
+event routing, but real input methods have not been tested. This is not a
+screen-reader audit and is not yet merged, released or deployed; the CSV owner
+gate and the normal release/backup gates still apply.
+
+**Prior backup close-out (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds
 the two older verified copies, and four isolated restore drills pass (see
 [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md) and
 [`DEPLOY-OC424.md`](./DEPLOY-OC424.md)). Historical success does not prove
-current access: MAC-WAN SSH was reachable again on 2026-11-04; three older
-archives passed ciphertext checksum, decryption and database quick checks.
-Validate a fresh off-host backup before another OC424 release.
+current access. On 2026-11-05 direct MAC-WAN SSH timed out; the pinned
+reverse-tunnel route worked and the new v1.7.29 pre/post backups passed
+isolated recovery. Validate fresh backups before every subsequent release.
 
 Deferred by owner decision: 200-node capacity work stays on hold; a stable
 release may still trigger agent auto-updates. OVH is sold and its disk
 sanitization is no longer possible — that item is closed with the residual
 credential-exposure risk recorded, not re-opened.
 
-**Production release gate (2026-11-04, rechecked 13:38–13:42 UTC):** OC424
-remains healthy on v1.7.27 with 13 clients. A consistent identity digest over
+**Prior identity gate (2026-11-04, rechecked 13:38–13:42 UTC):** OC424
+was healthy on v1.7.27 with 13 clients. A consistent identity digest over
 the live database, v1.7.27 pre/post archives and v1.7.26 post archive matches
 (`55bc6191…d2bde`) in all four snapshots; the earlier recorded v1.7.27 digest
 `a2737fd0…d0ce` is inconsistent with those archives. Its cause or original
 method is not established. The owner is unsure about any intervening change;
 the snapshots cannot rule out a change subsequently reversed. Do not overwrite
-or rotate live identities. MAC-WAN SSH works and the three older archives pass
-checksum, decryption and SQLite quick checks, but a fresh off-host backup still
-needs validation before a production switch. `v1.7.28` is a stable published
-tag and can trigger Agent auto-update; post-publication fleet versions are
-unverified. Comparison method and archive details: [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
+or rotate live identities. At that checkpoint MAC-WAN SSH worked and the
+three older archives passed checksum, decryption and SQLite quick checks;
+the later fresh pre/post recovery is recorded above. Stable releases can
+trigger Agent auto-update. Client-reported version fields at 02:51 UTC on
+2026-11-05 were v1.6.24=10, v1.6.25=1 and v1.7.1=2; these fields may be
+stale and do not verify the binaries actually running. Comparison method and
+archive details: [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
-**Pre-release recheck (2026-11-05):** OC424 remains healthy/restart0 on
+**Pre-release recheck (2026-11-05):** OC424 was healthy/restart0 on
 v1.7.27, both production databases pass read-only `quick_check`, and the
 13-client identity digest still matches the audited snapshots. A fresh
 encrypted pre-release archive reached MAC-WAN and passes ciphertext checksum,
@@ -119,7 +135,8 @@ authenticated decryption, all 1,345 manifest file checks and both database
 integrity checks. The first isolated drill used a mistyped image digest and
 failed to start the container; the retry with the inspected pinned v1.7.27
 image passes with networking disabled. This verifies the pre-release archive,
-not a later post-upgrade backup. No production node or credential was changed.
+not a later post-upgrade backup. The subsequent post-upgrade drill also passes;
+see the current checkpoint. No production node or credential was changed.
 
 **Prior operational checkpoint (2026-11-04 05:10 UTC):** OC424 was
 healthy/restart0 on **v1.7.27/24faa9d** (metric CSV export on node charts).
@@ -730,7 +747,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Three documents nothing references | `HEALTH-REVIEW-2026-09-19.md`, `MONITORING-ACCURACY-REVIEW-2026-09-30.md`, `OPTIMIZATION-RECOMMENDATIONS-2026-09-26.md` | Orphans; either link them or fold them into the record they belong to |
 | `docs/audits/` has no retention policy or owner, and one tree ships a production-mutating script | `docs/audits/2026-09-30/` | Keep audits as immutable dated evidence, but say so somewhere and decide what stays |
 | The React Compiler rules are advisory until the remaining findings are triaged | `docs/ROADMAP.md` A4, `frontend/script/audit-compiler.mjs` | Now a CI step and currently at 0; adoption needs the triage, not the gate |
-| `TerminalDialog` claims modality it does not enforce | `frontend/src/pages/terminal/TerminalDialog.tsx` | `aria-modal="true"` with no Tab trap, and focus is not returned to the trigger on close. The destructive half — Enter on the focused *Cancel* button running the confirm action — is fixed (the decision moved into `dialogKeys.ts`, which is unit-tested); a Tab trap needs a decision about focus order across the suggestion list |
+| `TerminalDialog` claims modality it does not enforce | `frontend/src/pages/terminal/TerminalDialog.tsx` | A focus-trap and suggestion-button keyboard fix is developed on `codex/terminal-dialog-focus` with mounted tests, but remains unreleased and undeployed; an actual assistive-technology pass is still required |
 | The mutation-envelope check is re-implemented at ~24 call sites | `frontend/src/lib/`, `frontend/src/pages/admin/` | Only the node table uses the shared helper; the loosest call site does not check `response.ok` at all |
 | Locale strings are injected as raw HTML at 8 sites with `escapeValue: false` | `frontend/src/i18n/config.ts` + 8 components | Today's values are benign markup, but `frontend/crowdin.yml` accepts outside contributions and `dompurify` is already a dependency |
 | Absolute asset URLs ignore the configurable `base` | `frontend/src/components/Flag.tsx` + 2 more | A sub-path deployment gets 404 flags and logos |
