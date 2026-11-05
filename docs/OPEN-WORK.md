@@ -83,6 +83,22 @@ The next bounded releases and operational gates, in order:
    exec-result history, designed separately in
    [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md). Later slices include
    the cost-forecast column, roles UI, frontend budgets and an a11y pass.
+   Cost estimation needs an explicit billing model before implementation; see
+   [`COST-FORECAST-DESIGN.md`](./COST-FORECAST-DESIGN.md).
+
+**Unreleased execution history (2026-11-05).** Draft PR #165 is developed on
+the independent `codex/exec-history-implementation` branch; it is not deployed.
+Exact-head CI41975809815 for `d5b0718` passes 8/8. The prior `86a6acd` ARM64
+candidate has a native network-free backend/panel smoke, while the later
+frontend recovery change has synthetic browser checks on amd64 only. Both CSV
+exports still require owner acceptance before the next operator-facing release.
+
+**Scheduled backup recheck (2026-11-05).** MAC-WAN's 03:30:30 UTC automatic
+backup completed at 03:31:29 with exit 0; the age ciphertext and sidecar
+checksum match. The 05:34 health timer succeeds and OC424 receives `ok` for
+that backup. This checks the scheduled path and reporting, not a fresh restore
+or independent offline-media recovery; fresh pre/post backups and isolated
+restore drills remain necessary before the next production switch.
 
 **Prior backup close-out (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds

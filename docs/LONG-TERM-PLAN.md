@@ -81,6 +81,12 @@ decides at the gates marked **[Owner]**.
    recovery checks in the meantime. The 200-node work remains deferred and
    existing Agent tokens are not rotated as part of these releases.
 
+**Cost-forecast preparation:** [`COST-FORECAST-DESIGN.md`](./COST-FORECAST-DESIGN.md)
+proposes an opt-in billing model and explicit unknown/authorization rules. It
+is not an implementation or an accepted model; owner input on the provider's
+sanitized tariff semantics is needed before this slice is coded. Theme
+`costPremiums` is not implicitly migrated or reinterpreted.
+
 ### Owner decision calendar
 
 1. **v1.7.25 acceptance** — closed: the owner confirmed receipt of the real
