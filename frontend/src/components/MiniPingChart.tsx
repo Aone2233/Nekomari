@@ -3,6 +3,7 @@ import { Card, Switch } from "@radix-ui/themes";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { useTranslation } from "react-i18next";
 import { Download } from "lucide-react";
+import { toast } from "sonner";
 import Loading from "@/components/loading";
 import MetricBoundaryAxisTick from "@/components/MetricBoundaryAxisTick";
 import PingMetricStatContent from "@/components/PingMetricStatContent";
@@ -16,6 +17,7 @@ import {
 import Tips from "@/components/ui/tips";
 import { useRPC2Call } from "@/contexts/RPC2Context";
 import { cn } from "@/lib/utils";
+import { downloadRecordCsv, recordCsvUrl } from "@/utils/recordCsv";
 import type {
   MetricSeries,
   MetricTags,
@@ -78,6 +80,15 @@ const MiniPingChart = ({
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
 
   const requestKey = uuid ? `${uuid}|${hours}` : "";
+
+  const exportRecords = async () => {
+    try {
+      await downloadRecordCsv(recordCsvUrl("ping", uuid, { hours }), "nekomari-ping-buckets.csv");
+    } catch (error) {
+      toast.error(t(error instanceof Error && error.message === "csv_too_large"
+        ? "chart.exportRecordsTooLarge" : "chart.exportRecordsFailed"));
+    }
+  };
 
   // Adjust the request-scoped state while rendering when the request changes, so
   // the fetch effect below never has to write state synchronously.
@@ -313,15 +324,15 @@ const MiniPingChart = ({
                 </div>
               );
             })}
-            <a
-              href={`/api/records/ping.csv?uuid=${encodeURIComponent(uuid)}&hours=${hours}`}
-              download=""
+            <button
+              type="button"
+              onClick={exportRecords}
               className="ml-auto inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent-3 hover:text-accent-12"
               title={t("ping.exportRecordsCsv")}
               aria-label={t("ping.exportRecordsCsv")}
             >
               <Download className="size-3.5" />
-            </a>
+            </button>
           </div>
 
           <ChartContainer

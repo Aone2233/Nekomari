@@ -21,3 +21,8 @@ export function csvCell(value: unknown): string {
   if (!/[",\r\n]/.test(text)) return text;
   return `"${text.replace(/"/g, '""')}"`;
 }
+
+/** Keep untrusted labels from being interpreted as spreadsheet formulas. */
+export function csvSpreadsheetText(value: string): string {
+  return /^ *[\t\r\n=+\-@]/.test(value) ? `'${value}` : value;
+}

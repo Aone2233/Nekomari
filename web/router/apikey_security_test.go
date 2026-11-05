@@ -2,9 +2,11 @@ package router
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +19,7 @@ import (
 	"github.com/Aone2233/nekomari/internal/apikeys"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/pkg/metric"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 	agentruntime "github.com/Aone2233/nekomari/web/agent"
@@ -116,6 +119,70 @@ func TestScopedAPIKeysAcrossHTTPAndWebSocket(t *testing.T) {
 	}
 	_, readToken := newKey(rpc.ScopeNodesRead)
 	_, allToken := newKey(rpc.APIKeyScopes()...)
+	t.Run("CSVVisibilityAndPrivateSite", func(t *testing.T) {
+		const privateValue = "47.25"
+		previousPrivate, _ := config.GetAs[bool](config.PrivateSiteKey, false)
+		previousDSN, _ := config.GetAs[string](metricstore.MetricDBDSNKey)
+		defer func() {
+			_ = metricstore.CloseStoreContext(context.Background())
+			_ = config.Set(metricstore.MetricDBDSNKey, previousDSN)
+			_ = config.Set(config.PrivateSiteKey, previousPrivate)
+		}()
+		if err := config.Set(config.PrivateSiteKey, false); err != nil {
+			t.Fatal(err)
+		}
+		if err := config.Set(metricstore.MetricDBDSNKey, filepath.Join(t.TempDir(), "csv-metrics.db")); err != nil {
+			t.Fatal(err)
+		}
+		if err := metricstore.InitializeStore(); err != nil {
+			t.Fatal(err)
+		}
+		base := time.Now().UTC().Truncate(time.Minute).Add(-4 * time.Minute)
+		for _, point := range []metric.Point{
+			{MetricName: metricstore.MetricCPU, EntityID: node.UUID, Timestamp: base.Add(time.Second), Value: 47.25},
+			{MetricName: metricstore.MetricPingLatency, EntityID: node.UUID, Timestamp: base.Add(time.Second), Value: 47.25, Tags: map[string]string{"task_id": "31", "protocol": "tcp"}},
+		} {
+			if err := metricstore.GetStore().Write(t.Context(), point); err != nil {
+				t.Fatal(err)
+			}
+		}
+		_, taskToken := newKey(rpc.ScopeTasksRead)
+		for _, kind := range []string{"load", "ping"} {
+			params := url.Values{"uuid": {node.UUID}, "start": {base.Format(time.RFC3339)}, "end": {base.Add(time.Minute).Format(time.RFC3339)}}
+			path := "/api/records/" + kind + ".csv?" + params.Encode()
+			for _, tc := range []struct {
+				name, token     string
+				cookie, wantRow bool
+			}{
+				{"guest", "", false, false},
+				{"unprivileged key", taskToken, false, false},
+				{"nodes read", readToken, false, true},
+				{"admin", "", true, true},
+			} {
+				status, _, body := request("GET", path, tc.token, nil, tc.cookie)
+				if status != http.StatusOK {
+					t.Errorf("%s %s returned %d: %s", kind, tc.name, status, body)
+					continue
+				}
+				rows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(body, "\uFEFF"))).ReadAll()
+				if err != nil || (len(rows) == 2) != tc.wantRow || (strings.Contains(body, privateValue) != tc.wantRow) {
+					t.Errorf("%s %s visibility: rows=%v err=%v", kind, tc.name, rows, err)
+				}
+			}
+			if err := config.Set(config.PrivateSiteKey, true); err != nil {
+				t.Fatal(err)
+			}
+			if status, _, _ := request("GET", path, "", nil, false); status != http.StatusUnauthorized {
+				t.Errorf("private-site guest %s returned %d", kind, status)
+			}
+			if status, _, body := request("GET", path, readToken, nil, false); status != http.StatusOK || !strings.Contains(body, privateValue) {
+				t.Errorf("private-site scoped key %s returned %d", kind, status)
+			}
+			if err := config.Set(config.PrivateSiteKey, false); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
 	t.Run("PprofSummaryRemainsSessionOnly", func(t *testing.T) {
 		for _, path := range []string{"/api/admin/pprof/summary", "/api/admin/pprof/history"} {
 			if status, _, _ := request("GET", path, "", nil, false); status != http.StatusUnauthorized {

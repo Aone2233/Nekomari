@@ -101,3 +101,51 @@ test('an empty selection still writes the time header', () => {
   const csv = metricSeriesToCsv([]);
   assert.equal(csv.replace(/^\uFEFF/, ''), 'time');
 });
+
+test('tagged and unusual headers are CSV-escaped', () => {
+  const csv = metricSeriesToCsv([
+    series('ping.latency_ms', { task_id: '7', family: 'ipv6' }, [
+      { time: '2026-11-04T03:00:00Z', value: 12 },
+    ]),
+    series('metric,"quoted"', { label: 'first\nsecond' }, [
+      { time: '2026-11-04T03:00:00Z', value: 13 },
+    ]),
+  ]);
+  assert.ok(csv.startsWith('\uFEFFtime,"ping.latency_ms{family=ipv6,task_id=7}",'));
+  assert.ok(csv.includes('"metric,""quoted""{label=first\nsecond}"'));
+  assert.ok(csv.endsWith('2026-11-04T03:00:00.000Z,12,13'));
+});
+
+test('ambiguous display names do not merge distinct tag sets', () => {
+  const csv = metricSeriesToCsv([
+    series('x', { a: 'b,c=d' }, [{ time: '2026-11-04T03:00:00Z', value: 1 }]),
+    series('x', { a: 'b', c: 'd' }, [{ time: '2026-11-04T03:00:00Z', value: 2 }]),
+  ]);
+  assert.ok(csv.endsWith('2026-11-04T03:00:00.000Z,1,2'));
+  assert.ok(csv.includes('""b,c=d""'));
+  assert.ok(csv.includes('""c"",""d""'));
+});
+
+test('duplicate series are rejected rather than silently overwritten', () => {
+  assert.throws(() => metricSeriesToCsv([
+    series('cpu', undefined, []), series('cpu', {}, []),
+  ]), /Duplicate metric series/);
+});
+
+test('untrusted metric headers are not evaluated as spreadsheet formulas', () => {
+  const csv = metricSeriesToCsv([series('=1+1', {}, [])]);
+  assert.equal(csv, "\uFEFFtime,'=1+1");
+  const control = metricSeriesToCsv([series('  \ttext', {}, [])]);
+  assert.equal(control, "\uFEFFtime,'  \ttext");
+});
+
+test('spreadsheet-safe labels cannot collide with each other or the time column', () => {
+  const csv = metricSeriesToCsv([
+    series('=1', {}, [{ time: '2026-11-04T03:00:00Z', value: 1 }]),
+    series("'=1", {}, [{ time: '2026-11-04T03:00:00Z', value: 2 }]),
+    series('time', {}, [{ time: '2026-11-04T03:00:00Z', value: 3 }]),
+  ]);
+  assert.ok(csv.startsWith("\uFEFFtime,'=1,"));
+  assert.ok(csv.includes('time ['));
+  assert.ok(csv.endsWith('2026-11-04T03:00:00.000Z,1,2,3'));
+});
