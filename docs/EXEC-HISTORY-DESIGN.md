@@ -106,7 +106,7 @@ read-only connections, DIRECTONLY, malformed values and length-limit recovery.
 These are local measurements, not production performance or memory SLOs.
 
 SQLite's implicit `rowid` is not stable across `VACUUM`, and legacy task IDs
-are random. The upgrade adds nullable `tasks.history_order` and two indexes,
+are random. The upgrade adds nullable `tasks.history_order` and indexes,
 backfills previously unnumbered parent rows transactionally on startup using
 their rowid rank rather than adding potentially extreme rowids. New tasks get a
 monotonic order in their creation transaction. Integer exhaustion fails the
@@ -115,12 +115,24 @@ rollback, tasks created by that older image are reconciled on the next startup
 and sorted after already numbered tasks; they cannot be placed precisely
 among those tasks. Parent pages use
 `(history_order, task_id)` keysets; no timestamp is invented. Result pages use
-the `(task_id, client)` index plus a rowid tie-breaker; the cursor also binds
-the original client and creation timestamp, and becomes invalid if cleanup or
-maintenance changes that row. Results can update or expire between requests;
-refresh the list after an invalidated cursor. A result's content can also change
-between chunks without its cursor changing; the UI warns that chunk reads are
-not a snapshot. Old parent commands do not gain a retention guarantee.
+the `(task_id, client)` index plus a rowid tie-breaker; zero and negative
+SQLite rowids remain valid, while a missing or null rowid in a cursor is
+rejected. The upgrade also adds a nullable, uniquely indexed 128-bit random
+`task_results.history_identity`; startup backfills existing rows, and an
+insert trigger assigns identities to new rows including those written by an
+older image after rollback. Startup reconciles missing identities if the
+trigger was absent during a restore or rollback. Each cursor binds task,
+client, rowid and this identity, so rowid reuse or VACUUM cannot silently
+retarget it to a different result even if duplicate clients have the same
+timestamp. The index makes random collisions fail closed; a collision or other
+backfill error aborts startup rather than silently selecting an ambiguous row.
+The identity is internal and omitted from existing task JSON; its value is not
+an authorization credential. Missing/malformed identities fail closed. A
+privileged administrator who deliberately rewrites identities through raw SQL
+can invalidate the guarantee. Refresh the list after an invalidated cursor.
+Results can update or expire between requests, and output can change between
+chunks without its cursor changing; the UI warns that chunk reads are not a
+snapshot. Old parent commands do not gain a retention guarantee.
 Unknown/malformed legacy client identities fail closed.
 
 On local scratch SQLite with 10,000 synthetic tasks and 300,000 results
@@ -135,6 +147,19 @@ and startup cost, not a no-migration change. A rollback to the prior panel
 must retain the live databases and must be tested on an isolated copy first;
 newly created tasks while the old version is running have no order value until
 the next startup reconciliation.
+
+A later scratch SQLite 3.46.1 test added the result-identity column, unique
+index, transactional backfill and insert trigger to 300,000 synthetic rows in
+about 854 ms. The database's logical page footprint grew from approximately
+28.5 MB to 54.9 MB; WAL and backup size can add temporary overhead. A repeated
+no-op reconciliation took about 0.05 ms and used the identity index to find
+NULL values. This is a local synthetic measurement, not a production startup
+SLO; a real migration must check free space and restore the fresh backup if
+the startup fails. Do not overwrite a live database with an old snapshot
+without explicit recovery authorization. A separate
+v1.7.29/candidate/v1.7.29/candidate fixture confirms
+the old binary retains the trigger, new inserts get distinct identities and
+the retained rows survive restart with `quick_check` returning `ok`.
 
 A network-isolated synthetic old/new/old/new startup drill used the verified
 v1.7.29 amd64 release binary and the development candidate. It started the old

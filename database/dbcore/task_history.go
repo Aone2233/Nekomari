@@ -33,3 +33,18 @@ func backfillTaskHistoryOrder(db *gorm.DB) error {
 		) UPDATE tasks SET history_order = ? + seq FROM unnumbered WHERE tasks.rowid = unnumbered.rid`, maximum).Error
 	})
 }
+
+// Random identities survive VACUUM and prevent a cursor from retargeting a
+// different row after implicit SQLite rowids are renumbered or reused. Old
+// binaries ignore the nullable column; the trigger covers their inserts and
+// new startup reconciles any rows written while the trigger was absent.
+func backfillTaskResultHistoryIdentity(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`UPDATE task_results SET history_identity = lower(hex(randomblob(16))) WHERE history_identity IS NULL`).Error; err != nil {
+			return err
+		}
+		return tx.Exec(`CREATE TRIGGER IF NOT EXISTS task_results_assign_history_identity
+			AFTER INSERT ON task_results WHEN NEW.history_identity IS NULL
+			BEGIN UPDATE task_results SET history_identity = lower(hex(randomblob(16))) WHERE rowid = NEW.rowid; END`).Error
+	})
+}

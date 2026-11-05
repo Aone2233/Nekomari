@@ -114,9 +114,9 @@ func validHistoryID(value string) bool {
 }
 
 type historyResultCursor struct {
-	Client    string `json:"c"`
-	RowID     int64  `json:"r"`
-	CreatedAt string `json:"t"`
+	Client   string `json:"c"`
+	RowID    int64  `json:"r"`
+	Identity string `json:"i"`
 }
 
 type historyTaskCursor struct {
@@ -147,14 +147,34 @@ func decodeResultCursor(encoded string) (historyResultCursor, error) {
 		return cursor, ErrInvalidHistoryParams
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(encoded)
-	if err != nil || json.Unmarshal(raw, &cursor) != nil || !validHistoryID(cursor.Client) || cursor.RowID <= 0 || cursor.CreatedAt == "" || len(cursor.CreatedAt) > 128 || !utf8.ValidString(cursor.CreatedAt) {
+	// SQLite rowids are signed and may legitimately be zero or negative. A
+	// pointer distinguishes rowid zero from a missing or null cursor field.
+	var wire struct {
+		Client   string `json:"c"`
+		RowID    *int64 `json:"r"`
+		Identity string `json:"i"`
+	}
+	if err != nil || json.Unmarshal(raw, &wire) != nil || !validHistoryID(wire.Client) || wire.RowID == nil || !validResultIdentity(wire.Identity) {
 		return historyResultCursor{}, ErrInvalidHistoryParams
 	}
+	cursor = historyResultCursor{Client: wire.Client, RowID: *wire.RowID, Identity: wire.Identity}
 	return cursor, nil
 }
 
-func encodeResultCursor(client string, rowID int64, createdAt string) string {
-	raw, _ := json.Marshal(historyResultCursor{Client: client, RowID: rowID, CreatedAt: createdAt})
+func validResultIdentity(value string) bool {
+	if len(value) != 32 {
+		return false
+	}
+	for _, c := range value {
+		if !('0' <= c && c <= '9') && !('a' <= c && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func encodeResultCursor(client string, rowID int64, identity string) string {
+	raw, _ := json.Marshal(historyResultCursor{Client: client, RowID: rowID, Identity: identity})
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
 
@@ -286,18 +306,18 @@ func getHistoryDetail(db *gorm.DB, taskID, cursor string) (HistoryDetail, error)
 		Client          string
 		ClientTruncated bool
 		CreatedAt       *time.Time
-		CreatedKey      string
+		Identity        string
 		FinishedAt      *time.Time
 		ExitCode        *int
 		OutputBytes     int64
 		OutputAvailable bool
 	}
-	query := `SELECT rowid AS row_id, CAST(substr(CAST(client AS BLOB), 1, 37) AS TEXT) AS client, length(CAST(client AS BLOB)) > 36 AS client_truncated, created_at, substr(CAST(created_at AS TEXT), 1, 129) AS created_key, finished_at, exit_code, coalesce(octet_length(result), 0) AS output_bytes, typeof(result) IN ('null', 'text', 'blob') AS output_available FROM task_results AS r WHERE task_id = ? `
+	query := `SELECT rowid AS row_id, CAST(substr(CAST(client AS BLOB), 1, 37) AS TEXT) AS client, length(CAST(client AS BLOB)) > 36 AS client_truncated, created_at, CASE WHEN octet_length(history_identity) = 32 THEN CAST(history_identity AS TEXT) ELSE '' END AS identity, finished_at, exit_code, coalesce(octet_length(result), 0) AS output_bytes, typeof(result) IN ('null', 'text', 'blob') AS output_available FROM task_results AS r WHERE task_id = ? `
 	if cursor == "" {
 		err = db.Raw(query+`ORDER BY r.client, rowid LIMIT ?`, taskID, HistoryResultPageSize+1).Scan(&rows).Error
 	} else {
 		var present int
-		result := db.Raw(`SELECT 1 FROM task_results WHERE task_id = ? AND client = ? AND rowid = ? AND CAST(created_at AS TEXT) = ?`, taskID, after.Client, after.RowID, after.CreatedAt).Scan(&present)
+		result := db.Raw(`SELECT 1 FROM task_results WHERE task_id = ? AND client = ? AND rowid = ? AND history_identity = ?`, taskID, after.Client, after.RowID, after.Identity).Scan(&present)
 		if result.Error != nil {
 			return HistoryDetail{}, result.Error
 		}
@@ -313,16 +333,16 @@ func getHistoryDetail(db *gorm.DB, taskID, cursor string) (HistoryDetail, error)
 	if len(rows) > HistoryResultPageSize {
 		rows = rows[:HistoryResultPageSize]
 		last := rows[len(rows)-1]
-		if last.ClientTruncated || !validHistoryID(last.Client) || last.CreatedKey == "" || len(last.CreatedKey) > 128 {
+		if last.ClientTruncated || !validHistoryID(last.Client) || !validResultIdentity(last.Identity) {
 			return HistoryDetail{}, ErrInvalidHistoryParams
 		}
-		detail.NextCursor = encodeResultCursor(last.Client, last.RowID, last.CreatedKey)
+		detail.NextCursor = encodeResultCursor(last.Client, last.RowID, last.Identity)
 	}
 	for _, row := range rows {
-		if row.ClientTruncated || !validHistoryID(row.Client) || row.CreatedKey == "" || len(row.CreatedKey) > 128 {
+		if row.ClientTruncated || !validHistoryID(row.Client) || !validResultIdentity(row.Identity) {
 			return HistoryDetail{}, ErrInvalidHistoryParams
 		}
-		detail.Results = append(detail.Results, HistoryResult{Cursor: encodeResultCursor(row.Client, row.RowID, row.CreatedKey), Client: row.Client, ClientTruncated: row.ClientTruncated, CreatedAt: row.CreatedAt, FinishedAt: row.FinishedAt, ExitCode: row.ExitCode, OutputBytes: row.OutputBytes, OutputAvailable: row.OutputAvailable})
+		detail.Results = append(detail.Results, HistoryResult{Cursor: encodeResultCursor(row.Client, row.RowID, row.Identity), Client: row.Client, ClientTruncated: row.ClientTruncated, CreatedAt: row.CreatedAt, FinishedAt: row.FinishedAt, ExitCode: row.ExitCode, OutputBytes: row.OutputBytes, OutputAvailable: row.OutputAvailable})
 	}
 	return detail, nil
 }
@@ -360,7 +380,7 @@ func readHistoryChunk(db *gorm.DB, taskID, kind, resultCursor string, offset int
 		if err != nil {
 			return HistoryChunk{}, ErrInvalidHistoryParams
 		}
-		result = db.Raw(`SELECT CASE typeof(result) WHEN 'null' THEN x'' WHEN 'text' THEN nekomari_history_blob(1, rowid, ?) WHEN 'blob' THEN nekomari_history_blob(1, rowid, ?) END AS data, coalesce(octet_length(result), 0) AS total_bytes, typeof(result) IN ('null', 'text', 'blob') AS available FROM task_results WHERE task_id = ? AND client = ? AND rowid = ? AND CAST(created_at AS TEXT) = ?`, offset, offset, taskID, cursor.Client, cursor.RowID, cursor.CreatedAt).Scan(&row)
+		result = db.Raw(`SELECT CASE typeof(result) WHEN 'null' THEN x'' WHEN 'text' THEN nekomari_history_blob(1, rowid, ?) WHEN 'blob' THEN nekomari_history_blob(1, rowid, ?) END AS data, coalesce(octet_length(result), 0) AS total_bytes, typeof(result) IN ('null', 'text', 'blob') AS available FROM task_results WHERE task_id = ? AND client = ? AND rowid = ? AND history_identity = ?`, offset, offset, taskID, cursor.Client, cursor.RowID, cursor.Identity).Scan(&row)
 	default:
 		return HistoryChunk{}, ErrInvalidHistoryParams
 	}

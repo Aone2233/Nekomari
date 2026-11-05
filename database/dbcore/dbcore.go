@@ -838,6 +838,9 @@ func doInitialize() error {
 	if err := backfillTaskHistoryOrder(instance); err != nil {
 		return fmt.Errorf("failed to backfill task history order: %w", err)
 	}
+	if err := backfillTaskResultHistoryIdentity(instance); err != nil {
+		return fmt.Errorf("failed to backfill task result history identity: %w", err)
+	}
 
 	// 完整性检查放在所有 AutoMigrate 之后：这时看到的才是本进程实际要用的 schema。
 	// quick_check 失败默认只记录 Error（KOMARI_STRICT_DB_CHECK=1 才拒绝启动）：freelist

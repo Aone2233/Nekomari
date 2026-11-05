@@ -99,9 +99,12 @@ incremental blob reads on the same connection and snapshot to preserve bounded
 access to large TEXT/BLOB records; malformed non-text values fail closed. A
 16 MiB connection limit still guards other materialized fields. See the design
 document for local measurements, security boundaries and remaining portability
-gates. The previous commit `9e6f7c3` passed 8/8 CI; those checks do not validate
-the subsequent changes, which require their own current-commit CI before any
-release. CSV owner acceptance remains a separate release gate.
+gates. Commit `3db976c` passed 8/8 CI and native OC424 ARM64 synthetic tests.
+A subsequent audit reproduced a stale result cursor silently retargeting a
+duplicate after a table rebuild and rowid renumbering. The unreleased follow-up
+adds indexed stable result identities and rollback-compatible insert/backfill
+handling; its new head requires its own CI and fresh platform verification.
+CSV owner acceptance remains a separate release gate.
 
 **Read-only production identity/task recheck (2026-11-05 04:02 UTC):** 13
 current node UUID/token pairs match the previously audited `55bc6191…d2bde`

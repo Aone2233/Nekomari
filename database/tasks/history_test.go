@@ -149,16 +149,16 @@ func TestHistoryResultKeysetSeeksWithManyRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	var cursorRow struct {
-		RowID      int64
-		Client     string
-		CreatedKey string
+		RowID    int64
+		Client   string
+		Identity string
 	}
-	if err := db.Raw(`SELECT rowid AS row_id, client, CAST(created_at AS TEXT) AS created_key FROM task_results WHERE task_id = ? AND client = ?`, id, "node-09900").Scan(&cursorRow).Error; err != nil {
+	if err := db.Raw(`SELECT rowid AS row_id, client, history_identity AS identity FROM task_results WHERE task_id = ? AND client = ?`, id, "node-09900").Scan(&cursorRow).Error; err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
-	page, err := GetHistoryDetail(ctx, id, encodeResultCursor(cursorRow.Client, cursorRow.RowID, cursorRow.CreatedKey))
+	page, err := GetHistoryDetail(ctx, id, encodeResultCursor(cursorRow.Client, cursorRow.RowID, cursorRow.Identity))
 	if err != nil || len(page.Results) != HistoryResultPageSize || page.Results[0].Client != "node-09901" {
 		t.Fatalf("deep indexed seek: %d %v", len(page.Results), err)
 	}
