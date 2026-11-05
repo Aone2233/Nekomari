@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/mattn/go-sqlite3"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -20,6 +22,8 @@ const (
 	HistoryCountLimit     = 1000
 	HistoryChunkBytes     = 16384
 	HistoryOffsetLimit    = 1<<53 - 1
+	HistoryFieldMaxBytes  = 8 << 20
+	HistorySQLiteMaxBytes = 16 << 20
 )
 
 var ErrInvalidHistoryParams = errors.New("invalid execution history parameters")
@@ -51,6 +55,7 @@ type HistoryResult struct {
 	FinishedAt      *time.Time `json:"finished_at"`
 	ExitCode        *int       `json:"exit_code"`
 	OutputBytes     int64      `json:"output_bytes"`
+	OutputAvailable bool       `json:"output_available"`
 }
 
 type HistoryDetail struct {
@@ -65,11 +70,44 @@ type HistoryChunk struct {
 	NextOffset int64  `json:"next_offset"`
 	TotalBytes int64  `json:"total_bytes"`
 	HasMore    bool   `json:"has_more"`
+	Available  bool   `json:"available"`
 }
 
 func historyDB(ctx context.Context) *gorm.DB {
 	// A SQL error or slow-query log must never interpolate sensitive parameters.
 	return dbcore.GetDBInstance().WithContext(ctx).Session(&gorm.Session{Logger: gormlogger.Default.LogMode(gormlogger.Silent)})
+}
+
+// SQLite materializes values before substr/length runs. Constrain only the
+// exclusively leased connection, then restore its previous pool setting.
+func withHistoryLimit(db *gorm.DB, query func(*gorm.DB) error) error {
+	return db.Connection(func(tx *gorm.DB) error {
+		conn, ok := tx.Statement.ConnPool.(*sql.Conn)
+		if !ok {
+			return errors.New("history requires a dedicated SQLite connection")
+		}
+		var previous int
+		if err := conn.Raw(func(driverConn any) error {
+			sqliteConn, ok := driverConn.(*sqlite3.SQLiteConn)
+			if !ok {
+				return errors.New("history requires the SQLite driver")
+			}
+			previous = sqliteConn.GetLimit(sqlite3.SQLITE_LIMIT_LENGTH)
+			if previous > HistorySQLiteMaxBytes {
+				sqliteConn.SetLimit(sqlite3.SQLITE_LIMIT_LENGTH, HistorySQLiteMaxBytes)
+			} else if previous < HistorySQLiteMaxBytes {
+				return errors.New("SQLite length limit is below the history safety limit")
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		defer conn.Raw(func(driverConn any) error {
+			driverConn.(*sqlite3.SQLiteConn).SetLimit(sqlite3.SQLITE_LIMIT_LENGTH, previous)
+			return nil
+		})
+		return query(tx)
+	})
 }
 
 func validHistoryID(value string) bool {
@@ -124,6 +162,16 @@ func encodeResultCursor(client string, rowID int64, createdAt string) string {
 // ListHistory follows persisted insertion order, not timestamps: legacy parent
 // tasks lack creation times and retained result times may disappear.
 func ListHistory(ctx context.Context, cursor string) (HistoryPage, error) {
+	var page HistoryPage
+	err := withHistoryLimit(historyDB(ctx), func(db *gorm.DB) error {
+		var err error
+		page, err = listHistory(db, cursor)
+		return err
+	})
+	return page, err
+}
+
+func listHistory(db *gorm.DB, cursor string) (HistoryPage, error) {
 	var after historyTaskCursor
 	var err error
 	if cursor != "" {
@@ -132,13 +180,12 @@ func ListHistory(ctx context.Context, cursor string) (HistoryPage, error) {
 			return HistoryPage{}, err
 		}
 	}
-	db := historyDB(ctx)
 	var parents []struct {
 		TaskID       string
 		HistoryOrder int64
 		TargetCount  *int
 	}
-	query := `SELECT CAST(substr(CAST(task_id AS BLOB), 1, 37) AS TEXT) AS task_id, history_order, CASE WHEN length(CAST(clients AS BLOB)) <= 1048576 AND json_valid(clients) THEN CASE WHEN json_type(clients) = 'array' THEN json_array_length(clients) END END AS target_count FROM tasks AS t `
+	query := `SELECT CAST(substr(CAST(task_id AS BLOB), 1, 37) AS TEXT) AS task_id, history_order, CASE WHEN coalesce(octet_length(clients), 0) <= 1048576 AND json_valid(clients) THEN CASE WHEN json_type(clients) = 'array' THEN json_array_length(clients) END END AS target_count FROM tasks AS t `
 	if cursor == "" {
 		err = db.Raw(query+`WHERE history_order IS NOT NULL ORDER BY history_order DESC, t.task_id DESC LIMIT ?`, HistoryPageSize+1).Scan(&parents).Error
 	} else {
@@ -207,6 +254,16 @@ func ListHistory(ctx context.Context, cursor string) (HistoryPage, error) {
 }
 
 func GetHistoryDetail(ctx context.Context, taskID, cursor string) (HistoryDetail, error) {
+	var detail HistoryDetail
+	err := withHistoryLimit(historyDB(ctx), func(db *gorm.DB) error {
+		var err error
+		detail, err = getHistoryDetail(db, taskID, cursor)
+		return err
+	})
+	return detail, err
+}
+
+func getHistoryDetail(db *gorm.DB, taskID, cursor string) (HistoryDetail, error) {
 	if !validHistoryID(taskID) {
 		return HistoryDetail{}, ErrInvalidHistoryParams
 	}
@@ -218,7 +275,6 @@ func GetHistoryDetail(ctx context.Context, taskID, cursor string) (HistoryDetail
 			return HistoryDetail{}, err
 		}
 	}
-	db := historyDB(ctx)
 	var parent struct{ TaskID string }
 	if err = db.Raw(`SELECT task_id FROM tasks WHERE task_id = ?`, taskID).Scan(&parent).Error; err != nil {
 		return HistoryDetail{}, err
@@ -235,10 +291,11 @@ func GetHistoryDetail(ctx context.Context, taskID, cursor string) (HistoryDetail
 		FinishedAt      *time.Time
 		ExitCode        *int
 		OutputBytes     int64
+		OutputAvailable bool
 	}
-	query := `SELECT rowid AS row_id, CAST(substr(CAST(client AS BLOB), 1, 37) AS TEXT) AS client, length(CAST(client AS BLOB)) > 36 AS client_truncated, created_at, substr(CAST(created_at AS TEXT), 1, 129) AS created_key, finished_at, exit_code, length(CAST(coalesce(result, '') AS BLOB)) AS output_bytes FROM task_results AS r WHERE task_id = ? `
+	query := `SELECT rowid AS row_id, CAST(substr(CAST(client AS BLOB), 1, 37) AS TEXT) AS client, length(CAST(client AS BLOB)) > 36 AS client_truncated, created_at, substr(CAST(created_at AS TEXT), 1, 129) AS created_key, finished_at, exit_code, coalesce(octet_length(result), 0) AS output_bytes, coalesce(octet_length(result), 0) <= ? AS output_available FROM task_results AS r WHERE task_id = ? `
 	if cursor == "" {
-		err = db.Raw(query+`ORDER BY r.client, rowid LIMIT ?`, taskID, HistoryResultPageSize+1).Scan(&rows).Error
+		err = db.Raw(query+`ORDER BY r.client, rowid LIMIT ?`, HistoryFieldMaxBytes, taskID, HistoryResultPageSize+1).Scan(&rows).Error
 	} else {
 		var present int
 		result := db.Raw(`SELECT 1 FROM task_results WHERE task_id = ? AND client = ? AND rowid = ? AND CAST(created_at AS TEXT) = ?`, taskID, after.Client, after.RowID, after.CreatedAt).Scan(&present)
@@ -248,7 +305,7 @@ func GetHistoryDetail(ctx context.Context, taskID, cursor string) (HistoryDetail
 		if result.RowsAffected == 0 {
 			return HistoryDetail{}, gorm.ErrRecordNotFound
 		}
-		err = db.Raw(query+`AND (r.client, rowid) > (?, ?) ORDER BY r.client, rowid LIMIT ?`, taskID, after.Client, after.RowID, HistoryResultPageSize+1).Scan(&rows).Error
+		err = db.Raw(query+`AND (r.client, rowid) > (?, ?) ORDER BY r.client, rowid LIMIT ?`, HistoryFieldMaxBytes, taskID, after.Client, after.RowID, HistoryResultPageSize+1).Scan(&rows).Error
 	}
 	if err != nil {
 		return HistoryDetail{}, err
@@ -266,7 +323,7 @@ func GetHistoryDetail(ctx context.Context, taskID, cursor string) (HistoryDetail
 		if row.ClientTruncated || !validHistoryID(row.Client) || row.CreatedKey == "" || len(row.CreatedKey) > 128 {
 			return HistoryDetail{}, ErrInvalidHistoryParams
 		}
-		detail.Results = append(detail.Results, HistoryResult{Cursor: encodeResultCursor(row.Client, row.RowID, row.CreatedKey), Client: row.Client, ClientTruncated: row.ClientTruncated, CreatedAt: row.CreatedAt, FinishedAt: row.FinishedAt, ExitCode: row.ExitCode, OutputBytes: row.OutputBytes})
+		detail.Results = append(detail.Results, HistoryResult{Cursor: encodeResultCursor(row.Client, row.RowID, row.CreatedKey), Client: row.Client, ClientTruncated: row.ClientTruncated, CreatedAt: row.CreatedAt, FinishedAt: row.FinishedAt, ExitCode: row.ExitCode, OutputBytes: row.OutputBytes, OutputAvailable: row.OutputAvailable})
 	}
 	return detail, nil
 }
@@ -274,13 +331,23 @@ func GetHistoryDetail(ctx context.Context, taskID, cursor string) (HistoryDetail
 // ReadHistoryChunk returns a bounded, explicit slice; callers may request the
 // next offset without fetching an unbounded command or agent result.
 func ReadHistoryChunk(ctx context.Context, taskID, kind, resultCursor string, offset int64) (HistoryChunk, error) {
+	var chunk HistoryChunk
+	err := withHistoryLimit(historyDB(ctx), func(db *gorm.DB) error {
+		var err error
+		chunk, err = readHistoryChunk(db, taskID, kind, resultCursor, offset)
+		return err
+	})
+	return chunk, err
+}
+
+func readHistoryChunk(db *gorm.DB, taskID, kind, resultCursor string, offset int64) (HistoryChunk, error) {
 	if !validHistoryID(taskID) || offset < 0 || offset > HistoryOffsetLimit {
 		return HistoryChunk{}, ErrInvalidHistoryParams
 	}
-	db := historyDB(ctx)
 	var row struct {
 		Data       []byte
 		TotalBytes int64
+		Available  bool
 	}
 	var result *gorm.DB
 	switch kind {
@@ -288,13 +355,13 @@ func ReadHistoryChunk(ctx context.Context, taskID, kind, resultCursor string, of
 		if resultCursor != "" {
 			return HistoryChunk{}, ErrInvalidHistoryParams
 		}
-		result = db.Raw(`SELECT substr(CAST(coalesce(command, '') AS BLOB), ?, ?) AS data, length(CAST(coalesce(command, '') AS BLOB)) AS total_bytes FROM tasks WHERE task_id = ?`, offset+1, HistoryChunkBytes, taskID).Scan(&row)
+		result = db.Raw(`SELECT CASE WHEN coalesce(octet_length(command), 0) <= ? THEN substr(CAST(coalesce(command, '') AS BLOB), ?, ?) END AS data, coalesce(octet_length(command), 0) AS total_bytes, coalesce(octet_length(command), 0) <= ? AS available FROM tasks WHERE task_id = ?`, HistoryFieldMaxBytes, offset+1, HistoryChunkBytes, HistoryFieldMaxBytes, taskID).Scan(&row)
 	case "output":
 		cursor, err := decodeResultCursor(resultCursor)
 		if err != nil {
 			return HistoryChunk{}, ErrInvalidHistoryParams
 		}
-		result = db.Raw(`SELECT substr(CAST(coalesce(result, '') AS BLOB), ?, ?) AS data, length(CAST(coalesce(result, '') AS BLOB)) AS total_bytes FROM task_results WHERE task_id = ? AND client = ? AND rowid = ? AND CAST(created_at AS TEXT) = ?`, offset+1, HistoryChunkBytes, taskID, cursor.Client, cursor.RowID, cursor.CreatedAt).Scan(&row)
+		result = db.Raw(`SELECT CASE WHEN coalesce(octet_length(result), 0) <= ? THEN substr(CAST(coalesce(result, '') AS BLOB), ?, ?) END AS data, coalesce(octet_length(result), 0) AS total_bytes, coalesce(octet_length(result), 0) <= ? AS available FROM task_results WHERE task_id = ? AND client = ? AND rowid = ? AND CAST(created_at AS TEXT) = ?`, HistoryFieldMaxBytes, offset+1, HistoryChunkBytes, HistoryFieldMaxBytes, taskID, cursor.Client, cursor.RowID, cursor.CreatedAt).Scan(&row)
 	default:
 		return HistoryChunk{}, ErrInvalidHistoryParams
 	}
@@ -306,6 +373,9 @@ func ReadHistoryChunk(ctx context.Context, taskID, kind, resultCursor string, of
 	}
 	if row.Data == nil {
 		row.Data = []byte{}
+	}
+	if !row.Available {
+		return HistoryChunk{Data: row.Data, Offset: offset, NextOffset: offset, TotalBytes: row.TotalBytes}, nil
 	}
 	// Do not split a valid trailing UTF-8 sequence when a browser requests the
 	// next byte chunk. Invalid stored bytes remain available as base64.
@@ -320,5 +390,5 @@ func ReadHistoryChunk(ctx context.Context, taskID, kind, resultCursor string, of
 		}
 	}
 	next := offset + int64(len(row.Data))
-	return HistoryChunk{Data: row.Data, Offset: offset, NextOffset: next, TotalBytes: row.TotalBytes, HasMore: next < row.TotalBytes}, nil
+	return HistoryChunk{Data: row.Data, Offset: offset, NextOffset: next, TotalBytes: row.TotalBytes, HasMore: next < row.TotalBytes, Available: true}, nil
 }
