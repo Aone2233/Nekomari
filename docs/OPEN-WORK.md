@@ -84,6 +84,16 @@ The next bounded releases and operational gates, in order:
    [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md). Later slices include
    the cost-forecast column, roles UI, frontend budgets and an a11y pass.
 
+**Unreleased terminal-dialog accessibility candidate (2026-11-05):** the
+independent `codex/terminal-dialog-focus` branch traps Tab focus, restores the
+previous element where possible, and defaults destructive dialogs to Cancel.
+It also fixes the separately reproducible quick-open bug where Enter on Cancel
+could select a highlighted suggestion and open a file. Mounted Chromium tests
+exercise the actual file-manager delete and editor quick-open paths with stubbed
+RPC, plus suggestion buttons, disabled submission, nested dialogs and mobile.
+This is not a screen-reader audit and is not yet merged, released or deployed;
+the CSV owner gate and the normal release/backup gates still apply.
+
 **Prior backup close-out (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds
 the two older verified copies, and four isolated restore drills pass (see
@@ -733,7 +743,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Three documents nothing references | `HEALTH-REVIEW-2026-09-19.md`, `MONITORING-ACCURACY-REVIEW-2026-09-30.md`, `OPTIMIZATION-RECOMMENDATIONS-2026-09-26.md` | Orphans; either link them or fold them into the record they belong to |
 | `docs/audits/` has no retention policy or owner, and one tree ships a production-mutating script | `docs/audits/2026-09-30/` | Keep audits as immutable dated evidence, but say so somewhere and decide what stays |
 | The React Compiler rules are advisory until the remaining findings are triaged | `docs/ROADMAP.md` A4, `frontend/script/audit-compiler.mjs` | Now a CI step and currently at 0; adoption needs the triage, not the gate |
-| `TerminalDialog` claims modality it does not enforce | `frontend/src/pages/terminal/TerminalDialog.tsx` | `aria-modal="true"` with no Tab trap, and focus is not returned to the trigger on close. The destructive half — Enter on the focused *Cancel* button running the confirm action — is fixed (the decision moved into `dialogKeys.ts`, which is unit-tested); a Tab trap needs a decision about focus order across the suggestion list |
+| `TerminalDialog` claims modality it does not enforce | `frontend/src/pages/terminal/TerminalDialog.tsx` | A focus-trap and suggestion-button keyboard fix is developed on `codex/terminal-dialog-focus` with mounted tests, but remains unreleased and undeployed; an actual assistive-technology pass is still required |
 | The mutation-envelope check is re-implemented at ~24 call sites | `frontend/src/lib/`, `frontend/src/pages/admin/` | Only the node table uses the shared helper; the loosest call site does not check `response.ok` at all |
 | Locale strings are injected as raw HTML at 8 sites with `escapeValue: false` | `frontend/src/i18n/config.ts` + 8 components | Today's values are benign markup, but `frontend/crowdin.yml` accepts outside contributions and `dompurify` is already a dependency |
 | Absolute asset URLs ignore the configurable `base` | `frontend/src/components/Flag.tsx` + 2 more | A sub-path deployment gets 404 flags and logos |

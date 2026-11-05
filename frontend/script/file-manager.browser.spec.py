@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -83,6 +83,43 @@ class FileManagerBrowserTest(unittest.TestCase):
         page.goto(self.url)
         page.locator('[data-file-path="/alpha.txt"]').wait_for()
         return page
+
+    def test_delete_cancel_enter_never_calls_delete(self):
+        page = self.open_page()
+        try:
+            page.locator('[data-file-path="/alpha.txt"]').click()
+            trigger = page.get_by_title("Delete", exact=True).first
+            trigger.click()
+            dialog = page.get_by_role("alertdialog", name="Delete")
+            expect(dialog.get_by_role("button", name="Cancel")).to_be_focused()
+            page.keyboard.press("Enter")
+            expect(dialog).to_have_count(0)
+            expect(trigger).to_be_focused()
+            self.assertEqual([entry for entry in page.evaluate("fileFixture.calls()")
+                              if entry["method"] == "admin:fileDelete"], [])
+            self.assertEqual(page.locator('[data-file-path="/alpha.txt"]').count(), 1)
+        finally:
+            page.close()
+
+    def test_editor_quick_open_cancel_enter_does_not_open_suggestion(self):
+        page = self.open_page()
+        try:
+            page.evaluate("fileFixture.setView('editor')")
+            editor = page.get_by_role("dialog", name="/one.md")
+            editor.wait_for()
+            page.keyboard.press("Control+p")
+            dialog = page.get_by_role("dialog", name="Go to File")
+            dialog.get_by_placeholder("Enter a file path").fill("/")
+            expect(dialog.get_by_role("button", name="/alpha.txt")).to_be_visible()
+            dialog.get_by_role("button", name="Cancel").focus()
+            page.keyboard.press("Enter")
+            expect(dialog).to_have_count(0)
+            expect(editor).to_be_visible()
+            page.wait_for_timeout(300)
+            self.assertEqual([entry for entry in page.evaluate("fileFixture.calls()")
+                              if entry["method"] == "admin:fileStat"], [])
+        finally:
+            page.close()
 
     def test_rename_and_delete_refresh_the_actual_directory(self):
         page = self.open_page()

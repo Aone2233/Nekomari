@@ -77,6 +77,9 @@ decides at the gates marked **[Owner]**.
 2. Develop the next v1.9.0 slice separately, starting with bounded exec-result
    history and an explicit retention and authorization contract. Do not release
    the next operator-visible slice until CSV owner acceptance is complete.
+   A separate unreleased terminal-dialog candidate adds focus confinement and
+   restores Cancel behavior with highlighted suggestions; mounted browser tests
+   do not substitute for the planned assistive-technology pass.
 3. Keep the second off-host destination as an owner decision; maintain MAC-WAN
    recovery checks in the meantime. The 200-node work remains deferred and
    existing Agent tokens are not rotated as part of these releases.
