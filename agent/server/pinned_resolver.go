@@ -84,27 +84,38 @@ func (r pinnedResolver) resolve(ctx context.Context, host, family string) (netip
 // boundary. It can be used as an HTTP Transport's DialContext so every
 // redirect is resolved under the same policy, without replacing the URL host.
 func (r pinnedResolver) dialTCP(ctx context.Context, network, target, family string) (net.Conn, error) {
+	conn, _, _, err := r.dialTCPWithAddress(ctx, network, target, family)
+	return conn, err
+}
+
+// dialTCPWithAddress also reports the chosen address and whether a dial was
+// actually attempted. Callers must not interpret an undispatched probe as loss.
+func (r pinnedResolver) dialTCPWithAddress(ctx context.Context, network, target, family string) (net.Conn, netip.Addr, bool, error) {
 	if family != pinnedIPv4 && family != pinnedIPv6 {
-		return nil, errPinnedInvalidFamily
+		return nil, netip.Addr{}, false, errPinnedInvalidFamily
 	}
 	wantNetwork := "tcp4"
 	if family == pinnedIPv6 {
 		wantNetwork = "tcp6"
 	}
 	if network != "tcp" && network != wantNetwork {
-		return nil, errPinnedNetwork
+		return nil, netip.Addr{}, false, errPinnedNetwork
 	}
 	host, port, err := net.SplitHostPort(target)
 	if err != nil || host == "" || port == "" {
-		return nil, errPinnedInvalidTarget
+		return nil, netip.Addr{}, false, errPinnedInvalidTarget
 	}
 	addr, err := r.resolve(ctx, host, family)
 	if err != nil {
-		return nil, err
+		return nil, netip.Addr{}, false, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, addr, false, err
 	}
 	dial := r.dial
 	if dial == nil {
 		dial = (&net.Dialer{}).DialContext
 	}
-	return dial(ctx, wantNetwork, net.JoinHostPort(addr.String(), port))
+	conn, err := dial(ctx, wantNetwork, net.JoinHostPort(addr.String(), port))
+	return conn, addr, true, err
 }
