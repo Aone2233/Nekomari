@@ -103,7 +103,7 @@ func TestWriteJSONContextBusyAndBlockedInterceptor(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- conn.WriteJSONContext(ctx, "blocked") }()
 	<-block.entered
-	if err := conn.WriteJSONContext(context.Background(), "busy"); !errors.Is(err, errContextWriterBusy) {
+	if err := conn.WriteJSONContext(ctx, "busy"); !errors.Is(err, errContextWriterBusy) {
 		t.Fatalf("busy write = %v", err)
 	}
 	select {
@@ -130,11 +130,26 @@ func TestWriteJSONContextSaturationDoesNotCreateWorker(t *testing.T) {
 			<-contextWriteSlots
 		}
 	}()
-	if err := conn.WriteJSONContext(context.Background(), "busy"); !errors.Is(err, errContextWriterBusy) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := conn.WriteJSONContext(ctx, "busy"); !errors.Is(err, errContextWriterBusy) {
 		t.Fatalf("saturated write = %v", err)
 	}
 	if err := conn.WriteJSON("still usable"); err != nil {
 		t.Fatalf("saturated write damaged connection: %v", err)
+	}
+}
+
+func TestWriteJSONContextRequiresDeadline(t *testing.T) {
+	server := wsEchoServer(t)
+	defer server.Close()
+	conn := dialEcho(t, server)
+	defer conn.Close()
+	if err := conn.WriteJSONContext(context.Background(), "no deadline"); err == nil {
+		t.Fatal("accepted a context with no deadline")
+	}
+	if err := conn.WriteJSON("still usable"); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -158,16 +158,19 @@ var contextWriteSlots = make(chan struct{}, 64)
 
 var errContextWriterBusy = errors.New("websocket context writer unavailable")
 
-// WriteJSONContext skips a busy writer rather than waiting behind it. The
-// context bounds the caller even if an interceptor stalls; cancellation
-// aborts the socket, and any stranded worker counts against contextWriteSlots.
-// A successful write restores the deadline previously set by the caller.
+// WriteJSONContext requires a deadline and skips a busy writer rather than
+// waiting behind it. Cancellation aborts the socket even if an interceptor
+// stalls; any stranded worker counts against contextWriteSlots. A successful
+// write restores the deadline previously set by the caller.
 func (sc *SafeConn) WriteJSONContext(ctx context.Context, v interface{}) error {
 	if ctx == nil {
 		return errors.New("nil write context")
 	}
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		return errors.New("websocket context write requires a deadline")
 	}
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(v); err != nil {
