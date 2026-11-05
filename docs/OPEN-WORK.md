@@ -92,7 +92,10 @@ rollback gates. The transport-specific race and test plan is in
 [`PING-FAMILY-TRANSPORT-DESIGN.md`](./PING-FAMILY-TRANSPORT-DESIGN.md).
 An isolated Agent probe engine and WS handshake on both sides exist in draft
 PR #170; neither event delivery nor result upload uses the handshake. POST
-sessions and the delivery/result fences remain open. No task, Agent or
+sessions and the delivery/result fences remain open. A preliminary wire shape
+and isolated result guard do not constitute dispatch or metric admission; the
+proposed clock-independent ticket and bounded dispatch registry are also not
+implemented. No task, Agent or
 production configuration was changed, and neither the designs nor the draft
 authorize a release.
 

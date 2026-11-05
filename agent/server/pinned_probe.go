@@ -467,6 +467,14 @@ func (r pinnedProbeRunner) probeWithRetries(ctx context.Context, kind, target, f
 }
 
 func (r pinnedProbeRunner) probe(ctx context.Context, kind, target, family string, timeout time.Duration, cache *pinnedProbeCache) []pinnedProbeResult {
+	results := r.probePrimary(ctx, kind, target, family, timeout, cache)
+	for i := range results {
+		results[i].role = "primary"
+	}
+	return results
+}
+
+func (r pinnedProbeRunner) probePrimary(ctx context.Context, kind, target, family string, timeout time.Duration, cache *pinnedProbeCache) []pinnedProbeResult {
 	if !validPinnedFamily(family) {
 		return []pinnedProbeResult{{kind: kind, outcome: pinnedProbeOutcome{err: errPinnedInvalidFamily}}}
 	}
@@ -496,7 +504,7 @@ func (r pinnedProbeRunner) probe(ctx context.Context, kind, target, family strin
 // reference runner preserves the legacy reference protocol and resolution.
 func (r pinnedProbeRunner) probeWithReference(ctx context.Context, kind, target, reference, family string, timeout time.Duration, cache *pinnedProbeCache, referenceProbe func(string, string, time.Duration) pinnedProbeOutcome) []pinnedProbeResult {
 	if !validPinnedFamily(family) {
-		return []pinnedProbeResult{{kind: kind, outcome: pinnedProbeOutcome{err: errPinnedInvalidFamily}}}
+		return []pinnedProbeResult{{kind: kind, role: "primary", outcome: pinnedProbeOutcome{err: errPinnedInvalidFamily}}}
 	}
 	results := r.probe(ctx, kind, target, family, timeout, cache)
 	reference = strings.TrimSpace(reference)

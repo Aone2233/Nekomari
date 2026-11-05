@@ -314,7 +314,7 @@ func TestPinnedProbeReferenceUsesIndependentLegacyRunner(t *testing.T) {
 		return pinnedProbeOutcome{attempted: true, family: pinnedIPv4, latencyUS: 20}
 	}
 	results := r.probeWithReference(context.Background(), "dual", "primary.test:80", " gateway.test ", pinnedIPv6, time.Second, nil, reference)
-	if len(results) != 3 || results[0].role != "" || results[1].role != "" || results[2].role != "reference" || results[2].outcome.family != pinnedIPv4 || refCalls != 1 {
+	if len(results) != 3 || results[0].role != "primary" || results[1].role != "primary" || results[2].role != "reference" || results[2].outcome.family != pinnedIPv4 || refCalls != 1 {
 		t.Fatalf("results=%+v reference calls=%d", results, refCalls)
 	}
 	bad := r.probeWithReference(context.Background(), "icmp", "primary.test", "gateway.test", "", time.Second, nil, reference)

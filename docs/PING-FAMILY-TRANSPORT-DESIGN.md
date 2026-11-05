@@ -68,6 +68,36 @@ This contract permits temporary skipped probes during an ambiguous transition;
 it does not permit the panel to guess which process is current. Session state is
 bounded by active node count and expires/sweeps independently of metrics.
 
+## Clock-independent freshness (proposed, not implemented)
+
+A three-second panel-issued absolute expiration is not a reliable execution
+boundary: the Agent and panel may disagree on wall-clock time. Likewise an
+Agent-supplied completion timestamp cannot prove that a result is fresh. Do not
+activate the wire helpers based solely on syntactically valid identifiers.
+
+- When a pinned probe is due, the panel must request authorization from the
+  exact active transport session rather than send the target immediately.
+  The Agent issues an unpredictable one-use ticket bound to that request,
+  session and a short local monotonic deadline. The panel echoes it with the
+  complete task and a distinct random dispatch ID; under the lock that retires
+  the session, the Agent verifies and consumes the ticket exactly once before
+  starting work. An expired, reused or wrong-session ticket starts nothing.
+  Session retirement cancels the work already admitted.
+- The panel registers the dispatch ID for a bounded time using its own
+  monotonic clock, binding it to the active session, assignment and config
+  generation. Result admission and consumption of each expected role/leg must
+  be atomic with task mutation and session retirement. Expired, duplicate,
+  unknown or stale results cannot write a metric. Bound capacity and define
+  backpressure; never silently evict a pending ID and then accept its result.
+- Record metric time at the panel from the accepted dispatch context rather
+  than trusting a remote wall clock. Choose and document whether that is the
+  panel's dispatch or receive time before integrating with historical metrics.
+  A result missing its pending dispatch must fail closed, even after restart.
+
+This describes required invariants, not a finished bootstrap or queue. The
+ticket issuer, transport ordering, permit store, per-leg consumption and
+deadline/cancellation tests are all still required before connecting delivery.
+
 ## Queue and direct delivery
 
 Do not put a pinned event into the existing generic queue as an ordinary event.
@@ -98,9 +128,9 @@ each transition at the decision, write, enqueue, dequeue and response edges.
 ## Results and non-probes
 
 Use a distinct pinned result/diagnostic method carrying task ID, opaque task
-configuration generation, Agent instance, transport session, role, protocol
-and actual family when a probe was attempted. Panel intake checks active
-credential, assignment, active session, current task/config generation and
+configuration generation, Agent instance, transport session, dispatch ID,
+role, protocol and actual family when a probe was attempted. Panel intake checks
+active credential, assignment, active session, current task/config generation and
 consistent actual family before any metric is written. Reject stale legacy
 results for a task once pinned mode exists; otherwise an old `agent.pingResult`
 could bypass the new method. Reference outcomes are separately identified and
