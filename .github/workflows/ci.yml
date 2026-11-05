@@ -48,6 +48,7 @@ jobs:
           python script/admin-mutations.browser.spec.py
           python script/offline-notification.browser.spec.py
           python script/load-preview.browser.spec.py
+          python script/exec-history.browser.spec.py
           python script/file-manager.browser.spec.py
           python script/selector-state.browser.spec.py
           python script/number-picker.browser.spec.py
@@ -143,6 +144,8 @@ jobs:
         run: python3 -W error::ResourceWarning deploy/load-preview-smoke.py --panel-binary ./nekomari
       - name: Check saved alert rule preview in the embedded admin UI
         run: python -W error::ResourceWarning frontend/script/load-preview-panel.spec.py --panel-binary ./nekomari
+      - name: Check execution history in the embedded admin UI
+        run: python -W error::ResourceWarning frontend/script/exec-history-panel.spec.py --panel-binary ./nekomari
       - name: Check nullable price expiry in the embedded admin UI
         run: python frontend/script/price-expiry.spec.py --panel-binary ./nekomari
       - name: Check uptime history ingestion and embedded admin UI

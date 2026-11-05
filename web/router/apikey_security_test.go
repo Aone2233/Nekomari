@@ -2,8 +2,10 @@ package router
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -119,6 +121,98 @@ func TestScopedAPIKeysAcrossHTTPAndWebSocket(t *testing.T) {
 	}
 	_, readToken := newKey(rpc.ScopeNodesRead)
 	_, allToken := newKey(rpc.APIKeyScopes()...)
+	t.Run("ExecHistoryHTTPAndWebSocket", func(t *testing.T) {
+		id := "router-history-synthetic"
+		if err := db.Create(&models.Task{TaskId: id, Clients: models.StringArray{"deleted"}, Command: "secret-synthetic-command"}).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Exec("UPDATE tasks SET history_order = rowid WHERE task_id = ?", id).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Create(&models.TaskResult{TaskId: id, Client: "deleted", Result: "secret-synthetic-output", CreatedAt: time.Now().UTC()}).Error; err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			db.Exec("DELETE FROM task_results WHERE task_id = ?", id)
+			db.Exec("DELETE FROM tasks WHERE task_id = ?", id)
+		})
+		_, taskToken := newKey(rpc.ScopeTasksRead)
+		methods := []struct {
+			name   string
+			params map[string]any
+		}{
+			{"admin:listExecHistory", nil},
+			{"admin:getExecHistoryDetail", map[string]any{"task_id": id}},
+			{"admin:readExecHistoryChunk", map[string]any{"task_id": id, "kind": "command"}},
+		}
+		for _, method := range methods {
+			if data := rpcCall(method.name, "", method.params, true); data["error"] != nil {
+				t.Fatalf("session HTTP %s: %v", method.name, data)
+			}
+			if data := rpcCall(method.name, taskToken, method.params, false); data["error"] != nil {
+				t.Fatalf("tasks:read HTTP %s: %v", method.name, data)
+			}
+			denied(rpcCall(method.name, readToken, method.params, false))
+			denied(rpcCall(method.name, "", method.params, false))
+		}
+		list := rpcCall(methods[0].name, taskToken, nil, false)["result"].(map[string]any)
+		if strings.Contains(fmt.Sprint(list), "secret-synthetic") {
+			t.Fatal("HTTP history list exposed a command or output")
+		}
+		detail := rpcCall(methods[1].name, taskToken, methods[1].params, false)["result"].(map[string]any)
+		resultRows := detail["results"].([]any)
+		if len(resultRows) != 1 {
+			t.Fatalf("HTTP detail result count = %d", len(resultRows))
+		}
+		resultCursor := resultRows[0].(map[string]any)["cursor"].(string)
+		for _, content := range []struct {
+			kind, cursor, want string
+		}{{"command", "", "secret-synthetic-command"}, {"output", resultCursor, "secret-synthetic-output"}} {
+			params := map[string]any{"task_id": id, "kind": content.kind, "result_cursor": content.cursor, "offset": 0}
+			value := rpcCall("admin:readExecHistoryChunk", taskToken, params, false)["result"].(map[string]any)
+			decoded, err := base64.StdEncoding.DecodeString(value["data_base64"].(string))
+			if err != nil || string(decoded) != content.want || value["offset"] != float64(0) || value["next_offset"] != float64(len(content.want)) || value["total_bytes"] != float64(len(content.want)) || value["has_more"] != false {
+				t.Fatalf("HTTP %s chunk was not serialized correctly: %+v, %v", content.kind, value, err)
+			}
+		}
+		for _, payload := range []any{
+			[]any{map[string]any{"jsonrpc": "2.0", "id": 1, "method": methods[0].name}},
+			[]any{map[string]any{"jsonrpc": "2.0", "id": 1, "method": "rpc.ping"}, map[string]any{"jsonrpc": "2.0", "id": 2, "method": methods[2].name, "params": methods[2].params}},
+		} {
+			status, _, body := request("POST", "/api/rpc2", taskToken, payload, false)
+			if status != http.StatusBadRequest || strings.Contains(body, "secret-synthetic") {
+				t.Fatalf("batch history response: status %d, body %s", status, body)
+			}
+		}
+		for _, tc := range []struct {
+			name, token string
+			allowed     bool
+		}{{"tasks:read", taskToken, true}, {"nodes:read", readToken, false}} {
+			headers := http.Header{"Authorization": []string{"Bearer " + tc.token}}
+			connection, response, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/api/rpc2", headers)
+			if err != nil {
+				t.Fatalf("%s websocket: %v", tc.name, err)
+			}
+			_ = response.Body.Close()
+			for _, method := range methods {
+				if err := connection.WriteJSON(map[string]any{"jsonrpc": "2.0", "id": 1, "method": method.name, "params": method.params}); err != nil {
+					t.Fatal(err)
+				}
+				_ = connection.SetReadDeadline(time.Now().Add(3 * time.Second))
+				var answer map[string]any
+				if err := connection.ReadJSON(&answer); err != nil {
+					t.Fatal(err)
+				}
+				if tc.allowed && answer["error"] != nil {
+					t.Fatalf("%s websocket %s: %v", tc.name, method.name, answer)
+				}
+				if !tc.allowed {
+					denied(answer)
+				}
+			}
+			_ = connection.Close()
+		}
+	})
 	t.Run("CSVVisibilityAndPrivateSite", func(t *testing.T) {
 		const privateValue = "47.25"
 		previousPrivate, _ := config.GetAs[bool](config.PrivateSiteKey, false)

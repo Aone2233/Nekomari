@@ -1,6 +1,7 @@
 # Remote execution history: design and safety contract
 
-Status: design for the next v1.9.0 slice, not implemented or released.
+Status: implementation in progress on a separate development branch, not
+released or deployed. CSV owner browser acceptance remains a release gate.
 
 ## Existing behavior and the actual gap
 
@@ -27,8 +28,8 @@ such as Hermes; avoid an incompatible replacement of `getTasks`.
   and available to the existing administrator session. Return task ID, target
   count and counts of pending/finished/failed results, plus the earliest
   available result-creation timestamp. No output or command is in list rows.
-  A parent whose results have expired must be identified as `result_expired`
-  and its time as unknown, not guessed from its ID or a cleanup time.
+  A parent without retained results is `no_retained_results` with an unknown
+  time: cleanup, deleted targets and failed creation cannot be distinguished.
 - Use stable keyset pagination, a small fixed maximum page size, deterministic
   tie-breaking and bounded database queries. Current `tasks` rows lack a
   creation timestamp, and orphan parents are not chronologically sortable;
@@ -52,6 +53,74 @@ such as Hermes; avoid an incompatible replacement of `getTasks`.
   document consistency and do not claim the history is a frozen snapshot.
   Fetches must fail closed on authorization or errors; `Cache-Control: no-store`
   must apply to sensitive REST/RPC responses.
+
+## Implementation and operational limits
+
+The implementation exposes three JSON-RPC methods through the existing
+no-store `/api/rpc2`: `admin:listExecHistory`, `admin:getExecHistoryDetail`
+and `admin:readExecHistoryChunk`, all explicitly scoped to `tasks:read`.
+Each list is limited to 20 rows; a summary examines at most 1,000 results
+per task and labels partial counts and timestamps. Command or output text is
+only read on a separate user action in byte-bounded 16 KiB chunks, encoded as
+base64. The browser renders decoded text, never HTML; invalid UTF-8 bytes are
+shown as replacement characters, while the API preserves the original bytes.
+Batch JSON-RPC requests containing any of these methods are rejected, so the
+transport cannot amplify the response budget 32-fold. History has its own two
+query slots, a bounded queue and a ten-second work deadline. Only the current
+chunk remains rendered; cursor navigation retains at most 100 page positions.
+
+SQLite's implicit `rowid` is not stable across `VACUUM`, and legacy task IDs
+are random. The upgrade adds nullable `tasks.history_order` and two indexes,
+backfills previously unnumbered parent rows transactionally on startup using
+their rowid rank rather than adding potentially extreme rowids. New tasks get a
+monotonic order in their creation transaction. Integer exhaustion fails the
+transaction rather than persisting a floating-point order. After an older-image
+rollback, tasks created by that older image are reconciled on the next startup
+and sorted after already numbered tasks; they cannot be placed precisely
+among those tasks. Parent pages use
+`(history_order, task_id)` keysets; no timestamp is invented. Result pages use
+the `(task_id, client)` index plus a rowid tie-breaker; the cursor also binds
+the original client and creation timestamp, and becomes invalid if cleanup or
+maintenance changes that row. Results can update or expire between requests;
+refresh the list after an invalidated cursor. A result's content can also change
+between chunks without its cursor changing; the UI warns that chunk reads are
+not a snapshot. Old parent commands do not gain a retention guarantee.
+Unknown/malformed legacy client identities fail closed.
+
+On local scratch SQLite with 10,000 synthetic tasks and 300,000 results
+(including one task with 100,020), measured migration time for the added
+column/indexes and rank-based backfill was approximately 68 ms; an indexed result seek
+returned 21 rows in 0.06 ms and a capped 1,001-result summary in 0.94 ms.
+These are small-host measurements, not production latency guarantees. The
+parent keyset and result keyset query plans are asserted to use their respective
+indexes without a temporary sort. Upgrade tests must confirm existing data,
+restart, VACUUM and rollback behavior; index construction is a real schema
+and startup cost, not a no-migration change. A rollback to the prior panel
+must retain the live databases and must be tested on an isolated copy first;
+newly created tasks while the old version is running have no order value until
+the next startup reconciliation.
+
+A network-isolated synthetic old/new/old/new startup drill used the verified
+v1.7.29 amd64 release binary and the development candidate. It started the old
+panel, migrated its fixture with the candidate, started the old binary against
+the migrated database, wrote three synthetic old-schema tasks while it ran,
+then restarted the candidate twice. The original and new orders, synthetic
+commands and outputs survived, and SQLite `quick_check` returned `ok`. The
+rollback writes were SQL fixtures matching the old schema, not actual commands
+dispatched through an agent; production data was not used.
+
+A separate network-isolated disposable panel was built with the current
+embedded frontend and served real backend responses for synthetic task rows.
+The administrator history page opened and read command/output as text in
+English desktop/light and Chinese mobile/dark; no execution RPC was dispatched.
+The first Chinese attempt was blocked by the fixture's unaccepted EULA, not a
+history error; setting acceptance on that disposable panel allowed the retry.
+
+The new read paths do not log their SQL parameters. This is not a blanket
+secrecy claim: existing Agent code logs commands during execution, and older
+task APIs/write paths predate this feature and retain their existing behavior.
+The new UI does not dispatch or rerun commands, copy text automatically, or
+persist it in URLs/localStorage.
 
 ## Acceptance
 

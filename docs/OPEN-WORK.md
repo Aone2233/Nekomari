@@ -84,6 +84,16 @@ The next bounded releases and operational gates, in order:
    [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md). Later slices include
    the cost-forecast column, roles UI, frontend budgets and an a11y pass.
 
+**Unreleased development (2026-11-05).** The remote-execution history UI and
+bounded, `tasks:read`-scoped RPC implementation are under verification on an
+independent branch; they are not deployed. Targeted Go and synthetic browser
+checks pass. A disposable, network-isolated built panel also shows synthetic
+history via the real admin UI and backend in English desktop/light and Chinese
+mobile/dark. A network-isolated synthetic v1.7.29/candidate/rollback/candidate
+startup drill preserves old and rollback-era task data; rollback-era rows were
+injected as SQL fixtures, not dispatched to an agent. CSV owner acceptance and
+the normal release/backup gates remain open; this is not a production rollout.
+
 **Prior backup close-out (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds
 the two older verified copies, and four isolated restore drills pass (see
