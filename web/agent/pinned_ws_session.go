@@ -8,14 +8,16 @@ import (
 	"github.com/Aone2233/nekomari/web/connection"
 )
 
-// Isolated handshake state: no scheduler or event path consumes it yet.
-// All access is serialized by mu together with connectedClients.
+// Handshake and dispatch reservation state is serialized by mu together with
+// connectedClients. No production scheduler consumes the reservation yet.
 type pinnedWSSession struct {
 	conn      *connection.SafeConn
 	instance  string
 	challenge string
 	expires   time.Time
 	active    bool
+	sequence  uint64
+	pending   map[string]pinnedPermitEntry
 }
 
 const pinnedWSLease = 90 * time.Second
@@ -44,7 +46,11 @@ func newPinnedWSChallenge() (string, error) {
 
 // BeginPinnedWSHandshake requires the caller's current-credential admission.
 // The socket identity is checked under the same lock as replacement/reset.
-func BeginPinnedWSHandshake(uuid string, conn *connection.SafeConn, instance string, version int, now time.Time) (string, bool) {
+func BeginPinnedWSHandshake(uuid string, conn *connection.SafeConn, instance string, version int) (string, bool) {
+	return beginPinnedWSHandshakeAt(uuid, conn, instance, version, time.Now)
+}
+
+func beginPinnedWSHandshakeAt(uuid string, conn *connection.SafeConn, instance string, version int, now func() time.Time) (string, bool) {
 	if uuid == "" || conn == nil || !validPinnedWSID(instance) || version != 1 {
 		return "", false
 	}
@@ -57,20 +63,31 @@ func BeginPinnedWSHandshake(uuid string, conn *connection.SafeConn, instance str
 	if connectedClients[uuid] != conn {
 		return "", false
 	}
-	pinnedWSSessions[uuid] = pinnedWSSession{conn: conn, instance: instance, challenge: challenge, expires: now.Add(pinnedWSLease)}
+	retirePinnedWSLocked(uuid)
+	pinnedWSSessions[uuid] = pinnedWSSession{conn: conn, instance: instance, challenge: challenge, expires: now().Add(pinnedWSLease)}
 	return challenge, true
 }
 
 // AckPinnedWSHandshake activates or renews only the exact, unexpired session.
-func AckPinnedWSHandshake(uuid string, conn *connection.SafeConn, instance, challenge string, now time.Time) bool {
+func AckPinnedWSHandshake(uuid string, conn *connection.SafeConn, instance, challenge string) bool {
+	return ackPinnedWSHandshakeAt(uuid, conn, instance, challenge, time.Now)
+}
+
+func ackPinnedWSHandshakeAt(uuid string, conn *connection.SafeConn, instance, challenge string, clock func() time.Time) bool {
 	mu.Lock()
 	defer mu.Unlock()
+	now := clock()
 	s, ok := pinnedWSSessions[uuid]
-	if !ok || conn == nil || connectedClients[uuid] != conn || s.conn != conn || s.instance != instance || s.challenge != challenge || !now.Before(s.expires) {
+	if !ok || conn == nil || connectedClients[uuid] != conn || s.conn != conn || s.instance != instance || s.challenge != challenge {
+		return false
+	}
+	if !now.Before(s.expires) {
+		retirePinnedWSLocked(uuid)
 		return false
 	}
 	s.active = true
 	s.expires = now.Add(pinnedWSLease)
+	prunePinnedPermitsLocked(&s, now)
 	pinnedWSSessions[uuid] = s
 	return true
 }

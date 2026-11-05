@@ -365,10 +365,10 @@ func handlePinnedWSHandshake(ctx context.Context, uuid string, conn *connection.
 		switch p.Action {
 		case "begin":
 			if p.Challenge == "" {
-				result.Challenge, ok = agent_runtime.BeginPinnedWSHandshake(uuid, conn, p.Instance, p.Version, time.Now())
+				result.Challenge, ok = agent_runtime.BeginPinnedWSHandshake(uuid, conn, p.Instance, p.Version)
 			}
 		case "ack":
-			ok = agent_runtime.AckPinnedWSHandshake(uuid, conn, p.Instance, p.Challenge, time.Now())
+			ok = agent_runtime.AckPinnedWSHandshake(uuid, conn, p.Instance, p.Challenge)
 			if ok {
 				result.Challenge = p.Challenge
 			}

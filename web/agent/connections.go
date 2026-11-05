@@ -58,7 +58,7 @@ func ReplaceConnectedClient(uuid string, conn *connection.SafeConn) *connection.
 	mu.Lock()
 	defer mu.Unlock()
 	old := connectedClients[uuid]
-	delete(pinnedWSSessions, uuid)
+	retirePinnedWSLocked(uuid)
 	connectedClients[uuid] = conn
 	return old
 }
@@ -87,7 +87,7 @@ func DeleteClientConditionally(uuid string, connToRemove *connection.SafeConn) {
 	if currentConn, exists := connectedClients[uuid]; exists && currentConn == connToRemove {
 		delete(connectedClients, uuid)
 		delete(v2Clients, uuid)
-		delete(pinnedWSSessions, uuid)
+		retirePinnedWSLocked(uuid)
 	}
 }
 func DeleteConnectedClients(uuid string) {
@@ -96,7 +96,7 @@ func DeleteConnectedClients(uuid string) {
 	// 只从 map 中删除，不再负责关闭连接
 	delete(connectedClients, uuid)
 	delete(v2Clients, uuid)
-	delete(pinnedWSSessions, uuid)
+	retirePinnedWSLocked(uuid)
 }
 
 // ResetClient retires connection/presence/commands but preserves measurements.
@@ -106,7 +106,7 @@ func ResetClient(uuid string) {
 	conn := connectedClients[uuid]
 	delete(connectedClients, uuid)
 	delete(v2Clients, uuid)
-	delete(pinnedWSSessions, uuid)
+	retirePinnedWSLocked(uuid)
 	delete(presenceOnly, uuid)
 	delete(reportClamps, uuid)
 	DeleteV2EventQueue(uuid)

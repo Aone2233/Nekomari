@@ -95,10 +95,11 @@ PR #170; neither event delivery nor result upload uses the handshake. POST
 sessions and the delivery/result fences remain open. The Agent has a
 clock-independent, one-use permit/start fence; permit requests are recognized
 over WebSocket but no panel dispatch or Agent probe consumes them. Panel
-sequencing and the bounded dispatch registry remain unimplemented. A preliminary
-wire shape and result guard do not constitute dispatch or metric admission. No
-task, Agent or production configuration was changed, and neither the designs
-nor the draft authorize a release.
+has an isolated bounded permit-reservation primitive, but socket write ordering,
+pending dispatch/result tracking, and task/session atomic fences remain
+unimplemented. The wire shape and result guard do not constitute dispatch or
+metric admission. No task, Agent or production configuration was changed, and
+neither the designs nor the draft authorize a release.
 
 **Prior backup close-out (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds

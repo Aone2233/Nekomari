@@ -92,6 +92,14 @@ activate the wire helpers based solely on syntactically valid identifiers.
   expiry also retires tickets and cancels work; a delayed renewal cannot revive
   the expired session. A target-free permit request is handled over WebSocket,
   but the panel does not send it and no probe uses the ticket yet.
+- An isolated panel reservation map allocates per-session sequence numbers,
+  tracks a bounded number of pending permit responses, and wakes waiters on
+  replacement, re-handshake, disconnect, token reset or observed lease expiry.
+  It rejects mismatched responses and never evicts an unexpired reservation.
+  It is not connected to socket writes or the scheduler: future sending must
+  serialize reservation and writing together so sequence numbers cannot reach
+  the Agent in reverse order. An isolated reservation is not authorization to
+  send a target or write a result.
 - The panel registers the dispatch ID for a bounded time using its own
   monotonic clock, binding it to the active session, assignment and config
   generation. Result admission and consumption of each expected role/leg must
@@ -103,8 +111,8 @@ activate the wire helpers based solely on syntactically valid identifiers.
   panel's dispatch or receive time before integrating with historical metrics.
   A result missing its pending dispatch must fail closed, even after restart.
 
-This is not a finished bootstrap or queue. Panel sequencing/transport ordering,
-the panel dispatch store, per-leg consumption and end-to-end
+This is not a finished bootstrap or queue. Panel transport ordering,
+the panel dispatch/result store, per-leg consumption and end-to-end
 deadline/cancellation tests are still required before connecting delivery.
 
 ## Queue and direct delivery
