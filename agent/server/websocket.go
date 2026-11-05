@@ -32,8 +32,10 @@ var (
 )
 
 const (
-	v2SeenEventTTL   = 10 * time.Minute
-	v2SeenEventLimit = 4096
+	v2SeenEventTTL         = 10 * time.Minute
+	v2SeenEventLimit       = 4096
+	pinnedHandshakeTick    = 25 * time.Second
+	agentInboundFrameLimit = 8 << 20
 )
 
 func EstablishWebSocketConnection() {
@@ -108,7 +110,7 @@ func EstablishWebSocketConnection() {
 			err = conn.WriteMessage(websocket.TextMessage, data)
 			if err != nil {
 				log.Println("Failed to send WebSocket message:", err)
-				conn.Close()
+				conn.Abort()
 				conn = nil // Mark connection as dead
 				readDone = nil
 				continue
@@ -118,7 +120,7 @@ func EstablishWebSocketConnection() {
 				err := conn.WriteMessage(websocket.PingMessage, nil)
 				if err != nil {
 					log.Println("Failed to send heartbeat:", err)
-					conn.Close()
+					conn.Abort()
 					conn = nil // Mark connection as dead
 					readDone = nil
 				}
@@ -372,12 +374,68 @@ func connectWebSocket(websocketEndpoint string) (*ws.SafeConn, error) {
 }
 
 func handleWebSocketMessages(conn *ws.SafeConn, done chan<- struct{}) {
+	handleWebSocketMessagesWithHandshake(conn, done, pinnedHandshakeTick, newPinnedWSHandshake())
+}
+
+func handleWebSocketMessagesWithHandshake(conn pinnedHandshakeConn, done chan<- struct{}, renewal time.Duration, handshake *pinnedWSHandshake) {
 	defer close(done)
+	var controller *pinnedWSController
+	if handshake != nil && renewal > 0 {
+		controller = &pinnedWSController{conn: conn, handshake: handshake}
+		defer controller.clear()
+		if socket, ok := conn.(*ws.SafeConn); ok {
+			attachPinnedWSSession(socket, controller)
+			defer detachPinnedWSSession(socket, controller)
+		}
+		if err := controller.begin(); err != nil {
+			log.Printf("Pinned-probe handshake write failed: %v", err)
+			conn.Abort()
+			return
+		}
+		stop := make(chan struct{})
+		renewDone := make(chan struct{})
+		go func() {
+			defer close(renewDone)
+			ticker := time.NewTicker(renewal)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-stop:
+					return
+				case <-ticker.C:
+					if err := controller.maintain(); err != nil {
+						log.Printf("Pinned-probe handshake renewal failed: %v", err)
+						conn.Abort()
+						return
+					}
+				}
+			}
+		}()
+		defer func() {
+			close(stop)
+			<-renewDone
+		}()
+	}
 	for {
-		_, message_raw, err := conn.ReadMessage()
+		_, message_raw, err := conn.ReadMessageLimited(agentInboundFrameLimit)
 		if err != nil {
 			log.Println("WebSocket read error:", err)
+			conn.Abort()
+			if controller != nil {
+				controller.clear()
+			}
 			return
+		}
+		if controller != nil {
+			handled, err := controller.handle(message_raw)
+			if err != nil {
+				log.Printf("Pinned-probe handshake acknowledgement failed: %v", err)
+				conn.Abort()
+				return
+			}
+			if handled {
+				continue
+			}
 		}
 		var message v2.Request
 		err = json.Unmarshal(message_raw, &message)
@@ -389,7 +447,8 @@ func handleWebSocketMessages(conn *ws.SafeConn, done chan<- struct{}) {
 			log.Printf("Bad v2 ws message version %q", message.JSONRPC)
 			continue
 		}
-		processV2Event(conn, message.Method, message.Params, "")
+		wsConn, _ := conn.(*ws.SafeConn)
+		processV2Event(wsConn, message.Method, message.Params, "")
 	}
 }
 
