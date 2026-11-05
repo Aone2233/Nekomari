@@ -36,8 +36,12 @@ func TestTaskHistoryOrderMigrationSurvivesVacuumAndRestart(t *testing.T) {
 		t.Fatalf("lost legacy insertion order: %+v", before)
 	}
 	firstOrder, thirdOrder := *before[0].HistoryOrder, *before[1].HistoryOrder
-	if !instance.Migrator().HasIndex(&models.TaskResult{}, "idx_task_results_history") || !instance.Migrator().HasIndex(&models.Task{}, "idx_tasks_history_order") {
+	if !instance.Migrator().HasIndex(&models.TaskResult{}, "idx_task_results_history") || !instance.Migrator().HasIndex(&models.TaskResult{}, "idx_task_results_history_identity") || !instance.Migrator().HasIndex(&models.Task{}, "idx_tasks_history_order") {
 		t.Fatal("history indexes were not created")
+	}
+	var beforeID string
+	if err := instance.Raw(`SELECT history_identity FROM task_results WHERE task_id = 'third'`).Scan(&beforeID).Error; err != nil || len(beforeID) != 32 {
+		t.Fatalf("missing migrated result identity: %q %v", beforeID, err)
 	}
 	if err := ReclaimSpace(t.Context()); err != nil {
 		t.Fatalf("vacuum: %v", err)
@@ -58,11 +62,14 @@ func TestTaskHistoryOrderMigrationSurvivesVacuumAndRestart(t *testing.T) {
 		t.Fatalf("vacuum or restart changed task data/order: %+v", after)
 	}
 	var result models.TaskResult
-	if err := instance.Where("task_id = ?", "third").First(&result).Error; err != nil || result.Result != "secret-output" {
+	if err := instance.Where("task_id = ?", "third").First(&result).Error; err != nil || result.Result != "secret-output" || result.HistoryIdentity != beforeID {
 		t.Fatalf("result changed during migration: %+v %v", result, err)
 	}
 	// Simulate a task written by the previous version during an image rollback.
 	if err := instance.Exec(`INSERT INTO tasks(task_id,clients,command) VALUES ('rollback-task','["node"]','during-rollback')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.Exec(`INSERT INTO task_results(task_id,client,result,created_at) VALUES ('rollback-task','node','rollback-result','2026-11-05 02:00:00+00:00')`).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := backfillTaskHistoryOrder(instance); err != nil {
@@ -71,6 +78,123 @@ func TestTaskHistoryOrderMigrationSurvivesVacuumAndRestart(t *testing.T) {
 	var reconciled models.Task
 	if err := instance.Where("task_id = ?", "rollback-task").First(&reconciled).Error; err != nil || reconciled.HistoryOrder == nil || *reconciled.HistoryOrder <= thirdOrder {
 		t.Fatalf("rollback task is not ordered after existing tasks: %+v %v", reconciled, err)
+	}
+	var inserted models.TaskResult
+	if err := instance.Where("task_id = ?", "rollback-task").First(&inserted).Error; err != nil || len(inserted.HistoryIdentity) != 32 || inserted.HistoryIdentity == beforeID {
+		t.Fatalf("rollback insert identity: %+v %v", inserted, err)
+	}
+}
+
+func TestTaskResultHistoryIdentityReconcilesOldRowsAndPreservesBytes(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "results.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	for _, query := range []string{
+		`CREATE TABLE task_results(task_id TEXT, client TEXT, result BLOB, history_identity TEXT)`,
+		`CREATE UNIQUE INDEX idx_task_results_history_identity ON task_results(history_identity)`,
+		`INSERT INTO task_results(rowid,task_id,client,result) VALUES (-2,'task','node',x'00ff11'),(0,'task','node',x'01fe22')`,
+	} {
+		if err := db.Exec(query).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	var plan []struct{ Detail string }
+	if err := db.Raw(`EXPLAIN QUERY PLAN UPDATE task_results SET history_identity = lower(hex(randomblob(16))) WHERE history_identity IS NULL`).Scan(&plan).Error; err != nil || len(plan) == 0 || !strings.Contains(plan[0].Detail, "idx_task_results_history_identity") {
+		t.Fatalf("unindexed identity reconciliation: %+v %v", plan, err)
+	}
+	if err := backfillTaskResultHistoryIdentity(db); err != nil {
+		t.Fatal(err)
+	}
+	var first []struct {
+		RowID int64
+		ID    string
+		Bytes string
+	}
+	if err := db.Raw(`SELECT rowid AS row_id, history_identity AS id, hex(result) AS bytes FROM task_results ORDER BY rowid`).Scan(&first).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 2 || len(first[0].ID) != 32 || len(first[1].ID) != 32 || first[0].ID == first[1].ID || first[0].Bytes != "00FF11" || first[1].Bytes != "01FE22" {
+		t.Fatalf("backfill changed contents or failed identity: %+v", first)
+	}
+	if err := backfillTaskResultHistoryIdentity(db); err != nil {
+		t.Fatal(err)
+	}
+	var again []struct {
+		RowID int64
+		ID    string
+		Bytes string
+	}
+	if err := db.Raw(`SELECT rowid AS row_id, history_identity AS id, hex(result) AS bytes FROM task_results ORDER BY rowid`).Scan(&again).Error; err != nil {
+		t.Fatal(err)
+	}
+	for i := range first {
+		if again[i] != first[i] {
+			t.Fatalf("repeat backfill changed result: %+v -> %+v", first[i], again[i])
+		}
+	}
+	if err := db.Exec(`INSERT INTO task_results(task_id,client,result) VALUES ('old-binary','node',x'00')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	var inserted string
+	if err := db.Raw(`SELECT history_identity FROM task_results WHERE task_id = 'old-binary'`).Scan(&inserted).Error; err != nil || len(inserted) != 32 || inserted == first[0].ID || inserted == first[1].ID {
+		t.Fatalf("legacy-style insert identity: %q %v", inserted, err)
+	}
+	if err := db.Exec(`INSERT INTO task_results(task_id,client,result,history_identity) VALUES ('duplicate','node',x'00',?)`, inserted).Error; err == nil {
+		t.Fatal("duplicate identity accepted")
+	}
+	// Simulate a legacy restore or rollback that removed the trigger entirely.
+	if err := db.Exec(`DROP TRIGGER task_results_assign_history_identity`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO task_results(task_id,client,result) VALUES ('unmarked','node',x'10')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := backfillTaskResultHistoryIdentity(db); err != nil {
+		t.Fatal(err)
+	}
+	var reconciled string
+	if err := db.Raw(`SELECT history_identity FROM task_results WHERE task_id = 'unmarked'`).Scan(&reconciled).Error; err != nil || len(reconciled) != 32 || reconciled == inserted {
+		t.Fatalf("unmarked row not reconciled: %q %v", reconciled, err)
+	}
+	var still string
+	if err := db.Raw(`SELECT history_identity FROM task_results WHERE task_id = 'old-binary'`).Scan(&still).Error; err != nil || still != inserted {
+		t.Fatalf("existing identity changed during reconcile: %q %v", still, err)
+	}
+}
+
+func TestTaskResultHistoryIdentityRollbackOnUniqueFailure(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "results.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	for _, query := range []string{
+		`CREATE TABLE task_results(history_identity TEXT CHECK(history_identity IS NULL))`,
+		`INSERT INTO task_results(history_identity) VALUES(NULL)`,
+	} {
+		if err := db.Exec(query).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := backfillTaskResultHistoryIdentity(db); err == nil {
+		t.Fatal("failed backfill unexpectedly succeeded")
+	}
+	var missing, triggers int64
+	if err := db.Raw(`SELECT count(*) FROM task_results WHERE history_identity IS NULL`).Scan(&missing).Error; err != nil || missing != 1 {
+		t.Fatalf("failed backfill changed existing row: %d %v", missing, err)
+	}
+	if err := db.Raw(`SELECT count(*) FROM sqlite_master WHERE type = 'trigger' AND name = 'task_results_assign_history_identity'`).Scan(&triggers).Error; err != nil || triggers != 0 {
+		t.Fatalf("failed backfill created trigger: %d %v", triggers, err)
 	}
 }
 
