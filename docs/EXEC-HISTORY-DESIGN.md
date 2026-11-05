@@ -18,7 +18,7 @@ side-effect of adding the UI.
 The current APIs grant `tasks:read` access to commands and outputs. The next
 slice must not accidentally broaden that scope or make history public; reading
 output is sensitive even though executing a command requires separate
-`exec:write` and step-up checks. Preserve the existing API contract for clients
+`tasks:exec` and step-up checks. Preserve the existing API contract for clients
 such as Hermes; avoid an incompatible replacement of `getTasks`.
 
 ## Bounded history contract
