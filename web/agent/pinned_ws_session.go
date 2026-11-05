@@ -11,14 +11,15 @@ import (
 // Handshake and dispatch reservation state is serialized by mu together with
 // connectedClients. No production scheduler consumes the reservation yet.
 type pinnedWSSession struct {
-	conn      *connection.SafeConn
-	instance  string
-	challenge string
-	expires   time.Time
-	active    bool
-	sequence  uint64
-	pending   map[string]pinnedPermitEntry
-	writeLock chan struct{}
+	conn       *connection.SafeConn
+	instance   string
+	challenge  string
+	expires    time.Time
+	active     bool
+	sequence   uint64
+	pending    map[string]pinnedPermitEntry
+	dispatches map[string]pinnedDispatchEntry
+	writeLock  chan struct{}
 }
 
 const pinnedWSLease = 90 * time.Second

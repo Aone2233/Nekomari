@@ -118,20 +118,23 @@ activate the wire helpers based solely on syntactically valid identifiers.
   and independently resolved reference probe. A reference selects its own
   first address and family; HTTP redirect handling stays in that family, which
   is stricter than the legacy reference when redirects change families.
-- The panel registers the dispatch ID for a bounded time using its own
-  monotonic clock, binding it to the active session, assignment and config
-  generation. Result admission and consumption of each expected role/leg must
-  be atomic with task mutation and session retirement. Expired, duplicate,
-  unknown or stale results cannot write a metric. Bound capacity and define
-  backpressure; never silently evict a pending ID and then accept its result.
-- Record metric time at the panel from the accepted dispatch context rather
-  than trusting a remote wall clock. Choose and document whether that is the
-  panel's dispatch or receive time before integrating with historical metrics.
+- An isolated per-session registration primitive binds a dispatch ID to the
+  active socket, instance and supplied task generation, retains consumed or
+  canceled IDs as tombstones through expiry, and enforces a finite capacity.
+  It consumes primary protocol legs and the independent reference leg once;
+  malformed results do not consume a leg. It is not connected to delivery or
+  metric writes. Its supplied task configuration and assignment are not yet
+  checked atomically with mutations; that fence remains mandatory, along with
+  credential admission and serialized result writes. Expired, duplicate,
+  unknown or stale results must never write a metric.
+- The isolated registration returns its panel registration time for a
+  consumed result; it does not trust an Agent clock. Whether that timestamp is
+  appropriate for historical metrics must be settled before integration.
   A result missing its pending dispatch must fail closed, even after restart.
 
-This is not a finished bootstrap or queue. The panel dispatch/result store,
-per-leg consumption and end-to-end deadline/cancellation tests with the real
-Agent remain required before connecting delivery.
+This is not a finished bootstrap or queue. Production dispatch/result
+integration, atomic task and credential fences, and end-to-end deadline and
+cancellation tests with the real Agent remain required before delivery.
 
 ## Queue and direct delivery
 

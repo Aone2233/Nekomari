@@ -27,17 +27,19 @@ type pinnedPermitEntry struct {
 }
 
 type pinnedPermitOutcome struct {
-	permit v2.PingFamilyPermitResult
-	err    error
+	permit     v2.PingFamilyPermitResult
+	validUntil time.Time
+	err        error
 }
 
 type pinnedPermitLease struct {
-	conn     *connection.SafeConn
-	instance string
-	session  string
-	dispatch string
-	ticket   string
-	sequence uint64
+	conn       *connection.SafeConn
+	instance   string
+	session    string
+	dispatch   string
+	ticket     string
+	sequence   uint64
+	validUntil time.Time
 }
 
 // retirePinnedWSLocked wakes pending reservations before dropping their
@@ -126,7 +128,7 @@ func resolvePinnedPermit(uuid string, conn *connection.SafeConn, requestID strin
 		entry.result <- pinnedPermitOutcome{err: errPinnedReservation}
 		return false
 	}
-	entry.result <- pinnedPermitOutcome{permit: *permit}
+	entry.result <- pinnedPermitOutcome{permit: *permit, validUntil: entry.expires}
 	return true
 }
 
@@ -177,7 +179,7 @@ func ConsumePinnedWSPermitResponse(uuid string, conn *connection.SafeConn, data 
 		entry.result <- pinnedPermitOutcome{err: errPinnedReservation}
 		return true
 	}
-	entry.result <- pinnedPermitOutcome{permit: result}
+	entry.result <- pinnedPermitOutcome{permit: result, validUntil: entry.expires}
 	return true
 }
 
@@ -251,7 +253,8 @@ func requestPinnedWSPermitLocked(ctx context.Context, uuid string, conn *connect
 			return pinnedPermitLease{}, errPinnedReservation
 		}
 		return pinnedPermitLease{conn: conn, instance: p.Instance, session: p.Session,
-			dispatch: p.DispatchID, ticket: outcome.permit.FreshnessTicket, sequence: p.Sequence}, nil
+			dispatch: p.DispatchID, ticket: outcome.permit.FreshnessTicket, sequence: p.Sequence,
+			validUntil: outcome.validUntil}, nil
 	case <-ctx.Done():
 		cancelPinnedPermit(uuid, conn, p.DispatchID)
 		return pinnedPermitLease{}, errPinnedReservation

@@ -44,7 +44,8 @@ the fixture immediately terminates the process. The fixture now waits for
 both the expected message and persisted `Notified` before each stop; this is
 a plausible fix, not a proven root cause of that particular failure. Three
 local synthetic runs passed both before and after the change; exact-commit CI
-must be checked independently. No production backup or alert state was touched.
+`42027687020` for `804208d` passed 8/8. This does not establish the original
+failure's root cause. No production backup or alert state was touched.
 
 **Current phase, updated 2026-11-05:** OC424 runs `v1.7.29/94e1973`.
 `v1.7.28` was published but skipped for deployment; its CSV correctness
@@ -109,11 +110,15 @@ sequence/write and consumes a bounded response under credential admission;
 local race and simulated-peer loopback tests pass. The scheduler does not call
 it. Agent probe execution and same-socket result writing now exist behind a
 disabled-by-default dispatch hook, tested with injected DNS/dials; no
-production probe consumes its ticket. Pending dispatch/result tracking and
-task/session atomic fences remain unimplemented. The wire shape and result
-guard do not constitute panel metric admission. No task, Agent or production
-configuration was changed, and neither the designs nor the draft authorize a
-release.
+production probe consumes its ticket. Production dispatch/result tracking and
+task/session atomic fences remain unimplemented. An isolated per-session
+registration now bounds pending dispatches and retains completed/canceled
+tombstones until expiry; it rejects duplicate legs, expired leases and results
+from retired sessions. Its current task/assignment inputs are not yet fenced
+with task mutations and it is not connected to delivery or metric writes.
+The wire shape and result guard do not constitute panel metric admission. No
+task, Agent or production configuration was changed, and neither the designs
+nor the draft authorize a release.
 
 **Prior backup close-out (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds
