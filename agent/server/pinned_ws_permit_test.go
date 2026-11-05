@@ -28,7 +28,7 @@ func permitFor(p v2.PingFamilyProbeParams, sequence uint64) v2.PingFamilyPermitP
 
 func issueTestPermit(t *testing.T, c *pinnedWSController, p *v2.PingFamilyProbeParams, sequence uint64) {
 	t.Helper()
-	permit, err := c.issueProbePermit(permitFor(*p, sequence), time.Now())
+	permit, err := c.issueProbePermit(permitFor(*p, sequence))
 	if err != nil || !pinnedValidID(permit.FreshnessTicket) || permit.DispatchID != p.DispatchID || permit.Sequence != sequence {
 		t.Fatalf("permit = %+v, err %v", permit, err)
 	}
@@ -61,7 +61,7 @@ func TestPinnedPermitSingleUseAndRetirementCancels(t *testing.T) {
 	}
 	c.clear()
 	awaitPinnedSignal(t, canceled)
-	if _, err := c.issueProbePermit(permitFor(p, 2), time.Now()); err == nil {
+	if _, err := c.issueProbePermit(permitFor(p, 2)); err == nil {
 		t.Fatal("retired session issued permit")
 	}
 }
@@ -164,7 +164,7 @@ func TestPinnedPermitRejectsStaleRequestAndWrongDispatch(t *testing.T) {
 	c, p := activePinnedController(t)
 	issueTestPermit(t, c, &p, 4)
 	for _, seq := range []uint64{0, 1, 4} {
-		if _, err := c.issueProbePermit(permitFor(p, seq), time.Now()); err == nil {
+		if _, err := c.issueProbePermit(permitFor(p, seq)); err == nil {
 			t.Fatalf("stale sequence %d accepted", seq)
 		}
 	}
@@ -190,7 +190,7 @@ func TestPinnedPermitBoundsAndExpiry(t *testing.T) {
 	for i := uint64(1); i <= pinnedMaxTickets; i++ {
 		issueTestPermit(t, c, &p, i)
 	}
-	if _, err := c.issueProbePermit(permitFor(p, pinnedMaxTickets+1), time.Now()); err == nil {
+	if _, err := c.issueProbePermit(permitFor(p, pinnedMaxTickets+1)); err == nil {
 		t.Fatal("unexpired tickets evicted at capacity")
 	}
 	c.mu.Lock()
@@ -202,7 +202,7 @@ func TestPinnedPermitBoundsAndExpiry(t *testing.T) {
 	if err := c.launchProbe(p, func(context.Context) { t.Error("expired ticket started") }); err == nil {
 		t.Fatal("expired permit accepted")
 	}
-	if _, err := c.issueProbePermit(permitFor(p, pinnedMaxTickets+1), time.Now()); err == nil {
+	if _, err := c.issueProbePermit(permitFor(p, pinnedMaxTickets+1)); err == nil {
 		t.Fatal("capacity failure did not consume its sequence")
 	}
 	issueTestPermit(t, c, &p, pinnedMaxTickets+2)
@@ -214,7 +214,7 @@ func TestPinnedPermitBoundsAndExpiry(t *testing.T) {
 	c.mu.Lock()
 	c.handshake.validUntil = time.Now().Add(-time.Second)
 	c.mu.Unlock()
-	if _, err := c.issueProbePermit(permitFor(p, pinnedMaxTickets+3), time.Now()); err == nil {
+	if _, err := c.issueProbePermit(permitFor(p, pinnedMaxTickets+3)); err == nil {
 		t.Fatal("expired session issued permit")
 	}
 	awaitPinnedSignal(t, canceled)
@@ -248,7 +248,7 @@ func TestPinnedPermitRejectsInvalidIdentityAndSequence(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			permit := permitFor(p, 1)
 			edit(&permit)
-			if _, err := c.issueProbePermit(permit, time.Now()); err == nil {
+			if _, err := c.issueProbePermit(permit); err == nil {
 				t.Fatal("invalid permit request accepted")
 			}
 		})
@@ -269,6 +269,28 @@ func TestPinnedPermitLateRenewalCannotReviveExpiredSession(t *testing.T) {
 	}
 	if err := c.launchProbe(p, func(context.Context) { t.Error("expired session started probe") }); err == nil {
 		t.Fatal("late renewal preserved old ticket")
+	}
+}
+
+func TestPinnedPermitRechecksLeaseAfterWaitingForLock(t *testing.T) {
+	c, p := activePinnedController(t)
+	c.mu.Lock()
+	c.handshake.validUntil = time.Now().Add(-time.Second)
+	started, done := make(chan struct{}), make(chan error, 1)
+	go func() {
+		close(started)
+		_, err := c.issueProbePermit(permitFor(p, 1))
+		done <- err
+	}()
+	awaitPinnedSignal(t, started)
+	c.mu.Unlock()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expired session issued permit after lock wait")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("permit request remained blocked")
 	}
 }
 

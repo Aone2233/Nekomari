@@ -274,7 +274,7 @@ func TestPinnedWSWriterAbortRetiresSessionBeforeReturn(t *testing.T) {
 	}
 	awaitPinnedSignal(t, started)
 	abortPinnedWSSocket(socket)
-	if _, err := c.issueProbePermit(permitFor(p, 2), time.Now()); err == nil {
+	if _, err := c.issueProbePermit(permitFor(p, 2)); err == nil {
 		t.Fatal("writer abort returned while old session could authorize work")
 	}
 	awaitPinnedSignal(t, canceled)

@@ -49,7 +49,7 @@ func (c *pinnedWSController) handleProbePermit(data []byte) (bool, error) {
 	decoder.DisallowUnknownFields()
 	decodeErr := decoder.Decode(&p)
 	if decodeErr == nil && decoder.Decode(new(any)) == io.EOF {
-		if result, permitErr := c.issueProbePermit(p, time.Now()); permitErr == nil {
+		if result, permitErr := c.issueProbePermit(p); permitErr == nil {
 			resp.Result = result
 		} else {
 			resp.Error = &v2.RPCError{Code: -32602, Message: "invalid or expired permit request"}
@@ -76,9 +76,10 @@ func newPinnedTicket() (string, error) {
 // The controller lock serializes ticket consumption and probe admission with
 // handshake expiry and socket retirement. The permit request is wired to the
 // WebSocket reader, but no production caller starts a pinned probe yet.
-func (c *pinnedWSController) issueProbePermit(p v2.PingFamilyPermitParams, now time.Time) (v2.PingFamilyPermitResult, error) {
+func (c *pinnedWSController) issueProbePermit(p v2.PingFamilyPermitParams) (v2.PingFamilyPermitResult, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	now := time.Now()
 	c.expireLocked(now)
 	if c.stopped || c.handshake == nil || !c.handshake.active || c.sessionContext == nil ||
 		!pinnedValidID(p.Instance) || !pinnedValidID(p.Session) || !pinnedValidID(p.DispatchID) ||
