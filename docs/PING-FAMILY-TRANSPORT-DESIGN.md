@@ -1,7 +1,9 @@
 # Family-pinned probes: transport fencing design
 
-Status: design and test plan only. No capability is advertised, no new event is
-delivered, and none of this authorizes a release or changes live tasks.
+Status: draft implementation and test plan. A WS-only server handshake and a
+disconnected Agent handshake state machine exist on the feature branch; the
+Agent does not yet send it, and no pinned event or result is delivered. None of
+this authorizes a release or changes live tasks.
 The parent contract is [PING-DOMAIN-FAMILY-DESIGN.md](./PING-DOMAIN-FAMILY-DESIGN.md).
 
 ## Why a capability flag is insufficient

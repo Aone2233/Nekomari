@@ -7,20 +7,21 @@ import (
 )
 
 const (
-	Version               = "2.0"
-	MethodAgentReport     = "agent.report"
-	MethodAgentBasicInfo  = "agent.basicInfo"
-	MethodAgentPingResult = "agent.pingResult"
-	MethodAgentTaskResult = "agent.taskResult"
-	MethodAgentExec       = "agent.exec"
-	MethodAgentPing       = "agent.ping"
-	MethodAgentMessage    = "agent.message"
-	MethodAgentEvent      = "agent.event"
-	MethodAgentTerminal   = "agent.terminal.request"
-	MethodAgentPull       = "agent.pull"
-	MethodAgentFile       = "agent.file"
-	MethodAgentFileResult = "agent.file.result"
-	MethodAgentUnlock     = "agent.unlock"
+	Version                      = "2.0"
+	MethodAgentReport            = "agent.report"
+	MethodAgentBasicInfo         = "agent.basicInfo"
+	MethodAgentPingResult        = "agent.pingResult"
+	MethodAgentTaskResult        = "agent.taskResult"
+	MethodAgentExec              = "agent.exec"
+	MethodAgentPing              = "agent.ping"
+	MethodAgentPingFamilySession = "agent.pingFamily.session.v1"
+	MethodAgentMessage           = "agent.message"
+	MethodAgentEvent             = "agent.event"
+	MethodAgentTerminal          = "agent.terminal.request"
+	MethodAgentPull              = "agent.pull"
+	MethodAgentFile              = "agent.file"
+	MethodAgentFileResult        = "agent.file.result"
+	MethodAgentUnlock            = "agent.unlock"
 	// MethodAgentUpdate 让面板指定一个节点要运行的版本（roadmap H6）。
 	//
 	// 这份文件与 agent/protocol/v2/jsonrpc.go 是同一协议的两份副本（面板与 agent 是两个模块，无法共享
@@ -28,6 +29,17 @@ const (
 	// agent 说 unknown method」。
 	MethodAgentUpdate = "agent.update"
 )
+
+type PingFamilySessionParams struct {
+	Action    string `json:"action"`
+	Version   int    `json:"version"`
+	Instance  string `json:"instance"`
+	Challenge string `json:"challenge,omitempty"`
+}
+
+type PingFamilySessionResult struct {
+	Challenge string `json:"challenge"`
+}
 
 // UnlockParams 是 agent.unlock 的负载：探针从自己的出口测得的解锁结论。
 //

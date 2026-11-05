@@ -6,26 +6,38 @@ import (
 )
 
 const (
-	Version               = "2.0"
-	MethodAgentReport     = "agent.report"
-	MethodAgentBasicInfo  = "agent.basicInfo"
-	MethodAgentPingResult = "agent.pingResult"
-	MethodAgentTaskResult = "agent.taskResult"
-	MethodAgentExec       = "agent.exec"
-	MethodAgentPing       = "agent.ping"
-	MethodAgentMessage    = "agent.message"
-	MethodAgentEvent      = "agent.event"
-	MethodAgentTerminal   = "agent.terminal.request"
-	MethodAgentPull       = "agent.pull"
-	MethodAgentFile       = "agent.file"
-	MethodAgentFileResult = "agent.file.result"
-	MethodAgentUnlock     = "agent.unlock"
+	Version                      = "2.0"
+	MethodAgentReport            = "agent.report"
+	MethodAgentBasicInfo         = "agent.basicInfo"
+	MethodAgentPingResult        = "agent.pingResult"
+	MethodAgentTaskResult        = "agent.taskResult"
+	MethodAgentExec              = "agent.exec"
+	MethodAgentPing              = "agent.ping"
+	MethodAgentPingFamilySession = "agent.pingFamily.session.v1"
+	MethodAgentMessage           = "agent.message"
+	MethodAgentEvent             = "agent.event"
+	MethodAgentTerminal          = "agent.terminal.request"
+	MethodAgentPull              = "agent.pull"
+	MethodAgentFile              = "agent.file"
+	MethodAgentFileResult        = "agent.file.result"
+	MethodAgentUnlock            = "agent.unlock"
 	// MethodAgentUpdate 让面板指定这个节点要运行的版本（roadmap H6）。
 	//
 	// 走事件通道而不是配置：agent 的配置是部署级的（环境变量/systemd），面板没有运行时通道能改它，
 	// 而事件队列是既有的面板→agent 指令路径 —— 能立刻送达在线节点，也能留在队列里等离线节点回来。
 	MethodAgentUpdate = "agent.update"
 )
+
+type PingFamilySessionParams struct {
+	Action    string `json:"action"`
+	Version   int    `json:"version"`
+	Instance  string `json:"instance"`
+	Challenge string `json:"challenge,omitempty"`
+}
+
+type PingFamilySessionResult struct {
+	Challenge string `json:"challenge"`
+}
 
 type Request struct {
 	JSONRPC string      `json:"jsonrpc"`

@@ -269,6 +269,70 @@ func TestClientTokenRotationTransportFence(t *testing.T) {
 			t.Fatalf("replacement WebSocket failed: %v", err)
 		}
 	})
+	t.Run("pinned_handshake_is_connection_scoped", func(t *testing.T) {
+		const id = "pinned-ws-handshake"
+		const instance = "0123456789abcdef0123456789abcdef"
+		token := create(id)
+		dial := func() *websocket.Conn {
+			t.Helper()
+			conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/api/clients/v2/rpc", http.Header{
+				"Origin": {server.URL}, "Authorization": {"Bearer " + token},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = conn.Close() })
+			return conn
+		}
+		first := dial()
+		await(func() bool { return agentrt.GetConnectedClient(id) != nil })
+		oldSocket := agentrt.GetConnectedClient(id)
+		call := func(conn *websocket.Conn, action, challenge string) v2.Response {
+			t.Helper()
+			if err := conn.WriteJSON(v2.Request{JSONRPC: v2.Version, Method: v2.MethodAgentPingFamilySession, ID: action,
+				Params: v2.PingFamilySessionParams{Action: action, Version: 1, Instance: instance, Challenge: challenge}}); err != nil {
+				t.Fatal(err)
+			}
+			_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+			var response v2.Response
+			if err := conn.ReadJSON(&response); err != nil || response.Error != nil {
+				t.Fatalf("%s response=%+v err=%v", action, response, err)
+			}
+			return response
+		}
+		begin := call(first, "begin", "")
+		data, err := json.Marshal(begin.Result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var session v2.PingFamilySessionResult
+		if err := json.Unmarshal(data, &session); err != nil || session.Challenge == "" {
+			t.Fatalf("begin result=%s err=%v", data, err)
+		}
+		call(first, "ack", session.Challenge)
+		if !agentrt.PinnedWSSessionCurrent(id, oldSocket, instance, session.Challenge, time.Now()) {
+			t.Fatal("current socket handshake was not active")
+		}
+		second := dial()
+		await(func() bool {
+			return agentrt.GetConnectedClient(id) != nil && agentrt.GetConnectedClient(id) != oldSocket
+		})
+		if agentrt.PinnedWSSessionCurrent(id, oldSocket, instance, session.Challenge, time.Now()) {
+			t.Fatal("old session survived replacement")
+		}
+		if _, _, err := first.ReadMessage(); err == nil {
+			t.Fatal("replaced socket stayed open")
+		}
+		if err := second.WriteJSON(v2.Request{JSONRPC: v2.Version, Method: v2.MethodAgentPingFamilySession, ID: "stale-ack",
+			Params: v2.PingFamilySessionParams{Action: "ack", Version: 1, Instance: instance, Challenge: session.Challenge}}); err != nil {
+			t.Fatal(err)
+		}
+		_ = second.SetReadDeadline(time.Now().Add(3 * time.Second))
+		var stale v2.Response
+		if err := second.ReadJSON(&stale); err != nil || stale.Error == nil {
+			t.Fatalf("stale ack response=%+v err=%v", stale, err)
+		}
+	})
 	t.Run("body_credential_survives_parser_consumption", func(t *testing.T) {
 		const id = "rotation-body"
 		token := create(id)
