@@ -22,7 +22,6 @@ const (
 	HistoryCountLimit     = 1000
 	HistoryChunkBytes     = 16384
 	HistoryOffsetLimit    = 1<<53 - 1
-	HistoryFieldMaxBytes  = 8 << 20
 	HistorySQLiteMaxBytes = 16 << 20
 )
 
@@ -78,8 +77,8 @@ func historyDB(ctx context.Context) *gorm.DB {
 	return dbcore.GetDBInstance().WithContext(ctx).Session(&gorm.Session{Logger: gormlogger.Default.LogMode(gormlogger.Silent)})
 }
 
-// SQLite materializes values before substr/length runs. Constrain only the
-// exclusively leased connection, then restore its previous pool setting.
+// Guard other malformed fields from SQLite materialization. Constrain only
+// the exclusively leased connection, then restore its previous pool setting.
 func withHistoryLimit(db *gorm.DB, query func(*gorm.DB) error) error {
 	return db.Connection(func(tx *gorm.DB) error {
 		conn, ok := tx.Statement.ConnPool.(*sql.Conn)
@@ -293,9 +292,9 @@ func getHistoryDetail(db *gorm.DB, taskID, cursor string) (HistoryDetail, error)
 		OutputBytes     int64
 		OutputAvailable bool
 	}
-	query := `SELECT rowid AS row_id, CAST(substr(CAST(client AS BLOB), 1, 37) AS TEXT) AS client, length(CAST(client AS BLOB)) > 36 AS client_truncated, created_at, substr(CAST(created_at AS TEXT), 1, 129) AS created_key, finished_at, exit_code, coalesce(octet_length(result), 0) AS output_bytes, coalesce(octet_length(result), 0) <= ? AS output_available FROM task_results AS r WHERE task_id = ? `
+	query := `SELECT rowid AS row_id, CAST(substr(CAST(client AS BLOB), 1, 37) AS TEXT) AS client, length(CAST(client AS BLOB)) > 36 AS client_truncated, created_at, substr(CAST(created_at AS TEXT), 1, 129) AS created_key, finished_at, exit_code, coalesce(octet_length(result), 0) AS output_bytes, typeof(result) IN ('null', 'text', 'blob') AS output_available FROM task_results AS r WHERE task_id = ? `
 	if cursor == "" {
-		err = db.Raw(query+`ORDER BY r.client, rowid LIMIT ?`, HistoryFieldMaxBytes, taskID, HistoryResultPageSize+1).Scan(&rows).Error
+		err = db.Raw(query+`ORDER BY r.client, rowid LIMIT ?`, taskID, HistoryResultPageSize+1).Scan(&rows).Error
 	} else {
 		var present int
 		result := db.Raw(`SELECT 1 FROM task_results WHERE task_id = ? AND client = ? AND rowid = ? AND CAST(created_at AS TEXT) = ?`, taskID, after.Client, after.RowID, after.CreatedAt).Scan(&present)
@@ -305,7 +304,7 @@ func getHistoryDetail(db *gorm.DB, taskID, cursor string) (HistoryDetail, error)
 		if result.RowsAffected == 0 {
 			return HistoryDetail{}, gorm.ErrRecordNotFound
 		}
-		err = db.Raw(query+`AND (r.client, rowid) > (?, ?) ORDER BY r.client, rowid LIMIT ?`, HistoryFieldMaxBytes, taskID, after.Client, after.RowID, HistoryResultPageSize+1).Scan(&rows).Error
+		err = db.Raw(query+`AND (r.client, rowid) > (?, ?) ORDER BY r.client, rowid LIMIT ?`, taskID, after.Client, after.RowID, HistoryResultPageSize+1).Scan(&rows).Error
 	}
 	if err != nil {
 		return HistoryDetail{}, err
@@ -355,13 +354,13 @@ func readHistoryChunk(db *gorm.DB, taskID, kind, resultCursor string, offset int
 		if resultCursor != "" {
 			return HistoryChunk{}, ErrInvalidHistoryParams
 		}
-		result = db.Raw(`SELECT CASE WHEN coalesce(octet_length(command), 0) <= ? THEN substr(CAST(coalesce(command, '') AS BLOB), ?, ?) END AS data, coalesce(octet_length(command), 0) AS total_bytes, coalesce(octet_length(command), 0) <= ? AS available FROM tasks WHERE task_id = ?`, HistoryFieldMaxBytes, offset+1, HistoryChunkBytes, HistoryFieldMaxBytes, taskID).Scan(&row)
+		result = db.Raw(`SELECT CASE typeof(command) WHEN 'null' THEN x'' WHEN 'text' THEN nekomari_history_blob(0, rowid, ?) WHEN 'blob' THEN nekomari_history_blob(0, rowid, ?) END AS data, coalesce(octet_length(command), 0) AS total_bytes, typeof(command) IN ('null', 'text', 'blob') AS available FROM tasks WHERE task_id = ?`, offset, offset, taskID).Scan(&row)
 	case "output":
 		cursor, err := decodeResultCursor(resultCursor)
 		if err != nil {
 			return HistoryChunk{}, ErrInvalidHistoryParams
 		}
-		result = db.Raw(`SELECT CASE WHEN coalesce(octet_length(result), 0) <= ? THEN substr(CAST(coalesce(result, '') AS BLOB), ?, ?) END AS data, coalesce(octet_length(result), 0) AS total_bytes, coalesce(octet_length(result), 0) <= ? AS available FROM task_results WHERE task_id = ? AND client = ? AND rowid = ? AND CAST(created_at AS TEXT) = ?`, HistoryFieldMaxBytes, offset+1, HistoryChunkBytes, HistoryFieldMaxBytes, taskID, cursor.Client, cursor.RowID, cursor.CreatedAt).Scan(&row)
+		result = db.Raw(`SELECT CASE typeof(result) WHEN 'null' THEN x'' WHEN 'text' THEN nekomari_history_blob(1, rowid, ?) WHEN 'blob' THEN nekomari_history_blob(1, rowid, ?) END AS data, coalesce(octet_length(result), 0) AS total_bytes, typeof(result) IN ('null', 'text', 'blob') AS available FROM task_results WHERE task_id = ? AND client = ? AND rowid = ? AND CAST(created_at AS TEXT) = ?`, offset, offset, taskID, cursor.Client, cursor.RowID, cursor.CreatedAt).Scan(&row)
 	default:
 		return HistoryChunk{}, ErrInvalidHistoryParams
 	}

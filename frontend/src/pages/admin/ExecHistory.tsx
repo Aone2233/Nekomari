@@ -103,7 +103,7 @@ function ChunkViewer({ taskID, kind, resultCursor }: { taskID: string; kind: "co
       {loading && <Text size="2" role="status">{t("execHistory.loading")}</Text>}
       {error && <Text size="2" color="red" role="alert">{t("execHistory.error")}</Text>}
       {chunk && !chunk.available && <>
-        <Text size="2" color="orange" role="status">{t("execHistory.largeField")}</Text>
+        <Text size="2" color="orange" role="status">{t("execHistory.unsupportedField")}</Text>
         <Button size="1" variant="ghost" onClick={() => { request.current?.abort(); setChunk(null); setText(""); setLoading(false); setError(false); setOffsets([0]); }}>
           {t("execHistory.hide")}
         </Button>
@@ -182,7 +182,7 @@ function TaskDetail({ taskID }: { taskID: string }) {
             {result.exit_code !== null && <Text size="1" color="gray">{t("execHistory.exitCode", { code: result.exit_code })}</Text>}
             {result.finished_at && <Text size="1" color="gray">{t("execHistory.finishedAt", { time: formatTime(result.finished_at) ?? t("execHistory.unknown") })}</Text>}
             {result.output_available ? <ChunkViewer taskID={taskID} kind="output" resultCursor={result.cursor} /> :
-              <Text size="2" color="orange">{t("execHistory.largeField")}</Text>}
+              <Text size="2" color="orange">{t("execHistory.unsupportedField")}</Text>}
           </Flex>
         </Card>;
       })}

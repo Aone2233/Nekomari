@@ -80,18 +80,30 @@ interrupt a running statement but is not a hard wall-clock bound for every
 SQLite operation.
 
 `octet_length` checks command/output field sizes without reading their contents.
-Fields of at most 8 MiB are readable in 16 KiB chunks; a larger legacy/imported
-field is explicitly unavailable in this viewer rather than silently
-truncated or deleted. `output_available` and `available` expose the decision;
-the UI explains it in every supported locale. Malformed fields that exceed the
-connection-wide 16 MiB SQLite limit fail closed. This limits individual SQLite
-values, not total process RSS or all possible CPU work. On a scratch SQLite
-3.46.1 database, a synthetic 64 MiB output caused the original 16 KiB query to
-peak around 75 MiB RSS; the revised size check and query reported the output as
-unavailable at around 13 MiB RSS in separate test processes. A canceled
+For TEXT or BLOB, a small C-only SQLite function opens a read-only incremental
+blob on the **same connection and statement snapshot**, reads at most 16 KiB,
+then closes the handle. Only the two fixed history columns are allowed; the
+calling RPC still applies authorization and identity checks. The function is
+registered on new SQLite connections and marked `SQLITE_DIRECTONLY`, so stored
+views, triggers and schema expressions cannot invoke it. Administrators with
+the separate sensitive arbitrary-SQL capability can call the function
+directly, but that capability can already read these tables. Empty and NULL
+values remain readable as empty; malformed non-TEXT/non-BLOB values return
+unavailable without modifying data. `output_available` and `available` expose
+that decision to the UI. The extension relies on SQLite's implicit rowid and
+the bundled SQLite ABI; Windows and ARM builds remain release gates. Only one
+chunk has a statement-level snapshot; separate chunk requests can see updates.
+
+The connection-wide 16 MiB limit still makes other malformed, materialized
+fields fail closed. This limits individual SQLite values, not total process RSS
+or all possible CPU work. On scratch SQLite 3.46.1, the original `substr` query
+over a synthetic 64 MiB output peaked around 75 MiB RSS; a separate incremental
+blob prototype read the first and last 16 KiB at around 13 MiB RSS. A canceled
 1 ms synthetic query had taken around 16 ms with the original full-field read,
-so cancellation must not be presented as an instantaneous guarantee. These
-are local measurements, not production performance or memory SLOs.
+so cancellation must not be presented as an instantaneous guarantee. Local
+WAL tests also exercise a concurrent writer, read-snapshot consistency,
+read-only connections, DIRECTONLY, malformed values and length-limit recovery.
+These are local measurements, not production performance or memory SLOs.
 
 SQLite's implicit `rowid` is not stable across `VACUUM`, and legacy task IDs
 are random. The upgrade adds nullable `tasks.history_order` and two indexes,
@@ -131,12 +143,18 @@ the migrated database, wrote three synthetic old-schema tasks while it ran,
 then restarted the candidate twice. The original and new orders, synthetic
 commands and outputs survived, and SQLite `quick_check` returned `ok`. The
 rollback writes were SQL fixtures matching the old schema, not actual commands
-dispatched through an agent; production data was not used.
+dispatched through an agent; production data was not used. This drill was
+repeated after switching the chunk reader to incremental blobs, using the
+checksum-verified v1.7.29 amd64 binary and the rebuilt candidate. The first
+attempt timed out because its readiness helper kept polling the install-only
+route after installation; the corrected helper accepts the version route and
+the complete old/new/old/new/restart sequence passes.
 
 A separate network-isolated disposable panel was built with the current
 embedded frontend and served real backend responses for synthetic task rows.
 The administrator history page opened and read command/output as text in
-English desktop/light and Chinese mobile/dark; no execution RPC was dispatched.
+English desktop/light and Chinese mobile/dark, including the first and final
+chunks of synthetic fields larger than 16 MiB; no execution RPC was dispatched.
 The first Chinese attempt was blocked by the fixture's unaccepted EULA, not a
 history error; setting acceptance on that disposable panel allowed the retry.
 

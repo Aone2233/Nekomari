@@ -468,13 +468,17 @@ func TestHistoryOversizedFieldsDoNotMaterialize(t *testing.T) {
 		t.Fatalf("oversized targets should remain unknown: %+v %v", page, err)
 	}
 	detail, err := GetHistoryDetail(t.Context(), id, "")
-	if err != nil || len(detail.Results) != 1 || detail.Results[0].OutputAvailable || detail.Results[0].OutputBytes != oversized {
+	if err != nil || len(detail.Results) != 1 || !detail.Results[0].OutputAvailable || detail.Results[0].OutputBytes != oversized {
 		t.Fatalf("oversized output metadata: %+v %v", detail, err)
 	}
 	for _, item := range []struct{ kind, cursor string }{{"command", ""}, {"output", detail.Results[0].Cursor}} {
-		chunk, err := ReadHistoryChunk(t.Context(), id, item.kind, item.cursor, 0)
-		if err != nil || chunk.Available || chunk.HasMore || len(chunk.Data) != 0 || chunk.TotalBytes != oversized {
-			t.Fatalf("oversized %s: %+v %v", item.kind, chunk, err)
+		for _, offset := range []int64{0, oversized / 2, oversized - 7, oversized, HistoryOffsetLimit} {
+			chunk, err := ReadHistoryChunk(t.Context(), id, item.kind, item.cursor, offset)
+			want := min(int64(HistoryChunkBytes), max(int64(0), oversized-offset))
+			if err != nil || !chunk.Available || int64(len(chunk.Data)) != want || chunk.TotalBytes != oversized ||
+				chunk.NextOffset != offset+want || chunk.HasMore != (offset+want < oversized) || !bytes.Equal(chunk.Data, make([]byte, want)) {
+				t.Fatalf("oversized %s offset %d: available=%t bytes=%d next=%d total=%d more=%t err=%v", item.kind, offset, chunk.Available, len(chunk.Data), chunk.NextOffset, chunk.TotalBytes, chunk.HasMore, err)
+			}
 		}
 	}
 	// The read guard must not truncate or rewrite a historical field.
@@ -484,7 +488,7 @@ func TestHistoryOversizedFieldsDoNotMaterialize(t *testing.T) {
 	}
 }
 
-func TestHistoryFieldLimitBoundaries(t *testing.T) {
+func TestHistoryLargeFieldBoundaries(t *testing.T) {
 	flags.DatabaseType = flags.DatabaseTypeSQLite
 	flags.DatabaseFile = "file:task-history-test?mode=memory&cache=shared"
 	db := dbcore.GetDBInstance()
@@ -496,7 +500,7 @@ func TestHistoryFieldLimitBoundaries(t *testing.T) {
 	if err := CreateTask(id, []string{"node"}, "safe"); err != nil {
 		t.Fatal(err)
 	}
-	for _, size := range []int{HistoryFieldMaxBytes, HistoryFieldMaxBytes + 1} {
+	for _, size := range []int{8 << 20, (8 << 20) + 1, HistorySQLiteMaxBytes, HistorySQLiteMaxBytes + 1} {
 		if err := db.Exec(`UPDATE tasks SET command = CAST(zeroblob(?) AS TEXT) WHERE task_id = ?`, size, id).Error; err != nil {
 			t.Fatal(err)
 		}
@@ -504,16 +508,17 @@ func TestHistoryFieldLimitBoundaries(t *testing.T) {
 			t.Fatal(err)
 		}
 		detail, err := GetHistoryDetail(t.Context(), id, "")
-		if err != nil || len(detail.Results) != 1 || detail.Results[0].OutputAvailable != (size == HistoryFieldMaxBytes) {
+		if err != nil || len(detail.Results) != 1 || !detail.Results[0].OutputAvailable {
 			t.Fatalf("metadata at size %d: %+v %v", size, detail, err)
 		}
 		for _, item := range []struct{ kind, cursor string }{{"command", ""}, {"output", detail.Results[0].Cursor}} {
-			chunk, err := ReadHistoryChunk(t.Context(), id, item.kind, item.cursor, 0)
-			if err != nil || chunk.Available != (size == HistoryFieldMaxBytes) || chunk.TotalBytes != int64(size) {
-				t.Fatalf("%s at size %d: %+v %v", item.kind, size, chunk, err)
-			}
-			if chunk.Available && (len(chunk.Data) != HistoryChunkBytes || !chunk.HasMore) {
-				t.Fatalf("bounded chunk at limit: %+v", chunk)
+			for _, offset := range []int64{0, int64(size - 1), int64(size + 1)} {
+				chunk, err := ReadHistoryChunk(t.Context(), id, item.kind, item.cursor, offset)
+				want := min(int64(HistoryChunkBytes), max(int64(0), int64(size)-offset))
+				if err != nil || !chunk.Available || chunk.TotalBytes != int64(size) || int64(len(chunk.Data)) != want ||
+					chunk.NextOffset != offset+want || chunk.HasMore != (offset+want < int64(size)) {
+					t.Fatalf("%s size=%d offset=%d available=%t bytes=%d next=%d total=%d more=%t err=%v", item.kind, size, offset, chunk.Available, len(chunk.Data), chunk.NextOffset, chunk.TotalBytes, chunk.HasMore, err)
+				}
 			}
 		}
 	}
