@@ -1,6 +1,7 @@
 package metric
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sort"
@@ -22,14 +23,28 @@ func (s *Store) ReplaceRollupPoints(ctx context.Context, interval time.Duration,
 	if len(points) == 0 {
 		return nil
 	}
-	s.retentionMu.RLock()
-	defer s.retentionMu.RUnlock()
+	// An uncertain import commit must fence every supported writer before it
+	// can observe or change the potentially replaced history.
+	s.retentionMu.Lock()
+	defer s.retentionMu.Unlock()
+	if err := s.ensureOpen(); err != nil {
+		return err
+	}
+	if err := s.pendingCommitError(); err != nil {
+		return err
+	}
+	s.ingestMu.Lock()
+	defer s.ingestMu.Unlock()
 	points, err := s.filterDisabledMetricPoints(ctx, points)
 	if err != nil || len(points) == 0 {
 		return err
 	}
 	prepared, err := prepareMetricPoints(points)
 	if err != nil {
+		return err
+	}
+	importWindows := preparedRawWindows(prepared, interval)
+	if err := s.checkImportPending(importWindows); err != nil {
 		return err
 	}
 
@@ -92,11 +107,20 @@ func (s *Store) ReplaceRollupPoints(ctx context.Context, interval time.Duration,
 			}
 		}
 	}
-	return tx.Commit()
+	err = tx.Commit()
+	// The outcome of COMMIT may be unknown. Do not retain stale raw samples
+	// or assume that the former persisted baseline still applies.
+	s.invalidateRawWindows(importWindows)
+	if err != nil {
+		return s.markCommitUncertain(err)
+	}
+	return nil
 }
 
 // RebuildCoarserRollups recomputes every configured tier coarser than source
 // from the complete source tier. Existing coarser-only history is preserved.
+// A differing durable parent fails the entire transaction: retention may have
+// removed some source rows, so replacing it would silently discard history.
 func (s *Store) RebuildCoarserRollups(ctx context.Context, source time.Duration) error {
 	if err := s.ensureOpen(); err != nil {
 		return err
@@ -115,8 +139,29 @@ func (s *Store) RebuildCoarserRollups(ctx context.Context, source time.Duration)
 		return nil
 	}
 
-	s.retentionMu.RLock()
-	defer s.retentionMu.RUnlock()
+	s.retentionMu.Lock()
+	defer s.retentionMu.Unlock()
+	if err := s.ensureOpen(); err != nil {
+		return err
+	}
+	s.ingestMu.Lock()
+	defer s.ingestMu.Unlock()
+	s.rollupViewMu.Lock()
+	defer s.rollupViewMu.Unlock()
+	// A pending parent or hot minute can later overwrite the rebuild. Import
+	// and reconstruction must be coordinated by the caller instead.
+	s.hotMu.RLock()
+	hasHot := len(s.hot) != 0
+	s.hotMu.RUnlock()
+	s.coarseMu.RLock()
+	hasCoarse := len(s.coarse) != 0
+	s.coarseMu.RUnlock()
+	if s.hotCommitErr != nil {
+		return s.hotCommitErr
+	}
+	if hasHot || hasCoarse || s.coarseRecoveryPending {
+		return ErrImportPending
+	}
 	defs, err := s.listMetricsFresh(ctx)
 	if err != nil {
 		return err
@@ -148,13 +193,39 @@ func (s *Store) RebuildCoarserRollups(ctx context.Context, source time.Duration)
 			}
 			sortRollupKeys(keys)
 			for _, key := range keys {
+				stored, err := s.readRollupBucketTx(ctx, def.Name, key, tier.Interval, tx)
+				if err != nil {
+					return err
+				}
+				if stored != nil {
+					if !equalRebuiltRollup(stored, current[key]) {
+						return fmt.Errorf("%w: metric %q entity %q interval %s bucket %s", ErrRebuildConflict,
+							def.Name, key.entityID, tier.Interval, fromMillis(key.bucket))
+					}
+					continue
+				}
 				if err := s.upsertRollupWithDictionaryTx(ctx, def.Name, tier.Interval, key, current[key], cache, tx); err != nil {
 					return err
 				}
 			}
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		// The view lock is already held; do not attempt a blind retry.
+		s.hotCommitErr = fmt.Errorf("%w: %v", ErrCommitUncertain, err)
+		return s.hotCommitErr
+	}
+	return nil
+}
+
+func equalRebuiltRollup(a, b *rollupBucket) bool {
+	if a.count != b.count || a.sum != b.sum || a.sumSq != b.sumSq || a.min != b.min || a.max != b.max ||
+		a.firstVal != b.firstVal || a.firstTS != b.firstTS || a.lastVal != b.lastVal || a.lastTS != b.lastTS {
+		return false
+	}
+	// Encoding works on clones because a t-digest can normalize itself while
+	// being encoded. Different sketches are not safe to treat as equal.
+	return bytes.Equal(a.clone(true).encodedDigest(), b.clone(true).encodedDigest())
 }
 
 func (s *Store) hasRollupTier(interval time.Duration) bool {

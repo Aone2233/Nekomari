@@ -39,6 +39,16 @@ func (sc *SafeConn) WriteJSON(v interface{}) error {
 // WriteJSONContext does not queue behind a busy writer. Cancellation closes
 // the socket to interrupt an in-progress network write.
 func (sc *SafeConn) WriteJSONContext(ctx context.Context, v interface{}) error {
+	return sc.writeJSONContext(ctx, v, false)
+}
+
+// WriteJSONContextWait permits control messages to wait briefly for ordinary
+// reports, but never past their context deadline.
+func (sc *SafeConn) WriteJSONContextWait(ctx context.Context, v interface{}) error {
+	return sc.writeJSONContext(ctx, v, true)
+}
+
+func (sc *SafeConn) writeJSONContext(ctx context.Context, v interface{}, wait bool) error {
 	if ctx == nil {
 		return errors.New("nil write context")
 	}
@@ -49,8 +59,20 @@ func (sc *SafeConn) WriteJSONContext(ctx context.Context, v interface{}) error {
 	if !ok {
 		return errors.New("websocket context write requires a deadline")
 	}
-	if !sc.mu.TryLock() {
-		return errors.New("websocket writer busy")
+	for !sc.mu.TryLock() {
+		if !wait {
+			return errors.New("websocket writer busy")
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		timer := time.NewTimer(5 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
 	if sc.conn == nil {
 		sc.mu.Unlock()

@@ -60,6 +60,8 @@ func beginPinnedWSHandshakeAt(uuid string, conn *connection.SafeConn, instance s
 	if err != nil {
 		return "", false
 	}
+	unlock := lockPinnedSessionLifecycle(uuid)
+	defer unlock()
 	mu.Lock()
 	defer mu.Unlock()
 	if connectedClients[uuid] != conn {
@@ -76,6 +78,8 @@ func AckPinnedWSHandshake(uuid string, conn *connection.SafeConn, instance, chal
 }
 
 func ackPinnedWSHandshakeAt(uuid string, conn *connection.SafeConn, instance, challenge string, clock func() time.Time) bool {
+	unlock := lockPinnedSessionLifecycle(uuid)
+	defer unlock()
 	mu.Lock()
 	defer mu.Unlock()
 	now := clock()
@@ -101,4 +105,16 @@ func PinnedWSSessionCurrent(uuid string, conn *connection.SafeConn, instance, ch
 	defer mu.RUnlock()
 	s, ok := pinnedWSSessions[uuid]
 	return ok && conn != nil && connectedClients[uuid] == conn && s.conn == conn && s.active && s.instance == instance && s.challenge == challenge && now.Before(s.expires)
+}
+
+// RetirePinnedWSOnPOST fails closed on an ambiguous transport transition. It
+// leaves legacy WebSocket and POST traffic intact; a capable Agent must begin
+// a fresh handshake before any later pinned dispatch.
+// The caller must hold the node's credential admission.
+func RetirePinnedWSOnPOST(uuid string) {
+	unlock := lockPinnedSessionLifecycle(uuid)
+	defer unlock()
+	mu.Lock()
+	defer mu.Unlock()
+	retirePinnedWSLocked(uuid)
 }

@@ -76,12 +76,13 @@ type pinnedFakeConn struct {
 	inbound    chan []byte
 	outbound   chan any
 	closed     chan struct{}
+	writing    chan struct{}
 	once       sync.Once
 	blockWrite bool
 }
 
 func newPinnedFakeConn(blockWrite bool) *pinnedFakeConn {
-	return &pinnedFakeConn{inbound: make(chan []byte, 8), outbound: make(chan any, 8), closed: make(chan struct{}), blockWrite: blockWrite}
+	return &pinnedFakeConn{inbound: make(chan []byte, 8), outbound: make(chan any, 8), closed: make(chan struct{}), writing: make(chan struct{}, 1), blockWrite: blockWrite}
 }
 
 func (c *pinnedFakeConn) ReadMessageLimited(int64) (int, []byte, error) {
@@ -94,6 +95,10 @@ func (c *pinnedFakeConn) ReadMessageLimited(int64) (int, []byte, error) {
 }
 
 func (c *pinnedFakeConn) WriteJSON(data interface{}) error {
+	select {
+	case c.writing <- struct{}{}:
+	default:
+	}
 	if c.blockWrite {
 		<-c.closed
 		return errors.New("closed")
@@ -101,6 +106,29 @@ func (c *pinnedFakeConn) WriteJSON(data interface{}) error {
 	select {
 	case c.outbound <- data:
 		return nil
+	case <-c.closed:
+		return errors.New("closed")
+	}
+}
+
+func (c *pinnedFakeConn) WriteJSONContextWait(ctx context.Context, data interface{}) error {
+	select {
+	case c.writing <- struct{}{}:
+	default:
+	}
+	if !c.blockWrite {
+		select {
+		case c.outbound <- data:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-c.closed:
+			return errors.New("closed")
+		}
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
 	case <-c.closed:
 		return errors.New("closed")
 	}
@@ -172,6 +200,70 @@ func TestPinnedWSReaderDoesNotSpamOldPanel(t *testing.T) {
 	}
 	c.Abort()
 	waitPinnedReader(t, done)
+}
+
+func TestPinnedWSRejectedRenewalRetiresSessionBeforeFreshHandshake(t *testing.T) {
+	controller, params := activePinnedController(t)
+	conn := newPinnedFakeConn(false)
+	controller.conn = conn
+	_, _, _, canceled, ok := controller.current(time.Now())
+	if !ok {
+		t.Fatal("fixture session is not active")
+	}
+	controller.mu.Lock()
+	renew := controller.handshake.renew()
+	controller.mu.Unlock()
+	if handled, err := controller.handle(pinnedResponse(t, renew.ID, "", &v2.RPCError{Code: -32602})); !handled || err != nil {
+		t.Fatalf("renewal refusal: handled=%v err=%v", handled, err)
+	}
+	select {
+	case <-canceled:
+	default:
+		t.Fatal("old session remained live while starting a fresh handshake")
+	}
+	if _, _, _, _, ok := controller.current(time.Now()); ok {
+		t.Fatal("refused session remained active")
+	}
+	begin := takePinnedRequest(t, conn)
+	if p := begin.Params.(v2.PingFamilySessionParams); p.Action != "begin" || p.Challenge != "" || p.Instance != params.Instance {
+		t.Fatalf("fresh begin = %+v", p)
+	}
+	challenge := "fedcba9876543210fedcba9876543210"
+	if handled, err := controller.handle(pinnedResponse(t, begin.ID, challenge, nil)); !handled || err != nil {
+		t.Fatalf("begin response: handled=%v err=%v", handled, err)
+	}
+	ack := takePinnedRequest(t, conn)
+	if handled, err := controller.handle(pinnedResponse(t, ack.ID, challenge, nil)); !handled || err != nil {
+		t.Fatalf("ack response: handled=%v err=%v", handled, err)
+	}
+	if _, session, _, _, ok := controller.current(time.Now()); !ok || session != challenge || session == params.Session {
+		t.Fatalf("fresh session = %q active=%v", session, ok)
+	}
+	controller.clear()
+}
+
+func TestPinnedWSUnsupportedRenewalDoesNotRetry(t *testing.T) {
+	controller, _ := activePinnedController(t)
+	conn := newPinnedFakeConn(false)
+	controller.conn = conn
+	controller.mu.Lock()
+	renew := controller.handshake.renew()
+	controller.mu.Unlock()
+	if handled, err := controller.handle(pinnedResponse(t, renew.ID, "", &v2.RPCError{Code: -32601})); !handled || err != nil {
+		t.Fatalf("unsupported renewal: handled=%v err=%v", handled, err)
+	}
+	if _, _, _, _, ok := controller.current(time.Now()); ok {
+		t.Fatal("unsupported panel retained an active session")
+	}
+	if err := controller.maintain(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case req := <-conn.outbound:
+		t.Fatalf("unsupported panel received a retry: %+v", req)
+	default:
+	}
+	controller.clear()
 }
 
 func TestPinnedWSReaderAbortInterruptsBlockedHandshakeWrite(t *testing.T) {

@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Aone2233/nekomari/pkg/jsruntime/internal/bridge"
+	"github.com/Aone2233/nekomari/pkg/jsruntime/internal/filepathutil"
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/buffer"
 	"github.com/dop251/goja_nodejs/require"
-	"github.com/Aone2233/nekomari/pkg/jsruntime/internal/bridge"
-	"github.com/Aone2233/nekomari/pkg/jsruntime/internal/filepathutil"
 )
 
 type nodeFileHandle struct {
@@ -49,6 +49,9 @@ type Module struct {
 	nodeFSRoot         *os.Root
 	extraRoots         []rootedDir
 	lifecycleMu        sync.RWMutex
+	asyncMu            sync.Mutex
+	asyncClosing       bool
+	asyncWork          sync.WaitGroup
 
 	cwdMu   sync.RWMutex
 	nodeCwd string
@@ -127,6 +130,12 @@ func (m *Module) Chdir(name string) error {
 }
 
 func (m *Module) Close() {
+	// An asynchronous write may already have opened a file after releasing
+	// lifecycleMu. Join the complete operation before closing the roots.
+	m.asyncMu.Lock()
+	m.asyncClosing = true
+	m.asyncMu.Unlock()
+	m.asyncWork.Wait()
 	m.lifecycleMu.Lock()
 	if m.closed {
 		m.lifecycleMu.Unlock()
@@ -154,6 +163,22 @@ func (m *Module) Close() {
 		m.runtime.RemoveResource(handle.resourceID)
 		_ = handle.file.Close()
 	}
+}
+
+// startAsync orders admission before Close starts waiting. The operation must
+// not wait for its JavaScript callback: Close can be called from that loop.
+func (m *Module) startAsync(work func()) bool {
+	m.asyncMu.Lock()
+	defer m.asyncMu.Unlock()
+	if m.asyncClosing {
+		return false
+	}
+	m.asyncWork.Add(1)
+	go func() {
+		defer m.asyncWork.Done()
+		work()
+	}()
+	return true
 }
 
 func (m *Module) OpenFileCount() int {
@@ -537,7 +562,7 @@ func (m *Module) Load(vm *goja.Runtime, module *goja.Object) {
 			panic(vm.NewTypeError("callback must be a function"))
 		}
 		name := call.Argument(0).String()
-		go func() {
+		m.startAsync(func() {
 			path, err := m.resolveNodePath(name, false)
 			if err == nil {
 				_, err = m.nodeStat(path, true)
@@ -548,7 +573,7 @@ func (m *Module) Load(vm *goja.Runtime, module *goja.Object) {
 					return callbackErr
 				})
 			})
-		}()
+		})
 		return goja.Undefined()
 	})
 	_ = exports.Set("constants", map[string]int{"F_OK": 0, "R_OK": 4, "W_OK": 2, "X_OK": 1, "COPYFILE_EXCL": 1})
@@ -568,7 +593,7 @@ func (m *Module) fsAsync(vm *goja.Runtime, name string) func(goja.FunctionCall) 
 		}
 		arguments := append([]goja.Value(nil), call.Arguments[:len(call.Arguments)-1]...)
 		operation := m.prepareFSAsync(vm, name, arguments)
-		go func() {
+		m.startAsync(func() {
 			result, err := operation.run()
 			if !m.runtime.RunOnLoop(func(vm *goja.Runtime) {
 				_ = m.runtime.RunJob(vm, "fs."+name, func() error {
@@ -583,7 +608,7 @@ func (m *Module) fsAsync(vm *goja.Runtime, name string) func(goja.FunctionCall) 
 			}) {
 				return
 			}
-		}()
+		})
 		return goja.Undefined()
 	}
 }

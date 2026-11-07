@@ -28,22 +28,31 @@ func Call(id any, method string, params any) *JsonRpcResponse {
 }
 
 func CallWithContext(ctx context.Context, id any, method string, params any) *JsonRpcResponse {
+	return CallRequestWithContext(ctx, &JsonRpcRequest{Version: RPC_VERSION, Method: method, Params: params, ID: id})
+}
+
+// CallRequestWithContext preserves the parsed request, including its original
+// bytes, through the authorized transport dispatch.
+func CallRequestWithContext(ctx context.Context, req *JsonRpcRequest) *JsonRpcResponse {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	req := &JsonRpcRequest{Version: RPC_VERSION, Method: method, Params: params, ID: id}
 	if e := req.Validate(); e != nil {
+		var id any
+		if req != nil {
+			id = req.ID
+		}
 		return ErrorResponse(id, e.Code, e.Message, e.Data)
 	}
 	muHandlers.RLock()
-	h, ok := handlers[method]
+	h, ok := handlers[req.Method]
 	muHandlers.RUnlock()
 	if !ok {
-		return ErrorResponse(id, MethodNotFound, "method not found", method)
+		return ErrorResponse(req.ID, MethodNotFound, "method not found", req.Method)
 	}
 	result, jerr := h(ctx, req)
 	if jerr != nil {
-		return ErrorResponse(id, jerr.Code, jerr.Message, jerr.Data)
+		return ErrorResponse(req.ID, jerr.Code, jerr.Message, jerr.Data)
 	}
-	return SuccessResponse(id, result)
+	return SuccessResponse(req.ID, result)
 }

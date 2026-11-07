@@ -24,6 +24,17 @@ export const parseDocument = (
   }
 };
 
+/** Both schema 2 and schema 3 can carry pins. */
+export const isPinnedArchive = (document?: Record<string, unknown>): boolean => {
+  if (document?.schema_version === 2) return true;
+  return document?.schema_version === 3 && Array.isArray(document.ping_tasks) &&
+    document.ping_tasks.some((task: unknown) =>
+      typeof task === "object" && task !== null && !Array.isArray(task) &&
+      typeof (task as Record<string, unknown>).target_family === "string" &&
+      (task as Record<string, unknown>).target_family !== "",
+    );
+};
+
 /** planCounts summarises a plan in one line, in the order an operator reads them. */
 export const planCounts = (plan: ImportPlan): string =>
   `${plan.creates} create, ${plan.updates} update, ${plan.unchanged} unchanged, ${plan.removals} not in the document`;

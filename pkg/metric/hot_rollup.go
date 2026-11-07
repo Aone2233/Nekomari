@@ -2,6 +2,7 @@ package metric
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 )
@@ -25,12 +26,41 @@ type hotRollup struct {
 func (s *Store) writePreparedHotRollups(ctx context.Context, prepared []preparedMetricPoint, now time.Time, rebuild map[hotRollupKey]struct{}) error {
 	minuteMillis := time.Minute.Milliseconds()
 	compression := s.cfg.RollupPolicy.compression()
+	if rebuild == nil {
+		rebuild = make(map[hotRollupKey]struct{})
+	}
+	// A baseline has already been represented by durable minute and parent
+	// rows. Rebuild the whole minute so parents never receive only a delta.
+	for _, point := range prepared {
+		minute := minuteKeyForPoint(point)
+		if baseline := s.baseline[minute]; baseline != nil && baseline.present && point.timestamp >= rawMemoryCutoff(now) {
+			key := hotRollupKey{metricName: point.metricName, entityID: point.entityID, tagsHash: point.tagsHash, labelsHash: point.labelsHash, bucket: minute.bucket}
+			rebuild[key] = struct{}{}
+		}
+	}
 	if len(rebuild) > 0 {
 		s.rollupViewMu.Lock()
 		defer s.rollupViewMu.Unlock()
 	}
 	s.hotMu.Lock()
-	for _, point := range prepared {
+	// Older than the exact window, only a point strictly newer than the
+	// durable baseline is admitted. Same-batch duplicates still describe one
+	// upsert, not multiple rollup observations.
+	type oldSampleKey struct {
+		series rawSeriesKey
+		at     int64
+	}
+	lastOld := make(map[oldSampleKey]int)
+	rawCutoff := rawMemoryCutoff(now)
+	for i, point := range prepared {
+		if point.timestamp < rawCutoff {
+			lastOld[oldSampleKey{series: minuteKeyForPoint(point).series, at: point.timestamp}] = i
+		}
+	}
+	for i, point := range prepared {
+		if point.timestamp < rawCutoff && lastOld[oldSampleKey{series: minuteKeyForPoint(point).series, at: point.timestamp}] != i {
+			continue
+		}
 		key := hotRollupKey{
 			metricName: point.metricName,
 			entityID:   point.entityID,
@@ -71,12 +101,25 @@ func (s *Store) writePreparedHotRollups(ctx context.Context, prepared []prepared
 func (s *Store) rebuildHotRollupsLocked(keys map[hotRollupKey]struct{}, compression float64) {
 	s.rawMu.RLock()
 	defer s.rawMu.RUnlock()
+	s.rebuildHotRollupsWithRawLocked(keys, compression)
+}
+
+// Caller holds hotMu and rawMu; both ordinary and nonblocking ingest use the
+// same baseline-aware reconstruction before publishing a replacement.
+func (s *Store) rebuildHotRollupsWithRawLocked(keys map[hotRollupKey]struct{}, compression float64) {
 	minuteMillis := time.Minute.Milliseconds()
 	for key := range keys {
 		series := s.raw[rawSeriesKey{metricName: key.metricName, entityID: key.entityID, tagsHash: key.tagsHash}]
 		bucket := newRollupBucket(compression)
 		bucket.tagsHash = key.tagsHash
 		bucket.labelsHash = key.labelsHash
+		minute := rawMinuteKey{series: rawSeriesKey{metricName: key.metricName, entityID: key.entityID, tagsHash: key.tagsHash}, bucket: key.bucket}
+		if baseline := s.baseline[minute]; baseline != nil && baseline.present {
+			if saved := baseline.labels[key.labelsHash]; saved != nil {
+				bucket.tagsJSON, bucket.labelsJSON = saved.tagsJSON, saved.labelsJSON
+				bucket.mergeStored(saved)
+			}
+		}
 		if series != nil {
 			bucket.tagsJSON = series.tagsJSON
 			if labelID, ok := series.labelIDs[key.labelsHash]; ok {
@@ -119,6 +162,9 @@ func (s *Store) flushClosedHotRollups(ctx context.Context, now time.Time) (int, 
 }
 
 func (s *Store) flushClosedHotRollupsUnderView(ctx context.Context, now time.Time) (int, error) {
+	if s.hotCommitErr != nil {
+		return 0, s.hotCommitErr
+	}
 	flushBefore := bucketStartMillis(now.UTC().UnixMilli(), time.Minute.Milliseconds())
 	closed := s.takeClosedHotRollups(flushBefore)
 	if len(closed) == 0 {
@@ -134,6 +180,9 @@ func (s *Store) flushClosedHotRollupsUnderView(ctx context.Context, now time.Tim
 func (s *Store) flushAllHotRollups(ctx context.Context) error {
 	s.rollupViewMu.Lock()
 	defer s.rollupViewMu.Unlock()
+	if s.hotCommitErr != nil {
+		return s.hotCommitErr
+	}
 	s.hotMu.Lock()
 	all := make([]hotRollup, 0, len(s.hot))
 	for key, bucket := range s.hot {
@@ -239,7 +288,10 @@ func (s *Store) persistHotRollups(ctx context.Context, closed []hotRollup, now t
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return err
+		// The server may have committed despite a failed acknowledgement. Keep
+		// the memory copy but never retry the delta without reconciliation.
+		s.hotCommitErr = fmt.Errorf("%w: %v", ErrCommitUncertain, err)
+		return s.hotCommitErr
 	}
 	for _, name := range names {
 		buckets := byMetric[name]
@@ -316,7 +368,7 @@ func (s *Store) deleteHotRollups(metricName, entityID string, tags map[string]st
 			}
 			matches := true
 			for name, value := range tags {
-				if bucketTags[name] != value {
+				if actual, exists := bucketTags[name]; !exists || actual != value {
 					matches = false
 					break
 				}

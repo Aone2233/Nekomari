@@ -2,7 +2,9 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -74,4 +76,66 @@ func TestAddContextFuncAcceptsOrdinarySpec(t *testing.T) {
 		t.Fatalf("AddContextFunc with a valid spec = %v, want nil", err)
 	}
 	m.StopAll()
+}
+
+func TestStopAndWaitIncludesRemovedAndReplacedCallbacks(t *testing.T) {
+	m := NewManager()
+	started := make(chan struct{}, 3)
+	release := make(chan struct{})
+	callback := func(context.Context) {
+		started <- struct{}{}
+		<-release
+	}
+	for _, name := range []string{"replaced", "replaced", "removed"} {
+		if err := m.AddContextFunc(name, "@every 1h", true, callback); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-started:
+		case <-time.After(3 * time.Second):
+			t.Fatal("callback did not start")
+		}
+	}
+	m.Remove("removed")
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
+	err := m.StopAndWait(ctx)
+	cancel()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("stop returned before old callbacks finished: %v", err)
+	}
+	if err := m.AddFunc("late", "@every 1h", func() {}); !errors.Is(err, ErrStopped) {
+		t.Fatalf("registration during shutdown = %v", err)
+	}
+	close(release)
+	if err := m.StopAndWait(t.Context()); err != nil {
+		t.Fatalf("retry waiting for callbacks: %v", err)
+	}
+}
+
+func TestStopAndWaitRacesRegistrationsAndLaunches(t *testing.T) {
+	m := NewManager()
+	var callers sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < 24; i++ {
+		callers.Add(1)
+		go func() {
+			defer callers.Done()
+			<-start
+			for j := 0; j < 20; j++ {
+				err := m.AddContextFunc("shared", "@every 1h", true, func(context.Context) {})
+				if err != nil && !errors.Is(err, ErrStopped) {
+					t.Errorf("registration: %v", err)
+					return
+				}
+			}
+		}()
+	}
+	close(start)
+	if err := m.StopAndWait(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	callers.Wait()
+	if err := m.StopAndWait(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 }

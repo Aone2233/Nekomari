@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -24,7 +25,10 @@ func pinnedDispatchFixture(t *testing.T, uuid, kind string, reference bool) (pin
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec := pinnedDispatchSpec{taskID: 7, configGeneration: pinnedTestInstanceB, family: "ipv6", taskType: kind, referenceEnabled: reference}
+	spec := pinnedDispatchSpec{taskID: 7, configGeneration: pinnedTestInstanceB, family: "ipv6", taskType: kind, target: "example.test:80"}
+	if reference {
+		spec.reference = "gateway"
+	}
 	now := time.Now()
 	if err := registerPinnedDispatchAt(uuid, lease, spec, func() time.Time { return now }); err != nil {
 		t.Fatal(err)
@@ -60,6 +64,70 @@ func TestPinnedDispatchConsumesEachLegOnce(t *testing.T) {
 	}
 	if err := registerPinnedDispatchAt(uuid, lease, spec, clock); err == nil {
 		t.Fatal("consumed lease was registered again")
+	}
+}
+
+func TestPinnedDispatchUsesPanelAdmissionTime(t *testing.T) {
+	const uuid = "pinned-dispatch-receipt-time"
+	lease, spec, registered := pinnedDispatchFixture(t, uuid, "tcp", false)
+	received := registered.Add(2 * time.Second)
+	result := pinnedDispatchResult(lease, spec, "primary", "tcp", "ipv6")
+	accepted, err := consumePinnedDispatchAt(uuid, lease.conn, spec, true, result, func() time.Time { return received })
+	if err != nil || !accepted.at.Equal(received) {
+		t.Fatalf("admitted result timestamp=%v err=%v", accepted.at, err)
+	}
+}
+
+func TestPinnedDispatchDoesNotStarveSlowProbe(t *testing.T) {
+	const uuid = "pinned-dispatch-slow"
+	old, spec, now := pinnedDispatchFixture(t, uuid, "dual", true)
+	clock := func() time.Time { return now }
+	newer := old
+	newer.dispatch, _ = newPinnedWSChallenge()
+	newer.sequence++
+	for range 4 {
+		now = now.Add(time.Second)
+		newer.validUntil = now.Add(time.Second)
+		if err := registerPinnedDispatchAt(uuid, newer, spec, clock); err == nil {
+			t.Fatal("overlapping probe was registered")
+		}
+	}
+	for _, result := range []v2.PingFamilyResultParams{
+		pinnedDispatchResult(old, spec, "primary", "icmp", "ipv6"),
+		pinnedDispatchResult(old, spec, "primary", "tcp", "ipv6"),
+		pinnedDispatchResult(old, spec, "reference", "icmp", "ipv4"),
+	} {
+		if _, err := consumePinnedDispatchAt(uuid, old.conn, spec, true, result, clock); err != nil {
+			t.Fatalf("slow %s/%s result rejected: %v", result.Role, result.PingType, err)
+		}
+	}
+	if err := registerPinnedDispatchAt(uuid, newer, spec, clock); err != nil {
+		t.Fatalf("completed probe blocked the next dispatch: %v", err)
+	}
+}
+
+func TestPinnedDispatchNewerOtherTaskDoesNotSupersede(t *testing.T) {
+	const uuid = "pinned-dispatch-other-task"
+	old, spec, _ := pinnedDispatchFixture(t, uuid, "tcp", false)
+	newer, err := requestPinnedWSPermitWithWriter(t.Context(), uuid, func(_ context.Context, conn *connection.SafeConn, req v2.Request) error {
+		result := permitResultForRequest(t, req)
+		if !resolvePinnedPermit(uuid, conn, result.DispatchID, &result) {
+			return errors.New("permit response rejected")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := spec
+	other.taskID++
+	clock := time.Now
+	if err := registerPinnedDispatchAt(uuid, newer, other, clock); err != nil {
+		t.Fatal(err)
+	}
+	result := pinnedDispatchResult(old, spec, "primary", "tcp", "ipv6")
+	if _, err := consumePinnedDispatchAt(uuid, old.conn, spec, true, result, clock); err != nil {
+		t.Fatalf("other task superseded result: %v", err)
 	}
 }
 
@@ -141,7 +209,9 @@ func TestPinnedDispatchCapacityExpiryAndLeaseReplay(t *testing.T) {
 		}
 		next := lease
 		next.dispatch = id
-		if err := registerPinnedDispatchAt(uuid, next, spec, clock); err != nil {
+		other := spec
+		other.taskID += uint(i)
+		if err := registerPinnedDispatchAt(uuid, next, other, clock); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -158,6 +228,33 @@ func TestPinnedDispatchCapacityExpiryAndLeaseReplay(t *testing.T) {
 	next.validUntil = now.Add(time.Second)
 	if err := registerPinnedDispatchAt(uuid, next, spec, clock); err != nil {
 		t.Fatalf("expired registrations did not free capacity: %v", err)
+	}
+}
+
+func TestPinnedDispatchDelayedOlderPermitCannotOvertakeNewer(t *testing.T) {
+	const uuid = "pinned-dispatch-delayed-permit"
+	initial, spec, _ := pinnedDispatchFixture(t, uuid, "tcp", false)
+	cancelPinnedDispatchAt(uuid, initial, time.Now)
+	permit := func() pinnedPermitLease {
+		t.Helper()
+		lease, err := requestPinnedWSPermitWithWriter(t.Context(), uuid, func(_ context.Context, conn *connection.SafeConn, req v2.Request) error {
+			result := permitResultForRequest(t, req)
+			if !resolvePinnedPermit(uuid, conn, result.DispatchID, &result) {
+				return errors.New("permit response rejected")
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return lease
+	}
+	older, newer := permit(), permit()
+	if err := registerPinnedDispatchAt(uuid, newer, spec, time.Now); err != nil {
+		t.Fatal(err)
+	}
+	if err := registerPinnedDispatchAt(uuid, older, spec, time.Now); err == nil {
+		t.Fatal("delayed older permit was delivered after a newer dispatch")
 	}
 }
 

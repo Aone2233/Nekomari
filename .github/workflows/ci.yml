@@ -46,6 +46,7 @@ jobs:
           python script/admin-clock.browser.spec.py
           python script/node-details.browser.spec.py
           python script/admin-mutations.browser.spec.py
+          python script/ping-family.browser.spec.py
           python script/offline-notification.browser.spec.py
           python script/load-preview.browser.spec.py
           python script/file-manager.browser.spec.py
@@ -103,6 +104,10 @@ jobs:
         run: |
           python -m pip install -r script/requirements-browser.txt
           python -m playwright install --with-deps chromium
+      - name: Exercise isolated pinned browser-to-Agent workflow
+        env:
+          NEKOMARI_PINNED_BROWSER_E2E: '1'
+        run: go test -race ./web/rpc/jsonrpc -run '^TestPinnedBrowserThroughSchedulerAndRealAgents$' -count=1 -timeout 5m -v
       - name: Boot the server, install an account, and walk every route
         run: |
           mkdir -p smoke
@@ -157,6 +162,8 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y age
+          NEKOMARI_SHUTDOWN_ENCRYPTED_E2E=1 go test -race ./internal/server \
+            -run '^TestShutdownDrainsScheduledAndQueuedMetricsToDisk$' -count=1 -timeout 2m
           context=$(mktemp -d)
           image="nekomari-restore-ci:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           trap 'rm -rf "$context"; docker image rm "$image" >/dev/null 2>&1 || true' EXIT

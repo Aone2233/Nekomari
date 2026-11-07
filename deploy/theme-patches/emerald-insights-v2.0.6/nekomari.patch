@@ -1,0 +1,480 @@
+diff --git a/src/components/PingChart.vue b/src/components/PingChart.vue
+index d30a02f..c2e4ea7 100644
+--- a/src/components/PingChart.vue
++++ b/src/components/PingChart.vue
+@@ -10,6 +10,7 @@ import { Spinner } from '@/components/ui/spinner'
+ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+ import { useBackgroundSurface } from '@/composables/useBackgroundSurface'
+ import { useAppStore } from '@/stores/app'
++import { pingSeriesId, pingSeriesLabel } from '@/utils/pingChartIdentity'
+ import { createPingSeries, smoothPingChartRows } from '@/utils/pingChartSeries'
+ import { getSharedRpc, RpcError } from '@/utils/rpc'
+ import '@/utils/echarts' // 共享 ECharts 配置
+@@ -110,21 +111,21 @@ watch(availableViews, (views) => {
+ 
+ interface PingRecord {
+   client: string
+-  task_id: number
++  task_id: string
+   time: string
+   value: number
+ }
+ 
+ interface TaskInfo {
+-  id: number
++  id: string
+   name: string
+   interval: number
+   metricInterval?: number
+   downsampled?: boolean
+-  loss: number
++  loss: number | null
+   p99?: number
+   p50?: number
+-  p99_p50_ratio?: number
++  p99_p50_ratio?: number | null
+   min?: number
+   max?: number
+   avg?: number
+@@ -155,10 +156,14 @@ interface MetricQueryResponse {
+ 
+ interface PingMetricTaskStats {
+   task_id: string
++  family?: string
++  protocol?: string
++  role?: string
++  tags?: Record<string, string>
+   name?: string
+   type?: string
+   interval?: number
+-  loss: number
++  loss: number | null
+   min?: number
+   max?: number
+   avg?: number
+@@ -166,20 +171,34 @@ interface PingMetricTaskStats {
+   total: number
+   p50?: number
+   p99?: number
+-  p99_p50_ratio?: number
++  p99_p50_ratio?: number | null
+ }
+ 
+ interface PingMetricStatsResponse {
+   stats: PingMetricTaskStats[]
+ }
+ 
++interface LegacyPingRecord {
++  client: string
++  task_id: number
++  time: string
++  value: number
++  family?: string
++  ping_type?: string
++  role?: string
++}
++
++interface LegacyTaskInfo extends Omit<TaskInfo, 'id'> {
++  id: number
++}
++
+ interface PingRecordsResponse {
+-  records: PingRecord[]
+-  tasks?: TaskInfo[]
++  records: LegacyPingRecord[]
++  tasks?: LegacyTaskInfo[]
+ }
+ 
+ interface LossRecord {
+-  task_id: number
++  task_id: string
+   time: string
+   loss: number
+ }
+@@ -205,7 +224,7 @@ let fetchRequestId = 0
+ let metricRpcSupported: boolean | null = null
+ 
+ // 任务选择
+-const selectedTaskIds = ref<number[]>([])
++const selectedTaskIds = ref<string[]>([])
+ const cutPeak = ref(false)
+ const showDelay = ref(true)
+ const showLoss = ref(true)
+@@ -228,7 +247,7 @@ function isMethodNotFoundError(err: unknown): boolean {
+   return err instanceof RpcError && err.code === -32601
+ }
+ 
+-function getMetricTaskId(series: MetricSeries, point: MetricPoint): number | null {
++function getMetricTaskId(series: MetricSeries, point: MetricPoint): string | null {
+   const taskId = Number(
+     point.tags?.task_id
+     ?? series.tags?.task_id
+@@ -236,7 +255,10 @@ function getMetricTaskId(series: MetricSeries, point: MetricPoint): number | nul
+     ?? series.tag?.task_id,
+   )
+ 
+-  return Number.isInteger(taskId) ? taskId : null
++  if (!Number.isInteger(taskId) || taskId <= 0)
++    return null
++  const tag = (key: string) => point.tags?.[key] ?? series.tags?.[key] ?? point.tag?.[key] ?? series.tag?.[key] ?? ''
++  return pingSeriesId({ taskId, family: tag('family'), protocol: tag('protocol'), role: tag('role') })
+ }
+ 
+ // 与官方 komari-web HISTORY_MAX_POINTS 对齐；过小会导致长范围间隔过大、曲线断点过多
+@@ -252,7 +274,7 @@ const HISTORY_MAX_POINTS = 700
+ function pushLatencyMetricPoint(
+   records: PingRecord[],
+   uuid: string,
+-  taskId: number,
++  taskId: string,
+   point: MetricPoint,
+ ) {
+   if (point.value === null) {
+@@ -313,7 +335,7 @@ async function fetchMetricRecords(uuid: string, hours: number): Promise<PingChar
+   ])
+ 
+   const records: PingRecord[] = []
+-  const metricIntervals = new Map<number, { interval: number, downsampled: boolean }>()
++  const metricIntervals = new Map<string, { interval: number, downsampled: boolean }>()
+   for (const series of metricResult?.series ?? []) {
+     if (series.metric_key !== 'ping.latency_ms')
+       continue
+@@ -352,23 +374,41 @@ async function fetchMetricRecords(uuid: string, hours: number): Promise<PingChar
+     }
+   }
+ 
+-  const metricTasks = (statsResult?.stats ?? []).map(task => ({
+-    id: Number(task.task_id),
+-    name: task.name || `Ping ${task.task_id}`,
+-    interval: task.interval ?? 60,
+-    metricInterval: metricIntervals.get(Number(task.task_id))?.interval,
+-    downsampled: metricIntervals.get(Number(task.task_id))?.downsampled,
+-    loss: task.loss,
+-    p99: task.p99,
+-    p50: task.p50,
+-    p99_p50_ratio: task.p99_p50_ratio,
+-    min: task.min,
+-    max: task.max,
+-    avg: task.avg,
+-    latest: task.latest,
+-    total: task.total,
+-    type: task.type,
+-  })).filter(task => Number.isInteger(task.id))
++  const stats = (statsResult?.stats ?? []).filter(task => Number.isInteger(Number(task.task_id)) && Number(task.task_id) > 0)
++  const taskCounts = new Map<string, number>()
++  for (const task of stats)
++    taskCounts.set(task.task_id, (taskCounts.get(task.task_id) ?? 0) + 1)
++  const metricTasks = stats.map((task) => {
++    // Older upstream panels expose no dimensions in stats. Preserve their
++    // task-only grouping instead of pairing a summary with a single series.
++    const dimensionsAvailable = task.tags != null || task.family != null || task.protocol != null || task.role != null
++    const dimensions = {
++      taskId: task.task_id,
++      family: task.family ?? task.tags?.family,
++      protocol: task.protocol ?? task.tags?.protocol,
++      role: task.role ?? task.tags?.role,
++    }
++    const id = pingSeriesId(dimensions)
++    const name = task.name || `Ping ${task.task_id}`
++    const ambiguous = !dimensionsAvailable && records.some(record => record.task_id !== id && JSON.parse(record.task_id)[0] === task.task_id)
++    return {
++      id,
++      name: (taskCounts.get(task.task_id) ?? 0) > 1 ? pingSeriesLabel(name, dimensions) : ambiguous ? `${name} (统计未分组)` : name,
++      interval: task.interval ?? 60,
++      metricInterval: metricIntervals.get(id)?.interval,
++      downsampled: metricIntervals.get(id)?.downsampled,
++      loss: task.loss,
++      p99: task.p99,
++      p50: task.p50,
++      p99_p50_ratio: task.p99_p50_ratio,
++      min: task.min,
++      max: task.max,
++      avg: task.avg,
++      latest: task.latest,
++      total: task.total,
++      type: task.type,
++    }
++  })
+ 
+   return { records, tasks: metricTasks, lossRecords }
+ }
+@@ -380,10 +420,58 @@ async function fetchLegacyRecords(uuid: string, hours: number): Promise<PingChar
+     hours,
+   })
+ 
+-  return {
+-    records: result?.records ?? [],
+-    tasks: result?.tasks ?? [],
++  // Legacy summaries contain no dimensions, so do not pair mixed records with them.
++  const legacyRecords = result?.records ?? []
++  const legacyTasks = result?.tasks ?? []
++  const records: PingRecord[] = []
++  const convertedTasks: TaskInfo[] = []
++  for (const task of legacyTasks) {
++    const groups = new Map<string, { dimensions: { taskId: number, family?: string, protocol?: string, role?: string }, records: LegacyPingRecord[] }>()
++    for (const record of legacyRecords.filter(record => record.task_id === task.id)) {
++      const dimensions = { taskId: task.id, family: record.family, protocol: record.ping_type, role: record.role }
++      const id = pingSeriesId(dimensions)
++      const group = groups.get(id) ?? { dimensions, records: [] }
++      group.records.push(record)
++      groups.set(id, group)
++    }
++    if (groups.size === 0) {
++      convertedTasks.push({
++        ...task,
++        id: pingSeriesId({ taskId: task.id }),
++        loss: null,
++        min: undefined,
++        max: undefined,
++        avg: undefined,
++        latest: undefined,
++        p50: undefined,
++        p99: undefined,
++        p99_p50_ratio: undefined,
++        total: 0,
++      })
++      continue
++    }
++    for (const [id, group] of groups) {
++      const values = group.records.map(record => record.value)
++      const valid = values.filter(value => value >= 0)
++      const sum = valid.reduce((total, value) => total + value, 0)
++      const { id: _legacyId, ...base } = task
++      convertedTasks.push({
++        ...base,
++        id,
++        name: groups.size > 1 ? pingSeriesLabel(task.name, group.dimensions) : task.name,
++        loss: values.length ? (values.length - valid.length) * 100 / values.length : null,
++        min: valid.length ? Math.min(...valid) : undefined,
++        max: valid.length ? Math.max(...valid) : undefined,
++        avg: valid.length ? sum / valid.length : undefined,
++        p50: undefined,
++        p99: undefined,
++        p99_p50_ratio: undefined,
++        total: values.length,
++      })
++      records.push(...group.records.map(record => ({ ...record, task_id: id })))
++    }
+   }
++  return { records, tasks: convertedTasks }
+ }
+ 
+ async function fetchRecords() {
+@@ -539,12 +627,23 @@ function formatTimeForTooltip(time: string, hours: number): string {
+   return date.format('MM/DD HH:mm')
+ }
+ 
++const htmlSpecialCharacters = /[&<>"']/g
++function escapeHtml(value: string): string {
++  return value.replace(htmlSpecialCharacters, character => ({
++    '&': '&amp;',
++    '<': '&lt;',
++    '>': '&gt;',
++    '"': '&quot;',
++    '\'': '&#39;',
++  })[character]!)
++}
++
+ const showDateInAxis = computed(() => selectedHours.value >= 24)
+ 
+ // ==================== 任务选择 ====================
+ 
+ // 获取任务颜色（根据任务在完整列表中的索引）
+-function getTaskColor(taskId: number): string {
++function getTaskColor(taskId: string): string {
+   const taskIndex = tasks.value.findIndex(t => t.id === taskId)
+   const safeIndex = Math.max(0, taskIndex % chartColors.length)
+   return chartColors[safeIndex]!
+@@ -555,7 +654,7 @@ const latestValues = computed(() => {
+   if (!tasks.value.length)
+     return []
+ 
+-  const latestMap = new Map<number, number | null>()
++  const latestMap = new Map<string, number | null>()
+   for (const task of tasks.value) {
+     for (let i = remoteData.value.length - 1; i >= 0; i--) {
+       const rec = remoteData.value[i]
+@@ -582,7 +681,7 @@ const selectedTasks = computed(() => {
+ 
+ const packetLossMarkers = computed(() => {
+   const data = mergedData.value
+-  const markers = new Map<number, LossMarkerPoint[]>()
++  const markers = new Map<string, LossMarkerPoint[]>()
+ 
+   if (!data.length || !selectedTasks.value.length)
+     return markers
+@@ -667,7 +766,7 @@ const totalLossMarkersCount = computed(() => {
+ })
+ 
+ // 切换任务选中状态
+-function toggleTask(taskId: number) {
++function toggleTask(taskId: string) {
+   if (selectedTaskIds.value.includes(taskId)) {
+     selectedTaskIds.value = selectedTaskIds.value.filter(id => id !== taskId)
+   }
+@@ -727,7 +826,7 @@ const pingChartOption = computed(() => {
+   const timeToIndex = new Map(chartTimes.map((time, index) => [time, index]))
+ 
+   // 预先统计各时间点存在丢包的任务，用于多任务同时丢包时的精准对称并排
+-  const lossTasksByTime = new Map<number, number[]>()
++  const lossTasksByTime = new Map<number, string[]>()
+   if (showLoss.value) {
+     for (const task of taskList) {
+       const lossMarkers = packetLossMarkers.value.get(task.id) || []
+@@ -810,7 +909,7 @@ const pingChartOption = computed(() => {
+   const series = [...lineSeries, ...lossSeries]
+ 
+   // 颜色映射表（用于 Tooltip）
+-  const colorMap = new Map<number, string>()
++  const colorMap = new Map<string, string>()
+   tasks.value.forEach((task, idx) => {
+     const safeIdx = Math.max(0, idx % chartColors.length)
+     colorMap.set(task.id, chartColors[safeIdx]!)
+@@ -1001,14 +1100,14 @@ const pingChartOption = computed(() => {
+     },
+     graphic: [
+       // 无丢包时的状态反馈提示
+-      ...(showLoss.value && totalLossMarkersCount.value === 0 && data.length > 0 && remoteData.value.some(record => selectedTaskIds.value.includes(record.task_id) && record.value >= 0)
++      ...(showLoss.value && totalLossMarkersCount.value === 0 && data.length > 0 && taskList.length > 0 && taskList.every(task => task.loss === 0) && remoteData.value.some(record => selectedTaskIds.value.includes(record.task_id) && record.value >= 0)
+         ? [
+             {
+               type: 'text' as const,
+               left: 'center',
+               top: '76%',
+               style: {
+-                text: '✓ 当前时段无丢包 · 网络质量优异',
++                text: '✓ 当前时段统计丢包率为 0%',
+                 fill: isDark.value ? 'rgba(52, 211, 153, 0.65)' : 'rgba(16, 185, 129, 0.75)',
+                 fontSize: 11,
+                 fontWeight: 500,
+@@ -1083,16 +1182,17 @@ const pingChartOption = computed(() => {
+         for (const { task, delayVal, loss } of taskRows) {
+           const color = colorMap.get(task.id) || chartColors[0]!
+           const colorDot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:8px;flex-shrink:0"></span>`
++          const taskName = escapeHtml(task.name)
+ 
+           if (delayVal !== null) {
+             const lossText = (loss !== undefined && loss > 0)
+               ? `<span style="margin-left:6px;color:${color};font-size:11px;font-weight:600">(${(loss * 100).toFixed(loss < 0.01 ? 1 : 0)}% 丢包)</span>`
+               : ''
+             const aggregateLabel = task.downsampled && task.metricInterval ? (task.metricInterval >= 86400 ? '日均 ' : '均值 ') : ''
+-            html += `<div style="display:flex;align-items:center">${colorDot}<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${task.name}</span>${lossText}<span style="margin-left:auto;font-weight:600;margin-left:16px;font-variant-numeric:tabular-nums">${aggregateLabel}${Math.round(delayVal)} ms</span></div>`
++            html += `<div style="display:flex;align-items:center">${colorDot}<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${taskName}</span>${lossText}<span style="margin-left:auto;font-weight:600;margin-left:16px;font-variant-numeric:tabular-nums">${aggregateLabel}${Math.round(delayVal)} ms</span></div>`
+           }
+           else if (loss !== undefined && loss > 0) {
+-            html += `<div style="display:flex;align-items:center">${colorDot}<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${task.name}</span><span style="margin-left:auto;font-weight:600;margin-left:16px;color:${color};font-variant-numeric:tabular-nums">${(loss * 100).toFixed(loss < 0.01 ? 1 : 0)}% 丢包</span></div>`
++            html += `<div style="display:flex;align-items:center">${colorDot}<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${taskName}</span><span style="margin-left:auto;font-weight:600;margin-left:16px;color:${color};font-variant-numeric:tabular-nums">${(loss * 100).toFixed(loss < 0.01 ? 1 : 0)}% 丢包</span></div>`
+           }
+         }
+         if (taskRows.every(row => row.delayVal === null && !(row.loss !== undefined && row.loss > 0)))
+@@ -1235,7 +1335,7 @@ onMounted(() => {
+                         <span class="text-muted-foreground">P99</span>
+                         <span class="font-medium">{{ Math.round(task.p99) }} ms</span>
+                       </template>
+-                      <template v-if="task.p99_p50_ratio !== undefined">
++                      <template v-if="task.p99_p50_ratio != null">
+                         <span class="text-muted-foreground">波动率</span>
+                         <span class="font-medium">{{ task.p99_p50_ratio.toFixed(2) }}</span>
+                       </template>
+@@ -1260,8 +1360,8 @@ onMounted(() => {
+                   {{ task.avg !== undefined ? `${Math.round(task.avg)}ms` : '-' }}
+                 </span>
+                 <span class="opacity-60">·</span>
+-                <span title="丢包率">{{ task.loss.toFixed(2) }}%</span>
+-                <template v-if="task.p99_p50_ratio !== undefined">
++                <span title="丢包率">{{ task.loss != null ? `${task.loss.toFixed(2)}%` : '未知' }}</span>
++                <template v-if="task.p99_p50_ratio != null">
+                   <span class="opacity-60">·</span>
+                   <span title="波动率">{{ task.p99_p50_ratio.toFixed(2) }}</span>
+                 </template>
+diff --git a/src/utils/pingChartSeries.ts b/src/utils/pingChartSeries.ts
+index bd8cdf9..206b826 100644
+--- a/src/utils/pingChartSeries.ts
++++ b/src/utils/pingChartSeries.ts
+@@ -80,7 +80,7 @@ export function buildPingLine(rows: ChartRow[], taskId: string, intervalSeconds:
+ }
+ 
+ /** Smooth only real points within each connected segment. */
+-export function smoothPingChartRows(rows: ChartRow[], tasks: { id: number, interval: number }[], hours: number): ChartRow[] {
++export function smoothPingChartRows(rows: ChartRow[], tasks: { id: string | number, interval: number }[], hours: number): ChartRow[] {
+   const output = [...rows]
+   for (const task of tasks) {
+     const key = String(task.id)
+@@ -106,7 +106,7 @@ export function smoothPingChartRows(rows: ChartRow[], tasks: { id: number, inter
+ }
+ 
+ /** Construct the actual ECharts series for every time range. */
+-export function createPingSeries(rows: ChartRow[], task: { id: number, name: string, interval: number }, hours: number, color: string, showDelay: boolean, smooth: boolean) {
++export function createPingSeries(rows: ChartRow[], task: { id: string | number, name: string, interval: number }, hours: number, color: string, showDelay: boolean, smooth: boolean) {
+   const taskLine = buildPingLine(rows, String(task.id), task.interval, hours)
+   const toTime = ([index, value]: [number, number | null]): [number, number | null] => [Date.parse(String(rows[index]!.time)), value]
+   return [{
+diff --git a/src/utils/pingChartIdentity.ts b/src/utils/pingChartIdentity.ts
+new file mode 100644
+index 0000000..869bc0d
+--- /dev/null
++++ b/src/utils/pingChartIdentity.ts
+@@ -0,0 +1,21 @@
++export interface PingDimensions {
++  taskId: string | number
++  family?: string
++  protocol?: string
++  role?: string
++}
++
++export function pingSeriesId(dimensions: PingDimensions): string {
++  return JSON.stringify([
++    String(dimensions.taskId),
++    dimensions.family ?? '',
++    dimensions.protocol ?? '',
++    dimensions.role ?? '',
++  ])
++}
++
++export function pingSeriesLabel(name: string, dimensions: PingDimensions): string {
++  const details = [dimensions.family?.toUpperCase() || '族未知', dimensions.protocol?.toUpperCase() || '协议未知']
++  details.push(dimensions.role === 'reference' ? '参考' : dimensions.role === 'primary' ? '主目标' : dimensions.role || '角色未标记')
++  return `${name} (${details.join(' / ')})`
++}
+diff --git a/tests/utils/ping-chart-identity.test.ts b/tests/utils/ping-chart-identity.test.ts
+new file mode 100644
+index 0000000..6bcd36b
+--- /dev/null
++++ b/tests/utils/ping-chart-identity.test.ts
+@@ -0,0 +1,36 @@
++import assert from 'node:assert/strict'
++// eslint-disable-next-line test/no-import-node-test -- This repository uses Node's test runner.
++import { it } from 'node:test'
++import { pingSeriesId, pingSeriesLabel } from '../../src/utils/pingChartIdentity'
++import { createPingSeries, smoothPingChartRows } from '../../src/utils/pingChartSeries'
++
++it('keeps task, family, protocol and reference dimensions distinct without delimiter collisions', () => {
++  const base = { taskId: 28, family: 'ipv6', protocol: 'icmp' }
++  const ids = [
++    pingSeriesId(base),
++    pingSeriesId({ ...base, role: 'reference' }),
++    pingSeriesId({ ...base, protocol: 'tcp' }),
++    pingSeriesId({ ...base, family: 'ipv4' }),
++    pingSeriesId({ ...base, family: '' }),
++    pingSeriesId({ taskId: '28", "ipv6', family: 'icmp' }),
++  ]
++  assert.equal(new Set(ids).size, ids.length)
++  assert.equal(pingSeriesId({ taskId: 28 }), pingSeriesId({ taskId: '28', family: '', protocol: '', role: '' }))
++  assert.match(pingSeriesLabel('Example', { ...base, role: 'reference' }), /IPV6 \/ ICMP \/ 参考/)
++  assert.match(pingSeriesLabel('Example', { taskId: 28 }), /族未知 \/ 协议未知 \/ 角色未标记/)
++})
++
++it('draws and smooths keyed groups separately', () => {
++  const first = pingSeriesId({ taskId: 28, family: 'ipv6', protocol: 'icmp' })
++  const second = pingSeriesId({ taskId: 28, family: 'ipv6', protocol: 'icmp', role: 'reference' })
++  const rows = [
++    { time: '2026-11-01T00:00:00Z', [first]: 40, [second]: 200 },
++    { time: '2026-11-01T00:01:00Z', [first]: 50, [second]: 210 },
++  ]
++  const tasks = [{ id: first, name: 'primary', interval: 60 }, { id: second, name: 'reference', interval: 60 }]
++  const smoothed = smoothPingChartRows(rows, tasks, 1)
++  assert.equal(createPingSeries(rows, tasks[0]!, 1, 'red', true, false)[0]!.data[0]![1], 40)
++  assert.equal(createPingSeries(rows, tasks[1]!, 1, 'blue', true, false)[0]!.data[0]![1], 200)
++  assert.equal(smoothed[1]![first], 43)
++  assert.equal(smoothed[1]![second], 203)
++})

@@ -2,6 +2,7 @@ package dbcore
 
 import (
 	"archive/zip"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/panellock"
 )
 
 // The tests below cover the two guardrails in the startup recovery branch
@@ -29,6 +31,13 @@ type zipSpec struct {
 // one fails.
 func writeTestZip(t *testing.T, path string, entries ...zipSpec) {
 	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "source.db")
+	createUpgradeFixtureDatabase(t, dbPath, `CREATE TABLE fixture (value TEXT)`, `INSERT INTO fixture VALUES ('restored')`)
+	database, err := os.ReadFile(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries = append([]zipSpec{{"komari.db", string(database)}, {"komari-backup-markup", "marker"}}, entries...)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("create %s: %v", filepath.Dir(path), err)
 	}
@@ -306,8 +315,8 @@ func TestRestoreAbortsWhenSnapshotCannotBeTaken(t *testing.T) {
 		// cannot be created at all: restoring here would leave no copy behind.
 		mustWriteFile(t, filepath.Join(dataDir, "backup"), "not a directory")
 
-		if err := Initialize(); err != nil {
-			t.Fatalf("initialize: %v", err)
+		if err := Initialize(); err == nil || ReadyDBInstance() != nil {
+			t.Fatalf("snapshot failure must prevent database startup: %v", err)
 		}
 
 		// Nothing was deleted and nothing was extracted.
@@ -336,8 +345,8 @@ func TestRestoreAbortsWhenSnapshotCannotBeTaken(t *testing.T) {
 			t.Skip("this platform cannot make a source entry unreadable")
 		}
 
-		if err := Initialize(); err != nil {
-			t.Fatalf("initialize: %v", err)
+		if err := Initialize(); err == nil || ReadyDBInstance() != nil {
+			t.Fatalf("snapshot failure must prevent database startup: %v", err)
 		}
 
 		requireContent(t, filepath.Join(dataDir, "precious.txt"), "keep-me")
@@ -355,13 +364,12 @@ func TestRestoreAbortsWhenSnapshotCannotBeTaken(t *testing.T) {
 // F10 guardrail 2: a failed extraction keeps the archive for a retry
 // ---------------------------------------------------------------------------
 
-func TestRestoreKeepsArchiveAndMarkupWhenExtractionFails(t *testing.T) {
+func TestRestoreRejectsUnsafeArchiveBeforeDataRemoval(t *testing.T) {
 	dir := prepareUpgradeTestWorkspace(t)
 	dataDir := filepath.Join(dir, "data")
 
-	// A valid zip whose second entry escapes the destination directory:
-	// extraction writes the first entry and then fails, which is the worst case
-	// for the archive — and the case that used to delete it anyway.
+	// Even a valid ZIP can contain an unsafe later entry. All entries must be
+	// checked before the original data can be removed.
 	writeTestZip(t, filepath.Join(dataDir, "backup.zip"),
 		zipSpec{"ok.txt", "from-archive"},
 		zipSpec{"../escaped.txt", "must never be written"},
@@ -369,32 +377,21 @@ func TestRestoreKeepsArchiveAndMarkupWhenExtractionFails(t *testing.T) {
 	mustWriteFile(t, filepath.Join(dataDir, "komari-backup-markup"), "markup")
 	mustWriteFile(t, filepath.Join(dataDir, "precious.txt"), "pre-restore state")
 
-	if err := Initialize(); err != nil {
-		t.Fatalf("initialize: %v", err)
+	if err := Initialize(); err == nil || ReadyDBInstance() != nil {
+		t.Fatalf("invalid archive must prevent database startup: %v", err)
 	}
 
 	// The archive and the marker survive, so the next start can retry.
 	requirePresent(t, filepath.Join(dataDir, "backup.zip"))
 	requireContent(t, filepath.Join(dataDir, "komari-backup-markup"), "markup")
-	// Extraction really did fail midway: the first entry landed.
-	requireContent(t, filepath.Join(dataDir, "ok.txt"), "from-archive")
+	// Validation rejects the whole archive before any deletion or extraction.
+	requireAbsent(t, filepath.Join(dataDir, "ok.txt"))
+	requireContent(t, filepath.Join(dataDir, "precious.txt"), "pre-restore state")
 	// The traversal attempt was refused.
 	requireAbsent(t, filepath.Join(dir, "escaped.txt"))
 
-	// The pre-restore snapshot is complete: the central directory has to be
-	// written (and the file closed) before the rename, or this archive would be
-	// unreadable and the only fallback would be a corrupt file.
-	snapshots := preRestoreArchives(t)
-	if len(snapshots) != 1 {
-		t.Fatalf("pre-restore archives = %v, want exactly one", snapshots)
-	}
-	snapshotEntries := archiveEntryNames(t, snapshots[0])
-	requireContains(t, snapshotEntries, "precious.txt")
-	requireReadableEntry(t, snapshots[0], "precious.txt", "pre-restore state")
-	for _, name := range snapshotEntries {
-		if filepath.Base(name) == "backup.zip" {
-			t.Fatalf("snapshot carries the archive it is meant to be independent of: %v", snapshotEntries)
-		}
+	if snapshots := preRestoreArchives(t); len(snapshots) != 0 {
+		t.Fatalf("invalid archive should not start a restore: %v", snapshots)
 	}
 	requireNoPartialArtifacts(t, dataDir)
 }
@@ -408,8 +405,8 @@ func TestRestoreSucceedsOnRetryAfterExtractionFailure(t *testing.T) {
 	)
 	mustWriteFile(t, filepath.Join(dataDir, "komari-backup-markup"), "markup")
 
-	if err := Initialize(); err != nil {
-		t.Fatalf("initialize: %v", err)
+	if err := Initialize(); err == nil || ReadyDBInstance() != nil {
+		t.Fatalf("invalid archive must prevent database startup: %v", err)
 	}
 	// First attempt failed and is still pending.
 	requirePresent(t, filepath.Join(dataDir, "backup.zip"))
@@ -426,6 +423,210 @@ func TestRestoreSucceedsOnRetryAfterExtractionFailure(t *testing.T) {
 	requireAbsent(t, filepath.Join(dataDir, "backup.zip"))
 	requireAbsent(t, filepath.Join(dataDir, "komari-backup-markup"))
 	requireNoPartialArtifacts(t, dataDir)
+}
+
+// Simulate a crash after a durable pre-restore snapshot and destructive cleanup.
+// A fresh initialization must use that snapshot, not snapshot the partial data.
+func TestRestoreResumesOnlyJournaledArchive(t *testing.T) {
+	dir := prepareUpgradeTestWorkspace(t)
+	dataDir := filepath.Join(dir, "data")
+	archive := filepath.Join(dataDir, "backup.zip")
+	backupDir := filepath.Join(dataDir, "backup")
+	writeTestZip(t, archive, zipSpec{"restored.txt", "recovered"})
+	mustWriteFile(t, filepath.Join(dataDir, "precious.txt"), "original")
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	name := "pre-restore-before-crash.zip"
+	snapshot := filepath.Join(backupDir, name)
+	if err := zipDirectoryExcludingWithPublish(dataDir, snapshot, map[string]struct{}{archive: {}, backupDir: {}}, true); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := hashFile(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshotDigest, err := hashFile(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(dataDir, restoreStateName)
+	if err := writeRestoreState(statePath, &restoreState{Version: 2, Archive: digest, Snapshot: name, SnapshotSHA256: snapshotDigest}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(dataDir, "precious.txt")); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, filepath.Join(dataDir, "partial.txt"), "partial restore")
+
+	// A failed attempt and repeated restarts retain the original snapshot and do
+	// not open a DB if the archive or independent snapshot cannot be verified.
+	originalArchive, err := os.ReadFile(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(archive, []byte("changed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := Initialize(); err == nil || ReadyDBInstance() != nil {
+			t.Fatalf("changed journaled archive must stop startup: %v", err)
+		}
+		resetDatabaseState()
+	}
+	requireContent(t, filepath.Join(dataDir, "partial.txt"), "partial restore")
+	requireReadableEntry(t, snapshot, "precious.txt", "original")
+	if err := os.WriteFile(archive, originalArchive, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(snapshot, snapshot+".held"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Initialize(); err == nil || ReadyDBInstance() != nil {
+		t.Fatalf("missing independent snapshot must stop startup: %v", err)
+	}
+	resetDatabaseState()
+	if err := os.Rename(snapshot+".held", snapshot); err != nil {
+		t.Fatal(err)
+	}
+	// A different, valid ZIP at the same name is not the original snapshot.
+	originalSnapshot, err := os.ReadFile(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestZip(t, snapshot, zipSpec{"precious.txt", "replacement"})
+	if err := Initialize(); err == nil || ReadyDBInstance() != nil {
+		t.Fatalf("replaced independent snapshot must stop startup: %v", err)
+	}
+	resetDatabaseState()
+	requireContent(t, filepath.Join(dataDir, "partial.txt"), "partial restore")
+	if err := os.WriteFile(snapshot, originalSnapshot, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Initialize(); err != nil {
+		t.Fatalf("resume journaled restore: %v", err)
+	}
+	requireContent(t, filepath.Join(dataDir, "restored.txt"), "recovered")
+	requireAbsent(t, filepath.Join(dataDir, "partial.txt"))
+	requireAbsent(t, archive)
+	requireAbsent(t, statePath)
+	if snapshots := preRestoreArchives(t); len(snapshots) != 1 || snapshots[0] != filepath.Join("data", "backup", name) {
+		t.Fatalf("restore replaced or created another snapshot: %v", snapshots)
+	}
+	requireReadableEntry(t, snapshot, "precious.txt", "original")
+}
+
+func TestRestoreJournalWithoutArchiveStopsStartup(t *testing.T) {
+	dir := prepareUpgradeTestWorkspace(t)
+	dataDir := filepath.Join(dir, "data")
+	statePath := filepath.Join(dataDir, restoreStateName)
+	if err := writeRestoreState(statePath, &restoreState{Version: 2, Archive: strings.Repeat("0", 64), Snapshot: "pre-restore-uncertain.zip", SnapshotSHA256: strings.Repeat("0", 64)}); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, filepath.Join(dataDir, "precious.txt"), "keep")
+	for range 2 {
+		if err := Initialize(); err == nil || ReadyDBInstance() != nil {
+			t.Fatalf("journal without archive must stop startup: %v", err)
+		}
+		resetDatabaseState()
+	}
+	requireContent(t, filepath.Join(dataDir, "precious.txt"), "keep")
+	requirePresent(t, statePath)
+	requireAbsent(t, filepath.Join(dataDir, "komari.db"))
+}
+
+func TestPreRestoreSnapshotRejectsSymlink(t *testing.T) {
+	src := t.TempDir()
+	target := filepath.Join(t.TempDir(), "target.txt")
+	mustWriteFile(t, target, "target")
+	if err := os.Symlink(target, filepath.Join(src, "link")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	dst := filepath.Join(t.TempDir(), "pre-restore-symlink.zip")
+	if err := zipDirectoryExcludingWithPublish(src, dst, nil, true); err == nil {
+		t.Fatal("snapshot silently followed a symlink")
+	}
+	requireAbsent(t, dst)
+	requireAbsent(t, dst+partialArchiveSuffix)
+	requireContent(t, target, "target")
+}
+
+func TestRestoreRejectsLinkedSnapshotDirectory(t *testing.T) {
+	dir := prepareUpgradeTestWorkspace(t)
+	dataDir := filepath.Join(dir, "data")
+	writeTestZip(t, filepath.Join(dataDir, "backup.zip"), zipSpec{"restored.txt", "restored"})
+	mustWriteFile(t, filepath.Join(dataDir, "precious.txt"), "keep")
+	elsewhere := t.TempDir()
+	if err := os.Symlink(elsewhere, filepath.Join(dataDir, "backup")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if err := Initialize(); err == nil || ReadyDBInstance() != nil {
+		t.Fatalf("linked snapshot directory must stop startup: %v", err)
+	}
+	requireContent(t, filepath.Join(dataDir, "precious.txt"), "keep")
+	requireAbsent(t, filepath.Join(dataDir, "restored.txt"))
+	entries, err := os.ReadDir(elsewhere)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("linked directory was modified: entries=%v err=%v", entries, err)
+	}
+}
+
+func TestPreRestoreSnapshotDoesNotOverwriteExistingFile(t *testing.T) {
+	src := t.TempDir()
+	mustWriteFile(t, filepath.Join(src, "original.txt"), "snapshot")
+	dst := filepath.Join(t.TempDir(), "pre-restore-existing.zip")
+	mustWriteFile(t, dst, "previous copy")
+	if err := zipDirectoryExcludingWithPublish(src, dst, nil, true); err == nil {
+		t.Fatal("exclusive snapshot overwrote an existing file")
+	}
+	requireContent(t, dst, "previous copy")
+	requireAbsent(t, dst+partialArchiveSuffix)
+	if err := os.Remove(dst); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, dst+partialArchiveSuffix, "previous partial")
+	if err := zipDirectoryExcludingWithPublish(src, dst, nil, true); err == nil {
+		t.Fatal("exclusive snapshot overwrote an existing partial file")
+	}
+	requireContent(t, dst+partialArchiveSuffix, "previous partial")
+	requireAbsent(t, dst)
+}
+
+func TestRestoreKeepsTheLockedInode(t *testing.T) {
+	dir := prepareUpgradeTestWorkspace(t)
+	dataDir := filepath.Join(dir, "data")
+	lease, err := panellock.Acquire(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	lockPath := filepath.Join(dataDir, panellock.FileName)
+	before, err := os.Stat(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestZip(t, filepath.Join(dataDir, "backup.zip"), zipSpec{"restored.txt", "recovered"})
+	if err := Initialize(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(lockPath)
+	if err != nil || !os.SameFile(before, after) || !after.Mode().IsRegular() {
+		t.Fatalf("restore replaced panel lock: before=%v after=%v err=%v", before, after, err)
+	}
+	if second, err := panellock.Acquire(dataDir); !errors.Is(err, panellock.ErrInUse) {
+		if second != nil {
+			_ = second.Close()
+		}
+		t.Fatalf("restore lost panel lock: %v", err)
+	}
+	requireContent(t, filepath.Join(dataDir, "restored.txt"), "recovered")
+	for _, path := range preRestoreArchives(t) {
+		for _, name := range archiveEntryNames(t, path) {
+			if name == panellock.FileName {
+				t.Fatal("snapshot included the active lock")
+			}
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -503,6 +704,8 @@ func TestRestoreSnapshotArchiveIsComplete(t *testing.T) {
 	writeTestZip(t, filepath.Join(dataDir, "backup.zip"), zipSpec{"restored.txt", "recovered"})
 	mustWriteFile(t, filepath.Join(dataDir, "komari-backup-markup"), "markup")
 	mustWriteFile(t, filepath.Join(dataDir, "config.yaml"), "pre-restore config")
+	mustWriteFile(t, filepath.Join(dataDir, ".backup-pending-earlier.zip"), "uncertain earlier handoff")
+	mustWriteFile(t, filepath.Join(dataDir, ".restore-state-earlier"), "retained journal evidence")
 
 	if err := Initialize(); err != nil {
 		t.Fatalf("initialize: %v", err)
@@ -520,5 +723,7 @@ func TestRestoreSnapshotArchiveIsComplete(t *testing.T) {
 	requireAbsent(t, filepath.Join(dataDir, "backup.zip"))
 	requireAbsent(t, filepath.Join(dataDir, "komari-backup-markup"))
 	requireContent(t, filepath.Join(dataDir, "restored.txt"), "recovered")
+	requireContent(t, filepath.Join(dataDir, ".backup-pending-earlier.zip"), "uncertain earlier handoff")
+	requireContent(t, filepath.Join(dataDir, ".restore-state-earlier"), "retained journal evidence")
 	requireNoPartialArtifacts(t, dataDir)
 }

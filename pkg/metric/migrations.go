@@ -13,7 +13,12 @@ import (
 // Existing installations are rebuilt explicitly by the administrator guide,
 // rather than being changed during startup.
 func (s *Store) Migrate(ctx context.Context) error {
+	s.retentionMu.Lock()
+	defer s.retentionMu.Unlock()
 	if err := s.ensureOpen(); err != nil {
+		return err
+	}
+	if err := s.pendingCommitError(); err != nil {
 		return err
 	}
 	for _, statement := range s.normalizedSchemaStatements() {

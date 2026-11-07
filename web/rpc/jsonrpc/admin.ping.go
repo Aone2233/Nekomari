@@ -2,13 +2,19 @@ package jsonrpc
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"time"
 
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/database/tasks"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 	"github.com/Aone2233/nekomari/utils"
 	logger "github.com/Aone2233/nekomari/utils/log"
+	agentRuntime "github.com/Aone2233/nekomari/web/agent"
 )
+
+var pinnedDiagnosticSlots = make(chan struct{}, 8)
 
 // admin.ping.go
 // 延迟监测任务（ping task）的 RPC2 方法（admin 命名空间）。
@@ -39,70 +45,176 @@ func init() {
 		Summary: "Reorder ping tasks (map of id->weight)",
 		Returns: "null",
 	})
+	RegisterWithGroupAndMeta("getPinnedPingDiagnostic", rpc.RoleAdmin, adminGetPinnedPingDiagnostic, &rpc.MethodMeta{
+		Name:    "admin:getPinnedPingDiagnostic",
+		Summary: "Inspect a current family-pinned task assignment",
+		Returns: "PinnedDiagnosticSnapshot",
+	})
+	RegisterWithGroupAndMeta("getPingScheduleState", rpc.RoleAdmin, adminGetPingScheduleState, &rpc.MethodMeta{
+		Name: "admin:getPingScheduleState", Summary: "Inspect whether the last ping schedule reload failed",
+		Returns: "{ reload_pending: bool }",
+	})
 }
 
-func adminAddPingTask(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+func adminGetPingScheduleState(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	return map[string]bool{"reload_pending": tasks.PingScheduleReloadPending()}, nil
+}
+
+func adminGetPinnedPingDiagnostic(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
 	var params struct {
-		Clients   []string `json:"clients"`
-		DefaultOn bool     `json:"default_on"`
-		Name      string   `json:"name"`
-		Target    string   `json:"target"`
-		TaskType  string   `json:"type"`
-		Interval  int      `json:"interval"`
-		Reference string   `json:"reference"`
+		TaskID uint   `json:"task_id"`
+		Client string `json:"client"`
 	}
-	req.BindParams(&params)
+	if err := req.BindParams(&params); err != nil || params.TaskID == 0 || params.Client == "" || len(params.Client) > 64 {
+		return nil, rpc.MakeError(rpc.InvalidParams, "task_id and client are required", nil)
+	}
+	// Keep even authenticated inspection from accumulating unbounded waiters
+	// on task and credential guards during reconnects or database contention.
+	select {
+	case pinnedDiagnosticSlots <- struct{}{}:
+		defer func() { <-pinnedDiagnosticSlots }()
+	default:
+		return nil, rpc.MakeError(rpc.Unavailable, "pinned diagnostic busy; retry later", nil)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	bounded, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	snapshot, err := agentRuntime.SnapshotPinnedDiagnostic(bounded, params.TaskID, params.Client)
+	if errors.Is(err, agentRuntime.ErrPinnedDiagnosticNotFound) {
+		return nil, rpc.MakeError(rpc.NotFound, "pinned task assignment not found", nil)
+	}
+	if err != nil {
+		return nil, rpc.MakeError(rpc.Unavailable, "pinned diagnostic unavailable; retry later", nil)
+	}
+	return snapshot, nil
+}
+
+func adminAddPingTask(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	return adminAddPingTaskWith(ctx, req, tasks.AddPingTaskPinned)
+}
+
+// A nil callback disables family-pinned creation for isolated callers.
+func adminAddPingTaskWith(ctx context.Context, req *rpc.JsonRpcRequest, addPinned func(context.Context, *models.PingTask) error) (any, *rpc.JsonRpcError) {
+	var params struct {
+		Clients      []string `json:"clients"`
+		DefaultOn    bool     `json:"default_on"`
+		Name         string   `json:"name"`
+		Target       string   `json:"target"`
+		TaskType     string   `json:"type"`
+		Interval     int      `json:"interval"`
+		Reference    string   `json:"reference"`
+		TargetFamily string   `json:"target_family"`
+	}
+	if err := req.BindParams(&params); err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request data", nil)
+	}
 	if params.Name == "" || params.Target == "" || params.TaskType == "" || params.Interval == 0 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "name, target, type and interval are required", nil)
 	}
 	if !params.DefaultOn && len(params.Clients) == 0 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "clients is required when default_on is false", nil)
 	}
-	// A hostname target with probes that can land on different address families
-	// reports two different paths as one number; refuse it at creation. See
-	// utils.ValidatePingTaskTargetFamily for the rule and the evidence.
-	if err := utils.ValidatePingTaskTargetFamily(params.Target, params.DefaultOn, params.Clients); err != nil {
-		return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
+	if params.TargetFamily != "" {
+		if addPinned == nil {
+			return nil, rpc.MakeError(rpc.InvalidParams, "family-pinned tasks are not available yet", nil)
+		}
+		if err := utils.ValidatePinnedPingTarget(params.Target, params.TaskType, params.TargetFamily); err != nil {
+			return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
+		}
+		task := models.PingTask{Name: params.Name, Target: params.Target, Type: params.TaskType,
+			TargetFamily: params.TargetFamily, Reference: params.Reference, DefaultOn: params.DefaultOn,
+			Clients: models.StringArray(params.Clients), Interval: params.Interval}
+		if err := addPinned(ctx, &task); err != nil {
+			var pending *tasks.ScheduleReloadPendingError
+			if errors.As(err, &pending) {
+				return nil, rpc.MakeCommittedError(rpc.Unavailable, fmt.Sprintf("Task %d was saved, but its schedule did not reload. Do not create it again; refresh the task list and contact the administrator.", pending.TaskID), "ping_create_schedule_pending", pending.TaskID)
+			}
+			var validation *tasks.PingTaskValidationError
+			if errors.As(err, &validation) {
+				return nil, rpc.MakeError(rpc.InvalidParams, validation.Error(), nil)
+			}
+			return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
+		}
+		return map[string]any{"task_id": task.Id}, nil
 	}
+	// The legacy hostname/family rule is checked inside the task-creation
+	// transaction, rather than against an earlier RPC-layer snapshot.
 	taskID, err := tasks.AddPingTask(params.Clients, params.DefaultOn, params.Name, params.Target, params.TaskType, params.Interval, params.Reference)
 	if err != nil {
+		var validation *tasks.PingTaskValidationError
+		if errors.As(err, &validation) {
+			return nil, rpc.MakeError(rpc.InvalidParams, validation.Error(), nil)
+		}
+		var pending *tasks.ScheduleReloadPendingError
+		if errors.As(err, &pending) {
+			return nil, rpc.MakeCommittedError(rpc.Unavailable, fmt.Sprintf("Task %d was saved, but its schedule did not reload. Do not create it again; refresh the task list and contact the administrator.", pending.TaskID), "ping_create_schedule_pending", pending.TaskID)
+		}
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
 	}
 	return map[string]any{"task_id": taskID}, nil
 }
 
 func adminDeletePingTask(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	return adminDeletePingTaskWith(req, tasks.DeletePingTask)
+}
+
+func adminDeletePingTaskWith(req *rpc.JsonRpcRequest, deleteTasks func([]uint) error) (any, *rpc.JsonRpcError) {
 	var params struct {
 		ID []uint `json:"id"`
 	}
-	req.BindParams(&params)
-	if len(params.ID) == 0 {
+	if err := req.BindParams(&params); err != nil || len(params.ID) == 0 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "id is required", nil)
 	}
-	if err := tasks.DeletePingTask(params.ID); err != nil {
+	if err := deleteTasks(params.ID); err != nil {
+		var pending *tasks.PingDeletionPendingError
+		if errors.As(err, &pending) {
+			return nil, rpc.MakeCommittedError(rpc.Unavailable, "Tasks were deleted, but history cleanup or schedule reload is pending. Do not delete them again; refresh the task list and contact the administrator.", "ping_delete_cleanup_pending", 0)
+		}
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
 	}
 	return nil, nil
 }
 
 func adminEditPingTask(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
-	var params struct {
-		Tasks []*models.PingTask `json:"tasks"`
+	return adminEditPingTaskWith(req, true, tasks.EditPingTask)
+}
+
+func adminEditPingTaskWith(req *rpc.JsonRpcRequest, allowPinned bool, editTasks func([]tasks.PingTaskEdit) error) (any, *rpc.JsonRpcError) {
+	type pingTaskEdit struct {
+		models.PingTask
+		Reference *string `json:"reference"`
+		Family    *string `json:"target_family"`
 	}
-	req.BindParams(&params)
+	var params struct {
+		Tasks []*pingTaskEdit `json:"tasks"`
+	}
+	if err := req.BindParams(&params); err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request data", nil)
+	}
 	if len(params.Tasks) == 0 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request data", nil)
 	}
+	edits := make([]tasks.PingTaskEdit, 0, len(params.Tasks))
 	for _, task := range params.Tasks {
 		if task == nil {
 			return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request data", nil)
 		}
-		// An edit is another way to create the mixture, so the same rule applies.
-		if err := utils.ValidatePingTaskTargetFamily(task.Target, task.DefaultOn, task.Clients); err != nil {
-			return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
+		if !allowPinned && task.Family != nil && *task.Family != "" {
+			return nil, rpc.MakeError(rpc.InvalidParams, "family-pinned tasks are not available yet", nil)
 		}
+		edits = append(edits, tasks.PingTaskEdit{Task: &task.PingTask, Reference: task.Reference, Family: task.Family})
 	}
-	if err := tasks.EditPingTask(params.Tasks); err != nil {
+	if err := editTasks(edits); err != nil {
+		var pending *tasks.ScheduleReloadPendingError
+		if errors.As(err, &pending) {
+			return nil, rpc.MakeCommittedError(rpc.Unavailable, "Changes were saved, but the schedule did not reload. Refresh the task list and contact the administrator.", "ping_edit_schedule_pending", 0)
+		}
+		var validation *tasks.PingTaskValidationError
+		if errors.As(err, &validation) {
+			return nil, rpc.MakeError(rpc.InvalidParams, validation.Error(), nil)
+		}
 		return nil, rpc.MakeError(rpc.InternalError, err.Error(), nil)
 	}
 	return nil, nil

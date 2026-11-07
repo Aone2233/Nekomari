@@ -55,6 +55,8 @@ func SetConnectedClients(uuid string, conn *connection.SafeConn) {
 // ReplaceConnectedClient makes connection replacement and generation fencing
 // atomic. A concurrent handshake cannot leave an untracked old socket current.
 func ReplaceConnectedClient(uuid string, conn *connection.SafeConn) *connection.SafeConn {
+	unlock := lockPinnedSessionLifecycle(uuid)
+	defer unlock()
 	mu.Lock()
 	defer mu.Unlock()
 	old := connectedClients[uuid]
@@ -80,6 +82,8 @@ func IsV2Client(uuid string) bool {
 }
 
 func DeleteClientConditionally(uuid string, connToRemove *connection.SafeConn) {
+	unlock := lockPinnedSessionLifecycle(uuid)
+	defer unlock()
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -91,6 +95,8 @@ func DeleteClientConditionally(uuid string, connToRemove *connection.SafeConn) {
 	}
 }
 func DeleteConnectedClients(uuid string) {
+	unlock := lockPinnedSessionLifecycle(uuid)
+	defer unlock()
 	mu.Lock()
 	defer mu.Unlock()
 	// 只从 map 中删除，不再负责关闭连接
@@ -102,6 +108,8 @@ func DeleteConnectedClients(uuid string) {
 // ResetClient retires connection/presence/commands but preserves measurements.
 // Transport close bypasses the writer mutex so a stalled peer cannot pin reset.
 func ResetClient(uuid string) {
+	unlock := lockPinnedSessionLifecycle(uuid)
+	defer unlock()
 	mu.Lock()
 	conn := connectedClients[uuid]
 	delete(connectedClients, uuid)

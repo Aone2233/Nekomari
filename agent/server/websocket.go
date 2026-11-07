@@ -374,14 +374,29 @@ func connectWebSocket(websocketEndpoint string) (*ws.SafeConn, error) {
 }
 
 func handleWebSocketMessages(conn *ws.SafeConn, done chan<- struct{}) {
-	handleWebSocketMessagesWithHandshake(conn, done, pinnedHandshakeTick, newPinnedWSHandshake())
+	handleWebSocketMessagesWithController(conn, done, pinnedHandshakeTick, newPinnedWSHandshake(), enablePinnedProbeExecution)
+}
+
+// A permit is issued only on this active, authenticated socket; the panel
+// still decides whether to dispatch and independently fences each result.
+func enablePinnedProbeExecution(c *pinnedWSController) {
+	c.probeDispatch = c.launchPinnedDispatch
 }
 
 func handleWebSocketMessagesWithHandshake(conn pinnedHandshakeConn, done chan<- struct{}, renewal time.Duration, handshake *pinnedWSHandshake) {
+	handleWebSocketMessagesWithController(conn, done, renewal, handshake, nil)
+}
+
+// configure can inject a test resolver and dialer; production uses the real
+// resolver and enables only session-bound probe execution.
+func handleWebSocketMessagesWithController(conn pinnedHandshakeConn, done chan<- struct{}, renewal time.Duration, handshake *pinnedWSHandshake, configure func(*pinnedWSController)) {
 	defer close(done)
 	var controller *pinnedWSController
 	if handshake != nil && renewal > 0 {
 		controller = &pinnedWSController{conn: conn, handshake: handshake}
+		if configure != nil {
+			configure(controller)
+		}
 		defer controller.clear()
 		if socket, ok := conn.(*ws.SafeConn); ok {
 			attachPinnedWSSession(socket, controller)

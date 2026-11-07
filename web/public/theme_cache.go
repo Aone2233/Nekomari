@@ -527,6 +527,12 @@ func PrewarmDefaultThemeCache() {
 	_ = prewarmDefaultThemeCacheAsync()
 }
 
+// PrewarmDefaultThemeCacheDone allows the server to join the background disk
+// writer before closing its data directory. A cache failure remains best effort.
+func PrewarmDefaultThemeCacheDone() <-chan struct{} {
+	return prewarmDefaultThemeCacheAsync()
+}
+
 // prewarmDefaultThemeCacheAsync 与 PrewarmDefaultThemeCache 相同，但交还一个在后台那次
 // 物化结束后关闭的 channel。
 //

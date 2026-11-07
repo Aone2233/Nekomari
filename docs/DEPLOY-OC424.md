@@ -3,6 +3,34 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## Theme checkpoint (2026-11-06 10:52 UTC)
+
+The active `emerald-insights` theme was atomically exchanged from official
+v2.0.5 to the official v2.0.6 source plus the local compatibility patch at
+[`deploy/theme-patches/emerald-insights-v2.0.6`](../deploy/theme-patches/emerald-insights-v2.0.6/README.md).
+This is **not** an unmodified official release: the manifest retains the same
+short and v2.0.6 so existing settings are not switched. A later online update
+will replace the patch. The tested bundle SHA-256 is
+`12d7a267899f390dfa596417ba3d140e0ed4a3ae1acf22086140cfa6b12342e2`.
+The online original and candidate assets are retained for already-open pages.
+The pre-switch tree is under
+`/opt/nekomari/rollbacks/emerald-20261106T1055Z/original` (with a second
+`original-swap` copy); roll back the theme only, never restore old databases
+over the live ones. The prepared, syntax-checked (not production-executed)
+`rollback-theme.sh` verifies the original file hashes, retains candidate assets,
+and exchanges the theme tree; inspect its preconditions before using it.
+
+The panel remains `v1.7.29/94e1973`, healthy with zero restarts. Both SQLite
+quick checks pass, 14/14 registered nodes have recent retained CPU buckets,
+and the 14 UUID/token pairs match the newly owner-confirmed pre-change
+baseline. Origin and public endpoints serve the new index and both new/old
+chart assets. Chromium renders the served bundle with mocked responses; it
+does not establish authenticated production-page acceptance. The owner still
+needs to check HK04 and MegaBox after a full reload.
+
+Fresh encrypted pre/post archives are on MAC-WAN; details and the unrelated
+scheduled-lock failure are in [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
+
 **Security/backup supersession, 2026-10-28 23:53 Asia/Shanghai:** the owner reports OVH
 has been relinquished. OVH is not a current trusted receiver or test host;
 historical plaintext backup exposure and replacement backup/health gates are

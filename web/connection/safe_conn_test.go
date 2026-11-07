@@ -387,10 +387,69 @@ func TestSafeConnOnCloseOnce(t *testing.T) {
 	if err := sc.Close(); err != nil {
 		t.Fatal(err)
 	}
-	// 第二次关闭连接已关闭：返回错误是预期行为，OnClose 只应触发一次。
+	// Repeated closes share the first result, and OnClose fires only once.
 	_ = sc.Close()
 	_, _, _, closes := rec.calls()
 	if closes != 1 {
 		t.Fatalf("OnClose fired %d times", closes)
+	}
+}
+
+type blockingCloseInterceptor struct {
+	recordingInterceptor
+	started chan struct{}
+	release chan struct{}
+}
+
+func (i *blockingCloseInterceptor) OnClose(*ConnInfo) {
+	close(i.started)
+	<-i.release
+}
+
+func TestSafeConnConcurrentCloseWaitsForHook(t *testing.T) {
+	server := wsEchoServer(t)
+	defer server.Close()
+	sc := dialEcho(t, server)
+	interceptor := &blockingCloseInterceptor{started: make(chan struct{}), release: make(chan struct{})}
+	sc.SetInterceptor(&ConnInfo{ID: sc.ID}, interceptor)
+	first, second := make(chan error, 1), make(chan error, 1)
+	go func() { first <- sc.Close() }()
+	<-interceptor.started
+	go func() { second <- sc.Close() }()
+	select {
+	case err := <-second:
+		t.Fatalf("concurrent close returned before hook: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(interceptor.release)
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-second; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSafeConnConcurrentCloseWaitsForLifecycleCallback(t *testing.T) {
+	server := wsEchoServer(t)
+	defer server.Close()
+	sc := dialEcho(t, server)
+	started, release := make(chan struct{}), make(chan struct{})
+	sc.SetOnClose(func() { close(started); <-release })
+	first, second := make(chan error, 1), make(chan error, 1)
+	go func() { first <- sc.Close() }()
+	<-started
+	go func() { second <- sc.Close() }()
+	select {
+	case err := <-second:
+		t.Fatalf("concurrent close returned before lifecycle callback: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(release)
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-second; err != nil {
+		t.Fatal(err)
 	}
 }

@@ -1,0 +1,44 @@
+# Emerald Insights v2.0.6 compatibility patch
+
+This is a patch to the existing third-party online theme, **not** a new theme.
+The upstream baseline is Chen017/komari-theme-emerald-insights, annotated tag
+`v2.0.6`, peeled commit `969a463b5041ce584c87f25ec295cde1af457e47`.
+The upstream release archive SHA-256 is
+`726cead65fca7375ef2b086ecefbdf0ab7c32e5c20793cc7c9edb874a425849a`.
+The production bundle built here is locally modified; it must never be called
+an unmodified official release. Its manifest stays at v2.0.6 to preserve the
+existing managed settings and theme identity. Reinstalling/updating the theme
+from the market replaces this patch, so revalidate after every online update.
+
+The upstream v2.0.6 fixes long-range chart time alignment. This patch additionally:
+
+- Handles nullable `loss` and `p99_p50_ratio`; unknown loss is not displayed as 0%.
+- Keeps task ID, actual address family, protocol and role as distinct chart
+  identities. Missing labels remain separate rather than guessed; where old
+  ungrouped stats cannot be matched safely, do not attach a tagged curve.
+- Computes legacy-interface statistics separately from the returned samples;
+  escapes task labels inserted into the chart tooltip.
+
+`nekomari.patch` is against the exact upstream commit, including regression
+unit tests. The upstream tag ignores its lockfile. `bun.lock` records this
+build's independently resolved dependency tree, not upstream release provenance.
+Build with Bun 1.3.14 and Node 22.23.4, apply the patch, copy in the lockfile,
+run `bun install --frozen-lockfile`, `bun run test` and `bun run build`. Vite's
+archive timestamps and build environment can affect byte-for-byte output; use
+the recorded bundle hash as an identity for the tested artifact, not a claim
+that the official zip is reproducible. Do not install a same-short archive
+without a verified backup, a separately retained rollback, and a recheck of the
+actual currently active theme and settings.
+
+2026-11-06 local verification: 81 tests pass, type check/build pass, changed
+files pass ESLint, and Chromium component fixtures cover nullable stats,
+independent multi-series, fallback and 7/30-day smoothing on/off. A production
+bundle fixture also runs at desktop and narrow mobile widths. These fixtures are
+not signed-in production acceptance and cannot prove the actual node data or
+configuration on their own. Built zip SHA-256:
+`12d7a267899f390dfa596417ba3d140e0ed4a3ae1acf22086140cfa6b12342e2`.
+
+The clean-source patch application and a fresh Bun frozen-lockfile install/build
+were also verified. The original tested zip was additionally opened as a full
+mocked instance page in Chromium; the unmodified 2.0.5 and 2.0.6 comparison
+components reproduce the null crash and identity collision.

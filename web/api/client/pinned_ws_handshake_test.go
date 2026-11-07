@@ -1,16 +1,21 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/Aone2233/nekomari/pkg/rpc"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 	agentruntime "github.com/Aone2233/nekomari/web/agent"
 	"github.com/Aone2233/nekomari/web/api"
 	"github.com/Aone2233/nekomari/web/connection"
+	"github.com/gin-gonic/gin"
 )
 
 func pinnedHandshakeRequest(t *testing.T, params v2.PingFamilySessionParams) v2.RawRequest {
@@ -20,6 +25,41 @@ func pinnedHandshakeRequest(t *testing.T, params v2.PingFamilySessionParams) v2.
 		t.Fatal(err)
 	}
 	return v2.RawRequest{JSONRPC: v2.Version, ID: "test", Method: v2.MethodAgentPingFamilySession, Params: b}
+}
+
+func TestPinnedPOSTHandlerRetiresSessionAndRejectsUnauthorized(t *testing.T) {
+	const uuid = "pinned-post-handler"
+	const instance = "0123456789abcdef0123456789abcdef"
+	conn := &connection.SafeConn{}
+	agentruntime.SetConnectedClients(uuid, conn)
+	t.Cleanup(func() { agentruntime.ResetClient(uuid) })
+	challenge, ok := agentruntime.BeginPinnedWSHandshake(uuid, conn, instance, 1)
+	if !ok || !agentruntime.AckPinnedWSHandshake(uuid, conn, instance, challenge) {
+		t.Fatal("session did not activate")
+	}
+	gin.SetMode(gin.TestMode)
+	upload := func(principal *rpc.Principal) *httptest.ResponseRecorder {
+		t.Helper()
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/clients/v2/rpc", bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"method":"fixture.unknown","params":{}}`))
+		c.Set("client_uuid", uuid)
+		api.SetPrincipal(c, principal)
+		UploadV2RPC(c)
+		return w
+	}
+	if got := upload(rpc.NewAnonymousPrincipal()); got.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous POST status = %d", got.Code)
+	}
+	if !agentruntime.PinnedWSSessionCurrent(uuid, conn, instance, challenge, time.Now()) {
+		t.Fatal("unauthorized POST retired the session")
+	}
+	if got := upload(rpc.NewUserPrincipal("fixture-admin")); got.Code != http.StatusBadRequest {
+		t.Fatalf("authenticated unknown method status = %d", got.Code)
+	}
+	if agentruntime.PinnedWSSessionCurrent(uuid, conn, instance, challenge, time.Now()) {
+		t.Fatal("actual POST handler left pinned capability active")
+	}
 }
 
 func TestPinnedPermitResponseRequiresCredentialAdmission(t *testing.T) {
@@ -73,5 +113,38 @@ func TestPinnedWSHandlerRequiresCurrentSocketAndCredential(t *testing.T) {
 	}
 	if response := handleV2RPCOperation(t.Context(), uuid, begin, false, admitted); response.Error == nil || response.Error.Code != -32601 {
 		t.Fatal("generic POST/legacy path accepted WebSocket-only handshake")
+	}
+}
+
+func TestPinnedPOSTTransitionRequiresCredentialAndRetiresSession(t *testing.T) {
+	const uuid = "pinned-post-transition"
+	const instance = "0123456789abcdef0123456789abcdef"
+	conn := &connection.SafeConn{}
+	agentruntime.SetConnectedClients(uuid, conn)
+	t.Cleanup(func() { agentruntime.ResetClient(uuid) })
+	challenge, ok := agentruntime.BeginPinnedWSHandshake(uuid, conn, instance, 1)
+	if !ok || !agentruntime.AckPinnedWSHandshake(uuid, conn, instance, challenge) {
+		t.Fatal("session did not activate")
+	}
+	retired := func(context.Context, func() error) error { return api.ErrClientCredentialRetired }
+	if err := retirePinnedWSForPOST(t.Context(), uuid, retired); !errors.Is(err, api.ErrClientCredentialRetired) {
+		t.Fatalf("retired POST: %v", err)
+	}
+	if !agentruntime.PinnedWSSessionCurrent(uuid, conn, instance, challenge, time.Now()) {
+		t.Fatal("retired credential could disturb the active session")
+	}
+	admitted := func(_ context.Context, fn func() error) error { return fn() }
+	if err := retirePinnedWSForPOST(t.Context(), uuid, admitted); err != nil {
+		t.Fatal(err)
+	}
+	if agentruntime.PinnedWSSessionCurrent(uuid, conn, instance, challenge, time.Now()) || agentruntime.GetConnectedClient(uuid) != conn {
+		t.Fatal("POST did not retire only the pinned session")
+	}
+	if agentruntime.AckPinnedWSHandshake(uuid, conn, instance, challenge) {
+		t.Fatal("old challenge revived after POST transition")
+	}
+	newChallenge, ok := agentruntime.BeginPinnedWSHandshake(uuid, conn, instance, 1)
+	if !ok || newChallenge == challenge || !agentruntime.AckPinnedWSHandshake(uuid, conn, instance, newChallenge) {
+		t.Fatal("new handshake did not recover")
 	}
 }

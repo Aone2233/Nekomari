@@ -68,6 +68,57 @@ func TestWriteJSONContextSkipsBusyWriter(t *testing.T) {
 	}
 }
 
+func TestWriteJSONContextWaitHonorsDeadlineWhenWriterBusy(t *testing.T) {
+	conn := &SafeConn{}
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := conn.WriteJSONContextWait(ctx, "busy"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want deadline exceeded", err)
+	}
+}
+
+func TestWriteJSONContextWaitAllowsWriterToFinish(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		kind, data, err := conn.ReadMessage()
+		if err == nil {
+			_ = conn.WriteMessage(kind, data)
+		}
+	}))
+	defer server.Close()
+	raw, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn := NewSafeConn(raw)
+	defer conn.Close()
+	conn.mu.Lock()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- conn.WriteJSONContextWait(ctx, "control") }()
+	time.Sleep(20 * time.Millisecond)
+	select {
+	case err := <-done:
+		conn.mu.Unlock()
+		t.Fatalf("write returned before writer released lock: %v", err)
+	default:
+	}
+	conn.mu.Unlock()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestReadMessageLimitedCountsDecompressedBytes(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upgrader := websocket.Upgrader{EnableCompression: true}

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/pkg/metric"
 	"gorm.io/driver/sqlite"
@@ -20,6 +21,9 @@ func prepareRecoveryTest(t *testing.T) {
 		t.Fatalf("open config db: %v", err)
 	}
 	config.SetDb(configDB)
+	if err := configDB.AutoMigrate(&models.PingTask{}, &models.PingTaskDeletion{}); err != nil {
+		t.Fatal(err)
+	}
 
 	storeInitMu.Lock()
 	storeMigMu.Lock()

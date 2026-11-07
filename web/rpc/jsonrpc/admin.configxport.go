@@ -1,14 +1,21 @@
 package jsonrpc
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/internal/configxport"
+	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/internal/pingguard"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // exportStore is the panel's configuration as configxport sees it.
@@ -22,7 +29,14 @@ import (
 // document's fields against a store's, and a typed record would have to expose every column to be
 // comparable — including the ones this file exists to keep out. The map is built from an explicit
 // list, so "not exported" and "does not exist" look the same to the planner, which is the intent.
-type exportStore struct{}
+type exportStore struct{ db *gorm.DB }
+
+func (s exportStore) database() *gorm.DB {
+	if s.db != nil {
+		return s.db
+	}
+	return dbcore.GetDBInstance()
+}
 
 // The exportable fields per entity. Named for the same reason `SecretsExcludedFromExport` is:
 // adding a column to a model must not add it to a configuration document by itself.
@@ -43,15 +57,46 @@ var (
 	exportNotificationFields = []string{"client", "enable", "grace_period"}
 )
 
-// settingsSecretSuffixes are the settings keys an export omits unless secrets are requested.
-//
-// Matched by suffix rather than listed, because settings keys are free-form and new ones appear:
-// a list would be a list to forget, and this way a key named `smtp_password` or `oauth_secret` is
-// excluded by its name alone.
-var settingsSecretSuffixes = []string{"password", "secret", "token", "api_key", "apikey", "private_key"}
+// Settings are free-form: a key that does not sound secret may contain a DSN,
+// a URL with credentials, a nested object, or an internal migration marker.
+// Only reviewed scalar settings are included in the ordinary export. All
+// other keys require the explicit sensitive export, not a suffix guess.
+var ordinaryExportSettings = map[string]string{
+	config.SitenameKey:                                    "string",
+	config.DescriptionKey:                                 "string",
+	config.CorsOriginCheckEnabledKey:                      "bool",
+	config.CorsAllowedOriginsKey:                          "string",
+	config.WsOriginCheckEnabledKey:                        "bool",
+	config.WsAllowedOriginsKey:                            "string",
+	config.ThemeKey:                                       "string",
+	config.PrivateSiteKey:                                 "bool",
+	config.SendIpAddrToGuestKey:                           "bool",
+	config.VisitorAuditEnabledKey:                         "bool",
+	config.SSRFProtectionEnabledKey:                       "bool",
+	config.EulaAcceptedKey:                                "bool",
+	config.GeoIpEnabledKey:                                "bool",
+	config.GeoIpProviderKey:                               "string",
+	config.OAuthEnabledKey:                                "bool",
+	config.OAuthProviderKey:                               "string",
+	config.DisablePasswordLoginKey:                        "bool",
+	config.NotificationEnabledKey:                         "bool",
+	config.NotificationMethodKey:                          "string",
+	config.ExpireNotificationEnabledKey:                   "bool",
+	config.ExpireNotificationLeadDaysKey:                  "number",
+	config.LoginNotificationKey:                           "bool",
+	config.TrafficLimitPercentageKey:                      "number",
+	config.TrafficMonthRotateKey:                          "number",
+	metricstore.MetricDBDriverKey:                         "string",
+	metricstore.MetricTablePrefixKey:                      "string",
+	metricstore.MetricMaxOpenConnsKey:                     "number",
+	metricstore.MetricMaxIdleConnsKey:                     "number",
+	metricstore.MetricRollupMinuteRetentionMinutesKey:     "number",
+	metricstore.MetricRollupFiveMinuteRetentionMinutesKey: "number",
+	metricstore.MetricRollupHourRetentionHoursKey:         "number",
+}
 
-func (exportStore) ExportClients(includeSecrets bool) ([]map[string]any, error) {
-	db := dbcore.GetDBInstance()
+func (s exportStore) ExportClients(includeSecrets bool) ([]map[string]any, error) {
+	db := s.database()
 	if db == nil {
 		return nil, fmt.Errorf("database not initialized")
 	}
@@ -74,8 +119,8 @@ func (exportStore) ExportClients(includeSecrets bool) ([]map[string]any, error) 
 	return out, nil
 }
 
-func (exportStore) ExportPingTasks() ([]map[string]any, error) {
-	db := dbcore.GetDBInstance()
+func (s exportStore) ExportPingTasks() ([]map[string]any, error) {
+	db := s.database()
 	if db == nil {
 		return nil, fmt.Errorf("database not initialized")
 	}
@@ -85,17 +130,36 @@ func (exportStore) ExportPingTasks() ([]map[string]any, error) {
 	}
 	out := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
+		id, err := uuid.Parse(row.ConfigUID)
+		if err != nil || id == uuid.Nil || id.String() != row.ConfigUID {
+			return nil, fmt.Errorf("ping task %d has an invalid configuration identity", row.Id)
+		}
+		if row.TargetFamily == "" && row.PinnedGeneration != "" {
+			return nil, fmt.Errorf("ping task %d has an inconsistent family-pinned configuration", row.Id)
+		}
+		if row.TargetFamily != "" && row.TargetFamily != "ipv4" && row.TargetFamily != "ipv6" {
+			return nil, fmt.Errorf("ping task %d has an invalid target family", row.Id)
+		}
+		if row.TargetFamily != "" && !pingguard.ValidGeneration(row.PinnedGeneration) {
+			return nil, fmt.Errorf("ping task %d has an invalid family-pinned generation", row.Id)
+		}
 		record, err := toRecord(row, exportPingTaskFields)
 		if err != nil {
 			return nil, fmt.Errorf("ping task %d: %w", row.Id, err)
+		}
+		record["config_uid"] = row.ConfigUID
+		// Runtime generations must not be restored; a future safe importer must
+		// issue a fresh one. Preserve the public pin so it cannot be lost.
+		if row.TargetFamily != "" {
+			record["target_family"] = row.TargetFamily
 		}
 		out = append(out, record)
 	}
 	return out, nil
 }
 
-func (exportStore) ExportMaintenanceWindows() ([]map[string]any, error) {
-	db := dbcore.GetDBInstance()
+func (s exportStore) ExportMaintenanceWindows() ([]map[string]any, error) {
+	db := s.database()
 	if db == nil {
 		return nil, fmt.Errorf("database not initialized")
 	}
@@ -105,19 +169,37 @@ func (exportStore) ExportMaintenanceWindows() ([]map[string]any, error) {
 	}
 	out := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
+		id, err := uuid.Parse(row.ConfigUID)
+		if err != nil || id == uuid.Nil || id.String() != row.ConfigUID {
+			return nil, fmt.Errorf("maintenance window %d has an invalid configuration identity", row.ID)
+		}
 		record, err := toRecord(row, exportWindowFields)
 		if err != nil {
 			return nil, fmt.Errorf("maintenance window %d: %w", row.ID, err)
 		}
+		record["config_uid"] = row.ConfigUID
 		out = append(out, record)
 	}
 	return out, nil
 }
 
-func (exportStore) ExportSettings(includeSecrets bool) (map[string]any, error) {
-	all, err := config.GetAll()
-	if err != nil {
+func (s exportStore) ExportSettings(includeSecrets bool) (map[string]any, error) {
+	db := s.database()
+	if db == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+	var items []config.ConfigItem
+	if err := db.Find(&items).Error; err != nil {
 		return nil, err
+	}
+	all := make(map[string]any, len(items))
+	for _, item := range items {
+		var value any
+		decoder := json.NewDecoder(strings.NewReader(item.Value))
+		decoder.UseNumber()
+		if err := decoder.Decode(&value); err == nil {
+			all[item.Key] = value
+		}
 	}
 	delete(all, config.ApiKeyKey)
 	if includeSecrets {
@@ -125,7 +207,7 @@ func (exportStore) ExportSettings(includeSecrets bool) (map[string]any, error) {
 	}
 	out := make(map[string]any, len(all))
 	for key, value := range all {
-		if isSecretSetting(key) {
+		if !isOrdinaryExportSetting(key, value) {
 			continue
 		}
 		out[key] = value
@@ -133,8 +215,8 @@ func (exportStore) ExportSettings(includeSecrets bool) (map[string]any, error) {
 	return out, nil
 }
 
-func (exportStore) ExportNotificationConfigs() ([]map[string]any, error) {
-	db := dbcore.GetDBInstance()
+func (s exportStore) ExportNotificationConfigs() ([]map[string]any, error) {
+	db := s.database()
 	if db == nil {
 		return nil, fmt.Errorf("database not initialized")
 	}
@@ -153,8 +235,8 @@ func (exportStore) ExportNotificationConfigs() ([]map[string]any, error) {
 	return out, nil
 }
 
-func (exportStore) CurrentIDs(entity string) (map[string]string, error) {
-	records, err := exportStore{}.Existing(entity)
+func (s exportStore) CurrentIDs(entity string) (map[string]string, error) {
+	records, err := s.Existing(entity)
 	if err != nil {
 		return nil, err
 	}
@@ -195,14 +277,16 @@ func (s exportStore) Existing(entity string) ([]map[string]any, error) {
 	return nil, fmt.Errorf("unknown entity %q", entity)
 }
 
-// identityFieldFor mirrors configxport's identity rule, which is settings-by-key and everything
-// else by uuid.
+// identityFieldFor mirrors the exported record identities used by the planner.
 func identityFieldFor(entity string) string {
 	if entity == "settings" {
 		return "key"
 	}
 	if entity == "ping_tasks" || entity == "maintenance_windows" {
 		return "id"
+	}
+	if entity == "notification_configs" {
+		return "client"
 	}
 	return "uuid"
 }
@@ -218,7 +302,9 @@ func toRecord(model any, fields []string) (map[string]any, error) {
 		return nil, err
 	}
 	var all map[string]any
-	if err := jsonUnmarshal(encoded, &all); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	if err := decoder.Decode(&all); err != nil {
 		return nil, err
 	}
 	record := make(map[string]any, len(fields))
@@ -230,12 +316,21 @@ func toRecord(model any, fields []string) (map[string]any, error) {
 	return record, nil
 }
 
-// isSecretSetting reports whether a settings key names a credential.
-func isSecretSetting(key string) bool {
-	lower := strings.ToLower(key)
-	for _, suffix := range settingsSecretSuffixes {
-		if strings.HasSuffix(lower, suffix) {
+func isOrdinaryExportSetting(key string, value any) bool {
+	switch ordinaryExportSettings[key] {
+	case "string":
+		_, ok := value.(string)
+		return ok
+	case "bool":
+		_, ok := value.(bool)
+		return ok
+	case "number":
+		switch v := value.(type) {
+		case float64:
 			return true
+		case json.Number:
+			_, err := strconv.ParseFloat(string(v), 64)
+			return err == nil
 		}
 	}
 	return false

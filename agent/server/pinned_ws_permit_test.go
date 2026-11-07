@@ -17,9 +17,37 @@ func activePinnedController(t *testing.T) (*pinnedWSController, v2.PingFamilyPro
 	p := pinnedWireFixture()
 	h := &pinnedWSHandshake{instance: p.Instance, challenge: p.Session, active: true, validUntil: time.Now().Add(time.Minute)}
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &pinnedWSController{handshake: h, conn: newPinnedFakeConn(false), sessionContext: ctx, sessionCancel: cancel}
+	c := &pinnedWSController{handshake: h, conn: newPinnedFakeConn(false), sessionContext: ctx, sessionCancel: cancel,
+		probeDispatch: func(v2.PingFamilyProbeParams) {}}
 	t.Cleanup(c.clear)
 	return c, p
+}
+
+func TestPinnedPermitRefusedWhenDispatchDisabled(t *testing.T) {
+	c, p := activePinnedController(t)
+	c.probeDispatch = nil
+	requestID := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	data, err := json.Marshal(v2.Request{JSONRPC: v2.Version, Method: v2.MethodAgentPingFamilyPermit, ID: requestID, Params: permitFor(p, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if handled, err := c.handleProbePermit(data); !handled || err != nil {
+		t.Fatalf("handled=%v err=%v", handled, err)
+	}
+	select {
+	case message := <-c.conn.(*pinnedFakeConn).outbound:
+		response, ok := message.(v2.Response)
+		if !ok || response.ID != requestID || response.Error == nil || response.Result != nil {
+			t.Fatalf("disabled probe advertised a permit: %+v", message)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("disabled dispatch did not reject permit request")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.tickets) != 0 || c.ticketSequence != 0 {
+		t.Fatal("disabled dispatch issued a ticket")
+	}
 }
 
 func permitFor(p v2.PingFamilyProbeParams, sequence uint64) v2.PingFamilyPermitParams {
@@ -63,6 +91,147 @@ func TestPinnedPermitSingleUseAndRetirementCancels(t *testing.T) {
 	awaitPinnedSignal(t, canceled)
 	if _, err := c.issueProbePermit(permitFor(p, 2)); err == nil {
 		t.Fatal("retired session issued permit")
+	}
+}
+
+// A session can renew while a probe is running. The probe must not retain the
+// former lease's earlier deadline when the same session has been renewed.
+func TestPinnedProbeContinuesAcrossTimelyLeaseRenewal(t *testing.T) {
+	c, p := activePinnedController(t)
+	c.mu.Lock()
+	oldDeadline := time.Now().Add(time.Second)
+	c.handshake.validUntil = oldDeadline
+	c.mu.Unlock()
+	issueTestPermit(t, c, &p, 1)
+	started, finish, finished := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	if err := c.launchProbe(p, func(ctx context.Context) {
+		close(started)
+		select {
+		case <-ctx.Done():
+			finished <- ctx.Err()
+		case <-finish:
+			finished <- ctx.Err()
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	awaitPinnedSignal(t, started)
+	c.mu.Lock()
+	renew := c.handshake.renew()
+	c.mu.Unlock()
+	if handled, err := c.handle(pinnedResponse(t, renew.ID, p.Session, nil)); !handled || err != nil {
+		t.Fatalf("renewal: handled=%v err=%v", handled, err)
+	}
+	select {
+	case err := <-finished:
+		t.Fatalf("probe ended before its former lease: %v", err)
+	case <-time.After(time.Until(oldDeadline) + 100*time.Millisecond):
+	}
+	close(finish)
+	select {
+	case err := <-finished:
+		if err != nil {
+			t.Fatalf("timely renewed probe was canceled at its former lease: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("probe did not finish")
+	}
+}
+
+func TestPinnedProbeLeaseExpiryCancelsWithoutFurtherTraffic(t *testing.T) {
+	c, p := activePinnedController(t)
+	c.mu.Lock()
+	c.handshake.validUntil = time.Now().Add(150 * time.Millisecond)
+	c.mu.Unlock()
+	issueTestPermit(t, c, &p, 1)
+	started, stopped := make(chan struct{}), make(chan struct{})
+	if err := c.launchProbe(p, func(ctx context.Context) {
+		close(started)
+		<-ctx.Done()
+		close(stopped)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	awaitPinnedSignal(t, started)
+	awaitPinnedSignal(t, stopped)
+	if _, _, _, _, active := c.current(time.Now()); active {
+		t.Fatal("lease expiry left session active")
+	}
+	if _, err := c.issueProbePermit(permitFor(p, 2)); err == nil {
+		t.Fatal("expired session issued another permit")
+	}
+}
+
+func TestPinnedProbeLeaseExpiryInterruptsBlockedRenewal(t *testing.T) {
+	c, p := activePinnedController(t)
+	conn := newPinnedFakeConn(true)
+	c.conn = conn
+	defer conn.Abort()
+	c.mu.Lock()
+	c.handshake.validUntil = time.Now().Add(time.Second)
+	c.mu.Unlock()
+	issueTestPermit(t, c, &p, 1)
+	started, stopped := make(chan struct{}), make(chan struct{})
+	if err := c.launchProbe(p, func(ctx context.Context) {
+		close(started)
+		<-ctx.Done()
+		close(stopped)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	awaitPinnedSignal(t, started)
+	renewed := make(chan error, 1)
+	go func() { renewed <- c.maintain() }()
+	awaitPinnedSignal(t, conn.writing)
+	select {
+	case <-stopped:
+	case <-time.After(3 * time.Second):
+		conn.Abort()
+		<-renewed
+		t.Fatal("blocked renewal prevented lease expiry from canceling the probe")
+	}
+	select {
+	case err := <-renewed:
+		if err == nil {
+			t.Fatal("blocked renewal unexpectedly succeeded")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("renewal write did not stop at lease expiry")
+	}
+}
+
+func TestPinnedStaleExpiryCallbackPreservesReplacementSession(t *testing.T) {
+	c, _ := activePinnedController(t)
+	c.mu.Lock()
+	started, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		close(started)
+		c.sessionExpiry()
+		close(done)
+	}()
+	<-started
+	oldDone := c.sessionContext.Done()
+	c.retireLocked()
+	c.handshake.challenge = "fedcba9876543210fedcba9876543210"
+	c.handshake.active = true
+	c.handshake.validUntil = time.Now().Add(time.Minute)
+	c.sessionContext, c.sessionCancel = context.WithCancel(context.Background())
+	newDone := c.sessionContext.Done()
+	c.armSessionExpiryLocked()
+	c.mu.Unlock()
+	awaitPinnedSignal(t, done)
+	select {
+	case <-oldDone:
+	default:
+		t.Fatal("replacement did not cancel the old session")
+	}
+	select {
+	case <-newDone:
+		t.Fatal("old expiry callback canceled the replacement session")
+	default:
+	}
+	if _, _, _, _, ok := c.current(time.Now()); !ok {
+		t.Fatal("old expiry callback retired the replacement session")
 	}
 }
 

@@ -43,7 +43,7 @@ type pinnedPermitLease struct {
 }
 
 // retirePinnedWSLocked wakes pending reservations before dropping their
-// session. Callers hold mu, the same lock used for connection replacement.
+// session. Callers hold the node's session guard followed by mu.
 func retirePinnedWSLocked(uuid string) {
 	if s, ok := pinnedWSSessions[uuid]; ok {
 		for _, entry := range s.pending {
@@ -74,6 +74,8 @@ func reservePinnedPermitForSession(uuid string, expectedConn *connection.SafeCon
 	if err != nil {
 		return nil, v2.Request{}, nil, errPinnedReservation
 	}
+	unlock := lockPinnedSessionLifecycle(uuid)
+	defer unlock()
 	mu.Lock()
 	defer mu.Unlock()
 	now := time.Now()
@@ -109,6 +111,8 @@ func reservePinnedPermitForSession(uuid string, expectedConn *connection.SafeCon
 // resolvePinnedPermit consumes only the exact pending request on the current
 // connection. An RPC error completes the waiter as a failure, never a permit.
 func resolvePinnedPermit(uuid string, conn *connection.SafeConn, requestID string, permit *v2.PingFamilyPermitResult) bool {
+	unlock := lockPinnedSessionLifecycle(uuid)
+	defer unlock()
 	mu.Lock()
 	defer mu.Unlock()
 	now := time.Now()
@@ -154,6 +158,8 @@ func ConsumePinnedWSPermitResponse(uuid string, conn *connection.SafeConn, data 
 	if json.Unmarshal(frame.ID, &id) != nil || !validPinnedWSID(id) {
 		return false
 	}
+	unlock := lockPinnedSessionLifecycle(uuid)
+	defer unlock()
 	mu.Lock()
 	defer mu.Unlock()
 	now := time.Now()
@@ -237,29 +243,33 @@ func requestPinnedWSPermitLocked(ctx context.Context, uuid string, conn *connect
 		return pinnedPermitLease{}, errPinnedReservation
 	}
 	p := req.Params.(v2.PingFamilyPermitParams)
+	// Preserve only the identity of an attempted reservation on failure. It
+	// cannot authorize a dispatch, but lets the caller record a fenced,
+	// deliberately nonspecific diagnostic for this sequence.
+	attempt := pinnedPermitLease{conn: conn, instance: p.Instance, session: p.Session, sequence: p.Sequence}
 	writeCtx, cancelWrite := context.WithTimeout(ctx, pinnedWriteWait)
 	err = write(writeCtx, reservedConn, req)
 	cancelWrite()
 	<-lock
 	if err != nil {
 		cancelPinnedPermit(uuid, conn, p.DispatchID)
-		return pinnedPermitLease{}, errPinnedReservation
+		return attempt, errPinnedReservation
 	}
 	timer := time.NewTimer(pinnedPermitTTL)
 	defer timer.Stop()
 	select {
 	case outcome := <-waiter:
 		if outcome.err != nil || ctx.Err() != nil || !PinnedWSSessionCurrent(uuid, conn, p.Instance, session, time.Now()) {
-			return pinnedPermitLease{}, errPinnedReservation
+			return attempt, errPinnedReservation
 		}
 		return pinnedPermitLease{conn: conn, instance: p.Instance, session: p.Session,
 			dispatch: p.DispatchID, ticket: outcome.permit.FreshnessTicket, sequence: p.Sequence,
 			validUntil: outcome.validUntil}, nil
 	case <-ctx.Done():
 		cancelPinnedPermit(uuid, conn, p.DispatchID)
-		return pinnedPermitLease{}, errPinnedReservation
+		return attempt, errPinnedReservation
 	case <-timer.C:
 		cancelPinnedPermit(uuid, conn, p.DispatchID)
-		return pinnedPermitLease{}, errPinnedReservation
+		return attempt, errPinnedReservation
 	}
 }

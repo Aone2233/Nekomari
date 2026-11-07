@@ -14,9 +14,12 @@ import (
 	"time"
 
 	"github.com/Aone2233/nekomari/database/clients"
+	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/database/tasks"
 	"github.com/Aone2233/nekomari/database/unlock"
 	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/internal/pingguard"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 	"github.com/Aone2233/nekomari/utils/notifier"
 	agent_runtime "github.com/Aone2233/nekomari/web/agent"
@@ -132,7 +135,19 @@ func handleV2RPCOperation(ctx context.Context, uuid string, req v2.RawRequest, a
 			return v2.Error(req.ID, -32602, "invalid ping result params", err.Error())
 		}
 		if err := admit(func() error {
-			return metricstore.WritePingRecord(ctx, newPingRecord(uuid, params.TaskID, params.PingType, params.Role, params.Family, params.Value, params.ValueUS, time.Now().UTC()))
+			return pingguard.With(ctx, params.TaskID, func() error {
+				if err := pingguard.CheckNotReserved(ctx, dbcore.GetDBInstance(), params.TaskID); err != nil {
+					return err
+				}
+				var task models.PingTask
+				if err := dbcore.GetDBInstance().WithContext(ctx).Select("id", "target_family").Take(&task, params.TaskID).Error; err != nil {
+					return err
+				}
+				if task.TargetFamily != "" {
+					return errors.New("legacy result is not accepted for a family-pinned task")
+				}
+				return metricstore.WritePingRecord(ctx, newPingRecord(uuid, params.TaskID, params.PingType, params.Role, params.Family, params.Value, params.ValueUS, time.Now().UTC()))
+			})
 		}); err != nil {
 			return failure("failed to save ping result", err)
 		}
@@ -222,6 +237,10 @@ func UploadV2RPC(c *gin.Context) {
 	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
 	defer cancel()
+	if err := retirePinnedWSForPOST(ctx, uuid, operation); err != nil {
+		c.JSON(http.StatusUnauthorized, v2.Error(req.ID, -32001, "invalid token", nil))
+		return
+	}
 	resp := handleV2RPCOperation(ctx, uuid, req, true, operation)
 	if err := operation(ctx, func() error { return nil }); err != nil {
 		resp = v2.Error(req.ID, -32001, "invalid token", nil)
@@ -234,6 +253,13 @@ func UploadV2RPC(c *gin.Context) {
 		}
 	}
 	c.JSON(status, resp)
+}
+
+func retirePinnedWSForPOST(ctx context.Context, uuid string, operation clientOperation) error {
+	return operation(ctx, func() error {
+		agent_runtime.RetirePinnedWSOnPOST(uuid)
+		return nil
+	})
 }
 
 func WebSocketV2RPC(c *gin.Context) {
@@ -291,7 +317,7 @@ func WebSocketV2RPC(c *gin.Context) {
 		}
 		logger.Errorf("client-api", "failed to reconcile the persisted agent update state for client %s: %v", uuid, err)
 	}
-	go notifierOnline(uuid, conn.ID)
+	notifier.StartBackground(func(context.Context) { notifierOnline(uuid, conn.ID) })
 	defer func() {
 		agent_runtime.DeleteClientConditionally(uuid, conn)
 		notifierOffline(uuid, conn.ID)
@@ -337,6 +363,8 @@ func WebSocketV2RPC(c *gin.Context) {
 		var resp v2.Response
 		if req.Method == v2.MethodAgentPingFamilySession {
 			resp = handlePinnedWSHandshake(ctx, uuid, conn, req, currentOperation)
+		} else if req.Method == v2.MethodAgentPingFamilyResult {
+			resp = handlePinnedWSResult(ctx, uuid, conn, req, currentOperation, agent_runtime.AdmitPinnedResult)
 		} else {
 			resp = handleV2RPCOperation(ctx, uuid, req, false, currentOperation)
 		}
@@ -363,8 +391,31 @@ func consumePinnedPermitResponse(ctx context.Context, uuid string, conn *connect
 	return consumed, err
 }
 
-// This handshake establishes connection identity only. No pinned dispatch or
-// result admission consumes it until those paths also implement their fences.
+// Pinned results are accepted only on the credential-admitted current socket.
+// POST and generic v2 dispatch do not recognize this method.
+func handlePinnedWSResult(ctx context.Context, uuid string, conn *connection.SafeConn, req v2.RawRequest, operation clientOperation, admit func(context.Context, string, *connection.SafeConn, v2.PingFamilyResultParams) error) v2.Response {
+	params := bytes.TrimSpace(req.Params)
+	if req.JSONRPC != v2.Version || req.ID != nil || len(params) == 0 || len(req.Params) > 4096 || bytes.Equal(params, []byte("null")) || admit == nil {
+		return v2.Error(req.ID, -32600, "invalid pinned result request", nil)
+	}
+	var result v2.PingFamilyResultParams
+	decoder := json.NewDecoder(bytes.NewReader(params))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&result); err != nil || decoder.Decode(new(any)) != io.EOF {
+		return v2.Error(req.ID, -32602, "invalid pinned result params", nil)
+	}
+	err := operation(ctx, func() error { return admit(ctx, uuid, conn, result) })
+	if errors.Is(err, api.ErrClientCredentialRetired) {
+		return v2.Error(req.ID, -32001, "invalid token", nil)
+	}
+	if err != nil {
+		return v2.Error(req.ID, -32000, "pinned result rejected", nil)
+	}
+	return v2.Success(req.ID, gin.H{"status": "success"})
+}
+
+// This handshake establishes connection identity only; it does not by itself
+// authorize a dispatch or result without the separate task and ledger fences.
 func handlePinnedWSHandshake(ctx context.Context, uuid string, conn *connection.SafeConn, req v2.RawRequest, operation clientOperation) v2.Response {
 	if req.JSONRPC != v2.Version || req.ID == nil {
 		return v2.Error(req.ID, -32600, "invalid handshake request", nil)
@@ -521,10 +572,8 @@ func clientUUIDFromContext(c *gin.Context) (string, bool) {
 }
 
 func notifierOnline(uuid string, connID int64) {
-	go func() {
-		defer func() { _ = recover() }()
-		notifier.OnlineNotification(uuid, connID)
-	}()
+	defer func() { _ = recover() }()
+	notifier.OnlineNotification(uuid, connID)
 }
 
 func notifierOffline(uuid string, connID int64) {

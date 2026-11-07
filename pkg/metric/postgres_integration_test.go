@@ -2,6 +2,7 @@ package metric
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -193,6 +194,14 @@ func runSQLIntegration(t *testing.T, name string, cfg Config) {
 	}
 	if err := store.ImportRollups(ctx, transferred); err != nil {
 		t.Fatalf("idempotently import exported rollups: %v", err)
+	}
+	if err := store.ImportRollupsPreservingExisting(ctx, transferred); err != nil {
+		t.Fatalf("conservatively reimport exported %s rollups: %v", name, err)
+	}
+	conflict := transferred[0]
+	conflict.Sum++
+	if err := store.ImportRollupsPreservingExisting(ctx, []PersistedRollup{conflict}); !errors.Is(err, ErrImportConflict) {
+		t.Fatalf("conflicting %s import = %v", name, err)
 	}
 	assertIntegrationLateReplacement(t, ctx, store)
 

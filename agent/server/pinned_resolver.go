@@ -7,13 +7,16 @@ import (
 	"net"
 	"net/netip"
 	"strings"
+
+	"github.com/Aone2233/nekomari/agent/dnsresolver"
 )
 
-// This is an isolated building block, not a dispatched task. A separate wire
-// method, capability gate and result validation are required before use.
+// The pinned WebSocket probe uses this resolver after its session and permit
+// checks. The resolver alone does not authorize a task or validate its result.
 type pinnedResolver struct {
-	lookup func(context.Context, string) ([]netip.Addr, error)
-	dial   func(context.Context, string, string) (net.Conn, error)
+	lookup        func(context.Context, string) ([]netip.Addr, error)
+	lookupNetwork func(context.Context, string, string) ([]netip.Addr, error)
+	dial          func(context.Context, string, string) (net.Conn, error)
 }
 
 const (
@@ -38,6 +41,16 @@ func pinnedAddressMatches(addr netip.Addr, family string) bool {
 	return (family == pinnedIPv4 && addr.Is4()) || (family == pinnedIPv6 && addr.Is6())
 }
 
+func (r pinnedResolver) lookupAddresses(ctx context.Context, network, host string) ([]netip.Addr, error) {
+	if r.lookup != nil {
+		return r.lookup(ctx, host)
+	}
+	if r.lookupNetwork != nil {
+		return r.lookupNetwork(ctx, network, host)
+	}
+	return dnsresolver.GetCustomResolver().LookupNetIP(ctx, network, host)
+}
+
 func (r pinnedResolver) resolveAny(ctx context.Context, host string) (netip.Addr, error) {
 	if host == "" || strings.TrimSpace(host) != host {
 		return netip.Addr{}, errPinnedInvalidTarget
@@ -48,13 +61,7 @@ func (r pinnedResolver) resolveAny(ctx context.Context, host string) (netip.Addr
 	if strings.ContainsAny(host, "[]:") {
 		return netip.Addr{}, errPinnedInvalidTarget
 	}
-	lookup := r.lookup
-	if lookup == nil {
-		lookup = func(ctx context.Context, host string) ([]netip.Addr, error) {
-			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
-		}
-	}
-	addrs, err := lookup(ctx, host)
+	addrs, err := r.lookupAddresses(ctx, "ip", host)
 	if err != nil {
 		return netip.Addr{}, fmt.Errorf("%w: %w", errPinnedDNS, err)
 	}
@@ -90,14 +97,14 @@ func (r pinnedResolver) resolve(ctx context.Context, host, family string) (netip
 		return netip.Addr{}, errPinnedInvalidTarget
 	}
 
-	lookup := r.lookup
-	if lookup == nil {
-		lookup = func(ctx context.Context, host string) ([]netip.Addr, error) {
-			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
-		}
+	network := "ip4"
+	if family == pinnedIPv6 {
+		network = "ip6"
 	}
-	addrs, err := lookup(ctx, host)
+	addrs, err := r.lookupAddresses(ctx, network, host)
 	if err != nil {
+		// IsNotFound can mean either NXDOMAIN or a missing A/AAAA record.
+		// Do not claim a specific cause; neither is a network probe.
 		return netip.Addr{}, fmt.Errorf("%w: %w", errPinnedDNS, err)
 	}
 	for _, addr := range addrs {

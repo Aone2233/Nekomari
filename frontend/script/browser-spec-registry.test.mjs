@@ -28,6 +28,13 @@ const onDisk = readdirSync(scriptDir)
 const listed = [...workflow.matchAll(/^ *python script\/([\w.-]+\.spec\.py)\b/gm)]
   .map((match) => match[1])
   .sort();
+// The real-Agent spec is launched by this Go integration test, which creates
+// its authenticated panel and Agent processes before starting the browser.
+const integrationSpec = 'ping-family-e2e.browser.spec.py';
+const goFixture = readFileSync(new URL('../../web/rpc/jsonrpc/pinned_browser_real_agent_e2e_test.go', import.meta.url), 'utf8');
+if (workflow.includes("-run '^TestPinnedBrowserThroughSchedulerAndRealAgents$'") && goFixture.includes(integrationSpec)) {
+  listed.push(integrationSpec);
+}
 
 test('the CI fixture job runs every mounted browser spec that exists', () => {
   // A guard on the guard: if the list stops being parsed, the assertions below would pass

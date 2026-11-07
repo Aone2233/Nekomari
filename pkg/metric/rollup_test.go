@@ -369,8 +369,8 @@ func TestCompactDoesNotOverwriteCoarseRollupWithPartialFineRows(t *testing.T) {
 	if len(after) != 1 || after[0].Count != 300 {
 		t.Fatalf("coarse bucket was overwritten from partial fine rows: %#v", after)
 	}
-	if err := s.Write(ctx, Point{MetricName: "partial", EntityID: "n1", Timestamp: base.Add(4*time.Minute + 30*time.Second), Value: 1}); err != nil {
-		t.Fatalf("write late: %v", err)
+	if err := s.Write(ctx, Point{MetricName: "partial", EntityID: "n1", Timestamp: base.Add(4*time.Minute + 30*time.Second), Value: 1}); !errors.Is(err, ErrRawHistoryUnavailable) {
+		t.Fatalf("ambiguous write after fine retention = %v", err)
 	}
 	if _, err := s.Compact(ctx, base.Add(19*time.Minute)); err != nil {
 		t.Fatalf("compact late: %v", err)
@@ -416,8 +416,8 @@ func TestCompactMergesLateFineDeltaLargerThanCoarseBucket(t *testing.T) {
 		t.Fatalf("compact expire fine: %v", err)
 	}
 	for _, ts := range []time.Time{base.Add(20 * time.Second), base.Add(30 * time.Second)} {
-		if err := s.Write(ctx, Point{MetricName: "latebig", EntityID: "n1", Timestamp: ts, Value: 1}); err != nil {
-			t.Fatalf("write late: %v", err)
+		if err := s.Write(ctx, Point{MetricName: "latebig", EntityID: "n1", Timestamp: ts, Value: 1}); !errors.Is(err, ErrRawHistoryUnavailable) {
+			t.Fatalf("ambiguous write after fine retention = %v", err)
 		}
 	}
 	if _, err := s.Compact(ctx, base.Add(19*time.Minute)); err != nil {
@@ -546,13 +546,9 @@ func TestRollupOmitsAndReconstructsConstantDigests(t *testing.T) {
 	}
 }
 
-// TestCompactMergesLateRawIntoExpiredRollup verifies a late-arriving raw point
-// for an already-retained rollup bucket is folded into the stored rollup instead
-// of replacing the bucket with only the late sample.
-//
-// TestCompactMergesLateRawIntoExpiredRollup 验证已过原始保留期的 rollup 桶收到
-// 迟到 raw 点时，会把迟到样本合入已有 rollup，而不是用迟到样本覆盖整桶。
-func TestCompactMergesLateRawIntoExpiredRollup(t *testing.T) {
+// Once exact timestamps are gone, an older point may be a replay rather than
+// a distinct observation. Reject it instead of guessing and double counting.
+func TestCompactRejectsAmbiguousLatePointInExpiredRollup(t *testing.T) {
 	ctx := context.Background()
 	policy := RollupPolicy{
 		RawRetention: 2 * time.Minute,
@@ -578,8 +574,8 @@ func TestCompactMergesLateRawIntoExpiredRollup(t *testing.T) {
 		EntityID:   "n1",
 		Timestamp:  base.Add(30*time.Second + 500*time.Millisecond),
 		Value:      1000,
-	}); err != nil {
-		t.Fatalf("write late: %v", err)
+	}); !errors.Is(err, ErrRawHistoryUnavailable) {
+		t.Fatalf("ambiguous late write = %v", err)
 	}
 	if _, err := s.Compact(ctx, base.Add(2*time.Hour)); err != nil {
 		t.Fatalf("compact late: %v", err)
@@ -595,8 +591,8 @@ func TestCompactMergesLateRawIntoExpiredRollup(t *testing.T) {
 	if len(res) != 1 {
 		t.Fatalf("expected 1 rollup bucket, got %d", len(res))
 	}
-	if res[0].Count != 61 || res[0].Value != 2770 {
-		t.Fatalf("late point should merge into existing bucket count=61 sum=2770, got %#v", res[0])
+	if res[0].Count != 60 || res[0].Value != 1770 {
+		t.Fatalf("rejected point changed the existing bucket: %#v", res[0])
 	}
 }
 

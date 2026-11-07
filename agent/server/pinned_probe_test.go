@@ -108,6 +108,153 @@ func TestPinnedProbeDistinguishesDNSAndActualFailures(t *testing.T) {
 	}
 }
 
+func TestPinnedHTTPStopsDetachedDNSAfterTimeoutAndRetirement(t *testing.T) {
+	for _, retire := range []bool{false, true} {
+		name := "timeout"
+		if retire {
+			name = "retirement"
+		}
+		t.Run(name, func(t *testing.T) {
+			started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			defer close(release)
+			r := pinnedProbeRunner{resolver: pinnedResolver{lookup: func(ctx context.Context, _ string) ([]netip.Addr, error) {
+				close(started)
+				select {
+				case <-ctx.Done():
+					close(canceled)
+					return nil, ctx.Err()
+				case <-release:
+					return nil, errors.New("fixture cleanup")
+				}
+			}}}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan pinnedProbeOutcome, 1)
+			go func() { done <- r.probeHTTP(ctx, "http://blocked.test", pinnedIPv6, 100*time.Millisecond, nil) }()
+			select {
+			case <-started:
+			case <-time.After(time.Second):
+				t.Fatal("DNS did not start")
+			}
+			if retire {
+				cancel()
+			}
+			select {
+			case out := <-done:
+				if out.attempted || out.err == nil {
+					t.Fatalf("unresolved probe became a measurement: %+v", out)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("HTTP probe did not stop")
+			}
+			select {
+			case <-canceled:
+			case <-time.After(500 * time.Millisecond):
+				t.Fatal("HTTP transport left DNS running after the probe stopped")
+			}
+		})
+	}
+}
+
+func TestPinnedHTTPTimeoutAfterDialStartsIsLoss(t *testing.T) {
+	started, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+	r := pinnedProbeRunner{resolver: pinnedResolver{
+		lookup: func(context.Context, string) ([]netip.Addr, error) { return testAddresses("2001:db8::1"), nil },
+		dial: func(ctx context.Context, network, target string) (net.Conn, error) {
+			defer close(finished)
+			if network != "tcp6" || target != "[2001:db8::1]:80" {
+				t.Errorf("dial(%q, %q)", network, target)
+			}
+			close(started)
+			<-ctx.Done()
+			<-release // Keep the transport callback pending while the result is read.
+			return nil, ctx.Err()
+		},
+	}}
+	done := make(chan pinnedProbeOutcome, 1)
+	go func() {
+		done <- r.probeHTTP(context.Background(), "http://probe.test", pinnedIPv6, 100*time.Millisecond, nil)
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("dial did not start")
+	}
+	select {
+	case out := <-done:
+		if !out.attempted || out.family != pinnedIPv6 || out.err == nil {
+			t.Fatalf("timed-out connection did not report an IPv6 probe failure: %+v", out)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("HTTP probe did not time out")
+	}
+	close(release)
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("dial context was not canceled")
+	}
+}
+
+func TestPinnedHTTPFastCanceledDialAfterTimeoutIsLoss(t *testing.T) {
+	r := pinnedProbeRunner{resolver: pinnedResolver{
+		lookup: func(context.Context, string) ([]netip.Addr, error) { return testAddresses("2001:db8::1"), nil },
+		dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}}
+	for i := 0; i < 20; i++ {
+		out := r.probeHTTP(context.Background(), "http://probe.test", pinnedIPv6, 10*time.Millisecond, nil)
+		if !out.attempted || out.family != pinnedIPv6 || out.err == nil {
+			t.Fatalf("iteration %d: timed-out connection lost probe identity: %+v", i, out)
+		}
+	}
+}
+
+func TestPinnedHTTPRetirementAfterDialStartsIsNotLoss(t *testing.T) {
+	started, finished := make(chan struct{}), make(chan struct{})
+	r := pinnedProbeRunner{resolver: pinnedResolver{
+		lookup: func(context.Context, string) ([]netip.Addr, error) { return testAddresses("2001:db8::1"), nil },
+		dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			close(started)
+			<-ctx.Done()
+			close(finished)
+			return nil, ctx.Err()
+		},
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan pinnedProbeOutcome, 1)
+	go func() { done <- r.probeHTTP(ctx, "http://probe.test", pinnedIPv6, time.Second, nil) }()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("dial did not start")
+	}
+	cancel()
+	select {
+	case out := <-done:
+		if out.attempted || !errors.Is(out.err, context.Canceled) {
+			t.Fatalf("retired probe became a measurement: %+v", out)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("retired probe did not stop")
+	}
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("retired dial did not stop")
+	}
+}
+
 func TestPinnedProbeICMPFallbackAndActualFamily(t *testing.T) {
 	var privileges []bool
 	r := pinnedProbeRunner{
@@ -349,6 +496,81 @@ func TestPinnedReferenceSelectsOwnFamilyAndCancels(t *testing.T) {
 	}
 }
 
+func TestPinnedReferenceProbeTimeoutIsLossButSessionCancellationIsNot(t *testing.T) {
+	for _, kind := range []string{"tcp", "http"} {
+		t.Run(kind, func(t *testing.T) {
+			started := make(chan struct{}, 1)
+			r := pinnedProbeRunner{resolver: pinnedResolver{
+				lookup: func(context.Context, string) ([]netip.Addr, error) { return testAddresses("192.0.2.1"), nil },
+				dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
+					started <- struct{}{}
+					<-ctx.Done()
+					return nil, ctx.Err()
+				},
+			}}
+			target := "reference.test:80"
+			if kind == "http" {
+				target = "http://reference.test/"
+			}
+			out := r.probeReference(context.Background(), kind, target, 30*time.Millisecond)
+			if !out.attempted || out.family != pinnedIPv4 || out.err == nil {
+				t.Fatalf("attempted reference timeout became a non-probe: %+v", out)
+			}
+			p := pinnedWireFixture()
+			p.Type, p.Reference = kind, target
+			wire, err := pinnedProbeResultPayload(p, pinnedProbeResult{role: "reference", kind: kind, outcome: out})
+			if err != nil || wire.Value == nil || *wire.Value != -1 || wire.ValueUS == nil || *wire.ValueUS != -1 || wire.Diagnostic != "" {
+				t.Fatalf("attempted reference timeout not encoded as loss: %+v err=%v", wire, err)
+			}
+			<-started
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan pinnedProbeOutcome, 1)
+			go func() { done <- r.probeReference(ctx, kind, target, time.Second) }()
+			select {
+			case <-started:
+			case <-time.After(time.Second):
+				cancel()
+				t.Fatal("reference probe did not start")
+			}
+			cancel()
+			select {
+			case out := <-done:
+				if out.attempted || !errors.Is(out.err, context.Canceled) {
+					t.Fatalf("session cancellation became loss: %+v", out)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("canceled reference probe did not return")
+			}
+		})
+	}
+}
+
+func TestPinnedReferenceRedirectUsesIndependentDNS(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Host == "reference.test" {
+			http.Redirect(w, req, "http://next.test/", http.StatusFound)
+		}
+	}))
+	defer server.Close()
+	var lookups []string
+	r := pinnedProbeRunner{resolver: pinnedResolver{
+		lookupNetwork: func(_ context.Context, network, host string) ([]netip.Addr, error) {
+			lookups = append(lookups, network+"/"+host)
+			return testAddresses("127.0.0.1"), nil
+		},
+		dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
+		},
+	}}
+	out := r.probeReference(t.Context(), "http", "http://reference.test/", time.Second)
+	if !out.attempted || out.err != nil || out.family != pinnedIPv4 {
+		t.Fatalf("reference outcome = %+v", out)
+	}
+	if got := strings.Join(lookups, ","); got != "ip/reference.test,ip/next.test" {
+		t.Fatalf("reference lookup sequence = %q", got)
+	}
+}
+
 type pinnedWrongFamilyConn struct{ net.Conn }
 
 func (c pinnedWrongFamilyConn) RemoteAddr() net.Addr {
@@ -433,7 +655,7 @@ func TestPinnedProbeHTTPRejectsWrongCertificateAndInvalidPorts(t *testing.T) {
 	if !out.attempted || !errors.As(out.err, &hostnameErr) {
 		t.Fatalf("outcome = %+v, expected certificate hostname error", out)
 	}
-	for _, target := range []string{"http://bad.test:", "http://bad.test:0", "http://bad.test:65536", "http://user:secret@bad.test"} {
+	for _, target := range []string{"http://bad.test:", "http://bad.test:0", "http://bad.test:65536", "http://[bad.test]:80", "http://[127.0.0.1]:80", "http://user:secret@bad.test"} {
 		out := r.probeHTTP(context.Background(), target, pinnedIPv4, time.Second, nil)
 		if out.attempted || !errors.Is(out.err, errPinnedInvalidTarget) {
 			t.Errorf("%q outcome = %+v", target, out)

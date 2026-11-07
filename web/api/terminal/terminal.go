@@ -1,6 +1,8 @@
 package terminal
 
 import (
+	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -19,11 +21,17 @@ type TerminalSession struct {
 
 var TerminalSessionsMutex = &sync.Mutex{}
 var TerminalSessions = make(map[string]*TerminalSession)
+var terminalStopping bool
+var activeForwarders int
+var terminalDrained chan struct{}
 
 // 与 v2 事件队列 TTL 对齐，被控端短暂离线后会话仍可恢复。
 const terminalSessionRetention = 5 * time.Minute
 
 func scheduleCleanup(id string, session *TerminalSession) {
+	if terminalStopping {
+		return
+	}
 	if session.CleanupTimer != nil {
 		session.CleanupTimer.Stop()
 	}
@@ -169,12 +177,63 @@ func CloseClientSessions(uuid string) {
 func maybeStartForwarding(id string) {
 	TerminalSessionsMutex.Lock()
 	session, ok := TerminalSessions[id]
-	if !ok || session == nil || session.Browser == nil || session.Agent == nil || session.Forwarding {
+	if terminalStopping || !ok || session == nil || session.Browser == nil || session.Agent == nil || session.Forwarding {
 		TerminalSessionsMutex.Unlock()
 		return
 	}
 	session.Forwarding = true
+	activeForwarders++
 	browser, agent := session.Browser, session.Agent
 	TerminalSessionsMutex.Unlock()
-	go ForwardTerminal(id, browser, agent)
+	go func() {
+		defer func() {
+			TerminalSessionsMutex.Lock()
+			defer TerminalSessionsMutex.Unlock()
+			activeForwarders--
+			if terminalStopping && activeForwarders == 0 && terminalDrained != nil {
+				close(terminalDrained)
+				terminalDrained = nil
+			}
+		}()
+		ForwardTerminal(id, browser, agent)
+	}()
+}
+
+// QuiesceTerminals must follow the WebSocket handler fence. Terminal handlers
+// hand connections to detached forwarders, which also write the audit log.
+func QuiesceTerminals(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("terminal shutdown requires a context")
+	}
+	TerminalSessionsMutex.Lock()
+	var conns []*connection.SafeConn
+	if !terminalStopping {
+		terminalStopping = true
+		if activeForwarders > 0 {
+			terminalDrained = make(chan struct{})
+		}
+		for id, session := range TerminalSessions {
+			if session != nil {
+				stopCleanup(session)
+				conns = append(conns, session.Browser, session.Agent)
+			}
+			delete(TerminalSessions, id)
+		}
+	}
+	drained := terminalDrained
+	TerminalSessionsMutex.Unlock()
+	for _, conn := range conns {
+		if conn != nil {
+			conn.Abort()
+		}
+	}
+	if drained == nil {
+		return nil
+	}
+	select {
+	case <-drained:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

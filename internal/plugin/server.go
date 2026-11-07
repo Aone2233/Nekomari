@@ -2,7 +2,6 @@ package plugin
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,13 +13,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Aone2233/nekomari/pkg/jsruntime"
+	"github.com/Aone2233/nekomari/pkg/jsruntime/httpbody"
+	"github.com/Aone2233/nekomari/pkg/rpc"
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/buffer"
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/gin-gonic/gin"
-	"github.com/Aone2233/nekomari/pkg/jsruntime"
-	"github.com/Aone2233/nekomari/pkg/jsruntime/httpbody"
-	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
 // registerServerModule registers the "server" native module for one plugin
@@ -129,15 +128,19 @@ func (m *Manager) registerServerModule(host *jsruntime.Host, registry *require.R
 			}
 			params := callParams(call)
 			promise, resolve, reject := vm.NewPromise()
+			if !inst.info.Permissions.AllowSystemRPC {
+				_ = reject(vm.NewGoError(errors.New("server.call requires the \"system RPC\" permission (allowSystemRPC)")))
+				return vm.ToValue(promise)
+			}
+			callCtx, done, ok := m.async.start()
+			if !ok {
+				_ = reject(vm.NewGoError(errors.New("server.call is unavailable during shutdown")))
+				return vm.ToValue(promise)
+			}
 			go func() {
-				if !inst.info.Permissions.AllowSystemRPC {
-					host.RunOnLoop(func(vm *goja.Runtime) {
-						_ = reject(vm.NewGoError(errors.New("server.call requires the \"system RPC\" permission (allowSystemRPC)")))
-					})
-					return
-				}
+				defer done()
 				meta := &rpc.ContextMeta{Permission: rpc.RoleAdmin, Principal: rpc.PrincipalFromRole(rpc.RoleAdmin)}
-				ctx := rpc.NewContextWithMeta(context.Background(), meta)
+				ctx := rpc.NewContextWithMeta(callCtx, meta)
 				resp := rpc.CallWithContext(ctx, nil, method, params)
 				host.RunOnLoop(func(vm *goja.Runtime) {
 					if resp.Error != nil {
@@ -224,7 +227,13 @@ func (m *Manager) registerServerModule(host *jsruntime.Host, registry *require.R
 		})
 		_ = exports.Set("getConfig", func(call goja.FunctionCall) goja.Value {
 			promise, resolve, reject := vm.NewPromise()
+			_, done, ok := m.async.start()
+			if !ok {
+				_ = reject(vm.NewGoError(errors.New("server.getConfig is unavailable during shutdown")))
+				return vm.ToValue(promise)
+			}
 			go func() {
+				defer done()
 				data, err := GetConfiguration(inst.info.Short)
 				host.RunOnLoop(func(vm *goja.Runtime) {
 					if err != nil {

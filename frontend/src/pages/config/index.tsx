@@ -13,21 +13,19 @@ const ConfigShell: React.FC = () => {
 
   const exportConfig = useCallback(
     (includeSecrets: boolean, twoFactorCode?: string) => {
-      // Credentials live behind a separate method: admin:exportConfig refuses include_secrets
-      // outright rather than quietly returning a document without the tokens the caller asked for.
-      // admin:exportConfigSecrets is registered as a sensitive operation, so the transport checks a
-      // second factor per request, and it reads that factor from params (2fa_code) — which is also
-      // what keeps a long-lived WebSocket from reusing an expired code.
+      // Text keeps large integer fields intact across JavaScript JSON parsing.
+      // The credential-carrying method is separately sensitive-gated and uses
+      // a fresh second factor per request, including over WebSocket.
       if (!includeSecrets) {
-        return call<Record<string, never>, Record<string, unknown>>(
-          "admin:exportConfig",
+        return call<Record<string, never>, string>(
+          "admin:exportConfigText",
         );
       }
       // An empty field sends no key at all: the account may have no 2FA, in which case an empty
       // string is not a code the server should try to verify.
       const code = twoFactorCode?.trim() ?? "";
-      return call<{ "2fa_code"?: string }, Record<string, unknown>>(
-        "admin:exportConfigSecrets",
+      return call<{ "2fa_code"?: string }, string>(
+        "admin:exportConfigSecretsText",
         code ? { "2fa_code": code } : {},
       );
     },
@@ -35,19 +33,24 @@ const ConfigShell: React.FC = () => {
   );
 
   const planImport = useCallback(
-    (document: Record<string, unknown>) =>
-      call<{ document: Record<string, unknown> }, ImportPlan>("admin:planConfigImport", { document }),
+    (documentText: string) =>
+      call<{ document_json: string }, ImportPlan>("admin:planConfigImport", { document_json: documentText }),
     [call],
   );
 
   const importConfig = useCallback(
-    (document: Record<string, unknown>) =>
-      call<{ document: Record<string, unknown> }, ImportPlan>("admin:importConfig", { document }),
+    (documentText: string, reviewToken: string, twoFactorCode?: string) => {
+      const code = twoFactorCode?.trim() ?? "";
+      return call<{ document_json: string; review_token: string; "2fa_code"?: string }, ImportPlan>(
+        "admin:importConfig",
+        { document_json: documentText, review_token: reviewToken, ...(code ? { "2fa_code": code } : {}) },
+      );
+    },
     [call],
   );
 
   return (
-    <ConfigExportPage exportConfig={exportConfig} planImport={planImport} importConfig={importConfig} />
+    <ConfigExportPage importAvailable exportConfig={exportConfig} planImport={planImport} importConfig={importConfig} />
   );
 };
 

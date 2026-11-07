@@ -115,10 +115,23 @@ class ConfigExportBrowserTest(unittest.TestCase):
         try:
             page.locator('[data-testid="config-export-button"]').click()
             expect(page.locator('[data-testid="config-document-text"]')).not_to_have_value("")
+            expect(page.locator('[data-testid="config-export-scope"]')).to_contain_text("database connection details")
             value = page.locator('[data-testid="config-document-text"]').input_value()
             self.assertIn("schema_version", value)
             # The default export carries no credential: the file is a configuration, not a keyring.
             self.assertNotIn("agent-token-a", value)
+        finally:
+            self.teardown_page(page)
+
+    def test_disabled_import_still_allows_export(self):
+        page = self.open("unavailable")
+        try:
+            page.locator('[data-testid="config-export-button"]').click()
+            expect(page.locator('[data-testid="config-import-unavailable"]')).to_contain_text("encrypted database backup")
+            expect(page.locator('[data-testid="config-plan-button"]')).to_be_disabled()
+            expect(page.locator('[data-testid="config-import-button"]')).to_be_disabled()
+            self.assertEqual(page.evaluate("window.__configCalls.plan || 0"), 0)
+            self.assertEqual(page.evaluate("window.__configCalls.import || 0"), 0)
         finally:
             self.teardown_page(page)
 
@@ -133,6 +146,25 @@ class ConfigExportBrowserTest(unittest.TestCase):
             value = page.locator('[data-testid="config-document-text"]').input_value()
             # The warning is not decoration: the file really does carry the token now.
             self.assertIn("agent-token-a", value)
+        finally:
+            self.teardown_page(page)
+
+    def test_pinned_export_warns_that_it_is_not_a_database_backup(self):
+        page = self.open("pinned")
+        try:
+            page.locator('[data-testid="config-export-button"]').click()
+            warning = page.locator('[data-testid="config-pinned-archive-warning"]')
+            expect(warning).to_be_visible()
+            expect(warning).to_contain_text("Schema 3 supports")
+            expect(warning).to_contain_text("encrypted database backup")
+            self.assertIn('"target_family": "ipv6"',
+                          page.locator('[data-testid="config-document-text"]').input_value())
+            self.text(page, '{"schema_version": 3, "ping_tasks": [{"target_family": "ipv6"}]}')
+            expect(warning).to_be_visible()
+            self.text(page, '{"schema_version": 3, "ping_tasks": [{"target_family": ""}]}')
+            expect(warning).to_have_count(0)
+            self.text(page, '{"schema_version": 1}')
+            expect(warning).to_have_count(0)
         finally:
             self.teardown_page(page)
 
@@ -166,6 +198,42 @@ class ConfigExportBrowserTest(unittest.TestCase):
             self.text(page, '{"schema_version": 1, "clients": [{"uuid": "x"}]}')
             expect(page.locator('[data-testid="config-plan"]')).to_have_count(0)
             expect(page.locator('[data-testid="config-import-button"]')).to_be_disabled()
+        finally:
+            self.teardown_page(page)
+
+    def test_original_document_text_reaches_check_and_import(self):
+        page = self.open("ready")
+        try:
+            original = '{"schema_version":3,"clients":[{"traffic_limit":9007199254740993,"name":"a","name":"b"}]}'
+            self.text(page, original)
+            page.locator('[data-testid="config-plan-button"]').click()
+            self.assertEqual(page.evaluate("window.__configCalls.plannedText"), original)
+            page.locator('[data-testid="config-import-button"]').click()
+            self.assertEqual(page.evaluate("window.__configCalls.importedText"), original)
+        finally:
+            self.teardown_page(page)
+
+    def test_review_token_and_second_factor_reach_import(self):
+        page = self.open("ready")
+        try:
+            self.text(page, '{"schema_version": 3}')
+            page.locator('[data-testid="config-plan-button"]').click()
+            page.locator('[data-testid="config-import-2fa"]').fill("123456")
+            page.locator('[data-testid="config-import-button"]').click()
+            self.assertEqual(page.evaluate("window.__configCalls.reviewToken"), "a" * 64)
+            self.assertEqual(page.evaluate("window.__configCalls.importCode"), "123456")
+            expect(page.locator('[data-testid="config-import-2fa"]')).to_have_count(0)
+        finally:
+            self.teardown_page(page)
+
+    def test_missing_review_token_keeps_import_locked(self):
+        page = self.open("missing-token")
+        try:
+            self.text(page, '{"schema_version": 3}')
+            page.locator('[data-testid="config-plan-button"]').click()
+            expect(page.locator('[data-testid="config-error"]')).to_contain_text("valid review token")
+            expect(page.locator('[data-testid="config-import-button"]')).to_be_disabled()
+            self.assertEqual(page.evaluate("window.__configCalls.import || 0"), 0)
         finally:
             self.teardown_page(page)
 
@@ -213,6 +281,17 @@ class ConfigExportBrowserTest(unittest.TestCase):
         finally:
             self.teardown_page(page)
 
+    def test_implicit_default_task_assignment_is_visible(self):
+        page = self.open("implicit")
+        try:
+            self.text(page, '{"schema_version": 3}')
+            page.locator('[data-testid="config-plan-button"]').click()
+            effect = page.locator('[data-testid="config-implicit-assignment"]')
+            expect(effect).to_contain_text("New nodes will also be assigned")
+            expect(effect.locator("xpath=ancestor::tr")).to_contain_text("Existing task")
+        finally:
+            self.teardown_page(page)
+
     def test_a_refusal_reaches_the_page(self):
         page = self.open("refused")
         try:
@@ -226,6 +305,23 @@ class ConfigExportBrowserTest(unittest.TestCase):
             expect(error).to_contain_text("schema_version 2")
         finally:
             self.teardown_page(page)
+
+    def test_import_failure_requires_a_new_review_before_retry(self):
+        for state, message in (("committed", "Configuration saved; do not retry"), ("ambiguous", "connection closed after send")):
+            with self.subTest(state=state):
+                page = self.open(state)
+                try:
+                    self.text(page, '{"schema_version": 1}')
+                    page.locator('[data-testid="config-plan-button"]').click()
+                    button = page.locator('[data-testid="config-import-button"]')
+                    expect(button).to_be_enabled()
+                    button.click()
+                    expect(page.locator('[data-testid="config-error"]')).to_contain_text(message)
+                    expect(button).to_be_disabled()
+                    expect(page.locator('[data-testid="config-plan"]')).to_have_count(0)
+                    self.assertEqual(page.evaluate("window.__configCalls.import"), 1)
+                finally:
+                    self.teardown_page(page)
 
     def test_invalid_json_is_explained_and_blocks_both_buttons(self):
         page = self.open("ready")

@@ -17,9 +17,8 @@ type pinnedResultWriter interface {
 	WriteJSONContext(context.Context, interface{}) error
 }
 
-// Probe frames are parsed only by this WebSocket's controller. The disabled
-// dispatch hook uses launchProbe to consume a session-bound one-use ticket.
-// The panel does not dispatch these frames until result fencing is integrated.
+// Probe frames are parsed only by this WebSocket's controller. The dispatch
+// hook uses launchProbe to consume a session-bound one-use ticket.
 func (c *pinnedWSController) handleProbe(data []byte) (bool, error) {
 	var frame struct {
 		JSONRPC string          `json:"jsonrpc"`
@@ -48,9 +47,8 @@ func (c *pinnedWSController) handleProbe(data []byte) (bool, error) {
 	return true, nil
 }
 
-// A non-nil dispatch hook must only be enabled together with panel-side
-// assignment/session/result fencing and a staged Agent rollout. Keeping it
-// nil prevents a partial branch from accepting probes in production.
+// Execution requires a live session and a matching one-use permit. Panels
+// without a compatible permit/result path never send a valid probe frame.
 func (c *pinnedWSController) launchPinnedDispatch(p v2.PingFamilyProbeParams) {
 	writer, ok := c.conn.(pinnedResultWriter)
 	if !ok {

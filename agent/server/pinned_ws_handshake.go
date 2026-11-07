@@ -14,7 +14,6 @@ import (
 )
 
 // One handshake object belongs to one socket and is never shared on reconnect.
-// Probe dispatch does not use this state yet.
 type pinnedWSHandshake struct {
 	instance     string
 	challenge    string
@@ -29,7 +28,10 @@ type pinnedWSHandshake struct {
 
 // The server lease is 90 seconds. Starting the local lease at request send,
 // rather than response receipt, makes delayed acknowledgements fail closed.
-const pinnedAgentLease = 60 * time.Second
+const (
+	pinnedAgentLease          = 60 * time.Second
+	pinnedControlWriteTimeout = 2 * time.Second
+)
 
 var pinnedProcessInstance = sync.OnceValues(func() (string, error) {
 	var b [16]byte
@@ -41,7 +43,7 @@ var pinnedProcessInstance = sync.OnceValues(func() (string, error) {
 
 type pinnedHandshakeConn interface {
 	ReadMessageLimited(int64) (int, []byte, error)
-	WriteJSON(interface{}) error
+	WriteJSONContextWait(context.Context, interface{}) error
 	Abort()
 }
 
@@ -52,6 +54,7 @@ type pinnedWSController struct {
 	stopped        bool
 	sessionContext context.Context
 	sessionCancel  context.CancelFunc
+	sessionTimer   *time.Timer
 	tickets        map[string]pinnedProbeTicket
 	ticketSequence uint64
 	activeProbes   int
@@ -60,8 +63,7 @@ type pinnedWSController struct {
 	probeDispatch  func(v2.PingFamilyProbeParams)
 }
 
-// Registry identity is the socket, never the Agent instance alone. It remains
-// unused by task dispatch until the start/cancel fence is implemented.
+// Registry identity is the socket, never the Agent instance alone.
 var pinnedSocketSessions = struct {
 	sync.RWMutex
 	byConn map[*ws.SafeConn]*pinnedWSController
@@ -108,7 +110,15 @@ func currentPinnedWSSession(conn *ws.SafeConn, now time.Time) (string, string, t
 }
 
 func (c *pinnedWSController) send(req v2.Request) error {
-	if err := c.conn.WriteJSON(req); err != nil {
+	// Holding c.mu orders requests with retirement. The bounded write cannot
+	// retain that lock past either this lease or the control-write timeout.
+	deadline := time.Now().Add(pinnedControlWriteTimeout)
+	if c.handshake.active && c.handshake.validUntil.Before(deadline) {
+		deadline = c.handshake.validUntil
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	if err := c.conn.WriteJSONContextWait(ctx, req); err != nil {
 		c.retireLocked()
 		c.handshake.clear()
 		return err
@@ -164,8 +174,19 @@ func (c *pinnedWSController) handle(data []byte) (bool, error) {
 	if wasActive && !c.handshake.active {
 		c.retireLocked()
 	}
+	// An authenticated POST can retire the panel's copy of this socket lease.
+	// A rejected renewal must first cancel local work, then establish a fresh
+	// challenge rather than waiting for another 25-second maintenance tick.
+	// Never retry an unsupported old panel or a failed initial handshake here.
+	if wasActive && !c.handshake.active && handled && next == nil && !c.handshake.unsupported {
+		request := c.handshake.begin()
+		next = &request
+	}
 	if !wasActive && c.handshake.active {
 		c.sessionContext, c.sessionCancel = context.WithCancel(context.Background())
+	}
+	if handled && c.handshake.active {
+		c.armSessionExpiryLocked()
 	}
 	if next != nil {
 		return handled, c.send(*next)
@@ -182,6 +203,10 @@ func (c *pinnedWSController) clear() {
 }
 
 func (c *pinnedWSController) retireLocked() {
+	if c.sessionTimer != nil {
+		c.sessionTimer.Stop()
+		c.sessionTimer = nil
+	}
 	if c.sessionCancel != nil {
 		c.sessionCancel()
 		c.sessionCancel = nil
@@ -189,6 +214,33 @@ func (c *pinnedWSController) retireLocked() {
 	c.sessionContext = nil
 	clear(c.tickets)
 	c.ticketSequence = 0
+}
+
+// A renewed lease extends the current session, including in-flight probes.
+// The timer takes the same lock as renewal and rechecks the latest deadline,
+// so an already-queued callback cannot retire a successfully renewed session.
+func (c *pinnedWSController) armSessionExpiryLocked() {
+	if c.sessionTimer != nil {
+		c.sessionTimer.Stop()
+	}
+	delay := time.Until(c.handshake.validUntil)
+	if delay < 0 {
+		delay = 0
+	}
+	c.sessionTimer = time.AfterFunc(delay, c.sessionExpiry)
+}
+
+func (c *pinnedWSController) sessionExpiry() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.stopped || c.handshake == nil || !c.handshake.active {
+		return
+	}
+	if time.Now().Before(c.handshake.validUntil) {
+		c.armSessionExpiryLocked()
+		return
+	}
+	c.expireLocked(time.Now())
 }
 
 // A late renewal must not revive a locally expired session or its permits.

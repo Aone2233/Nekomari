@@ -8,14 +8,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Aone2233/nekomari/agent/dnsresolver"
 	v2 "github.com/Aone2233/nekomari/agent/protocol/v2"
 	"github.com/Aone2233/nekomari/agent/ws"
 	"github.com/gorilla/websocket"
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 type pinnedProbeTestConn struct {
@@ -51,14 +54,14 @@ func probeTestController(t *testing.T) (*pinnedWSController, *pinnedProbeTestCon
 	c, p := activePinnedController(t)
 	conn := &pinnedProbeTestConn{pinnedFakeConn: newPinnedFakeConn(false)}
 	c.conn = conn
-	c.probeDispatch = c.launchPinnedDispatch
+	enablePinnedProbeExecution(c)
 	return c, conn, p
 }
 
 func TestPinnedProbeDispatchDisabledByDefault(t *testing.T) {
 	c, conn, p := probeTestController(t)
-	c.probeDispatch = nil
 	issueTestPermit(t, c, &p, 1)
+	c.probeDispatch = nil
 	if handled, err := c.handleProbe(pinnedProbeFrame(t, p)); !handled || err != nil {
 		t.Fatalf("handled=%v err=%v", handled, err)
 	}
@@ -67,6 +70,256 @@ func TestPinnedProbeDispatchDisabledByDefault(t *testing.T) {
 	c.mu.Unlock()
 	if active != 0 || pending != 1 || len(conn.outbound) != 0 {
 		t.Fatal("disabled dispatch started work or consumed the permit")
+	}
+}
+
+// This uses the actual production WebSocket entrypoint and real IPv6 loopback,
+// not the injected dispatcher/resolver used by the multi-Agent fixtures.
+func TestProductionWebSocketRunsOnlyPermittedFamilyProbe(t *testing.T) {
+	listener, err := net.Listen("tcp6", "[::1]:0")
+	if err != nil {
+		t.Skipf("IPv6 loopback unavailable: %v", err)
+	}
+	defer listener.Close()
+	accepted := make(chan struct{}, 2)
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+			accepted <- struct{}{}
+		}
+	}()
+
+	upgraded := make(chan *websocket.Conn, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err == nil {
+			upgraded <- conn
+		}
+	}))
+	defer server.Close()
+	raw, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	panel := <-upgraded
+	defer panel.Close()
+	done := make(chan struct{})
+	go handleWebSocketMessages(ws.NewSafeConn(raw), done)
+	defer func() { _ = panel.Close(); waitPinnedReader(t, done) }()
+	if err := panel.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var begin struct {
+		ID     string                     `json:"id"`
+		Method string                     `json:"method"`
+		Params v2.PingFamilySessionParams `json:"params"`
+	}
+	if err := panel.ReadJSON(&begin); err != nil || begin.Method != v2.MethodAgentPingFamilySession || begin.Params.Action != "begin" {
+		t.Fatalf("production begin = %+v, err = %v", begin, err)
+	}
+	const challenge = "0123456789abcdef0123456789abcdef"
+	if err := panel.WriteJSON(v2.Response{JSONRPC: v2.Version, ID: begin.ID, Result: v2.PingFamilySessionResult{Challenge: challenge}}); err != nil {
+		t.Fatal(err)
+	}
+	var ack struct {
+		ID     string                     `json:"id"`
+		Params v2.PingFamilySessionParams `json:"params"`
+	}
+	if err := panel.ReadJSON(&ack); err != nil || ack.Params.Action != "ack" || ack.Params.Challenge != challenge {
+		t.Fatalf("production ack = %+v, err = %v", ack, err)
+	}
+	if err := panel.WriteJSON(v2.Response{JSONRPC: v2.Version, ID: ack.ID, Result: v2.PingFamilySessionResult{Challenge: challenge}}); err != nil {
+		t.Fatal(err)
+	}
+	p := pinnedWireFixture()
+	p.Instance, p.Session = begin.Params.Instance, challenge
+	p.Target = net.JoinHostPort("::1", strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
+	if err := panel.WriteJSON(v2.Request{JSONRPC: v2.Version, Method: v2.MethodAgentPingFamilyPermit, ID: p.DispatchID, Params: permitFor(p, 1)}); err != nil {
+		t.Fatal(err)
+	}
+	var permit struct {
+		ID     string                    `json:"id"`
+		Result v2.PingFamilyPermitResult `json:"result"`
+		Error  *v2.RPCError              `json:"error"`
+	}
+	if err := panel.ReadJSON(&permit); err != nil || permit.Error != nil || permit.ID != p.DispatchID || !pinnedValidID(permit.Result.FreshnessTicket) {
+		t.Fatalf("production permit = %+v, err = %v", permit, err)
+	}
+	p.FreshnessTicket = permit.Result.FreshnessTicket
+	request := v2.Request{JSONRPC: v2.Version, Method: v2.MethodAgentPingFamilyProbe, Params: p}
+	if err := panel.WriteJSON(request); err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Method string                    `json:"method"`
+		Params v2.PingFamilyResultParams `json:"params"`
+	}
+	if err := panel.ReadJSON(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Method != v2.MethodAgentPingFamilyResult || result.Params.DispatchID != p.DispatchID || result.Params.Family != pinnedIPv6 ||
+		result.Params.Value == nil || *result.Params.Value < 0 || result.Params.Diagnostic != "" {
+		t.Fatalf("unexpected production result: %+v", result)
+	}
+	select {
+	case <-accepted:
+	case <-time.After(time.Second):
+		t.Fatal("real IPv6 listener was not reached")
+	}
+	if err := panel.WriteJSON(request); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-accepted:
+		t.Fatal("production entrypoint replayed a consumed permit")
+	case <-time.After(150 * time.Millisecond):
+	}
+}
+
+// Exercise the unmodified production entrypoint and resolver with an actual
+// DNS exchange; no test hook substitutes lookup or dial functions.
+func TestProductionWebSocketResolvesHostnameUsingNodeDNS(t *testing.T) {
+	listener, err := net.Listen("tcp6", "[::1]:0")
+	if err != nil {
+		t.Skipf("IPv6 loopback unavailable: %v", err)
+	}
+	defer listener.Close()
+	accepted := make(chan struct{}, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err == nil {
+			_ = conn.Close()
+			accepted <- struct{}{}
+		}
+	}()
+	dns, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := dnsresolver.CustomDNSServer
+	dnsresolver.SetCustomDNSServer(dns.LocalAddr().String())
+	dnsDone := make(chan struct{})
+	questions := make(chan dnsmessage.Question, 8)
+	go func() {
+		defer close(dnsDone)
+		buf := make([]byte, 4096)
+		for {
+			n, peer, err := dns.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			var request dnsmessage.Message
+			if request.Unpack(buf[:n]) != nil || len(request.Questions) != 1 {
+				continue
+			}
+			question := request.Questions[0]
+			questions <- question
+			answer := dnsmessage.Message{Header: dnsmessage.Header{ID: request.ID, Response: true, Authoritative: true, RecursionAvailable: true}, Questions: request.Questions}
+			if question.Type == dnsmessage.TypeAAAA {
+				answer.Answers = []dnsmessage.Resource{{Header: dnsmessage.ResourceHeader{Name: question.Name, Type: dnsmessage.TypeAAAA, Class: dnsmessage.ClassINET, TTL: 1},
+					Body: &dnsmessage.AAAAResource{AAAA: netip.MustParseAddr("::1").As16()}}}
+			}
+			if wire, err := answer.Pack(); err == nil {
+				_, _ = dns.WriteTo(wire, peer)
+			}
+		}
+	}()
+	defer func() {
+		_ = dns.Close()
+		<-dnsDone
+		dnsresolver.CustomDNSServer = previous
+	}()
+
+	upgraded := make(chan *websocket.Conn, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err == nil {
+			upgraded <- conn
+		}
+	}))
+	defer server.Close()
+	raw, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	panel := <-upgraded
+	defer panel.Close()
+	done := make(chan struct{})
+	go handleWebSocketMessages(ws.NewSafeConn(raw), done)
+	defer func() { _ = panel.Close(); waitPinnedReader(t, done) }()
+	if err := panel.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var begin struct {
+		ID     string                     `json:"id"`
+		Params v2.PingFamilySessionParams `json:"params"`
+	}
+	if err := panel.ReadJSON(&begin); err != nil || begin.Params.Action != "begin" {
+		t.Fatalf("production begin = %+v, err = %v", begin, err)
+	}
+	const challenge = "0123456789abcdef0123456789abcdef"
+	if err := panel.WriteJSON(v2.Response{JSONRPC: v2.Version, ID: begin.ID, Result: v2.PingFamilySessionResult{Challenge: challenge}}); err != nil {
+		t.Fatal(err)
+	}
+	var ack struct {
+		ID     string                     `json:"id"`
+		Params v2.PingFamilySessionParams `json:"params"`
+	}
+	if err := panel.ReadJSON(&ack); err != nil || ack.Params.Action != "ack" || ack.Params.Challenge != challenge {
+		t.Fatalf("production ack = %+v, err = %v", ack, err)
+	}
+	if err := panel.WriteJSON(v2.Response{JSONRPC: v2.Version, ID: ack.ID, Result: v2.PingFamilySessionResult{Challenge: challenge}}); err != nil {
+		t.Fatal(err)
+	}
+	p := pinnedWireFixture()
+	p.Instance, p.Session = begin.Params.Instance, challenge
+	p.Target = net.JoinHostPort("probe.example.invalid.", strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
+	if err := panel.WriteJSON(v2.Request{JSONRPC: v2.Version, Method: v2.MethodAgentPingFamilyPermit, ID: p.DispatchID, Params: permitFor(p, 1)}); err != nil {
+		t.Fatal(err)
+	}
+	var permit struct {
+		ID     string                    `json:"id"`
+		Result v2.PingFamilyPermitResult `json:"result"`
+		Error  *v2.RPCError              `json:"error"`
+	}
+	if err := panel.ReadJSON(&permit); err != nil || permit.Error != nil || permit.ID != p.DispatchID || !pinnedValidID(permit.Result.FreshnessTicket) {
+		t.Fatalf("production permit = %+v, err = %v", permit, err)
+	}
+	p.FreshnessTicket = permit.Result.FreshnessTicket
+	if err := panel.WriteJSON(v2.Request{JSONRPC: v2.Version, Method: v2.MethodAgentPingFamilyProbe, Params: p}); err != nil {
+		t.Fatal(err)
+	}
+	var result struct {
+		Method string                    `json:"method"`
+		Params v2.PingFamilyResultParams `json:"params"`
+	}
+	if err := panel.ReadJSON(&result); err != nil || result.Method != v2.MethodAgentPingFamilyResult || result.Params.Family != pinnedIPv6 ||
+		result.Params.Value == nil || *result.Params.Value < 0 || result.Params.Diagnostic != "" {
+		t.Fatalf("production hostname probe = %+v, err = %v", result, err)
+	}
+	select {
+	case <-accepted:
+	case <-time.After(time.Second):
+		t.Fatal("resolved IPv6 listener was not reached")
+	}
+	select {
+	case question := <-questions:
+		if question.Name.String() != "probe.example.invalid." || question.Type != dnsmessage.TypeAAAA {
+			t.Fatalf("unexpected DNS query: %+v", question)
+		}
+	default:
+		t.Fatal("production resolver did not query the configured DNS server")
+	}
+	select {
+	case question := <-questions:
+		if question.Type != dnsmessage.TypeAAAA {
+			t.Fatalf("production IPv6 pin queried another address family: %+v", question)
+		}
+	default:
 	}
 }
 
@@ -296,5 +549,124 @@ func TestPinnedProbePermitAndResultOverLoopback(t *testing.T) {
 	}
 	if err := <-readDone; err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Exercise the actual socket registry and reader on the Agent's report-write
+// failure path. A started probe must be canceled and its unused ticket must
+// not become usable by a replacement controller.
+func TestPinnedProductionReaderReportWriteFailureRetiresProbe(t *testing.T) {
+	peers := make(chan *websocket.Conn, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		peer, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		peers <- peer
+	}))
+	defer server.Close()
+	raw, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer := <-peers
+	defer peer.Close()
+	socket := ws.NewSafeConn(raw)
+	done := make(chan struct{})
+	controllers := make(chan *pinnedWSController, 1)
+	started, canceled := make(chan struct{}), make(chan struct{})
+	go handleWebSocketMessagesWithController(socket, done, time.Hour, newPinnedWSHandshake(), func(c *pinnedWSController) {
+		c.probeDispatch = c.launchPinnedDispatch
+		c.probeRunner.resolver.lookup = func(ctx context.Context, _ string) ([]netip.Addr, error) {
+			close(started)
+			<-ctx.Done()
+			close(canceled)
+			return nil, ctx.Err()
+		}
+		controllers <- c
+	})
+	t.Cleanup(func() {
+		socket.Abort()
+		waitPinnedReader(t, done)
+	})
+	controller := <-controllers
+	read := func(out any) {
+		t.Helper()
+		if err := peer.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		if err := peer.ReadJSON(out); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var begin v2.Request
+	read(&begin)
+	var handshake v2.PingFamilySessionParams
+	if err := v2.BindParams(begin.Params, &handshake); err != nil {
+		t.Fatal(err)
+	}
+	challenge := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if err := peer.WriteJSON(v2.Response{JSONRPC: v2.Version, ID: begin.ID, Result: v2.PingFamilySessionResult{Challenge: challenge}}); err != nil {
+		t.Fatal(err)
+	}
+	var ack v2.Request
+	read(&ack)
+	if err := peer.WriteJSON(v2.Response{JSONRPC: v2.Version, ID: ack.ID, Result: v2.PingFamilySessionResult{Challenge: challenge}}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		_, session, _, _, active := currentPinnedWSSession(socket, time.Now())
+		if active && session == challenge {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("production socket registry did not observe the active session")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	p := pinnedWireFixture()
+	p.Instance, p.Session = handshake.Instance, challenge
+	permit := func(sequence uint64) string {
+		t.Helper()
+		if err := peer.WriteJSON(v2.Request{JSONRPC: v2.Version, Method: v2.MethodAgentPingFamilyPermit, ID: p.DispatchID, Params: permitFor(p, sequence)}); err != nil {
+			t.Fatal(err)
+		}
+		var reply struct {
+			Result v2.PingFamilyPermitResult `json:"result"`
+			Error  *v2.RPCError              `json:"error"`
+		}
+		read(&reply)
+		if reply.Error != nil || !pinnedValidID(reply.Result.FreshnessTicket) {
+			t.Fatalf("permit response = %+v", reply)
+		}
+		return reply.Result.FreshnessTicket
+	}
+	p.FreshnessTicket = permit(1)
+	if err := peer.WriteJSON(v2.Request{JSONRPC: v2.Version, Method: v2.MethodAgentPingFamilyProbe, Params: p}); err != nil {
+		t.Fatal(err)
+	}
+	awaitPinnedSignal(t, started)
+	p.DispatchID = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	p.FreshnessTicket = permit(2)
+	if err := socket.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
+		t.Fatal(err)
+	}
+	if err := socket.WriteMessage(websocket.TextMessage, []byte("report")); err == nil {
+		t.Fatal("expected the production report writer to fail after close")
+	}
+	// EstablishWebSocketConnection uses this exact failure handler before it
+	// drops the old socket and starts a replacement.
+	abortPinnedWSSocket(socket)
+	awaitPinnedSignal(t, canceled)
+	if _, _, _, _, active := currentPinnedWSSession(socket, time.Now()); active {
+		t.Fatal("write failure retained the old session")
+	}
+	if err := controller.launchProbe(p, func(context.Context) { t.Error("retired ticket launched") }); err == nil {
+		t.Fatal("unused ticket survived transport failure")
+	}
+	replacement, other := activePinnedController(t)
+	if err := replacement.launchProbe(p, func(context.Context) { t.Error("old ticket launched on replacement") }); err == nil {
+		t.Fatalf("ticket crossed sessions: replacement=%+v", other)
 	}
 }

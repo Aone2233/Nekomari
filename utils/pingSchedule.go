@@ -3,8 +3,10 @@ package utils
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Aone2233/nekomari/database/models"
@@ -16,12 +18,55 @@ import (
 
 // PingTaskManager 管理定时器和任务
 type PingTaskManager struct {
-	mu    sync.Mutex
-	tasks map[int][]models.PingTask
+	mu        sync.Mutex
+	tasks     map[int][]scheduledPingTask
+	scheduler pingScheduler
+	pinned    *pinnedPingExecutor
 }
 
-var manager = &PingTaskManager{
-	tasks: make(map[int][]models.PingTask),
+type scheduledPingTask struct {
+	task     models.PingTask
+	rotation atomic.Uint64
+}
+
+type pingScheduler interface {
+	AddContextFunc(string, string, bool, scheduler.Func) error
+	RemovePrefix(string)
+}
+
+type defaultPingScheduler struct{}
+
+func (defaultPingScheduler) AddContextFunc(name, spec string, immediate bool, fn scheduler.Func) error {
+	return scheduler.AddContextFunc(name, spec, immediate, fn)
+}
+
+func (defaultPingScheduler) RemovePrefix(prefix string) { scheduler.RemovePrefix(prefix) }
+
+var manager = newPingTaskManager(defaultPingScheduler{}, agent_runtime.DispatchPinnedPing)
+
+// NewPingTaskManagerWithScheduler creates an isolated schedule with an
+// explicitly supplied dispatcher.
+func NewPingTaskManagerWithScheduler(s *scheduler.Manager, pinned func(context.Context, string, models.PingTask) error) *PingTaskManager {
+	if s == nil {
+		s = scheduler.NewManager()
+	}
+	return newPingTaskManager(s, pinned)
+}
+
+func newPingTaskManager(s pingScheduler, dispatch func(context.Context, string, models.PingTask) error) *PingTaskManager {
+	m := &PingTaskManager{tasks: make(map[int][]scheduledPingTask), scheduler: s}
+	if dispatch != nil {
+		m.pinned = newPinnedPingExecutor(dispatch, pinnedScheduleParallelism)
+	}
+	return m
+}
+
+// Stop cancels future firings and in-flight work for this manager's scheduler.
+func (m *PingTaskManager) Stop() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.scheduler.RemovePrefix("ping:")
+	m.tasks = make(map[int][]scheduledPingTask)
 }
 
 // Reload 重载时间表
@@ -29,30 +74,44 @@ func (m *PingTaskManager) Reload(pingTasks []models.PingTask) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	scheduler.RemovePrefix("ping:")
-	m.tasks = make(map[int][]models.PingTask)
+	m.scheduler.RemovePrefix("ping:")
+	m.tasks = make(map[int][]scheduledPingTask)
 
 	// 按Interval分组任务
 	taskGroups := make(map[int][]models.PingTask)
 	for _, task := range pingTasks {
-		if task.Interval <= 0 {
+		if task.Interval <= 0 || int64(task.Interval) > math.MaxInt64/int64(time.Second) {
+			logger.Errorf("pingschedule", "task %d has invalid interval %d; skipping", task.Id, task.Interval)
 			continue
 		}
 		taskGroups[task.Interval] = append(taskGroups[task.Interval], task)
 	}
 
 	// 为每个唯一的Interval创建协程
-	for interval, tasks := range taskGroups {
+	for interval, group := range taskGroups {
 		interval := interval
-		tasks := append([]models.PingTask(nil), tasks...)
+		tasks := make([]scheduledPingTask, len(group))
+		for i, task := range group {
+			tasks[i].task = task
+			tasks[i].task.Clients = append(models.StringArray(nil), task.Clients...)
+		}
 		m.tasks[interval] = tasks
-		if err := scheduler.AddContextFunc(fmt.Sprintf("ping:%d", interval), scheduler.Every(time.Duration(interval)*time.Second), false, func(ctx context.Context) {
+		if err := m.scheduler.AddContextFunc(fmt.Sprintf("ping:%d", interval), scheduler.Every(time.Duration(interval)*time.Second), false, func(ctx context.Context) {
 			// 一次调度共用一份地址族信息：地址族是这一批任务的共同输入，逐任务
 			// 查询会让 N 个任务产生 N 次 clients 全表读取。
 			addresses := newClientAddressLookup()
-			for _, task := range tasks {
-				go executePingTask(ctx, task, addresses)
+			var work sync.WaitGroup
+			for i := range tasks {
+				entry := &tasks[i]
+				work.Add(1)
+				go func() {
+					defer work.Done()
+					m.executePingTaskTracked(ctx, entry.task, addresses, &entry.rotation, &work)
+				}()
 			}
+			// The scheduler can only drain work that its callback owns. Pinned
+			// dispatch workers join this same scope before their parent returns.
+			work.Wait()
 		}); err != nil {
 			return err
 		}
@@ -71,6 +130,22 @@ func (m *PingTaskManager) Reload(pingTasks []models.PingTask) error {
 //
 // addresses 是本次调度共享的地址族查询；nil 表示自己查一次。
 func executePingTask(ctx context.Context, task models.PingTask, addresses *clientAddressLookup) {
+	manager.executePingTask(ctx, task, addresses, new(atomic.Uint64))
+}
+
+func (m *PingTaskManager) executePingTask(ctx context.Context, task models.PingTask, addresses *clientAddressLookup, rotation *atomic.Uint64) {
+	m.executePingTaskTracked(ctx, task, addresses, rotation, nil)
+}
+
+func (m *PingTaskManager) executePingTaskTracked(ctx context.Context, task models.PingTask, addresses *clientAddressLookup, rotation *atomic.Uint64, work *sync.WaitGroup) {
+	// A partial deployment or imported future configuration must not send a
+	// family-pinned hostname to a legacy Agent, which ignores unknown fields.
+	if task.TargetFamily != "" {
+		if m.pinned != nil && (task.TargetFamily == "ipv4" || task.TargetFamily == "ipv6") {
+			m.pinned.dispatchTaskTracked(ctx, task, rotation, work)
+		}
+		return
+	}
 	for _, clientUUID := range targetPingClientUUIDs(task, addresses) {
 		select {
 		case <-ctx.Done():
@@ -114,6 +189,16 @@ func targetPingClientUUIDs(task models.PingTask, addresses *clientAddressLookup)
 // 放在 Reload 而不是每次调度里：调度是秒级的，逐次打印会把日志刷满；而"哪些节点
 // 因为地址族被跳过"是配置属性，配置不变就不会变。
 func describeFamilySkips(pingTasks []models.PingTask) []string {
+	needsAddresses := false
+	for _, task := range pingTasks {
+		if task.TargetFamily == "" && pingTargetFamily(task.Target) != familyAny {
+			needsAddresses = true
+			break
+		}
+	}
+	if !needsAddresses {
+		return nil
+	}
 	// 跳过判断和下面的名字映射共用一份地址族信息：原来这里会查两次 clients。
 	addresses := newClientAddressLookup()
 	byTask, err := pingTasksFamilySkips(pingTasks, addresses)
@@ -159,13 +244,26 @@ func PingTasksFamilySkips(pingTasks []models.PingTask) (map[uint][]string, error
 }
 
 func pingTasksFamilySkips(pingTasks []models.PingTask, addresses *clientAddressLookup) (map[uint][]string, error) {
+	out := make(map[uint][]string)
+	needsAddresses := false
+	for _, task := range pingTasks {
+		if task.TargetFamily == "" && pingTargetFamily(task.Target) != familyAny {
+			needsAddresses = true
+			break
+		}
+	}
+	if !needsAddresses {
+		return out, nil
+	}
 	byUUID, err := addresses.addresses()
 	if err != nil {
 		return nil, err
 	}
 
-	out := make(map[uint][]string)
 	for _, task := range pingTasks {
+		if task.TargetFamily != "" {
+			continue // Pinned probes do not use legacy node-address filtering.
+		}
 		family := pingTargetFamily(task.Target)
 		if family == familyAny {
 			continue // 域名目标不筛选

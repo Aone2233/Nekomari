@@ -6,6 +6,9 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -166,6 +169,169 @@ func TestReportBatchCounterRestoreFailureInitializesStateOnce(t *testing.T) {
 	assertMetricValues(t, s, MetricTrafficUp, first.UUID, base.Add(-time.Second), base.Add(2*time.Second), []float64{40, 40})
 	assertMetricValues(t, s, MetricNetTotalDown, first.UUID, base.Add(-time.Second), base.Add(2*time.Second), []float64{200, 260})
 	assertMetricValues(t, s, MetricTrafficDown, first.UUID, base.Add(-time.Second), base.Add(2*time.Second), []float64{60, 60})
+}
+
+func TestReportAcceptedMaintenanceFailureIsNotRequeued(t *testing.T) {
+	s := useReportTestStore(t, nil)
+	ctx := t.Context()
+	base := time.Now().UTC().Truncate(time.Minute).Add(-4 * time.Minute)
+	if _, err := s.ExecContext(ctx, `CREATE TRIGGER reject_metric_insert BEFORE INSERT ON metric_rollups BEGIN SELECT RAISE(ABORT, 'injected rollup failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	pending := []v2.Report{{UUID: "accepted-report", UpdatedAt: base.Add(5 * time.Second), CPU: v2.CPUReport{Usage: 42}, Network: v2.NetworkReport{TotalUp: 100, TotalDown: 200}}}
+	if err := writePendingReports(ctx, &pending); err != nil || len(pending) != 0 {
+		t.Fatalf("accepted report remains retryable: pending=%d err=%v", len(pending), err)
+	}
+	stateValue, ok := reportTrafficStates.Load("accepted-report")
+	if !ok {
+		t.Fatal("accepted report did not advance its traffic state")
+	}
+	state := stateValue.(*reportTrafficState)
+	state.mu.Lock()
+	timestamp := state.timestamp
+	state.mu.Unlock()
+	if !timestamp.Equal(base.Add(5 * time.Second)) {
+		t.Fatalf("accepted report state timestamp = %s", timestamp)
+	}
+	if _, err := s.ExecContext(ctx, `DROP TRIGGER reject_metric_insert`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PersistHotRollups(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var rows []metric.PersistedRollup
+	if _, err := s.ExportRollups(ctx, MetricCPU, 100, func(batch []metric.PersistedRollup) error {
+		rows = append(rows, batch...)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Count != 1 || rows[0].Sum != 42 {
+		t.Fatalf("accepted report lost or duplicated: %+v", rows)
+	}
+}
+
+func TestPingAcceptedMaintenanceFailureIsNotRequeued(t *testing.T) {
+	s := useReportTestStore(t, nil)
+	ctx := t.Context()
+	at := time.Now().UTC().Truncate(time.Minute).Add(-4*time.Minute + 5*time.Second)
+	if _, err := s.ExecContext(ctx, `CREATE TRIGGER reject_ping_insert BEFORE INSERT ON metric_rollups BEGIN SELECT RAISE(ABORT, 'injected rollup failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	pending := []models.PingRecord{{TaskId: 12, Client: "accepted-ping", Time: at, Value: 7}}
+	if err := writePendingPingRecords(ctx, &pending); err != nil || len(pending) != 0 {
+		t.Fatalf("accepted ping remains retryable: pending=%d err=%v", len(pending), err)
+	}
+	if _, err := s.ExecContext(ctx, `DROP TRIGGER reject_ping_insert`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PersistHotRollups(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var rows []metric.PersistedRollup
+	if _, err := s.ExportRollups(ctx, MetricPingLatency, 100, func(batch []metric.PersistedRollup) error {
+		rows = append(rows, batch...)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Count != 1 || rows[0].Sum != 7 {
+		t.Fatalf("accepted ping lost or duplicated: %+v", rows)
+	}
+}
+
+func TestAmbiguousReportDoesNotBlockOtherNodesOrSkipSameNode(t *testing.T) {
+	s := useReportTestStore(t, nil)
+	ctx := t.Context()
+	base := time.Now().UTC().Truncate(time.Minute).Add(-4 * time.Minute)
+	if err := s.Write(ctx, metric.Point{MetricName: MetricCPU, EntityID: "blocked", Timestamp: base.Add(20 * time.Second), Value: 10}); err != nil {
+		t.Fatal(err)
+	}
+	// A different Store handle cannot reconstruct exact identities from rollups.
+	if err := s.PersistHotRollups(ctx); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "snapshot.db")
+	if err := s.SnapshotSQLite(ctx, path); err != nil {
+		t.Fatal(err)
+	}
+	other, err := metric.Open(ctx, metric.SQLite(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	storeMu.Lock()
+	store = other
+	storeMu.Unlock()
+	t.Cleanup(func() {
+		storeMu.Lock()
+		store = s
+		storeMu.Unlock()
+	})
+	pending := []v2.Report{
+		{UUID: "blocked", UpdatedAt: base.Add(10 * time.Second), CPU: v2.CPUReport{Usage: 1}},
+		{UUID: "healthy", UpdatedAt: base.Add(10 * time.Second), CPU: v2.CPUReport{Usage: 2}},
+		{UUID: "blocked", UpdatedAt: base.Add(30 * time.Second), CPU: v2.CPUReport{Usage: 3}},
+	}
+	err = writePendingReports(ctx, &pending)
+	if !errors.Is(err, metric.ErrRawHistoryUnavailable) || len(pending) != 2 || pending[0].UUID != "blocked" || pending[1].UUID != "blocked" {
+		t.Fatalf("ambiguous queue outcome: pending=%+v err=%v", pending, err)
+	}
+	points, err := other.Query(ctx, metric.Query{MetricName: MetricCPU, EntityID: "healthy", Start: base, End: base.Add(time.Minute)})
+	if err != nil || len(points) != 1 || points[0].Value != 2 {
+		t.Fatalf("unrelated node did not progress: points=%+v err=%v", points, err)
+	}
+	points, err = other.Query(ctx, metric.Query{MetricName: MetricCPU, EntityID: "blocked", Start: base, End: base.Add(time.Minute)})
+	if err != nil || len(points) != 0 {
+		t.Fatalf("later blocked-node report bypassed earlier report: points=%+v err=%v", points, err)
+	}
+}
+
+func TestAmbiguousPingDoesNotBlockOtherSeriesOrSkipSameSeries(t *testing.T) {
+	s := useReportTestStore(t, nil)
+	ctx := t.Context()
+	base := time.Now().UTC().Truncate(time.Minute).Add(-4 * time.Minute)
+	seed := models.PingRecord{Client: "node", TaskId: 12, Time: base.Add(20 * time.Second), Value: 10}
+	if err := writePingRecords(ctx, []models.PingRecord{seed}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PersistHotRollups(ctx); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "snapshot.db")
+	if err := s.SnapshotSQLite(ctx, path); err != nil {
+		t.Fatal(err)
+	}
+	other, err := metric.Open(ctx, metric.SQLite(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	storeMu.Lock()
+	store = other
+	storeMu.Unlock()
+	t.Cleanup(func() {
+		storeMu.Lock()
+		store = s
+		storeMu.Unlock()
+	})
+	pending := []models.PingRecord{
+		{Client: "node", TaskId: 12, Time: base.Add(10 * time.Second), Value: 1},
+		{Client: "node", TaskId: 13, Time: base.Add(10 * time.Second), Value: 2},
+		{Client: "node", TaskId: 12, Time: base.Add(30 * time.Second), Value: 3},
+	}
+	err = writePendingPingRecords(ctx, &pending)
+	if !errors.Is(err, metric.ErrRawHistoryUnavailable) || len(pending) != 2 || pending[0].TaskId != 12 || pending[1].TaskId != 12 {
+		t.Fatalf("ambiguous ping queue outcome: pending=%+v err=%v", pending, err)
+	}
+	points, err := other.Query(ctx, metric.Query{MetricName: MetricPingLatency, EntityID: "node", Tags: map[string]string{"task_id": "13"}, Start: base, End: base.Add(time.Minute)})
+	if err != nil || len(points) != 1 || points[0].Value != 2 {
+		t.Fatalf("unrelated ping did not progress: points=%+v err=%v", points, err)
+	}
+	points, err = other.Query(ctx, metric.Query{MetricName: MetricPingLatency, EntityID: "node", Tags: map[string]string{"task_id": "12"}, Start: base, End: base.Add(time.Minute)})
+	if err != nil || len(points) != 0 {
+		t.Fatalf("later blocked ping bypassed earlier record: points=%+v err=%v", points, err)
+	}
 }
 
 func TestWriteReportStoresMinuteMetricsAndResetAwareTraffic(t *testing.T) {
@@ -343,6 +509,118 @@ func TestReportBatcherFlushesQueuedReports(t *testing.T) {
 	assertMetricAggregate(t, s, MetricCPU, first.UUID, base.Add(-time.Second), base.Add(time.Minute), metric.AggAvg, 15, 2)
 }
 
+func TestFailedReportBatcherStopRetainsAcceptedRecordsForRetry(t *testing.T) {
+	ctx := context.Background()
+	s := useReportTestStore(t, nil)
+	StartReportBatcher()
+	t.Cleanup(func() {
+		if err := StopReportBatcher(ctx); err != nil {
+			t.Errorf("stop report batcher: %v", err)
+		}
+	})
+	base := time.Now().UTC()
+	record := models.PingRecord{Client: "stop-retry-node", TaskId: 41, Time: base, Value: 17}
+	if err := WritePingRecord(ctx, record); err != nil {
+		t.Fatal(err)
+	}
+	if err := storeOperations.Acquire(ctx); err != nil {
+		t.Fatal(err)
+	}
+	stopCtx, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
+	err := StopReportBatcher(stopCtx)
+	cancel()
+	storeOperations.Release()
+	if err == nil {
+		t.Fatal("blocked flush was reported as a successful stop")
+	}
+	if err := WritePingRecord(ctx, record); !errors.Is(err, ErrReportBatchStopped) {
+		t.Fatalf("stopping batcher admitted another record: %v", err)
+	}
+	if err := StopReportBatcher(ctx); err != nil {
+		t.Fatalf("retry failed to drain accepted record: %v", err)
+	}
+	assertMetricValues(t, s, MetricPingLatency, record.Client, base.Add(-time.Second), base.Add(time.Minute), []float64{17})
+}
+
+func TestReportBatcherStopReturnsFlushFailureAndCanRetry(t *testing.T) {
+	ctx := context.Background()
+	s := useReportTestStore(t, nil)
+	StartReportBatcher()
+	t.Cleanup(func() {
+		if err := StopReportBatcher(ctx); err != nil {
+			t.Errorf("stop report batcher: %v", err)
+		}
+	})
+	base := time.Now().UTC()
+	record := models.PingRecord{Client: "stop-error-node", TaskId: 42, Time: base, Value: 23}
+	if err := WritePingRecord(ctx, record); err != nil {
+		t.Fatal(err)
+	}
+	storeMu.Lock()
+	store = nil
+	storeMu.Unlock()
+	defer func() {
+		storeMu.Lock()
+		store = s
+		storeMu.Unlock()
+	}()
+	stopCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	err := StopReportBatcher(stopCtx)
+	cancel()
+	if err == nil || !strings.Contains(err.Error(), "metric store not enabled") {
+		t.Fatalf("stop should return the flush error, got %v", err)
+	}
+	storeMu.Lock()
+	store = s
+	storeMu.Unlock()
+	if err := WritePingRecord(ctx, record); !errors.Is(err, ErrReportBatchStopped) {
+		t.Fatalf("failed stop admitted another record: %v", err)
+	}
+	if err := StopReportBatcher(ctx); err != nil {
+		t.Fatalf("retry failed: %v", err)
+	}
+	assertMetricValues(t, s, MetricPingLatency, record.Client, base.Add(-time.Second), base.Add(time.Minute), []float64{23})
+}
+
+func TestReportBatcherConcurrentStopsShareCompletedDrain(t *testing.T) {
+	ctx := context.Background()
+	s := useReportTestStore(t, nil)
+	StartReportBatcher()
+	t.Cleanup(func() {
+		if err := StopReportBatcher(ctx); err != nil {
+			t.Errorf("stop report batcher: %v", err)
+		}
+	})
+	base := time.Now().UTC()
+	record := models.PingRecord{Client: "concurrent-stop-node", TaskId: 43, Time: base, Value: 31}
+	if err := WritePingRecord(ctx, record); err != nil {
+		t.Fatal(err)
+	}
+	if err := storeOperations.Acquire(ctx); err != nil {
+		t.Fatal(err)
+	}
+	const callers = 16
+	var started sync.WaitGroup
+	started.Add(callers)
+	results := make(chan error, callers)
+	stopCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	for i := 0; i < callers; i++ {
+		go func() {
+			started.Done()
+			results <- StopReportBatcher(stopCtx)
+		}()
+	}
+	started.Wait()
+	storeOperations.Release()
+	for i := 0; i < callers; i++ {
+		if err := <-results; err != nil {
+			t.Fatalf("concurrent stop %d failed: %v", i, err)
+		}
+	}
+	assertMetricValues(t, s, MetricPingLatency, record.Client, base.Add(-time.Second), base.Add(time.Minute), []float64{31})
+}
+
 func TestPingBatcherFlushesLatencyAndLossTogether(t *testing.T) {
 	ctx := context.Background()
 	s := useReportTestStore(t, nil)
@@ -412,6 +690,114 @@ func TestPingBatcherFlushesLatencyAndLossTogether(t *testing.T) {
 	}
 	if len(loss) != 2 || loss[0].Value != 0 || loss[1].Value != 1 {
 		t.Fatalf("loss points = %#v, want success and loss samples", loss)
+	}
+}
+
+func TestPinnedPingSyncWriteBypassesPendingBatch(t *testing.T) {
+	ctx := context.Background()
+	s := useReportTestStore(t, nil)
+	StartReportBatcher()
+	t.Cleanup(func() {
+		if err := StopReportBatcher(ctx); err != nil {
+			t.Errorf("stop report batcher: %v", err)
+		}
+	})
+	base := time.Now().UTC()
+	if err := PreparePinnedPingHistory(ctx, "sync-node", models.PingTask{Id: 19, Type: "tcp", TargetFamily: "ipv6"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := WritePingRecordSync(ctx, models.PingRecord{Client: "sync-node", TaskId: 19, Time: base, Value: 3, ValueUS: 3456, PingType: "tcp", Family: "ipv6"}); err != nil {
+		// The nonblocking append deliberately rejects an old minute if a clock
+		// boundary passes between result admission and the store commit.
+		if !errors.Is(err, metric.ErrWriteUnavailable) || base.Minute() == time.Now().UTC().Minute() {
+			t.Fatal(err)
+		}
+		base = time.Now().UTC()
+		if err := WritePingRecordSync(ctx, models.PingRecord{Client: "sync-node", TaskId: 19, Time: base, Value: 3, ValueUS: 3456, PingType: "tcp", Family: "ipv6"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{MetricPingLatency, MetricPingLoss, MetricPingSuccessLatency} {
+		points, err := s.Query(ctx, metric.Query{MetricName: name, EntityID: "sync-node", Start: base.Add(-time.Second), End: base.Add(time.Minute)})
+		if err != nil || len(points) != 1 || points[0].Tags["family"] != "ipv6" {
+			t.Fatalf("synchronous %s = %+v, error %v", name, points, err)
+		}
+	}
+}
+
+// Failed probes omit the success-only series, but a later successful probe
+// still needs its baseline before entering the nonblocking admission fence.
+func TestPinnedHistoryPreparationIncludesSuccessAfterLoss(t *testing.T) {
+	ctx := t.Context()
+	s := useReportTestStore(t, nil)
+	task := models.PingTask{Id: 19, Type: "tcp", TargetFamily: "ipv6"}
+	if err := PreparePinnedPingHistory(ctx, "sync-loss", task); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC().Truncate(time.Millisecond)
+	failure := models.PingRecord{Client: "sync-loss", TaskId: task.Id, Time: at, Value: -1, PingType: "tcp", Family: "ipv6"}
+	if err := WritePingRecordSync(ctx, failure); err != nil {
+		t.Fatalf("write failed probe: %v", err)
+	}
+	// Use a separate timestamp in the same minute; no real-time sleep or
+	// production network probe is involved.
+	if time.Until(at.Truncate(time.Minute).Add(time.Minute)) < 20*time.Millisecond {
+		t.Skip("minute boundary too close to create two distinct samples")
+	}
+	for time.Now().UTC().UnixMilli() <= at.UnixMilli() {
+		time.Sleep(time.Millisecond)
+	}
+	if err := PreparePinnedPingHistory(ctx, "sync-loss", task); err != nil {
+		t.Fatal(err)
+	}
+	success := failure
+	success.Time, success.Value, success.ValueUS = time.Now().UTC(), 2, 2345
+	if err := WritePingRecordSync(ctx, success); err != nil {
+		t.Fatalf("write successful probe after loss: %v", err)
+	}
+	for name, want := range map[string][]float64{MetricPingLatency: {-1, 2.345}, MetricPingLoss: {1, 0}, MetricPingSuccessLatency: {2.345}} {
+		points, err := s.Query(ctx, metric.Query{MetricName: name, EntityID: "sync-loss", Start: at.Add(-time.Second), End: success.Time.Add(time.Second)})
+		if err != nil || len(points) != len(want) {
+			t.Fatalf("%s points = %+v, %v; want %v", name, points, err, want)
+		}
+		for i, point := range points {
+			if point.Value != want[i] {
+				t.Fatalf("%s points = %+v, want %v", name, points, want)
+			}
+		}
+	}
+}
+
+func TestPinnedPingSyncWriteRefusesBusyStoreAndCancellation(t *testing.T) {
+	s := useReportTestStore(t, nil)
+	at := time.Now().UTC()
+	rec := models.PingRecord{Client: "sync-busy", TaskId: 19, Time: at, Value: 2, ValueUS: 2345, PingType: "tcp", Family: "ipv6"}
+	if !storeOperations.TryAcquire() {
+		t.Fatal("could not hold store operation gate")
+	}
+	done := make(chan error, 1)
+	go func() { done <- WritePingRecordSync(context.Background(), rec) }()
+	select {
+	case err := <-done:
+		storeOperations.Release()
+		if !errors.Is(err, metric.ErrWriteUnavailable) {
+			t.Fatalf("busy store error = %v", err)
+		}
+	case <-time.After(time.Second):
+		storeOperations.Release()
+		<-done
+		t.Fatal("fenced write waited for store maintenance")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := WritePingRecordSync(ctx, rec); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled write = %v", err)
+	}
+	for _, name := range []string{MetricPingLatency, MetricPingLoss, MetricPingSuccessLatency} {
+		points, err := s.Query(context.Background(), metric.Query{MetricName: name, EntityID: rec.Client, Start: at.Add(-time.Second), End: at.Add(time.Second)})
+		if err != nil || len(points) != 0 {
+			t.Fatalf("failed write left %s points %+v: %v", name, points, err)
+		}
 	}
 }
 

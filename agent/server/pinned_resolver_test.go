@@ -12,8 +12,12 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/Aone2233/nekomari/agent/dnsresolver"
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 func testAddresses(values ...string) []netip.Addr {
@@ -22,6 +26,66 @@ func testAddresses(values ...string) []netip.Addr {
 		out = append(out, netip.MustParseAddr(value))
 	}
 	return out
+}
+
+func TestPinnedResolverUsesConfiguredNodeDNS(t *testing.T) {
+	listener, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := dnsresolver.CustomDNSServer
+	dnsresolver.SetCustomDNSServer(listener.LocalAddr().String())
+	var mu sync.Mutex
+	var questions []dnsmessage.Type
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		buf := make([]byte, 4096)
+		for {
+			n, peer, err := listener.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			var request dnsmessage.Message
+			if request.Unpack(buf[:n]) != nil || len(request.Questions) != 1 {
+				continue
+			}
+			question := request.Questions[0]
+			mu.Lock()
+			questions = append(questions, question.Type)
+			mu.Unlock()
+			answer := dnsmessage.Message{Header: dnsmessage.Header{ID: request.ID, Response: true, Authoritative: true, RecursionAvailable: true}, Questions: request.Questions}
+			if question.Type == dnsmessage.TypeAAAA {
+				answer.Answers = []dnsmessage.Resource{{Header: dnsmessage.ResourceHeader{Name: question.Name, Type: dnsmessage.TypeAAAA, Class: dnsmessage.ClassINET, TTL: 1},
+					Body: &dnsmessage.AAAAResource{AAAA: netip.MustParseAddr("2001:db8::123").As16()}}}
+			}
+			encoded, err := answer.Pack()
+			if err == nil {
+				_, _ = listener.WriteTo(encoded, peer)
+			}
+		}
+	}()
+	defer func() {
+		_ = listener.Close()
+		<-done
+		dnsresolver.CustomDNSServer = previous
+	}()
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	addr, err := (pinnedResolver{}).resolve(ctx, "probe.example.invalid.", pinnedIPv6)
+	if err != nil || addr.String() != "2001:db8::123" {
+		t.Fatalf("custom DNS resolution = %s, %v", addr, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(questions) == 0 {
+		t.Fatal("configured DNS server received no query")
+	}
+	for _, question := range questions {
+		if question != dnsmessage.TypeAAAA {
+			t.Fatalf("IPv6 pin sent another DNS family: %v", questions)
+		}
+	}
 }
 
 func TestPinnedResolverSelectsOnlyRequestedFamily(t *testing.T) {
@@ -59,6 +123,41 @@ func TestPinnedResolverSelectsOnlyRequestedFamily(t *testing.T) {
 				t.Fatalf("address = %s, want %s", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestPinnedResolverQueriesOnlyRequestedDNSFamily(t *testing.T) {
+	var networks []string
+	r := pinnedResolver{lookupNetwork: func(_ context.Context, network, host string) ([]netip.Addr, error) {
+		if host != "example.test" {
+			t.Fatalf("lookup host = %q", host)
+		}
+		networks = append(networks, network)
+		switch network {
+		case "ip4":
+			return testAddresses("192.0.2.1"), nil
+		case "ip6":
+			return testAddresses("2001:db8::1"), nil
+		case "ip":
+			return testAddresses("192.0.2.1", "2001:db8::1"), nil
+		default:
+			t.Fatalf("unexpected lookup network %q", network)
+			return nil, nil
+		}
+	}}
+	for _, tc := range []struct{ family, want string }{
+		{pinnedIPv4, "192.0.2.1"}, {pinnedIPv6, "2001:db8::1"},
+	} {
+		got, err := r.resolve(t.Context(), "example.test", tc.family)
+		if err != nil || got.String() != tc.want {
+			t.Fatalf("%s lookup = %s, %v", tc.family, got, err)
+		}
+	}
+	if _, err := r.resolveAny(t.Context(), "example.test"); err != nil {
+		t.Fatal(err)
+	}
+	if len(networks) != 3 || networks[0] != "ip4" || networks[1] != "ip6" || networks[2] != "ip" {
+		t.Fatalf("lookup networks = %v", networks)
 	}
 }
 
@@ -109,6 +208,27 @@ func TestPinnedResolverLiteralsAndErrors(t *testing.T) {
 	cancel()
 	if _, err := r.resolve(ctx, "example.test", pinnedIPv4); !errors.Is(err, context.Canceled) || !errors.Is(err, errPinnedDNS) {
 		t.Fatalf("canceled DNS error = %v", err)
+	}
+}
+
+func TestPinnedResolverClassifiesSystemNoRecordAsNonProbe(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want error
+	}{
+		{"name or record not found", &net.DNSError{Err: "no such host", Name: "example.test", IsNotFound: true}, errPinnedDNS},
+		{"temporary DNS failure", &net.DNSError{Err: "server failed", Name: "example.test", IsTemporary: true}, errPinnedDNS},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := pinnedResolver{lookupNetwork: func(context.Context, string, string) ([]netip.Addr, error) {
+				return nil, tc.err
+			}}
+			out := pinnedProbeRunner{resolver: r}.probeTCP(t.Context(), "example.test:80", pinnedIPv6, time.Second)
+			if out.attempted || !errors.Is(out.err, tc.want) || !errors.Is(out.err, tc.err) {
+				t.Fatalf("non-probe = %+v", out)
+			}
+		})
 	}
 }
 

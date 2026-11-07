@@ -57,7 +57,9 @@ func (c *pinnedWSController) handleProbePermit(data []byte) (bool, error) {
 	} else {
 		resp.Error = &v2.RPCError{Code: -32602, Message: "invalid or expired permit request"}
 	}
-	return true, c.conn.WriteJSON(resp)
+	ctx, cancel := context.WithTimeout(context.Background(), pinnedControlWriteTimeout)
+	defer cancel()
+	return true, c.conn.WriteJSONContextWait(ctx, resp)
 }
 
 type pinnedProbeTicket struct {
@@ -74,14 +76,14 @@ func newPinnedTicket() (string, error) {
 }
 
 // The controller lock serializes ticket consumption and probe admission with
-// handshake expiry and socket retirement. The permit request is wired to the
-// WebSocket reader, but no production caller starts a pinned probe yet.
+// handshake expiry and socket retirement. Only an enabled execution hook can
+// issue a ticket on the current WebSocket session.
 func (c *pinnedWSController) issueProbePermit(p v2.PingFamilyPermitParams) (v2.PingFamilyPermitResult, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := time.Now()
 	c.expireLocked(now)
-	if c.stopped || c.handshake == nil || !c.handshake.active || c.sessionContext == nil ||
+	if c.stopped || c.probeDispatch == nil || c.handshake == nil || !c.handshake.active || c.sessionContext == nil ||
 		!pinnedValidID(p.Instance) || !pinnedValidID(p.Session) || !pinnedValidID(p.DispatchID) ||
 		p.Instance != c.handshake.instance || p.Session != c.handshake.challenge ||
 		p.Sequence == 0 || p.Sequence <= c.ticketSequence {
@@ -114,7 +116,7 @@ func (c *pinnedWSController) issueProbePermit(p v2.PingFamilyPermitParams) (v2.P
 
 // launchProbe consumes an exact permit and registers the goroutine before
 // releasing the retirement lock. Its context is canceled on session retirement
-// and at the local lease deadline; no remote wall-clock comparison is needed.
+// or the execution deadline; the session timer follows timely lease renewals.
 func (c *pinnedWSController) launchProbe(p v2.PingFamilyProbeParams, run func(context.Context)) error {
 	if run == nil {
 		return errPinnedPermit
@@ -135,11 +137,8 @@ func (c *pinnedWSController) launchProbe(p v2.PingFamilyProbeParams, run func(co
 	if !now.Before(ticket.expires) || c.activeProbes >= pinnedMaxActiveProbes {
 		return errPinnedPermit
 	}
-	deadline := now.Add(pinnedProbeExecutionTTL)
-	if c.handshake.validUntil.Before(deadline) {
-		deadline = c.handshake.validUntil
-	}
-	ctx, cancel := context.WithDeadline(c.sessionContext, deadline)
+	c.armSessionExpiryLocked()
+	ctx, cancel := context.WithDeadline(c.sessionContext, now.Add(pinnedProbeExecutionTTL))
 	c.activeProbes++
 	go func() {
 		defer func() {

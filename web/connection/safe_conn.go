@@ -67,6 +67,10 @@ type SafeConn struct {
 
 	interceptor FrameInterceptor
 	info        *ConnInfo
+	onClose     func()
+	closing     bool
+	closeDone   chan struct{}
+	closeErr    error
 }
 
 func NewSafeConn(conn *websocket.Conn) *SafeConn {
@@ -95,6 +99,14 @@ func (sc *SafeConn) SetInterceptor(info *ConnInfo, interceptor FrameInterceptor)
 	defer sc.mu.Unlock()
 	sc.info = info
 	sc.interceptor = interceptor
+}
+
+// SetOnClose installs a lifecycle callback before the connection is published.
+// It runs once after the plugin close hook has returned.
+func (sc *SafeConn) SetOnClose(fn func()) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	sc.onClose = fn
 }
 
 // readFrame reads one frame and runs the wsMessage hook chain. Frames
@@ -242,10 +254,34 @@ func (sc *SafeConn) WriteJSONContext(ctx context.Context, v interface{}) error {
 
 func (sc *SafeConn) Close() error {
 	sc.mu.Lock()
+	if sc.closing {
+		done := sc.closeDone
+		sc.mu.Unlock()
+		<-done
+		sc.mu.Lock()
+		err := sc.closeErr
+		sc.mu.Unlock()
+		return err
+	}
+	sc.closing = true
+	sc.closeDone = make(chan struct{})
 	interceptor, info := sc.interceptor, sc.info
+	onClose := sc.onClose
 	sc.interceptor = nil // run OnClose exactly once
+	sc.onClose = nil
 	err := sc.conn.Close()
 	sc.mu.Unlock()
+	defer func() {
+		// Another Close caller must not report completion while the original
+		// plugin hook or lifecycle callback is still running.
+		if onClose != nil {
+			onClose()
+		}
+		sc.mu.Lock()
+		sc.closeErr = err
+		close(sc.closeDone)
+		sc.mu.Unlock()
+	}()
 	if interceptor != nil && info != nil {
 		interceptor.OnClose(info)
 	}

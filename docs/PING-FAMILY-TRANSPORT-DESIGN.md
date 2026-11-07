@@ -1,11 +1,14 @@
 # Family-pinned probes: transport fencing design
 
-Status: draft implementation and test plan. The feature branch has a WS-only
-challenge/ack handshake, an isolated permit round trip, and a probe/result
-execution path behind a disabled Agent dispatch hook. No scheduler dispatches a
-pinned task or admits a pinned result. POST sessions, delivery and panel-side
-result fencing remain unimplemented. None of this authorizes a release or
-changes live tasks.
+Status: local release candidate and historical design record. The production
+task RPC, scheduler, WebSocket-only dispatcher and Agent execution path are now
+wired in the uncommitted candidate; an admin-only diagnostic snapshot is also
+available. The browser-to-handler test exercises these paths with isolated
+Agent processes, fake DNS and IPv6 loopback. POST-only Agents are deliberately
+skipped, and safe rollback and live acceptance remain open. No candidate has
+been deployed. Earlier implementation checkpoints in this document describe
+their own time and may state that these entrypoints were not yet wired; the
+current status is maintained in [OPEN-WORK.md](./OPEN-WORK.md).
 The parent contract is [PING-DOMAIN-FAMILY-DESIGN.md](./PING-DOMAIN-FAMILY-DESIGN.md).
 
 ## Why a capability flag is insufficient
@@ -95,6 +98,17 @@ activate the wire helpers based solely on syntactically valid identifiers.
   and an isolated panel helper sends it, but no production scheduler invokes
   the helper. The Agent execution path consumes the ticket only when its
   dispatch hook is explicitly enabled by a test; it is nil in production.
+  The Agent now also refuses to issue a permit when that hook is nil, so a
+  partially deployed build cannot advertise execution readiness merely by
+  completing the handshake. An isolated real-Agent/actual-handler test checks
+  that a handshaken disabled Agent rejects the permit and receives no probe.
+  The local session timer follows a successful renewal rather than retaining
+  the earlier deadline; a stale expiry callback rechecks the current session.
+  A bounded control write avoids holding the session lock indefinitely, and
+  may briefly wait for a concurrent ordinary report before failing closed.
+  Tests exercise an in-flight probe across renewal, expiry without traffic,
+  an old callback after replacement and a blocked renewal write. They do not
+  prove fleet coverage or real-time scheduling under resource exhaustion.
 - An isolated panel reservation map allocates per-session sequence numbers,
   tracks a bounded number of pending permit responses, and wakes waiters on
   replacement, re-handshake, disconnect, token reset or observed lease expiry.
@@ -111,30 +125,162 @@ activate the wire helpers based solely on syntactically valid identifiers.
   permit is not authorization to send a target or write a result.
 - The Agent can parse a strictly bounded distinct probe frame and, in tests,
   consume its one-use ticket, execute the resolver and emit a result only over
-  the same WebSocket. Its dispatch hook defaults to nil: enabling it requires
-  the missing panel fences and a deliberate Agent rollout. Result writes have
+  the same WebSocket. The real Agent entrypoint now enables this hook locally;
+  the production panel remains gated and Agent rollout has not begun. A real
+  IPv6 loopback test exercises handshake, permit, execution and replay against
+  that entrypoint. Result writes have
   bounded deadlines, never use the generic POST fallback and abort/retire the
   socket on write failure. Session cancellation stops the context-aware primary
   and independently resolved reference probe. A reference selects its own
   first address and family; HTTP redirect handling stays in that family, which
   is stricter than the legacy reference when redirects change families.
+- The HTTP transport can detach a dial context from the request context. The
+  local draft additionally binds DNS/dial to the probe deadline and retirement,
+  records the chosen family as the dial starts, and retains it when a timeout
+  races the dial callback. Focused race tests cover unresolved timeouts, both
+  fast and delayed timeout callbacks, and cancellation after a dial starts.
+  Cancellation depends on the resolver/dialer honoring its context; these
+  synthetic tests do not establish production reachability or coverage.
 - An isolated per-session registration primitive binds a dispatch ID to the
   active socket, instance and supplied task generation, retains consumed or
   canceled IDs as tombstones through expiry, and enforces a finite capacity.
   It consumes primary protocol legs and the independent reference leg once;
-  malformed results do not consume a leg. It is not connected to delivery or
-  metric writes. Its supplied task configuration and assignment are not yet
-  checked atomically with mutations; that fence remains mandatory, along with
-  credential admission and serialized result writes. Expired, duplicate,
-  unknown or stale results must never write a metric.
-- The isolated registration returns its panel registration time for a
-  consumed result; it does not trust an Agent clock. Whether that timestamp is
-  appropriate for historical metrics must be settled before integration.
+  malformed results do not consume a leg. A local unwired delivery helper now
+  registers it before a bounded direct-WS write and cancels on failure. That
+  helper obtains a permit outside the fences, then reloads the actual task and
+  node under credential, task and per-node session fences before delivery.
+  A local draft admission helper reads the task and assignment under a task
+  guard, checks an internal random task incarnation and calls a synchronous
+  metric writer. A bounded WS-only handler calls it under current-credential and
+  current-socket admission; generic POST rejects the method. Local handler tests
+  reject malformed frames, stale sockets and unregistered dispatches. An
+  isolated test also exercises the real Agent against actual HTTP credential
+  admission and the WebSocket handler, with a test-only probe hook, fake DNS
+  and local dial. The test invokes dispatch explicitly; it does not run the
+  scheduler. Default-on assignment
+  and the private create/edit helpers renew the incarnation atomically; local
+  SQLite batch tests cover rollback and unassign/reassign, but the public API
+  and configuration import are not enabled or fully integrated.
+  The draft now holds a per-node session fence rather than the global Agent
+  mutex across the write. Race tests with a blocked injected writer cover other
+  nodes' progress, replacement, disconnect, reset, re-handshake and expiry.
+  The draft now uses a nonblocking, current-bucket append in the real store:
+  it acquires all relevant locks with `TryLock`, validates every point before
+  modifying raw/hot data, and makes no SQL call or asynchronous follow-up
+  while admission is held. A busy store, disabled metric, absent definition
+  snapshot, duplicate timestamp or minute boundary may drop the sample rather
+  than stall retirement or append later. Normal compaction persists admitted
+  hot buckets. Local tests exercise real-store contention, cancellation,
+  atomic refusal, rollup persistence and concurrent ordinary ingest. A separate
+  loopback harness exercises the actual Agent with these helpers, and the
+  separate transport fixture runs through real panel HTTP/WS handlers.
+  Neither establishes a hard real-time bound on CPU scheduling and in-memory mutation. Credential admission
+  remains mandatory. Expired, duplicate, unknown or stale results must never
+  write a metric.
+- A bounded in-memory diagnostic primitive now records admitted
+  non-probe reasons, metric-write refusal and successful ingestion. It stores
+  task incarnation, session and panel permit sequence; under the existing
+  task/session fences a late older result cannot overwrite a newer one in the
+  same session. Dual primary legs and reference are separate, entries expire
+  after two minutes, and contended/full writes increment a dropped counter
+  instead of blocking retirement. An admin-only, on-demand single-node
+  snapshot reloads the assignment and fences the current socket; it exposes
+  dropped updates and expires stale state in the UI. A failed reserved permit
+  records only the generic reason-unknown `permit_unavailable` state, fenced
+  by task/session/sequence, not a guessed Agent version. Canceled or
+  unreserved requests, scheduler saturation, and a probe silently refused
+  after its permit can remain unknown. A snapshot can become stale immediately
+  after it is read; the UI says so. Absence never implies successful execution.
+  Diagnostic state is lost on restart and is not historical monitoring data.
+- The helper assigns the panel's result-admission time, not the Agent clock or
+  the earlier dispatch time. At a minute rollover the store may conservatively
+  skip a result rather than revive an already-flushed historical bucket. This
+  behavior and its effect on coverage still need end-to-end validation.
   A result missing its pending dispatch must fail closed, even after restart.
+- The isolated scheduler bounds concurrent delivery attempts, but a successful
+  socket write finishes before the Agent probe. The ledger refuses another
+  dispatch for the same task/session while any prior leg is pending, avoiding
+  starvation when an interval is shorter than the probe time. A missing leg
+  delays another attempt until bounded expiry. A tombstone also refuses a
+  delayed older permit after a newer dispatch has registered. The scheduler's
+  worker bound does not limit Agent-side execution across different tasks;
+  cross-task fairness and production behavior under sustained overload are
+  not established.
 
-This is not a finished bootstrap or queue. Production dispatch/result
-integration, atomic task and credential fences, and end-to-end deadline and
-cancellation tests with the real Agent remain required before delivery.
+This is not a finished bootstrap or queue. The production task-guard path rejects
+pinned edits/imports, drains queued legacy observations before deletion, and skips
+pinned tasks in the legacy scheduler. Authenticated POST/real SQLite/metric
+store tests verify that deletion removes flushed and queued legacy samples and
+that an old legacy result cannot enter a missing or pinned task. A subsequent
+local change checks the durable deletion reservation before legacy result
+admission, pinned result admission, and pinned delivery; the authenticated
+lifecycle test now deliberately reuses the reserved ID for both legacy and
+pinned rows and expects refusal. The check requires the reservation to exist
+and only covers the current process paths; old binaries, restoring an earlier
+main database without the reservation, direct SQL and other processes remain
+outside this protection. SQLite `AUTOINCREMENT` avoids reuse in normal fixture
+creation, but the pinned incarnation alone does not establish identity. Draft exports retain
+the family, omit the runtime generation and use schema 2, which both the
+current schema-1 importer and older panels refuse. Imports/previews also refuse
+before any writes while pinned rows exist. These exports are not currently
+importable; import round-trip is still not implemented.
+This is not yet a complete history or rollback boundary.
+The local migration draft excludes pinned rows from the startup-time legacy
+all-clients expansion, with a SQLite restart regression test. Older binaries
+still lack that exclusion and do not understand the pin, so rollback with
+pinned rows present remains unsafe and must be explicitly addressed.
+Production scheduler/delivery integration, comprehensive task and credential
+fence coverage, per-node diagnostics, and further scheduler, deadline and
+cancellation tests with real Agents remain required before delivery.
+
+The current scratch mutation path is exercised through RPC binding and a
+test-only REST-bridge method with admin authorization. An opt-in Chromium
+fixture now also sends the actual component's request, using a real admin
+session, through that bridge to a scratch SQLite database, isolated scheduler
+and three real Agent test processes. Fake DNS and an IPv6 loopback service
+verify a recorded IPv6 result, a no-family non-probe without false loss, a
+disabled Agent receiving no probe, and absence of legacy queued events. The
+test also checks that anonymous calls fail and the real production add method
+still rejects the pin. The CI panel-smoke job opts into this test. It is not a
+live-node or full production browser-to-Agent flow: production creation,
+scheduling and the Agent execution hook remain disabled. Draft import excludes concurrent draft creation with a
+process-local fence, but the planner, cross-entity atomicity and cross-process
+coordination remain unresolved. A committed create also needs visible reload
+failure and reconciliation before release.
+
+The local POST handler conservatively retires WS capability on every bounded,
+authenticated POST. This avoids treating an ambiguous transport transition as
+proof that the same Agent is active, but the current Agent also uses POST for
+ordinary unlock and exec results while WS is healthy. A local loopback test
+now uses the actual Agent reader and panel helpers: after simulated POST
+retirement the old capability cannot issue a permit, a failed renewal clears
+the Agent state, a later heartbeat starts a fresh handshake, and another IPv6
+sample is admitted. A separate test uses the real POST/WS handlers and checks
+credential retirement during an in-flight Agent probe. Both accelerate the
+heartbeat and use a test-only Agent hook; neither quantifies production
+coverage or exercises the production Agent socket registry's transport-failure
+path. A subsequent isolated real-scheduler test uses the normal 25-second
+handshake cadence and regular application keepalives: after a POST it observes
+a temporary gap followed by an IPv6 sample. The Agent now begins a fresh
+handshake immediately after a rejected active renewal. The fixture still uses
+fake DNS, an enabled test-only hook and a one-second task interval, so it does
+not measure fleet coverage. A newer loopback fixture also uses the real Agent
+reader and production `*ws.SafeConn` registry, enables the probe hook only in
+the fixture, starts a blocked synthetic lookup and reproduces the report
+writer's close/error path. The same abort handler retires the registered
+session, cancels that lookup and refuses an unused old ticket, including on a
+replacement controller; ten race-enabled repetitions pass. This is not a
+full `EstablishWebSocketConnection` reconnection or live-Agent test. POST and
+transport churn can lose probe cycles, so surface the reason before treating
+the WS-only rollout as usable. Delayed old POSTs may cause a skipped
+observation, not authorize a probe.
+
+The private draft edit helper now refuses target, type, reference and family
+changes under the same pinned task ID. A new incarnation fences in-flight
+results but is not a metric-series label, so it cannot separate historical
+samples after such an edit. Renames, intervals and assignments may still be
+edited; a change of measurement identity requires creating a new task. This
+rule is not yet connected to the public API or configuration import.
 
 ## Queue and direct delivery
 

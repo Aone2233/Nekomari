@@ -89,6 +89,12 @@ func pinnedHTTPAuthorityAllowed(u *url.URL, family string) bool {
 	if u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
 		return false
 	}
+	if strings.HasPrefix(u.Host, "[") {
+		addr, err := netip.ParseAddr(u.Hostname())
+		if err != nil || !addr.Is6() || addr.Zone() != "" {
+			return false
+		}
+	}
 	if strings.HasSuffix(u.Host, ":") {
 		return false
 	}
@@ -238,6 +244,8 @@ func (r pinnedProbeRunner) probeHTTP(ctx context.Context, target, family string,
 	if !validPinnedFamily(family) {
 		return pinnedProbeOutcome{err: errPinnedInvalidFamily}
 	}
+	probeCtx, stopProbe := context.WithTimeout(ctx, timeout)
+	defer stopProbe()
 	if !strings.Contains(target, "://") {
 		if addr, err := netip.ParseAddr(target); err == nil && addr.Is6() && !addr.Is4In6() {
 			target = "[" + target + "]"
@@ -261,15 +269,43 @@ func (r pinnedProbeRunner) probeHTTP(ctx context.Context, target, family string,
 	var last pinnedProbeOutcome
 	var hop uint64
 	transport.DialContext = func(dialCtx context.Context, network, target string) (net.Conn, error) {
+		// net/http may detach dialCtx from the request so a canceled request can
+		// leave a dial running. Bound it to the probe/session as well.
+		dialCtx, cancelDial := context.WithCancel(dialCtx)
+		stopCancel := context.AfterFunc(probeCtx, cancelDial)
+		defer func() {
+			stopCancel()
+			cancelDial()
+		}()
 		mu.Lock()
 		generation := hop
 		mu.Unlock()
-		conn, addr, attempted, err := r.resolver.dialTCPWithAddress(dialCtx, network, target, family)
+		resolver := r.resolver
+		dial := resolver.dial
+		if dial == nil {
+			dial = (&net.Dialer{}).DialContext
+		}
+		resolver.dial = func(ctx context.Context, network, target string) (net.Conn, error) {
+			host, _, err := net.SplitHostPort(target)
+			if err != nil {
+				return nil, err
+			}
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			mu.Lock()
+			if generation == hop {
+				last = pinnedProbeOutcome{attempted: true, family: addressFamilyOf(host)}
+			}
+			mu.Unlock()
+			return dial(ctx, network, target)
+		}
+		conn, addr, attempted, err := resolver.dialTCPWithAddress(dialCtx, network, target, family)
 		out := pinnedProbeOutcome{attempted: attempted, err: err}
 		if addr.IsValid() {
 			out.family = addressFamilyOf(addr.String())
 		}
-		if err != nil && (errors.Is(err, syscall.EAFNOSUPPORT) || errors.Is(err, syscall.EPROTONOSUPPORT) || isPermissionErr(err) || (dialCtx.Err() != nil && !errors.Is(dialCtx.Err(), context.DeadlineExceeded))) {
+		if err != nil && (errors.Is(err, syscall.EAFNOSUPPORT) || errors.Is(err, syscall.EPROTONOSUPPORT) || isPermissionErr(err) || (dialCtx.Err() != nil && probeCtx.Err() == nil && !errors.Is(dialCtx.Err(), context.DeadlineExceeded))) {
 			out.attempted, out.family = false, ""
 			if errors.Is(err, syscall.EAFNOSUPPORT) || errors.Is(err, syscall.EPROTONOSUPPORT) || isPermissionErr(err) {
 				out.err = errors.Join(errPinnedLocalSocket, err)
@@ -293,7 +329,7 @@ func (r pinnedProbeRunner) probeHTTP(ctx context.Context, target, family string,
 		return conn, err
 	}
 	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport, Timeout: timeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+	client := &http.Client{Transport: transport, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		mu.Lock()
 		hop++
 		last = pinnedProbeOutcome{}
@@ -306,7 +342,7 @@ func (r pinnedProbeRunner) probeHTTP(ctx context.Context, target, family string,
 		}
 		return nil
 	}}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return pinnedProbeOutcome{err: err}
 	}
@@ -562,26 +598,28 @@ func (r pinnedProbeRunner) probeReference(ctx context.Context, kind, target stri
 		}
 	}
 	dnsCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 	addr, err := r.resolver.resolveAny(dnsCtx, host)
 	if err != nil {
+		cancel()
 		return pinnedProbeOutcome{err: err}
 	}
 	if err := dnsCtx.Err(); err != nil {
+		cancel()
 		return pinnedProbeOutcome{err: err}
 	}
+	cancel()
 	family := addressFamilyOf(addr.String())
-	resolver := r.resolver
-	lookup := resolver.lookup
+	originalResolver := r.resolver
+	resolver := originalResolver
 	resolver.lookup = func(ctx context.Context, next string) ([]netip.Addr, error) {
 		if next == host {
 			return []netip.Addr{addr}, nil
 		}
-		if lookup != nil {
-			return lookup(ctx, next)
-		}
-		return net.DefaultResolver.LookupNetIP(ctx, "ip", next)
+		return originalResolver.lookupAddresses(ctx, "ip", next)
 	}
 	r.resolver = resolver
-	return r.probeOnce(dnsCtx, kind, target, family, timeout)
+	// The reference's DNS deadline must not become the parent deadline for the
+	// actual probe. Otherwise an attempted TCP timeout looks like cancellation
+	// of the whole task and is incorrectly omitted instead of counted as loss.
+	return r.probeOnce(ctx, kind, target, family, timeout)
 }
