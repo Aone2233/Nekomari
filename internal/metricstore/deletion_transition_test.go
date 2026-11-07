@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,7 +17,7 @@ func TestClearRecordsDrainsQueueAndFencesTransitions(t *testing.T) {
 	for _, kind := range []string{"ping", "system"} {
 		t.Run(kind, func(t *testing.T) {
 			prepareRecoveryTest(t)
-			path := filepath.Join(t.TempDir(), "active.db")
+			path := recoveryStorePath(t, "active.db")
 			if err := config.SetMany(map[string]any{MetricDBDriverKey: "sqlite", MetricDBDSNKey: path}); err != nil {
 				t.Fatal(err)
 			}
@@ -84,7 +83,7 @@ func TestClearRecordsDrainsQueueAndFencesTransitions(t *testing.T) {
 
 func TestClearPingRecordsDropsPendingCoarseBuckets(t *testing.T) {
 	prepareRecoveryTest(t)
-	path := filepath.Join(t.TempDir(), "active.db")
+	path := recoveryStorePath(t, "active.db")
 	if err := config.SetMany(map[string]any{MetricDBDriverKey: "sqlite", MetricDBDSNKey: path}); err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +114,7 @@ func TestClearPingRecordsDropsPendingCoarseBuckets(t *testing.T) {
 
 func TestDeleteEntityDrainsQueueAndFencesStoreTransition(t *testing.T) {
 	prepareRecoveryTest(t)
-	path := filepath.Join(t.TempDir(), "active.db")
+	path := recoveryStorePath(t, "active.db")
 	if err := config.SetMany(map[string]any{MetricDBDriverKey: "sqlite", MetricDBDSNKey: path}); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +183,7 @@ func TestDeleteEntityDrainsQueueAndFencesStoreTransition(t *testing.T) {
 
 func TestReportAdmissionsFenceTransitionDrain(t *testing.T) {
 	prepareRecoveryTest(t)
-	path := filepath.Join(t.TempDir(), "active.db")
+	path := recoveryStorePath(t, "active.db")
 	if err := config.SetMany(map[string]any{MetricDBDriverKey: "sqlite", MetricDBDSNKey: path}); err != nil {
 		t.Fatal(err)
 	}

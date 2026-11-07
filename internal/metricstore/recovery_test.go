@@ -50,6 +50,19 @@ func prepareRecoveryTest(t *testing.T) {
 	})
 }
 
+// Register store cleanup after TempDir's cleanup so Windows can remove the
+// SQLite file after its connections have actually closed.
+func recoveryStorePath(t *testing.T, name string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	t.Cleanup(func() {
+		if err := CloseStoreContext(context.Background()); err != nil {
+			t.Errorf("close recovery test store: %v", err)
+		}
+	})
+	return path
+}
+
 func TestRecoverStoreFailureKeepsCurrentConfig(t *testing.T) {
 	prepareRecoveryTest(t)
 	if err := config.SetMany(map[string]any{

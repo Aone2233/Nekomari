@@ -139,7 +139,7 @@ func TestRecoverStoreCleansReservedHistoryBeforeActivation(t *testing.T) {
 	if err := db.Create(&models.PingTaskDeletion{TaskID: 12}).Error; err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "old.db")
+	path := recoveryStorePath(t, "old.db")
 	old := reservationStore(t, path)
 	if err := old.ImportRollups(t.Context(), []metric.PersistedRollup{
 		reservationRollup(MetricPingLoss, "12"), reservationRollup(MetricPingLoss, "13"),
@@ -159,7 +159,7 @@ func TestRecoverStoreCleansReservedHistoryBeforeActivation(t *testing.T) {
 
 func TestReloadSameStoreDoesNotResurrectReservedHotBucket(t *testing.T) {
 	prepareRecoveryTest(t)
-	path := filepath.Join(t.TempDir(), "active.db")
+	path := recoveryStorePath(t, "active.db")
 	if err := config.SetMany(map[string]any{MetricDBDriverKey: "sqlite", MetricDBDSNKey: path}); err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestPingWriterWaitsForStoreReplacement(t *testing.T) {
 
 func TestStoreMigrationFencesDeletionAndDrainsQueuedPing(t *testing.T) {
 	prepareRecoveryTest(t)
-	path := filepath.Join(t.TempDir(), "active.db")
+	path := recoveryStorePath(t, "active.db")
 	sourcePath := filepath.Join(t.TempDir(), "source.db")
 	source, err := metric.Open(t.Context(), metric.SQLite(sourcePath, metric.WithRollupPolicy(defaultRollupPolicy())))
 	if err != nil {
@@ -262,7 +262,7 @@ func TestStoreTransitionsFenceDeletionAndDrainReservedQueue(t *testing.T) {
 	for _, operation := range []string{"reload", "recover", "close"} {
 		t.Run(operation, func(t *testing.T) {
 			prepareRecoveryTest(t)
-			path := filepath.Join(t.TempDir(), "active.db")
+			path := recoveryStorePath(t, "active.db")
 			if err := config.SetMany(map[string]any{MetricDBDriverKey: "sqlite", MetricDBDSNKey: path}); err != nil {
 				t.Fatal(err)
 			}
@@ -481,7 +481,7 @@ func TestStoreTransitionsAbortIfQueueCannotDrain(t *testing.T) {
 	for _, operation := range []string{"reload", "recover", "close"} {
 		t.Run(operation, func(t *testing.T) {
 			prepareRecoveryTest(t)
-			path := filepath.Join(t.TempDir(), "active.db")
+			path := recoveryStorePath(t, "active.db")
 			if err := config.SetMany(map[string]any{MetricDBDriverKey: "sqlite", MetricDBDSNKey: path}); err != nil {
 				t.Fatal(err)
 			}

@@ -74,7 +74,7 @@ func TestMigrationPreservesDestinationRollupsAndDefinitions(t *testing.T) {
 func TestMigrationReportsDestinationConflictWithoutReplacingIt(t *testing.T) {
 	prepareRecoveryTest(t)
 	ctx := t.Context()
-	targetPath := filepath.Join(t.TempDir(), "target.db")
+	targetPath := recoveryStorePath(t, "target.db")
 	sourcePath := filepath.Join(t.TempDir(), "source.db")
 	if err := config.SetMany(map[string]any{MetricDBDriverKey: "sqlite", MetricDBDSNKey: targetPath}); err != nil {
 		t.Fatal(err)
@@ -127,8 +127,8 @@ func TestStoreMigrationRefusesSQLiteFileAliasesBeforeCleanup(t *testing.T) {
 		t.Run(aliasKind, func(t *testing.T) {
 			prepareRecoveryTest(t)
 			ctx := t.Context()
-			dir := t.TempDir()
-			targetPath, aliasPath := filepath.Join(dir, "target.db"), filepath.Join(dir, "alias.db")
+			targetPath := recoveryStorePath(t, "target.db")
+			aliasPath := filepath.Join(filepath.Dir(targetPath), "alias.db")
 			if err := config.SetMany(map[string]any{MetricDBDriverKey: "sqlite", MetricDBDSNKey: targetPath}); err != nil {
 				t.Fatal(err)
 			}
@@ -210,7 +210,7 @@ func TestMigrationErrorsAndStatusDoNotExposeConnectionStrings(t *testing.T) {
 	}
 
 	prepareRecoveryTest(t)
-	target := filepath.Join(t.TempDir(), "active.db")
+	target := recoveryStorePath(t, "active.db")
 	if err := config.SetMany(map[string]any{MetricDBDriverKey: "sqlite", MetricDBDSNKey: target}); err != nil {
 		t.Fatal(err)
 	}

@@ -15,7 +15,7 @@ import (
 
 func TestSnapshotStoreDrainsAcceptedReportsAndFencesAdmissions(t *testing.T) {
 	prepareRecoveryTest(t)
-	if err := config.SetMany(map[string]any{MetricDBDriverKey: "sqlite", MetricDBDSNKey: filepath.Join(t.TempDir(), "live.db")}); err != nil {
+	if err := config.SetMany(map[string]any{MetricDBDriverKey: "sqlite", MetricDBDSNKey: recoveryStorePath(t, "live.db")}); err != nil {
 		t.Fatal(err)
 	}
 	if err := InitializeStore(); err != nil {
@@ -119,7 +119,7 @@ func TestSnapshotStorePropagatesDrainFailureAndReleasesFence(t *testing.T) {
 
 func TestStoreReplacementRetainsActiveStoreWhenHotPersistenceFails(t *testing.T) {
 	prepareRecoveryTest(t)
-	path := filepath.Join(t.TempDir(), "active.db")
+	path := recoveryStorePath(t, "active.db")
 	if err := config.SetMany(map[string]any{MetricDBDriverKey: "sqlite", MetricDBDSNKey: path}); err != nil {
 		t.Fatal(err)
 	}
