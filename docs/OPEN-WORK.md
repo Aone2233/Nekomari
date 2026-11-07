@@ -14,7 +14,44 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**Current IPv6 release candidate, local only (2026-11-07 16:30 UTC):** the
+**Current IPv6 production canary (2026-11-07 17:25 UTC):** OC424 is running
+the locally built, non-public candidate `v1.7.30/d1a15af`, not a published
+stable release. Exact-commit CI 42393310935 passed 8/8. The arm64 image is
+`sha256:7988a75ea14363e4e131ed577946afac27d0d7f69791b47928b73e5cae3b44b7`,
+assembled on OC424 from the pinned v1.7.29 base and a Go 1.27.3 bookworm
+cross-built binary. The public version endpoint reports the candidate; the
+post-cutover panel check passes 9/9, with 14 fresh CPU streams, unchanged 14
+client and 13 ping-task counts, and no container restarts. Task 29 is unchanged.
+MegaBox and Riven alone run a separately built `v1.7.30-rc.1` Agent from the
+same source, both with auto-update disabled; their existing CPU, memory, ping
+latency and loss streams resumed. Original Agent binaries and unit copies are
+in root-only `pinned-canary-20261107T170131Z` backup directories on each host.
+
+A stopped-old-panel encrypted handoff is on MAC-WAN at
+`manual/ipv6-cold-handoff-20261107/cold-handoff.age` (SHA-256
+`a12f91567db3e5906fd76d9e8327aea90d8b2512bb38e81a0ad7a1481fdd2443`). The old
+panel exited zero, no other holder of either DB was observed, and this archive
+boots both old and candidate images in isolated MAC-WAN drills. A separate
+isolated no-pinned-task candidate-to-old rehearsal retained all 14 client and
+13 original task rows. This is **not** a proven atomic snapshot of every
+in-memory sample or external writer, and it is not a downgrade procedure after
+pinned tasks exist. Do not copy the archive over live data or blindly start an
+old binary. A post-cutover online archive also passes the candidate restore
+drill; it has the usual online snapshot RPO limitations.
+
+Open acceptance: create and observe a new IPv6 task through an authenticated
+admin session on MegaBox and Riven, with historical task 29 left separate. The
+tooling available to this executor cannot access the owner's existing in-app
+browser session, and ping-task writes deliberately require a session; do not
+extract a live session token or fabricate one in SQLite. Confirm both real
+latency and loss points, including a multi-node task and UI rendering. The
+current candidate has not been published as a stable GitHub Release: the
+standard workflow publishes Agent assets that can auto-update nodes whose
+policies are unknown. Keep the internal canary and restore/forward-fix path
+until that rollout hazard and real acceptance are resolved. Configuration
+import limitations described below apply in this running candidate.
+
+**Earlier IPv6 release-candidate checkpoint (2026-11-07 16:30 UTC):** the
 production scheduler and public task creation/edit paths in the local candidate
 now call the fenced WebSocket-only pinned dispatcher, and the admin task form
 exposes the family selector. Existing legacy tasks cannot be converted in place:
@@ -35,8 +72,9 @@ frontend unit suite passes 219, the build passes, and the updated task browser
 fixture passes seven cases. A synthetic clean-shutdown encrypted handoff passes;
 the v1.7.29 old-image experiment again confirms that parking task rows does not
 fence late legacy results or the old metric-delete path. None of these tests is a
-production backup or a safe downgrade procedure. The candidate has not been
-committed, CI-tested on its exact commit, published or deployed.
+production backup or a safe downgrade procedure. At that checkpoint the
+candidate had not been committed, CI-tested, published or deployed; the
+production-canary record above supersedes that status.
 
 Read-only checks show OC424 healthy on v1.7.29/94e1973 with root disk at 50%,
 and MAC-WAN at 38% with both backup timers active. MegaBox and Riven each resolved

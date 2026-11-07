@@ -1,5 +1,31 @@
 # MAC-WAN backup receiver (updated 2026-11-05)
 
+## 2026-11-07 IPv6 production canary
+
+After an old-panel stop with exit code 0 and a check that neither SQLite file
+had another observed process holder, a recipient-only archive was created and
+the old panel restarted while it was verified off-host. The MAC-WAN copy is
+`manual/ipv6-cold-handoff-20261107/cold-handoff.age`, SHA-256
+`a12f91567db3e5906fd76d9e8327aea90d8b2512bb38e81a0ad7a1481fdd2443`.
+Authenticated, network-free restore drills booted both v1.7.29 and the local
+candidate v1.7.30. A separate scratch rehearsal booted the candidate and then
+the old image on the migrated, no-pinned-task data and preserved all client and
+original ping-task rows. This stopped-panel snapshot is not a proof that the
+old binary drained every asynchronous or external writer, and neither the
+archive nor that rehearsal authorizes overwriting current live databases or
+downgrading after pinned tasks are created.
+
+After the OC424 candidate cutover, a separate online archive was received at
+`manual/ipv6-candidate-post-20261107T1720Z/oc424-20261107T172108698210Z-b3b8c5041a45.tar.gz.age`,
+SHA-256 `75a63d6b381bf9c8501ed740e4c7c6dc76cf6f971318b2e3f45af7b1dd5f82c5`.
+Its sidecar and authenticated, network-free candidate boot drill passed. Its
+online snapshots still omit pending in-memory samples and are not cross-store
+atomic. The decryption identity remained on MAC-WAN and the scheduled timers
+were not changed. The first attempt to pipe the stopped archive into the
+receiver failed because its source process did not inherit stdin; the verified
+ciphertext was instead copied to the dedicated manual directory and checked
+against the OC424 SHA-256 before both drills.
+
 ## 2026-11-07 IPv6 pre-release snapshot
 
 A manual online snapshot was received at
