@@ -272,6 +272,10 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ steps.tag.outputs.image }}
+          # Semver tags otherwise implicitly generate latest, even when the
+          # explicit latest rule below is disabled for the manual-only Agent.
+          flavor: |
+            latest=false
           # workflow_run's event SHA belongs to the default branch, not the release checkout.
           labels: |
             org.opencontainers.image.revision=${{ steps.source.outputs.revision }}

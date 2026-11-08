@@ -113,10 +113,17 @@ def normalize(expression: str) -> str:
 
 def check_latest_policy(docker_yml: Path, workflow: dict, problems: list) -> None:
     try:
-        tags = steps_by_name(workflow["jobs"]["build-and-push"])["Derive image metadata"]["with"]["tags"]
+        metadata = steps_by_name(workflow["jobs"]["build-and-push"])["Derive image metadata"]["with"]
+        tags = metadata["tags"]
     except KeyError as exc:
         problems.append(f"{docker_yml}: no `Derive image metadata` step with a `tags:` block ({exc}); the latest policy cannot be found")
         return
+
+    if "latest=false" not in [line.strip() for line in metadata.get("flavor", "").splitlines()]:
+        problems.append(
+            f"{docker_yml}: metadata flavor must explicitly set latest=false; "
+            "semver tags otherwise generate an implicit latest regardless of the raw tag rule"
+        )
 
     match = None
     for line in tags.splitlines():

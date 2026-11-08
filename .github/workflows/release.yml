@@ -505,6 +505,7 @@ jobs:
           fi
 
       - name: Create release
+        id: create_release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.resolve.outputs.tag }}
@@ -592,9 +593,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
           RELEASE_REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ steps.create_release.outputs.id }}
         run: |
           set -euo pipefail
-          gh api "repos/${RELEASE_REPO}/releases/tags/${RELEASE_TAG}" > /tmp/draft-release.json
+          # GitHub's releases/tags endpoint excludes drafts, even for the owner.
+          # Use the ID returned by the creation step and validate it before use.
+          [[ "$RELEASE_ID" =~ ^[1-9][0-9]*$ ]]
+          gh api "repos/${RELEASE_REPO}/releases/${RELEASE_ID}" > /tmp/draft-release.json
           python3 - /tmp/draft-release.json "$RELEASE_TAG" <<'PY'
           import json, sys
           release = json.load(open(sys.argv[1], encoding="utf-8"))
