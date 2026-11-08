@@ -358,6 +358,7 @@ func httpProbe(target string, timeout time.Duration, expectedStatus string, stat
 
 	var phaseMu sync.Mutex
 	var dnsUS, tcpUS int64
+	var tcpSet bool
 	var firstFamily string
 	transport := &http.Transport{
 		DisableKeepAlives: true,
@@ -383,6 +384,7 @@ func httpProbe(target string, timeout time.Duration, expectedStatus string, stat
 			tcpElapsed := time.Since(tcpStart).Microseconds()
 			phaseMu.Lock()
 			tcpUS += tcpElapsed
+			tcpSet = true
 			phaseMu.Unlock()
 			return conn, err
 		},
@@ -424,10 +426,14 @@ func httpProbe(target string, timeout time.Duration, expectedStatus string, stat
 	totalUS := time.Since(start).Microseconds()
 	phaseMu.Lock()
 	family := firstFamily
+	tcpKnown := tcpSet
 	phaseMu.Unlock()
 	out := httpProbeOutcome{totalUS: totalUS, family: family, reachable: err == nil}
 	obs := &v2.HTTPProbeReport{
-		DNSUS: &dnsUS, TCPUS: &tcpUS, TotalUS: &totalUS, Redirects: &redirects,
+		DNSUS: &dnsUS, TotalUS: &totalUS, Redirects: &redirects,
+	}
+	if tcpKnown {
+		obs.TCPUS = &tcpUS
 	}
 	if tlsUS > 0 {
 		obs.TLSUS = &tlsUS
