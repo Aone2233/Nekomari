@@ -6,6 +6,7 @@ export interface PingTask {
   id?: number;
   interval?: number;
   target?: string;
+  target_family?: "" | "ipv4" | "ipv6";
   // reference 可选：路径归因用的参考目标（典型填本机网关）
   reference?: string;
   type?: string;
@@ -21,6 +22,7 @@ export interface PingTaskContextType {
   pingTasks: PingTask[] | null;
   isLoading: boolean;
   error: string | null;
+  schedulePending?: boolean | null;
   refresh: () => void;
 }
 export const PingTaskContext = React.createContext<PingTaskContextType | undefined>(

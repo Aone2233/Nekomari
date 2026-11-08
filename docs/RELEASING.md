@@ -2,6 +2,18 @@
 
 ## Cut a release
 
+**v1.7.30 staged policy:** Agent binaries are published as
+`manual-komari-agent-<os>-<arch>` and are not matched by the existing Agent's
+automatic or panel-requested updater. GitHub's `latest` release and the Agent
+image's `latest`/major.minor aliases stay on their previous values. The explicit
+`v1.7.30` panel and Agent image tags remain available. Install a manual Agent
+only after checking its checksum, node-specific service/capabilities and a
+retained rollback binary. The standard installer and panel-targeted update do
+not resolve these manual assets. The release workflow intentionally refuses to
+reuse this policy for another tag without review. A valid pinned task also
+precludes a blind downgrade to an older panel; see
+[`PING-FAMILY-ROLLBACK-DRAFT.md`](./PING-FAMILY-ROLLBACK-DRAFT.md).
+
 **Latest delivery: v1.7.27 (2026-11-04).** Immutable `24faa9d`, pull-request
 CI41773313554 and exact merge CI41774384405 8/8, release41775304251 10/10,
 and Docker41775869827 2/2. The node chart page gets an Export CSV button

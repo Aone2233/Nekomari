@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Aone2233/nekomari/internal/lifecycle"
 	"github.com/Aone2233/nekomari/internal/plugin"
 	logger "github.com/Aone2233/nekomari/utils/log"
 	"github.com/Aone2233/nekomari/web/backup"
@@ -21,34 +22,28 @@ func NewArchiveUploadHandler() *upload.Handler {
 }
 
 func finalizeBackupUpload(session upload.Session) (upload.Result, error) {
-	restoreLock, err := backup.AcquireRestoreLock()
-	if err != nil {
-		return upload.Result{}, err
-	}
 	archive, err := os.Open(session.ArchivePath)
 	if err != nil {
-		restoreLock.Release()
 		return upload.Result{}, fmt.Errorf("open merged backup: %w", err)
 	}
-	if err := restoreLock.SaveUploadedBackup(archive, session.Metadata.Filename); err != nil {
+	if err := backup.StageUploadedBackup(archive, session.Metadata.Filename); err != nil {
 		_ = archive.Close()
-		restoreLock.Release()
 		return upload.Result{}, err
 	}
 	if err := archive.Close(); err != nil {
-		restoreLock.Release()
-		return upload.Result{}, fmt.Errorf("close merged backup: %w", err)
+		// The staged file owns its own complete copy; a read-only source close
+		// cannot invalidate it or safely turn this into a retryable failure.
+		logger.Warnf("admin-api", "Could not close the merged backup source: %v", err)
 	}
 
 	go func() {
-		logger.InfoArgs("admin-api", "Backup uploaded, restarting service in 2 seconds to apply on startup...")
+		logger.InfoArgs("admin-api", "Backup uploaded, requesting a clean restart in 2 seconds...")
 		time.Sleep(2 * time.Second)
-		restoreLock.Release()
-		os.Exit(0)
+		lifecycle.RequestRestart(lifecycle.RestartForBackupRestore)
 	}()
 
 	return upload.Result{
-		Message: "Backup uploaded successfully. The service will restart and apply the backup.",
+		Message: "Backup uploaded successfully. The service will apply it after a clean shutdown.",
 		Data:    map[string]string{"path": filepath.Join(".", "data", "backup.zip")},
 	}, nil
 }

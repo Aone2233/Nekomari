@@ -25,7 +25,8 @@ function load(file) {
     require(spec) {
       if (spec.endsWith('/i18n/config')) return { default: { t: key => key }, __esModule: true };
       if (spec.endsWith('/lib/rpc2')) return { RPC2Client: class { state = 'disconnected'; } };
-      if (!spec.startsWith('.')) return require(spec);
+      if (spec.startsWith('@/')) spec = path.join(root, '..', spec.slice(2));
+      if (!spec.startsWith('.') && !path.isAbsolute(spec)) return require(spec);
       const target = path.resolve(path.dirname(file), spec);
       if (target.endsWith('.json')) return JSON.parse(readFileSync(target, 'utf8'));
       const resolved = ['.ts', '.tsx'].map(ext => target + ext).find(existsSync);

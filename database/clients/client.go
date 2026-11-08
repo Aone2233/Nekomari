@@ -13,9 +13,11 @@ import (
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/database/tasks"
 	"github.com/Aone2233/nekomari/internal/clientguard"
+	"github.com/Aone2233/nekomari/internal/pingguard"
 	"github.com/Aone2233/nekomari/utils"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 func DeleteClient(clientUuid string) error {
@@ -141,35 +143,22 @@ func SaveClientInfoContext(ctx context.Context, update map[string]interface{}) e
 
 // CreateClient 创建新客户端
 func CreateClient() (clientUUID, token string, err error) {
-	db := dbcore.GetDBInstance()
-	token = utils.GenerateToken()
-	clientUUID = uuid.New().String()
-
-	client := models.Client{
-		UUID:      clientUUID,
-		Token:     token,
-		Name:      "client_" + clientUUID[0:8],
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
-	}
-
-	err = db.Create(&client).Error
-	if err != nil {
-		return "", "", err
-	}
-	if err := tasks.AddDefaultOnClientUUID(clientUUID); err != nil {
-		logger.ErrorArgs("clients", "Failed to apply default-on ping tasks to new client:", err)
-	}
-	return clientUUID, token, nil
+	return createClientWith(dbcore.GetDBInstance(), "", tasks.CreateClientWithDefaultPing, tasks.ReloadPingSchedule)
 }
 
 func CreateClientWithName(name string) (clientUUID, token string, err error) {
-	if name == "" {
-		return CreateClient()
+	return createClientWith(dbcore.GetDBInstance(), name, tasks.CreateClientWithDefaultPing, tasks.ReloadPingSchedule)
+}
+
+func createClientWith(db *gorm.DB, name string, create func(context.Context, *gorm.DB, *models.Client) (bool, error), reload func() error) (clientUUID, token string, err error) {
+	if db == nil || create == nil || reload == nil {
+		return "", "", fmt.Errorf("client creation is unavailable")
 	}
-	db := dbcore.GetDBInstance()
 	token = utils.GenerateToken()
 	clientUUID = uuid.New().String()
+	if name == "" {
+		name = "client_" + clientUUID[0:8]
+	}
 	client := models.Client{
 		UUID:      clientUUID,
 		Token:     token,
@@ -178,12 +167,23 @@ func CreateClientWithName(name string) (clientUUID, token string, err error) {
 		UpdatedAt: time.Now().UTC(),
 	}
 
-	err = db.Create(&client).Error
+	changed := false
+	err = pingguard.WithDefaultRoster(context.Background(), func() error {
+		return clientguard.With(context.Background(), clientUUID, func() error {
+			var err error
+			changed, err = create(context.Background(), db, &client)
+			return err
+		})
+	})
 	if err != nil {
 		return "", "", err
 	}
-	if err := tasks.AddDefaultOnClientUUID(clientUUID); err != nil {
-		logger.ErrorArgs("clients", "Failed to apply default-on ping tasks to new client:", err)
+	if changed {
+		// The node and token already committed; do not hide them from the
+		// caller if schedule reconciliation has to retry.
+		if err := reload(); err != nil {
+			logger.ErrorArgs("clients", "Failed to reload default-on ping tasks for new client:", err)
+		}
 	}
 	return clientUUID, token, nil
 }

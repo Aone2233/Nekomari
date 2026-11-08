@@ -1,5 +1,101 @@
 # MAC-WAN backup receiver (updated 2026-11-05)
 
+## 2026-11-07 IPv6 production canary
+
+After an old-panel stop with exit code 0 and a check that neither SQLite file
+had another observed process holder, a recipient-only archive was created and
+the old panel restarted while it was verified off-host. The MAC-WAN copy is
+`manual/ipv6-cold-handoff-20261107/cold-handoff.age`, SHA-256
+`a12f91567db3e5906fd76d9e8327aea90d8b2512bb38e81a0ad7a1481fdd2443`.
+Authenticated, network-free restore drills booted both v1.7.29 and the local
+candidate v1.7.30. A separate scratch rehearsal booted the candidate and then
+the old image on the migrated, no-pinned-task data and preserved all client and
+original ping-task rows. This stopped-panel snapshot is not a proof that the
+old binary drained every asynchronous or external writer, and neither the
+archive nor that rehearsal authorizes overwriting current live databases or
+downgrading after pinned tasks are created.
+
+After the OC424 candidate cutover, a separate online archive was received at
+`manual/ipv6-candidate-post-20261107T1720Z/oc424-20261107T172108698210Z-b3b8c5041a45.tar.gz.age`,
+SHA-256 `75a63d6b381bf9c8501ed740e4c7c6dc76cf6f971318b2e3f45af7b1dd5f82c5`.
+Its sidecar and authenticated, network-free candidate boot drill passed. Its
+online snapshots still omit pending in-memory samples and are not cross-store
+atomic. The decryption identity remained on MAC-WAN and the scheduled timers
+were not changed. The first attempt to pipe the stopped archive into the
+receiver failed because its source process did not inherit stdin; the verified
+ciphertext was instead copied to the dedicated manual directory and checked
+against the OC424 SHA-256 before both drills.
+
+## 2026-11-07 IPv6 pre-release snapshot
+
+A manual online snapshot was received at
+`manual/ipv6-pre-20261107T163138Z/oc424-20261107T163138092977Z-4e0d4fa7bc42.tar.gz.age`
+(231,559,535 bytes, SHA-256
+`f783ba3b0c1b97f00447ca51d474678cbdb0a2f566f0bebcf47b84a76f922935`).
+Its sidecar, authenticated extraction, manifest and SQLite checks passed, as did
+a network-free v1.7.29 amd64 isolated boot drill. The first verification attempt
+could not start `age` because the interactive PATH omitted the installed private
+binary; repeating it with the existing recovery `bin/` in PATH passed. The
+identity stayed on MAC-WAN, the scratch directory is empty, and both backup and
+health timers remained active. This is an online snapshot, not a coordinated
+cross-store snapshot or proof that in-memory measurements were captured.
+
+## 2026-11-07 scheduled trigger
+
+The user timer actually triggered at 03:30:27 UTC and its receiver exited
+successfully at 03:31:36 UTC. The scheduled archive
+`oc424-20261107T033027742410Z-a49ef5da12ee.tar.gz.age` is 230,519,758 bytes;
+its SHA-256 sidecar verifies on MAC-WAN. This is a scheduled run, unlike the
+previous day's manual retry. It is not a new decryption/restore drill, and the
+in-memory observation limitation below remains. MAC-WAN direct SSH timed out
+after the run began; the existing host-key-pinned OC424 reverse tunnel provided
+the subsequent read-only confirmation. No service, timer or credentials changed.
+
+## 2026-11-07 metric snapshot limitation
+
+The installed OC424 producer snapshots SQLite from outside the running panel.
+Those snapshots include committed WAL pages, but not records in the panel's
+report queue or its in-memory minute/coarse summaries. Earlier integrity and
+network-free boot drills remain valid for the captured files, not proof that
+every accepted observation was captured. The draft in-process download fix is
+not deployed or connected to this producer. A scratch restore revealed that an
+earlier draft prematurely sealed an open aggregation window and could lose its
+pre-snapshot contribution after new writes. The local revision keeps unfinished
+parents reconstructible from verified durable children and fails on conflicting
+ancestors; this is still not a cross-database snapshot or a tested encrypted
+handoff. Its real-world cost and RPO remain unmeasured. No timer, retention or
+credential was changed.
+
+## 2026-11-06 Emerald theme change
+
+Two fresh manual encrypted archives, distinct from the scheduled retention set,
+passed checksum, authenticated extraction, manifest/database verification and
+network-free v1.7.29 isolated boot drills:
+
+- Pre: `manual/emerald-pre-20261106T104539Z/oc424-20261106T104540070270Z-a813c8016a06.tar.gz.age`,
+  SHA-256 `a89c5aab71d6af6f01f01aeccf0bc361ada246be6a04389569f945812944d79f`.
+- Post: `manual/emerald-post-20261106T105436Z/oc424-20261106T105436176539Z-07195dfa2dc2.tar.gz.age`,
+  SHA-256 `014baae5644eb846a45b11c1116a86a64b25f48c1c6dd940519c5b57abddf3a8`.
+
+The decryption identity stayed on MAC-WAN; scratch restores were removed. The
+patched theme zip, source patch and locally resolved lockfile are also retained
+with the pre archive; the non-secret original v2.0.5 theme tree is separately
+retained as `original-205.tar.gz` (SHA-256
+`4f7b2a712478e59b9e8127ae9f982e8e2bcb720b4ad2397be9ddf8ee0bc40a9a`).
+Direct MAC-WAN access timed out after cutover, so the
+post archive and drill used the existing host-key-pinned OC424 reverse tunnel.
+
+The scheduled 03:30 UTC backup on 2026-11-06 failed because another operation
+held the scheduled directory lock. A later manual service run at 05:38 UTC
+succeeded, producing `oc424-20261106T053837007579Z-c5aa8f3aa886.tar.gz.age`
+(`8c8f26a630d4a9b06834c10ab03af835338eaa9e218e366f5a740decbdaf803f`).
+Investigate the overlap and observe the next automatic trigger; manual success
+does not prove the scheduler recovered. At 03:30:17 UTC the health service also
+started and it takes a shared lock on the same file; it is a plausible competitor,
+but the logs do not prove which process acquired the lock first. A current
+read-only health inspection took 0.82 s and returned `ok`. No timer or retention
+policy was changed.
+
 This replaces the relinquished OVH receiver, not the separate offline-media
 requirement. On MAC-WAN, the `macos` systemd user manager has lingering enabled.
 The daily `nekomari-macwan-oc424-backup.timer` starts the bounded encrypted

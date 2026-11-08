@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/Aone2233/nekomari/cmd/flags"
@@ -20,30 +21,29 @@ var ChpasswdCmd = &cobra.Command{
 	Short:   "Force change password",
 	Long:    `Force change password`,
 	Example: `komari chpasswd -p <password>`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		if NewPassword == "" {
-			cmd.Help()
-			return
+			return cmd.Help()
 		}
 		if _, err := os.Stat(flags.DatabaseFile); os.IsNotExist(err) {
-			cmd.Println("Database file does not exist.")
-			return
+			return fmt.Errorf("database file does not exist")
 		}
-		user := &models.User{}
-		dbcore.GetDBInstance().Model(&models.User{}).First(user)
-		cmd.Println("Changing password for user:", user.Username)
-		if err := accounts.ForceResetPassword(user.Username, NewPassword); err != nil {
-			cmd.Println("Error:", err)
-			return
-		}
-		cmd.Println("Password changed successfully, new password:", NewPassword)
-
-		if err := accounts.DeleteAllSessions(); err != nil {
-			cmd.Println("Unable to force logout of other devices:", err)
-			return
-		}
-
-		cmd.Println("Please restart the server to apply the changes.")
+		return withOfflineDatabase(func() error {
+			user := &models.User{}
+			if err := dbcore.GetDBInstance().Model(&models.User{}).First(user).Error; err != nil {
+				return err
+			}
+			cmd.Println("Changing password for user:", user.Username)
+			if err := accounts.ForceResetPassword(user.Username, NewPassword); err != nil {
+				return err
+			}
+			if err := accounts.DeleteAllSessions(); err != nil {
+				return fmt.Errorf("password changed, but unable to force logout of other devices: %w", err)
+			}
+			cmd.Println("Password changed successfully.")
+			cmd.Println("Please restart the server to apply the changes.")
+			return nil
+		})
 	},
 }
 

@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/web/connection"
 	"github.com/Aone2233/nekomari/web/security"
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
 type WebSocketUpgradeOption func(*websocket.Upgrader)
@@ -48,10 +48,14 @@ func UpgradeSafeConn(c *gin.Context, options ...WebSocketUpgradeOption) (*connec
 		return nil, err
 	}
 	interceptor := connection.Interceptor()
-	if interceptor == nil {
-		return connection.NewSafeConn(unsafeConn), nil
-	}
 	sc := connection.NewSafeConn(unsafeConn)
+	if interceptor == nil {
+		if !panelWebSockets.track(sc) {
+			_ = sc.Close()
+			return nil, errWebSocketShuttingDown
+		}
+		return sc, nil
+	}
 	info := &connection.ConnInfo{
 		ID:        sc.ID,
 		Path:      c.Request.URL.Path,
@@ -71,6 +75,10 @@ func UpgradeSafeConn(c *gin.Context, options ...WebSocketUpgradeOption) (*connec
 		return nil, errors.New("websocket connection denied by plugin")
 	}
 	sc.SetInterceptor(info, interceptor)
+	if !panelWebSockets.track(sc) {
+		_ = sc.Close()
+		return nil, errWebSocketShuttingDown
+	}
 	return sc, nil
 }
 

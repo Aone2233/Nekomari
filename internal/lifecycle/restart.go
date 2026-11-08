@@ -6,6 +6,7 @@ package lifecycle
 type RestartReason string
 
 const RestartForMetricStoreStructureUpgrade RestartReason = "metric-store-structure-upgrade"
+const RestartForBackupRestore RestartReason = "backup-restore"
 
 var restartRequests = make(chan RestartReason, 1)
 

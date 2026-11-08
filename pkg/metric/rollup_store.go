@@ -3,6 +3,7 @@ package metric
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -63,6 +64,7 @@ func (s *Store) Flush(ctx context.Context, now time.Time) (int, error) {
 	now = now.UTC()
 	s.trimRawWindow(now)
 	written, err := s.flushClosedHotRollups(ctx, now)
+	s.pruneRawBaselines(now)
 	if err != nil {
 		return 0, err
 	}
@@ -73,10 +75,29 @@ func (s *Store) CompactMetric(ctx context.Context, metricName string, now time.T
 	if err := s.ensureOpen(); err != nil {
 		return 0, err
 	}
-	s.retentionMu.RLock()
-	defer s.retentionMu.RUnlock()
+	s.retentionMu.Lock()
+	defer s.retentionMu.Unlock()
 	if err := s.ensureOpen(); err != nil {
 		return 0, err
+	}
+	if err := s.pendingCommitError(); err != nil {
+		return 0, err
+	}
+	s.rollupViewMu.RLock()
+	recoveryPending := s.coarseRecoveryPending
+	s.rollupViewMu.RUnlock()
+	if recoveryPending {
+		return 0, ErrRetentionPending
+	}
+	def, err := s.GetMetric(ctx, metricName)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return 0, err
+	}
+	if err == nil && def.RetentionDays > 0 {
+		policy := s.cfg.RollupPolicy.withMetricRetention(time.Duration(def.RetentionDays) * 24 * time.Hour)
+		if err := s.checkPendingForRetention(metricName, policy, now.UTC()); err != nil {
+			return 0, err
+		}
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -86,7 +107,104 @@ func (s *Store) CompactMetric(ctx context.Context, metricName string, now time.T
 	if err := s.enforceMetricRetentionTx(ctx, metricName, now.UTC(), tx); err != nil {
 		return 0, err
 	}
-	return 0, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, s.markCommitUncertain(err)
+	}
+	def, err = s.GetMetric(ctx, metricName)
+	if errors.Is(err, ErrNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if def.RetentionDays > 0 {
+		policy := s.cfg.RollupPolicy.withMetricRetention(time.Duration(def.RetentionDays) * 24 * time.Hour)
+		_, err := s.prunePendingForRetention(metricName, policy, now.UTC())
+		return 0, err
+	}
+	// A disabled metric may still have pending data after the deferred
+	// UpdateMetricRetention path. Do not let re-enabling it revive that data.
+	_, rawErr := s.deleteRawPoints(metricName, "", nil)
+	_, hotErr := s.deleteHotRollups(metricName, "", nil, nil)
+	_, coarseErr := s.deleteCoarseRollupsMatching(metricName, "", nil)
+	return 0, errors.Join(rawErr, hotErr, coarseErr)
+}
+
+// A pending fine bucket may be the only source for a still-retained parent.
+// Don't delete either the pending data or durable children until a later flush
+// materializes the parent. Exclusive retentionMu keeps this check stable.
+func (s *Store) checkPendingForRetention(metricName string, policy RollupPolicy, now time.Time) error {
+	if len(policy.Tiers) == 0 {
+		return nil
+	}
+	wouldLoseRetainedParent := func(bucket int64, interval time.Duration) bool {
+		if len(policy.Tiers) < 2 {
+			return false
+		}
+		parent := policy.Tiers[len(policy.Tiers)-1]
+		return parent.Interval > interval &&
+			bucketStartMillis(bucket, parent.Interval.Milliseconds()) >= bucketStartMillis(now.Add(-parent.Retention).UnixMilli(), parent.Interval.Milliseconds())
+	}
+	minuteCutoff := bucketStartMillis(now.Add(-policy.Tiers[0].Retention).UnixMilli(), time.Minute.Milliseconds())
+	s.hotMu.RLock()
+	for key := range s.hot {
+		if key.metricName == metricName && key.bucket < minuteCutoff && wouldLoseRetainedParent(key.bucket, time.Minute) {
+			s.hotMu.RUnlock()
+			return ErrRetentionPending
+		}
+	}
+	s.hotMu.RUnlock()
+	retained := make(map[time.Duration]time.Duration, len(policy.Tiers))
+	for _, tier := range policy.Tiers {
+		retained[tier.Interval] = tier.Retention
+	}
+	s.coarseMu.RLock()
+	defer s.coarseMu.RUnlock()
+	for key := range s.coarse {
+		if key.metricName != metricName {
+			continue
+		}
+		retention, keep := retained[key.interval]
+		if (!keep || key.bucket < bucketStartMillis(now.Add(-retention).UnixMilli(), key.interval.Milliseconds())) &&
+			wouldLoseRetainedParent(key.bucket, key.interval) {
+			return ErrRetentionPending
+		}
+	}
+	return nil
+}
+
+// prunePendingForRetention applies the same bucket boundaries as the durable
+// deletes. Otherwise a later flush can recreate already-expired history.
+// The caller holds exclusive retentionMu, including against ingest/flush.
+func (s *Store) prunePendingForRetention(metricName string, policy RollupPolicy, now time.Time) (int64, error) {
+	if len(policy.Tiers) == 0 {
+		return 0, nil
+	}
+	minuteCutoff := bucketStartMillis(now.Add(-policy.Tiers[0].Retention).UnixMilli(), time.Minute.Milliseconds())
+	s.deleteRawBefore(metricName, minuteCutoff)
+	s.invalidateRetainedMinuteBaselines(metricName, minuteCutoff)
+	cutoff := fromMillis(minuteCutoff)
+	hot, err := s.deleteHotRollups(metricName, "", nil, &cutoff)
+	if err != nil {
+		return 0, err
+	}
+	retained := make(map[time.Duration]time.Duration, len(policy.Tiers))
+	for _, tier := range policy.Tiers {
+		retained[tier.Interval] = tier.Retention
+	}
+	s.coarseMu.Lock()
+	defer s.coarseMu.Unlock()
+	for key, parent := range s.coarse {
+		if key.metricName != metricName {
+			continue
+		}
+		retention, keep := retained[key.interval]
+		if !keep || key.bucket < bucketStartMillis(now.Add(-retention).UnixMilli(), key.interval.Milliseconds()) {
+			hot += int64(len(parent.children))
+			delete(s.coarse, key)
+		}
+	}
+	return hot, nil
 }
 
 // writeTierCascadeTx persists the durable minute tier. Coarser parents are
@@ -222,7 +340,9 @@ func (s *Store) mergeRollupBucketsWithDictionaryTx(ctx context.Context, metricNa
 			return 0, err
 		}
 		// Parents replace a child's snapshot, so propagate the full persisted
-		// minute rather than only this flush's late-arrival delta.
+		// minute rather than only this flush's late-arrival delta. The input
+		// bucket must remain untouched until COMMIT: on a later transaction
+		// failure the original delta is restored and retried.
 		buckets[inputKey] = bucket
 	}
 	return len(keys), nil

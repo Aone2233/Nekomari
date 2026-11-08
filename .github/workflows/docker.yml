@@ -204,6 +204,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
           REPO: ${{ github.repository }}
+          PACKAGE: ${{ matrix.package }}
         run: |
           set -euo pipefail
           mkdir -p ctx
@@ -218,14 +219,40 @@ jobs:
             fi
           done
           cp Dockerfile Dockerfile.agent ctx/
-          # 服务端产物：nekomari-*；探针产物只取 linux（镜像跑在 linux 上，
-          # darwin/windows 的探针不可能是容器）。
-          gh release download "$TAG" \
-            --repo "$REPO" \
-            --pattern 'nekomari-*' \
-            --pattern 'komari-agent-linux-*' \
-            --dir ctx
+          gh release download "$TAG" --repo "$REPO" --pattern 'SHA256SUMS.txt' --dir ctx
+          if [ "$PACKAGE" = nekomari ]; then
+            gh release download "$TAG" --repo "$REPO" --pattern 'nekomari-linux-*' --dir ctx
+            for arch in amd64 arm64; do
+              (cd ctx && grep -F "  nekomari-linux-$arch" SHA256SUMS.txt | sha256sum -c -)
+            done
+          elif [ "$PACKAGE" = nekomari-agent ]; then
+            gh release download "$TAG" --repo "$REPO" --pattern 'manual-komari-agent-linux-*' --dir ctx
+            for arch in amd64 arm64; do
+              (cd ctx && grep -F "  manual-komari-agent-linux-$arch" SHA256SUMS.txt | sha256sum -c -)
+              mv "ctx/manual-komari-agent-linux-$arch" "ctx/komari-agent-linux-$arch"
+            done
+          else
+            echo "::error::unsupported image package $PACKAGE"
+            exit 1
+          fi
           ls -la ctx
+
+      # The release publishes manual-only Agent binaries. A named Agent image
+      # remains available for explicit deployment, but its moving aliases stay
+      # on the last auto-update-compatible release.
+      - name: Verify manual Agent publication policy
+        if: matrix.package == 'nekomari-agent'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' > /tmp/release-assets.txt
+          if grep -Eq '^komari-agent-' /tmp/release-assets.txt; then
+            echo '::error::manual-only release exposes an automatic Agent asset'
+            exit 1
+          fi
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -245,6 +272,10 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ steps.tag.outputs.image }}
+          # Semver tags otherwise implicitly generate latest, even when the
+          # explicit latest rule below is disabled for the manual-only Agent.
+          flavor: |
+            latest=false
           # workflow_run's event SHA belongs to the default branch, not the release checkout.
           labels: |
             org.opencontainers.image.revision=${{ steps.source.outputs.revision }}
@@ -254,9 +285,9 @@ jobs:
           # 而 "false" 正是非空字符串。
           tags: |
             type=raw,value=${{ steps.tag.outputs.tag }}
-            type=raw,value=latest,enable=${{ !contains(steps.tag.outputs.tag, '-') && steps.tag.outputs.release_verified == 'true' }}
+            type=raw,value=latest,enable=${{ !contains(steps.tag.outputs.tag, '-') && steps.tag.outputs.release_verified == 'true' && matrix.package == 'nekomari' }}
             type=semver,pattern={{version}},value=${{ steps.tag.outputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }},enable=${{ matrix.package == 'nekomari' }}
 
       # 冒烟测试：镜像必须真的能跑起来。
       #

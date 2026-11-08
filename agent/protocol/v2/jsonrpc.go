@@ -6,26 +6,85 @@ import (
 )
 
 const (
-	Version               = "2.0"
-	MethodAgentReport     = "agent.report"
-	MethodAgentBasicInfo  = "agent.basicInfo"
-	MethodAgentPingResult = "agent.pingResult"
-	MethodAgentTaskResult = "agent.taskResult"
-	MethodAgentExec       = "agent.exec"
-	MethodAgentPing       = "agent.ping"
-	MethodAgentMessage    = "agent.message"
-	MethodAgentEvent      = "agent.event"
-	MethodAgentTerminal   = "agent.terminal.request"
-	MethodAgentPull       = "agent.pull"
-	MethodAgentFile       = "agent.file"
-	MethodAgentFileResult = "agent.file.result"
-	MethodAgentUnlock     = "agent.unlock"
+	Version                      = "2.0"
+	MethodAgentReport            = "agent.report"
+	MethodAgentBasicInfo         = "agent.basicInfo"
+	MethodAgentPingResult        = "agent.pingResult"
+	MethodAgentTaskResult        = "agent.taskResult"
+	MethodAgentExec              = "agent.exec"
+	MethodAgentPing              = "agent.ping"
+	MethodAgentPingFamilySession = "agent.pingFamily.session.v1"
+	MethodAgentPingFamilyPermit  = "agent.pingFamily.permit.v1"
+	MethodAgentPingFamilyRetired = "agent.pingFamily.retired.v1"
+	MethodAgentPingFamilyProbe   = "agent.pingFamily.probe.v1"
+	MethodAgentPingFamilyResult  = "agent.pingFamily.result.v1"
+	MethodAgentMessage           = "agent.message"
+	MethodAgentEvent             = "agent.event"
+	MethodAgentTerminal          = "agent.terminal.request"
+	MethodAgentPull              = "agent.pull"
+	MethodAgentFile              = "agent.file"
+	MethodAgentFileResult        = "agent.file.result"
+	MethodAgentUnlock            = "agent.unlock"
 	// MethodAgentUpdate 让面板指定这个节点要运行的版本（roadmap H6）。
 	//
 	// 走事件通道而不是配置：agent 的配置是部署级的（环境变量/systemd），面板没有运行时通道能改它，
 	// 而事件队列是既有的面板→agent 指令路径 —— 能立刻送达在线节点，也能留在队列里等离线节点回来。
 	MethodAgentUpdate = "agent.update"
 )
+
+type PingFamilySessionParams struct {
+	Action    string `json:"action"`
+	Version   int    `json:"version"`
+	Instance  string `json:"instance"`
+	Challenge string `json:"challenge,omitempty"`
+}
+
+type PingFamilySessionResult struct {
+	Challenge string `json:"challenge"`
+}
+
+type PingFamilyPermitParams struct {
+	Instance   string `json:"instance"`
+	Session    string `json:"session"`
+	DispatchID string `json:"dispatch_id"`
+	Sequence   uint64 `json:"sequence"`
+}
+
+type PingFamilyPermitResult struct {
+	DispatchID      string `json:"dispatch_id"`
+	Sequence        uint64 `json:"sequence"`
+	FreshnessTicket string `json:"freshness_ticket"`
+}
+
+// PingFamilyProbeParams is separate from legacy agent.ping. Old Agents must
+// reject this method rather than ignore a family field and probe unpinned.
+type PingFamilyProbeParams struct {
+	TaskID           uint   `json:"task_id"`
+	Type             string `json:"type"`
+	Target           string `json:"target"`
+	Reference        string `json:"reference,omitempty"`
+	Family           string `json:"family"`
+	ConfigGeneration string `json:"config_generation"`
+	Instance         string `json:"instance"`
+	Session          string `json:"session"`
+	DispatchID       string `json:"dispatch_id"`
+	FreshnessTicket  string `json:"freshness_ticket"`
+}
+
+// A diagnostic omits both value fields; an attempted probe carries both.
+type PingFamilyResultParams struct {
+	TaskID           uint   `json:"task_id"`
+	ConfigGeneration string `json:"config_generation"`
+	Instance         string `json:"instance"`
+	Session          string `json:"session"`
+	DispatchID       string `json:"dispatch_id"`
+	Role             string `json:"role"`
+	PingType         string `json:"ping_type"`
+	Family           string `json:"family,omitempty"`
+	Value            *int   `json:"value,omitempty"`
+	ValueUS          *int64 `json:"value_us,omitempty"`
+	Diagnostic       string `json:"diagnostic,omitempty"`
+}
 
 type Request struct {
 	JSONRPC string      `json:"jsonrpc"`

@@ -15,6 +15,7 @@ import "time"
 // remembered. See internal/maintenance for the boundary rules.
 type MaintenanceWindow struct {
 	ID        uint        `json:"id,omitempty" gorm:"primaryKey;autoIncrement"`
+	ConfigUID string      `json:"-" gorm:"type:varchar(36);not null;default:''"`
 	Name      string      `json:"name" gorm:"type:varchar(100);not null"`
 	Start     time.Time   `json:"start" gorm:"not null;index"`
 	End       time.Time   `json:"end" gorm:"not null;index"`

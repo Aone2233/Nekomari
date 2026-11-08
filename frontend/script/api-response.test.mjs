@@ -83,3 +83,14 @@ test('XHR assertion shares the contract and neither helper retries a mutation', 
   } }), /Invalid API response/);
   assert.equal(reads, 1);
 });
+
+test('only explicit committed outcomes carry a safe task ID', async () => {
+  await assert.rejects(requireApiSuccess(response({ status: 'error', message: 'saved', committed: true, task_id: 27 }, 503)),
+    (error) => error.message === 'saved' && error.committed === true && error.taskId === 27);
+  for (const id of [0, -1, 1.5, '27', null, Number.MAX_SAFE_INTEGER + 1]) {
+    await assert.rejects(requireApiSuccess(response({ status: 'error', message: 'saved', committed: true, task_id: id }, 503)),
+      (error) => error.committed === true && error.taskId === undefined);
+  }
+  await assert.rejects(requireApiSuccess(response({ status: 'error', message: 'uncertain', committed: 'true', task_id: 27 }, 503)),
+    (error) => error.committed === false && error.taskId === undefined);
+});

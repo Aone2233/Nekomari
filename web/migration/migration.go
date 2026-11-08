@@ -12,15 +12,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/database/dbcore"
-	"github.com/Aone2233/nekomari/internal/metricstore"
 	appconfig "github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/internal/migrations"
 	"github.com/Aone2233/nekomari/pkg/metric"
 	"github.com/Aone2233/nekomari/web/api"
 	publicapi "github.com/Aone2233/nekomari/web/api/public"
 	jsonrpc "github.com/Aone2233/nekomari/web/rpc/jsonrpc"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -75,6 +75,10 @@ type Controller struct {
 	status Status
 	done   chan struct{}
 	once   sync.Once
+
+	stopping     bool
+	workerCancel context.CancelFunc
+	workerDone   <-chan struct{}
 }
 
 type startRequest struct {
@@ -112,6 +116,28 @@ func (c *Controller) Activate() { c.active.Store(true) }
 func (c *Controller) Deactivate() { c.active.Store(false) }
 
 func (c *Controller) Done() <-chan struct{} { return c.done }
+
+// Quiesce stops admitting migration work and waits for the current worker
+// before the guide's database dependencies can be closed.
+func (c *Controller) Quiesce(ctx context.Context) error {
+	c.active.Store(false)
+	c.mu.Lock()
+	c.stopping = true
+	cancel, done := c.workerCancel, c.workerDone
+	c.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	if done == nil {
+		return nil
+	}
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
 
 func (c *Controller) Register(r *gin.Engine) {
 	r.POST("/api/login", publicapi.Login)
@@ -170,29 +196,29 @@ func (c *Controller) discard(ctx *gin.Context) {
 		return
 	}
 	c.mu.Lock()
-	if c.operationActiveLocked() || c.status.State == "completed" {
+	if c.operationActiveLocked() || c.status.State == "completed" || c.stopping {
 		c.mu.Unlock()
 		api.RespondError(ctx, http.StatusConflict, "database migration is already running or completed")
 		return
 	}
 	c.status = Status{Mode: c.mode, State: "discarding", Phase: "discarding"}
+	c.launchLocked(c.runDiscard)
 	c.mu.Unlock()
 
-	go c.runDiscard()
 	api.RespondSuccessMessage(ctx, "historical metric data deletion started", gin.H{})
 }
 
 func (c *Controller) startStructure(ctx *gin.Context) {
 	c.mu.Lock()
-	if c.operationActiveLocked() || c.status.State == "completed" {
+	if c.operationActiveLocked() || c.status.State == "completed" || c.stopping {
 		c.mu.Unlock()
 		api.RespondError(ctx, http.StatusConflict, "database migration is already running or completed")
 		return
 	}
 	c.status = Status{Mode: c.mode, State: "copying", Phase: "preparing"}
+	c.launchLocked(c.runStructure)
 	c.mu.Unlock()
 
-	go c.runStructure()
 	api.RespondSuccessMessage(ctx, "database migration started", gin.H{})
 }
 
@@ -223,7 +249,7 @@ func (c *Controller) startLegacy(ctx *gin.Context) {
 	}
 
 	c.mu.Lock()
-	if c.operationActiveLocked() || c.status.State == "completed" {
+	if c.operationActiveLocked() || c.status.State == "completed" || c.stopping {
 		c.mu.Unlock()
 		api.RespondError(ctx, http.StatusConflict, "database migration is already running or completed")
 		return
@@ -236,13 +262,20 @@ func (c *Controller) startLegacy(ctx *gin.Context) {
 		SourceRowsTotal: summary.MonitoringRows,
 		TargetDriver:    string(driver),
 	}
+	c.launchLocked(func(ctx context.Context) { c.runLegacy(ctx, *cfg, summary.RetentionDays) })
 	c.mu.Unlock()
 
-	go c.runLegacy(*cfg, summary.RetentionDays)
 	api.RespondSuccessMessage(ctx, "database migration started", gin.H{})
 }
 
 func (c *Controller) operationActiveLocked() bool {
+	if c.workerDone != nil {
+		select {
+		case <-c.workerDone:
+		default:
+			return true
+		}
+	}
 	switch c.status.State {
 	case "cleaning", "discarding", "migrating", "copying", "reclaiming":
 		return true
@@ -251,8 +284,20 @@ func (c *Controller) operationActiveLocked() bool {
 	}
 }
 
-func (c *Controller) runLegacy(cfg metricstore.MetricStoreConfig, legacyRetentionDays int) {
-	ctx := context.Background()
+// The worker is registered before releasing mu, so a concurrent shutdown
+// cannot miss it even if the goroutine has not started running yet.
+func (c *Controller) launchLocked(run func(context.Context)) {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	c.workerCancel, c.workerDone = cancel, done
+	go func() {
+		defer close(done)
+		defer cancel()
+		run(ctx)
+	}()
+}
+
+func (c *Controller) runLegacy(ctx context.Context, cfg metricstore.MetricStoreConfig, legacyRetentionDays int) {
 	mainBefore, err := dbcore.StorageSize()
 	if err != nil {
 		c.failTarget(err, cfg.DSN, "measuring")
@@ -361,8 +406,8 @@ func (c *Controller) runLegacy(cfg metricstore.MetricStoreConfig, legacyRetentio
 	c.completeLater()
 }
 
-func (c *Controller) runStructure() {
-	result, err := metricstore.RestructureConfiguredStore(context.Background(), func(progress metricstore.RestructureProgress) {
+func (c *Controller) runStructure(ctx context.Context) {
+	result, err := metricstore.RestructureConfiguredStore(ctx, func(progress metricstore.RestructureProgress) {
 		c.mu.Lock()
 		c.status.Phase = progress.Phase
 		c.status.CurrentMetric = progress.CurrentMetric
@@ -405,8 +450,8 @@ func (c *Controller) runStructure() {
 	c.completeLater()
 }
 
-func (c *Controller) runDiscard() {
-	result, err := metricstore.DiscardConfiguredStoreHistory(context.Background(), func(progress metricstore.RestructureProgress) {
+func (c *Controller) runDiscard(ctx context.Context) {
+	result, err := metricstore.DiscardConfiguredStoreHistory(ctx, func(progress metricstore.RestructureProgress) {
 		c.mu.Lock()
 		c.status.Phase = progress.Phase
 		c.status.CurrentMetric = progress.CurrentMetric

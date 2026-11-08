@@ -1,7 +1,9 @@
 import { Badge, Button, Card, Checkbox, Flex, Heading, Table, Text, TextArea, TextField } from "@radix-ui/themes";
 import { useTranslation } from "react-i18next";
 import React, { useCallback, useMemo, useState } from "react";
-import { parseDocument, planCounts } from "./configFormat";
+import { isPinnedArchive, parseDocument, planCounts } from "./configFormat";
+import { RPC2Error } from "@/lib/rpc2";
+import { localizeServerError } from "@/lib/serverError";
 
 /**
  * Configuration export and import (roadmap H4).
@@ -34,10 +36,12 @@ export interface ImportPlanChange {
   id: string;
   name?: string;
   fields?: string[];
+  effect?: string;
 }
 
 export interface ImportPlan {
   schema_version: number;
+  review_token?: string;
   creates: number;
   updates: number;
   unchanged: number;
@@ -47,6 +51,8 @@ export interface ImportPlan {
 }
 
 export interface ConfigExportPageProps {
+  /** Allow the transactional preview/import flow. */
+  importAvailable?: boolean;
   /**
    * exportConfig returns the document the page offers as a file.
    *
@@ -58,11 +64,10 @@ export interface ConfigExportPageProps {
   exportConfig?: (
     includeSecrets: boolean,
     twoFactorCode?: string,
-  ) => Promise<Record<string, unknown>>;
-  /** planImport reports what an import would do, without doing it. */
-  planImport?: (document: Record<string, unknown>) => Promise<ImportPlan>;
-  /** importConfig applies the document. */
-  importConfig?: (document: Record<string, unknown>) => Promise<ImportPlan>;
+  ) => Promise<string>;
+  /** Send the original text so the server can reject duplicates and preserve large integers. */
+  planImport?: (documentText: string) => Promise<ImportPlan>;
+  importConfig?: (documentText: string, reviewToken: string, twoFactorCode?: string) => Promise<ImportPlan>;
   /** initialText lets the fixture start with a document already pasted. */
   initialText?: string;
 }
@@ -71,13 +76,15 @@ export const ConfigExportPage: React.FC<ConfigExportPageProps> = ({
   exportConfig,
   planImport,
   importConfig,
+  importAvailable = false,
   initialText = "",
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [includeSecrets, setIncludeSecrets] = useState(false);
   // The one-time password for the credential export. Kept even while the box is unchecked so a
   // mistyped checkbox does not also clear the code the operator just read off their phone.
   const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [importTwoFactorCode, setImportTwoFactorCode] = useState("");
   const [text, setText] = useState(initialText);
   // The text the plan below was computed for. Storing it rather than a boolean is what invalidates
   // the plan when the box changes: a plan for a different document is worse than no plan.
@@ -88,19 +95,21 @@ export const ConfigExportPage: React.FC<ConfigExportPageProps> = ({
   const [busy, setBusy] = useState(false);
 
   const parsed = useMemo(() => parseDocument(text), [text]);
-  const planIsCurrent = plan !== null && plannedFor === text;
+  const pinnedArchive = isPinnedArchive(parsed.document);
+  const planIsCurrent = plan !== null && plannedFor === text &&
+    typeof plan.review_token === "string" && /^[0-9a-f]{64}$/.test(plan.review_token);
 
   const onExport = useCallback(async () => {
     if (!exportConfig) return;
     setBusy(true);
     setError(null);
     try {
-      const document = await exportConfig(includeSecrets, twoFactorCode);
-      const encoded = JSON.stringify(document, null, 2);
-      setText(encoded);
+      const documentText = await exportConfig(includeSecrets, twoFactorCode);
+      setText(documentText);
       setPlan(null);
       setPlannedFor(null);
       setResult(null);
+      setImportTwoFactorCode("");
       // A one-time password is one-time: once the export has succeeded the code is spent, and
       // leaving it in the field would make the next click fail with a refusal that reads like a bug.
       if (includeSecrets) setTwoFactorCode("");
@@ -112,44 +121,58 @@ export const ConfigExportPage: React.FC<ConfigExportPageProps> = ({
   }, [exportConfig, includeSecrets, twoFactorCode]);
 
   const onPlan = useCallback(async () => {
-    if (!planImport || !parsed.document) return;
+    if (!importAvailable || !planImport || !parsed.document) return;
     setBusy(true);
     setError(null);
     setResult(null);
+    setPlan(null);
+    setPlannedFor(null);
+    setImportTwoFactorCode("");
     try {
-      const computed = await planImport(parsed.document);
+      const computed = await planImport(text);
+      if (typeof computed.review_token !== "string" || !/^[0-9a-f]{64}$/.test(computed.review_token)) {
+        throw new Error(t("config.invalidReviewToken"));
+      }
       setPlan(computed);
       setPlannedFor(text);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      const fallback = cause instanceof Error ? cause.message : String(cause);
+      setError(cause instanceof RPC2Error ? localizeServerError(cause, fallback, i18n) : fallback);
       setPlan(null);
       setPlannedFor(null);
     } finally {
       setBusy(false);
     }
-  }, [planImport, parsed.document, text]);
+  }, [i18n, importAvailable, planImport, parsed.document, t, text]);
 
   const onImport = useCallback(async () => {
-    if (!importConfig || !parsed.document || !planIsCurrent) return;
+    if (!importAvailable || !importConfig || !parsed.document || !planIsCurrent || !plan?.review_token) return;
     setBusy(true);
     setError(null);
     try {
-      setResult(await importConfig(parsed.document));
+      setResult(await importConfig(text, plan.review_token, importTwoFactorCode));
       // The plan is stale now: the panel has changed under it.
       setPlan(null);
       setPlannedFor(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      // A timeout or closed socket can also follow a successful commit; never
+      // leave the same write enabled after any attempt without a fresh review.
+      setPlan(null);
+      setPlannedFor(null);
+      const fallback = cause instanceof Error ? cause.message : String(cause);
+      setError(cause instanceof RPC2Error ? localizeServerError(cause, fallback, i18n) : fallback);
     } finally {
+      setImportTwoFactorCode("");
       setBusy(false);
     }
-  }, [importConfig, parsed.document, planIsCurrent]);
+  }, [i18n, importAvailable, importConfig, importTwoFactorCode, parsed.document, plan, planIsCurrent, text]);
 
   const onChangeText = useCallback((value: string) => {
     setText(value);
     // Anything typed after a plan invalidates it.
     if (value !== plannedFor) {
       setPlan(null);
+      setImportTwoFactorCode("");
     }
   }, [plannedFor]);
 
@@ -200,6 +223,9 @@ export const ConfigExportPage: React.FC<ConfigExportPageProps> = ({
             </Badge>
           )}
         </Flex>
+        <Text as="p" size="2" color="gray" mt="3" data-testid="config-export-scope">
+          {t("config.exportScope")}
+        </Text>
       </Card>
 
       <Card data-testid="config-document">
@@ -214,14 +240,39 @@ export const ConfigExportPage: React.FC<ConfigExportPageProps> = ({
             placeholder={t("config.documentPlaceholder")}
             data-testid="config-document-text"
           />
+          {pinnedArchive && (
+            <Text size="2" color="orange" data-testid="config-pinned-archive-warning">
+              {t("config.pinnedArchiveWarning")}
+            </Text>
+          )}
+          {importAvailable && <Text size="2" color="gray">{t("config.importLimits")}</Text>}
+          {!importAvailable && (
+            <Text size="2" color="orange" data-testid="config-import-unavailable">
+              {t("config.importUnavailable")}
+            </Text>
+          )}
+          {importAvailable && planIsCurrent && (
+            <Flex direction="column" gap="1">
+              <Text as="label" size="2" htmlFor="config-import-2fa">{t("config.importTwoFactor")}</Text>
+              <TextField.Root
+                id="config-import-2fa"
+                value={importTwoFactorCode}
+                onChange={(event) => setImportTwoFactorCode(event.target.value)}
+                placeholder={t("account.2fa_otp_input_prompt")}
+                autoComplete="one-time-code"
+                data-testid="config-import-2fa"
+                style={{ width: 260, maxWidth: "100%" }}
+              />
+            </Flex>
+          )}
           <Flex align="center" gap="3" wrap="wrap">
             <Button size="2" variant="soft" onClick={() => void onPlan()}
-                    disabled={!planImport || !parsed.document || busy}
+                    disabled={!importAvailable || !planImport || !parsed.document || busy}
                     data-testid="config-plan-button">
               {t("config.dryRun")}
             </Button>
             <Button size="2" onClick={() => void onImport()}
-                    disabled={!importConfig || !planIsCurrent || busy}
+                    disabled={!importAvailable || !importConfig || !planIsCurrent || busy}
                     data-testid="config-import-button">
               {t("config.import")}
             </Button>
@@ -284,7 +335,14 @@ export const ConfigExportPage: React.FC<ConfigExportPageProps> = ({
                       <Table.Cell>{t(`config.kind_${change.kind}`)}</Table.Cell>
                       <Table.Cell>{change.entity}</Table.Cell>
                       <Table.Cell>{change.name || change.id}</Table.Cell>
-                      <Table.Cell>{(change.fields ?? []).join(", ")}</Table.Cell>
+                      <Table.Cell>
+                        {(change.fields ?? []).join(", ")}
+                        {change.effect === "default_on_assignment" && (
+                          <Text as="p" size="1" color="amber" data-testid="config-implicit-assignment">
+                            {t("config.defaultOnAssignment")}
+                          </Text>
+                        )}
+                      </Table.Cell>
                     </Table.Row>
                   ))}
                 </Table.Body>

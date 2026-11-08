@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 
@@ -74,7 +75,7 @@ func TestBackupMetricStoreSnapshotIncludesWALFrames(t *testing.T) {
 	}
 
 	snapshot := filepath.Join(t.TempDir(), "content", "metrics.db")
-	if err := backupMetricStoreSnapshot(store, snapshot); err != nil {
+	if err := backupMetricStoreSnapshot(ctx, store, snapshot); err != nil {
 		t.Fatalf("backupMetricStoreSnapshot: %v", err)
 	}
 	rows, err := markerRows(snapshot)
@@ -83,6 +84,78 @@ func TestBackupMetricStoreSnapshotIncludesWALFrames(t *testing.T) {
 	}
 	if rows != 1 {
 		t.Fatalf("snapshot marker rows = %d, want 1 (committed WAL frames were lost)", rows)
+	}
+}
+
+func TestBackupMetricStoreSnapshotIncludesUnflushedMinute(t *testing.T) {
+	ctx := context.Background()
+	source := filepath.Join(t.TempDir(), "metrics.db")
+	store, err := metric.Open(ctx, metric.SQLite(source, metric.WithMaxOpenConns(1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.CreateMetric(ctx, metric.Definition{Name: "backup-hot", RetentionDays: 1}); err != nil {
+		t.Fatal(err)
+	}
+	point := metric.Point{MetricName: "backup-hot", EntityID: "node", Timestamp: time.Now().UTC().Add(30 * time.Second), Value: 42}
+	if err := store.Write(ctx, point); err != nil {
+		t.Fatal(err)
+	}
+
+	// This bucket has not yet been flushed to SQLite.
+	var persisted int
+	rows, err := store.QueryContext(ctx, "SELECT COUNT(*) FROM metric_rollups")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rows.Next() || rows.Scan(&persisted) != nil {
+		_ = rows.Close()
+		t.Fatal("failed to count source rollups")
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if persisted != 0 {
+		t.Fatalf("premise broken: %d persisted rollups", persisted)
+	}
+
+	snapshot := filepath.Join(t.TempDir(), "metrics.db")
+	if err := backupMetricStoreSnapshot(ctx, store, snapshot); err != nil {
+		t.Fatalf("backup metric store: %v", err)
+	}
+	db, err := sql.Open("sqlite3", "file:"+filepath.ToSlash(snapshot)+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var count int
+	var sum sql.NullFloat64
+	if err := db.QueryRow(`SELECT COALESCE(SUM(r.count), 0), SUM(r.sum) FROM metric_rollups r
+		JOIN metric_series s ON s.id = r.series_id
+		JOIN metric_resolutions d ON d.id = r.resolution_id
+		WHERE s.metric_name = 'backup-hot' AND d.resolution_milli = 60000`).Scan(&count, &sum); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 || !sum.Valid || sum.Float64 != 42 {
+		t.Fatalf("snapshot minute count=%d sum=%v, want 1 and 42", count, sum)
+	}
+}
+
+func TestBackupMetricStoreSnapshotRejectsMissingActiveStore(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll("data", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("data", "metrics.db"), []byte("stale database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(t.TempDir(), "metrics.db")
+	if err := backupMetricStoreSnapshot(t.Context(), nil, destination); err == nil {
+		t.Fatal("missing active store was reported as a successful backup")
+	}
+	if _, err := os.Stat(destination); !os.IsNotExist(err) {
+		t.Fatalf("stale default database was copied: %v", err)
 	}
 }
 

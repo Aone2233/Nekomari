@@ -2,6 +2,8 @@ package metric
 
 import (
 	"context"
+	"errors"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -71,5 +73,42 @@ func TestReplaceRollupPointsIsIdempotentAndSkipsRawWindow(t *testing.T) {
 	}
 	if len(daily) != 1 || daily[0].Count != 2 || daily[0].Value != 145 {
 		t.Fatalf("rebuilt daily import = %#v", daily)
+	}
+}
+
+func TestRebuildCoarserRollupsDoesNotOverwriteRetainedHistory(t *testing.T) {
+	ctx := t.Context()
+	policy := RollupPolicy{Tiers: []RollupTier{
+		{Interval: time.Minute, Retention: time.Hour},
+		{Interval: time.Hour, Retention: 48 * time.Hour},
+		{Interval: 24 * time.Hour, Retention: 365 * 24 * time.Hour},
+	}}
+	store := newRollupStore(t, policy)
+	for _, name := range []string{"a-first", "z-conflict"} {
+		if err := store.CreateMetric(ctx, Definition{Name: name, RetentionDays: 365}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	base := time.Date(2026, 7, 27, 0, 0, 0, 0, time.UTC)
+	created := base.Add(48 * time.Hour)
+	rows := []PersistedRollup{
+		constantTransferRollup("a-first", "node", base, time.Hour, 5, created),
+		constantTransferRollup("z-conflict", "node", base.Add(time.Hour), time.Hour, 10, created),
+		constantTransferRollup("z-conflict", "node", base, 24*time.Hour, 30, created),
+	}
+	if err := store.ImportRollups(ctx, rows); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := exportAllTestRollups(t, store, "z-conflict", 10)
+	if err := store.RebuildCoarserRollups(ctx, time.Hour); !errors.Is(err, ErrRebuildConflict) {
+		t.Fatalf("rebuild with retained parent = %v", err)
+	}
+	after, _ := exportAllTestRollups(t, store, "z-conflict", 10)
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("rebuild changed retained history: before=%+v after=%+v", before, after)
+	}
+	first, _ := exportAllTestRollups(t, store, "a-first", 10)
+	if len(first) != 1 || first[0].Resolution != time.Hour {
+		t.Fatalf("conflicting rebuild committed an earlier metric: %+v", first)
 	}
 }

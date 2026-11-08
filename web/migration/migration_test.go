@@ -1,17 +1,20 @@
 package migration
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/Aone2233/nekomari/internal/metricstore"
 	appconfig "github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/internal/migrations"
 	"github.com/Aone2233/nekomari/web/api"
+	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -29,6 +32,69 @@ func setupConfigDB(t *testing.T) *gorm.DB {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	appconfig.SetDb(db)
 	return db
+}
+
+func TestQuiesceWaitsForWorkerCleanupAndRejectsNewWork(t *testing.T) {
+	c := NewStructureController()
+	c.Activate()
+	started, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	c.mu.Lock()
+	c.status.State = "copying"
+	c.launchLocked(func(ctx context.Context) {
+		close(started)
+		<-ctx.Done()
+		close(canceled)
+		// A failed status must not admit a second worker while deferred cleanup
+		// in the first worker is still running.
+		c.fail("canceled", "failed")
+		<-release
+	})
+	c.mu.Unlock()
+	<-started
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() { result <- c.Quiesce(ctx) }()
+	<-canceled
+
+	recorder := httptest.NewRecorder()
+	ginContext, _ := gin.CreateTestContext(recorder)
+	ginContext.Request = httptest.NewRequest(http.MethodPost, APIPath+"/start", nil)
+	c.startStructure(ginContext)
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("new work during shutdown: status %d, want 409", recorder.Code)
+	}
+	if err := <-result; !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("quiesce while cleanup is blocked = %v, want deadline", err)
+	}
+	close(release)
+	if err := c.Quiesce(context.Background()); err != nil {
+		t.Fatalf("retry quiesce: %v", err)
+	}
+	recorder = httptest.NewRecorder()
+	ginContext, _ = gin.CreateTestContext(recorder)
+	ginContext.Request = httptest.NewRequest(http.MethodPost, APIPath+"/start", nil)
+	c.startStructure(ginContext)
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("new work after shutdown: status %d, want 409", recorder.Code)
+	}
+}
+
+func TestCompletedStatusCannotRaceWorkerCleanup(t *testing.T) {
+	c := NewStructureController()
+	release := make(chan struct{})
+	c.mu.Lock()
+	c.status.State = "failed"
+	c.launchLocked(func(context.Context) { <-release })
+	if !c.operationActiveLocked() {
+		t.Fatal("worker cleanup was not considered active")
+	}
+	c.mu.Unlock()
+	close(release)
+	if err := c.Quiesce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestMetricConfigValidatesSelectedDriverAgainstDSN(t *testing.T) {

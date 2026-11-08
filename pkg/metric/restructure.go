@@ -368,6 +368,14 @@ func (s *Store) Restructure(ctx context.Context, report func(RestructureProgress
 	if err := s.ensureOpen(); err != nil {
 		return RestructureResult{}, err
 	}
+	s.retentionMu.Lock()
+	defer s.retentionMu.Unlock()
+	if err := s.ensureOpen(); err != nil {
+		return RestructureResult{}, err
+	}
+	if err := s.pendingCommitError(); err != nil {
+		return RestructureResult{}, err
+	}
 	// The rebuild replaces the physical definitions table, so the ingest
 	// snapshot must be dropped even when the rebuild stops half way.
 	defer s.invalidateDefinitions()
@@ -380,6 +388,17 @@ func (s *Store) Restructure(ctx context.Context, report func(RestructureProgress
 	}
 	if shape.normalizedComplete() {
 		return s.removeObsoleteRawTables(ctx, report, shape)
+	}
+	// Replacing the physical schema while buffered observations exist can
+	// silently discard them. The caller must first coordinate persistence.
+	s.hotMu.RLock()
+	hasHot := len(s.hot) != 0
+	s.hotMu.RUnlock()
+	s.coarseMu.RLock()
+	hasCoarse := len(s.coarse) != 0
+	s.coarseMu.RUnlock()
+	if hasHot || hasCoarse || s.hotCommitErr != nil {
+		return RestructureResult{}, ErrImportPending
 	}
 	if shape.normalizedColumnsComplete() {
 		return s.rebuildNormalizedSchema(ctx, report)
@@ -652,6 +671,9 @@ func (s *Store) DiscardHistory(ctx context.Context, report func(RestructureProgr
 	if err := s.ensureOpen(); err != nil {
 		return RestructureResult{}, err
 	}
+	if err := s.pendingCommitError(); err != nil {
+		return RestructureResult{}, err
+	}
 	// Discarding history can rebuild the physical tables, so the ingest
 	// snapshot must be dropped even when the operation stops half way.
 	defer s.invalidateDefinitions()
@@ -760,7 +782,8 @@ func (s *Store) discardNormalizedHistory(ctx context.Context, report func(Restru
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return RestructureResult{}, err
+		s.hotCommitErr = fmt.Errorf("%w: %v", ErrCommitUncertain, err)
+		return RestructureResult{}, s.hotCommitErr
 	}
 	var dropErr error
 	obsoleteTables := []string{s.tables.points, s.tables.watermarks}
@@ -783,11 +806,17 @@ func (s *Store) discardNormalizedHistory(ctx context.Context, report func(Restru
 	}
 	s.rawMu.Lock()
 	clear(s.raw)
+	clear(s.rawIncomplete)
+	clear(s.baseline)
 	s.rawMu.Unlock()
 	s.hotMu.Lock()
 	clear(s.hot)
 	clear(s.hotReplace)
 	s.hotMu.Unlock()
+	s.coarseMu.Lock()
+	clear(s.coarse)
+	s.coarseMu.Unlock()
+	s.coarseRecoveryPending = false
 	if err := s.validateNormalizedRestructure(ctx, len(definitions)); err != nil {
 		return RestructureResult{}, fmt.Errorf("validate empty normalized schema: %w", err)
 	}

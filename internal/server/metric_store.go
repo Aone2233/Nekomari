@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/Aone2233/nekomari/database/auditlog"
-	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/metricstore"
 	logger "github.com/Aone2233/nekomari/utils/log"
 )
 
@@ -22,7 +22,7 @@ func (a *App) ConnectMetricStore() error {
 		return fmt.Errorf("failed to initialize metric store: %s", redactMetricStoreError(err))
 	}
 	if !a.metricStoreCleanupAdded {
-		a.addCleanup("metric-store", metricstore.CloseStoreContext)
+		a.addCriticalCleanup("metric-store", metricstore.CloseStoreContext)
 		a.metricStoreCleanupAdded = true
 	}
 	return nil
@@ -81,10 +81,13 @@ func (a *App) InitStores() error {
 		auditlog.EventLog("error", fmt.Sprintf("Failed to initialize metric store: %v", err))
 		return err
 	}
-	metricstore.StartReportBatcher()
-	a.addCleanup("metric-report-batcher", metricstore.StopReportBatcher)
+	if err := metricstore.StartReportBatcher(); err != nil {
+		return fmt.Errorf("start metric report batcher: %w", err)
+	}
+	a.addCriticalCleanup("metric-report-batcher", metricstore.QuiesceReportBatcher)
+	a.addCriticalCleanup("metric-async-cleanup", metricstore.QuiesceAsyncCleanup)
 	// A store-to-store migration holds the exclusive operation lease. Stop it
 	// before flushing queued reports, which need the shared lease to write.
-	a.addCleanup("metric-store-migration", metricstore.StopStoreMigrationForShutdown)
+	a.addCriticalCleanup("metric-store-migration", metricstore.StopStoreMigrationForShutdown)
 	return nil
 }

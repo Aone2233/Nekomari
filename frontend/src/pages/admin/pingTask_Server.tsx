@@ -14,6 +14,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Selector } from "@/components/Selector";
+import { ApiResponseError, requireApiSuccess } from "@/lib/apiResponse";
 // 服务器视图：按服务器聚合展示其绑定的任务，并可快速增删绑定
 export const ServerView = ({ pingTasks }: { pingTasks: PingTask[] }) => {
   const { t } = useTranslation();
@@ -125,19 +126,21 @@ const ServerRow: React.FC<{
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tasks: toUpdate }),
     })
-      .then((res) => {
-        if (!res.ok)
-          return res.json().then((d) => {
-            throw new Error(d?.message || t("common.error"));
-          });
-        return res.json();
-      })
+      .then((response) => requireApiSuccess(response, t("common.error")))
       .then(() => {
         toast.success(t("common.updated_successfully"));
         setOpen(false);
         refresh();
       })
-      .catch((e) => toast.error(e.message))
+      .catch((e) => {
+        if (e instanceof ApiResponseError && e.committed) {
+          setOpen(false);
+          refresh();
+          toast.error(e.message, { duration: 15000 });
+        } else {
+          toast.error(e.message);
+        }
+      })
       .finally(() => setSaving(false));
   };
 

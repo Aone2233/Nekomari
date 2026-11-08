@@ -36,9 +36,16 @@ func TestClientImportCannotReplaceExistingCredential(t *testing.T) {
 	document := map[string]any{"schema_version": configxport.SchemaVersion, "secrets_included": true,
 		"clients": []map[string]any{{"uuid": id, "token": "stale-export-token", "name": "must-not-apply"}}}
 	for _, method := range []string{"admin:planConfigImport", "admin:importConfig"} {
-		request := &rpc.JsonRpcRequest{Params: map[string]any{"document": document}}
-		if _, err := bindDocument(request); err == nil {
-			t.Fatalf("%s did not reject stale credential before writes", method)
+		raw, err := json.Marshal(rpc.NewRequest(1, method, map[string]any{"document": document}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		request, parseErr := rpc.ParseRequest(raw)
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+		if _, err := bindDocument(request); err == nil || !strings.Contains(err.Message, "rotateClientToken") {
+			t.Fatalf("%s did not reject stale credential before writes: %+v", method, err)
 		}
 	}
 	if err := applyRecord("clients", id, map[string]any{"token": "unreviewed-token"}, false); err == nil {

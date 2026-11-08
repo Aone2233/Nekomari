@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/database/models"
 	appconfig "github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/pkg/metric"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -28,7 +28,7 @@ func TestLegacyMonitoringTablesMigratedByOneShotMigration(t *testing.T) {
 	} else {
 		t.Fatalf("legacy sql db: %v", err)
 	}
-	if err := mainDB.AutoMigrate(&models.Record{}, &models.GPURecord{}, &models.PingRecord{}); err != nil {
+	if err := mainDB.AutoMigrate(&models.Record{}, &models.GPURecord{}, &models.PingRecord{}, &models.PingTask{}, &models.PingTaskDeletion{}); err != nil {
 		t.Fatalf("migrate legacy tables: %v", err)
 	}
 	if err := mainDB.Table("records_long_term").AutoMigrate(&models.Record{}); err != nil {
@@ -139,6 +139,91 @@ func TestLegacyMonitoringTablesMigratedByOneShotMigration(t *testing.T) {
 	}
 	if markDoneCalls != 1 {
 		t.Fatalf("completed migration rewrote marker, calls=%d", markDoneCalls)
+	}
+}
+
+func TestLegacyMonitoringReservedPingHistoryRetry(t *testing.T) {
+	ctx := context.Background()
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "legacy.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := db.AutoMigrate(&models.PingRecord{}, &models.PingTask{}, &models.PingTaskDeletion{}); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Hour)
+	for _, id := range []uint{12, 13} {
+		if err := db.Create(&models.PingRecord{Client: "node", TaskId: id, Time: base, Value: int(id)}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Create(&models.PingTaskDeletion{TaskID: 12}).Error; err != nil {
+		t.Fatal(err)
+	}
+	conflict := models.PingTask{Id: 12, Name: "conflict", Target: "example.test"}
+	if err := db.Create(&conflict).Error; err != nil {
+		t.Fatal(err)
+	}
+	store, err := metric.Open(ctx, metric.SQLite(filepath.Join(t.TempDir(), "metrics.db")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := metricstore.EnsureBuiltinMetricDefinitions(ctx, store); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ReplaceRollupPoints(ctx, time.Hour, []metric.Point{{
+		MetricName: metricstore.MetricPingLatency, EntityID: "node", Timestamp: base, Value: 123,
+		Tags: map[string]string{"task_id": "12"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	points := func(id string) []metric.AggregatePoint {
+		return queryLegacyRollups(t, ctx, store, metric.Query{
+			MetricName: metricstore.MetricPingLatency, EntityID: "node",
+			Start: base.Add(-time.Second), End: base.Add(time.Hour), Tags: map[string]string{"task_id": id},
+		})
+	}
+	if _, err := MigrateLegacyMonitoring(ctx, db, store, nil); err == nil {
+		t.Fatal("migration accepted a live reserved ID")
+	}
+	if got := points("12"); len(got) != 1 || got[0].Value != 123 {
+		t.Fatalf("conflict changed potentially live history: %+v", got)
+	}
+	if err := db.Delete(&conflict).Error; err != nil {
+		t.Fatal(err)
+	}
+	interrupted, cancel := context.WithCancel(ctx)
+	_, err = MigrateLegacyMonitoring(interrupted, db, store, func(p LegacyMonitoringProgress) {
+		if p.Table == "ping_records" && p.SourceRowsDone > 0 {
+			cancel()
+		}
+	})
+	cancel()
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("interrupted migration returned %v", err)
+	}
+	if got := points("12"); len(got) != 0 {
+		t.Fatalf("interrupted migration retained reserved history: %+v", got)
+	}
+	if !db.Migrator().HasTable(&models.PingRecord{}) {
+		t.Fatal("interrupted migration removed its source")
+	}
+	var final LegacyMonitoringProgress
+	stats, err := MigrateLegacyMonitoring(ctx, db, store, func(p LegacyMonitoringProgress) { final = p })
+	if err != nil || stats.Ping != 2 || final.SourceRowsDone != 2 || final.SourceRowsTotal != 2 {
+		t.Fatalf("retry stats=%+v progress=%+v err=%v", stats, final, err)
+	}
+	if got := points("12"); len(got) != 0 {
+		t.Fatalf("retry imported reserved history: %+v", got)
+	}
+	if got := points("13"); len(got) != 1 || got[0].Value != 13 {
+		t.Fatalf("retry lost unrelated history: %+v", got)
 	}
 }
 

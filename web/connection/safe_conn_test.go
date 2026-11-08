@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -33,6 +34,122 @@ func TestSafeConnAbortDoesNotWaitForWriterMutex(t *testing.T) {
 	_, _, _, closes := rec.calls()
 	if closes != 1 {
 		t.Fatalf("normal close hooks after abort = %d", closes)
+	}
+}
+
+func TestWriteJSONContextRestoresDeadline(t *testing.T) {
+	server := wsEchoServer(t)
+	defer server.Close()
+	conn := dialEcho(t, server)
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if err := conn.WriteJSONContext(ctx, map[string]int{"first": 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatal(err)
+	}
+	<-ctx.Done()
+	if err := conn.WriteJSON(map[string]int{"second": 2}); err != nil {
+		t.Fatalf("normal write after context deadline: %v", err)
+	}
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWriteJSONContextPreservesExistingDeadline(t *testing.T) {
+	server := wsEchoServer(t)
+	defer server.Close()
+	conn := dialEcho(t, server)
+	defer conn.Close()
+	deadline := time.Now().Add(100 * time.Millisecond)
+	if err := conn.SetWriteDeadline(deadline); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := conn.WriteJSONContext(ctx, "first"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Until(deadline) + 10*time.Millisecond)
+	if err := conn.WriteJSON("second"); err == nil {
+		t.Fatal("existing write deadline was not preserved")
+	}
+}
+
+type blockedSendInterceptor struct {
+	*recordingInterceptor
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (b *blockedSendInterceptor) OnSend(_ *ConnInfo, kind int, data []byte) (int, []byte, bool) {
+	close(b.entered)
+	<-b.release
+	return kind, data, false
+}
+
+func TestWriteJSONContextBusyAndBlockedInterceptor(t *testing.T) {
+	server := wsEchoServer(t)
+	defer server.Close()
+	conn := dialEcho(t, server)
+	defer conn.Close()
+	block := &blockedSendInterceptor{recordingInterceptor: &recordingInterceptor{}, entered: make(chan struct{}), release: make(chan struct{})}
+	conn.SetInterceptor(&ConnInfo{ID: conn.ID}, block)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- conn.WriteJSONContext(ctx, "blocked") }()
+	<-block.entered
+	if err := conn.WriteJSONContext(ctx, "busy"); !errors.Is(err, errContextWriterBusy) {
+		t.Fatalf("busy write = %v", err)
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("blocked write = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("blocked interceptor held caller after deadline")
+	}
+	close(block.release)
+}
+
+func TestWriteJSONContextSaturationDoesNotCreateWorker(t *testing.T) {
+	server := wsEchoServer(t)
+	defer server.Close()
+	conn := dialEcho(t, server)
+	defer conn.Close()
+	for i := 0; i < cap(contextWriteSlots); i++ {
+		contextWriteSlots <- struct{}{}
+	}
+	defer func() {
+		for i := 0; i < cap(contextWriteSlots); i++ {
+			<-contextWriteSlots
+		}
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := conn.WriteJSONContext(ctx, "busy"); !errors.Is(err, errContextWriterBusy) {
+		t.Fatalf("saturated write = %v", err)
+	}
+	if err := conn.WriteJSON("still usable"); err != nil {
+		t.Fatalf("saturated write damaged connection: %v", err)
+	}
+}
+
+func TestWriteJSONContextRequiresDeadline(t *testing.T) {
+	server := wsEchoServer(t)
+	defer server.Close()
+	conn := dialEcho(t, server)
+	defer conn.Close()
+	if err := conn.WriteJSONContext(context.Background(), "no deadline"); err == nil {
+		t.Fatal("accepted a context with no deadline")
+	}
+	if err := conn.WriteJSON("still usable"); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -270,10 +387,69 @@ func TestSafeConnOnCloseOnce(t *testing.T) {
 	if err := sc.Close(); err != nil {
 		t.Fatal(err)
 	}
-	// 第二次关闭连接已关闭：返回错误是预期行为，OnClose 只应触发一次。
+	// Repeated closes share the first result, and OnClose fires only once.
 	_ = sc.Close()
 	_, _, _, closes := rec.calls()
 	if closes != 1 {
 		t.Fatalf("OnClose fired %d times", closes)
+	}
+}
+
+type blockingCloseInterceptor struct {
+	recordingInterceptor
+	started chan struct{}
+	release chan struct{}
+}
+
+func (i *blockingCloseInterceptor) OnClose(*ConnInfo) {
+	close(i.started)
+	<-i.release
+}
+
+func TestSafeConnConcurrentCloseWaitsForHook(t *testing.T) {
+	server := wsEchoServer(t)
+	defer server.Close()
+	sc := dialEcho(t, server)
+	interceptor := &blockingCloseInterceptor{started: make(chan struct{}), release: make(chan struct{})}
+	sc.SetInterceptor(&ConnInfo{ID: sc.ID}, interceptor)
+	first, second := make(chan error, 1), make(chan error, 1)
+	go func() { first <- sc.Close() }()
+	<-interceptor.started
+	go func() { second <- sc.Close() }()
+	select {
+	case err := <-second:
+		t.Fatalf("concurrent close returned before hook: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(interceptor.release)
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-second; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSafeConnConcurrentCloseWaitsForLifecycleCallback(t *testing.T) {
+	server := wsEchoServer(t)
+	defer server.Close()
+	sc := dialEcho(t, server)
+	started, release := make(chan struct{}), make(chan struct{})
+	sc.SetOnClose(func() { close(started); <-release })
+	first, second := make(chan error, 1), make(chan error, 1)
+	go func() { first <- sc.Close() }()
+	<-started
+	go func() { second <- sc.Close() }()
+	select {
+	case err := <-second:
+		t.Fatalf("concurrent close returned before lifecycle callback: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(release)
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-second; err != nil {
+		t.Fatal(err)
 	}
 }

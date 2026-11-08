@@ -46,6 +46,10 @@ func RunServer() {
 	if installRequired {
 		completed, err := app.RunInstallGuide()
 		if err != nil {
+			if errors.Is(err, appserver.ErrRestartRequested) {
+				logger.Infof("server", "Service stopped for restart: %v", err)
+				os.Exit(1)
+			}
 			_ = app.Shutdown()
 			logger.Fatalf("server", "server startup failed at %q: %v", "run-first-run-install", err)
 		}

@@ -3,6 +3,7 @@ package metric
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -111,6 +112,9 @@ func (s *Store) flushClosedCoarseRollups(ctx context.Context, now time.Time) (in
 }
 
 func (s *Store) flushClosedCoarseRollupsUnderView(ctx context.Context, now time.Time) (int, error) {
+	if s.hotCommitErr != nil {
+		return 0, s.hotCommitErr
+	}
 	if err := s.recoverPendingCoarseRollups(ctx); err != nil {
 		return 0, err
 	}
@@ -167,14 +171,13 @@ func (s *Store) flushClosedCoarseRollupsUnderView(ctx context.Context, now time.
 //     ingest leaves stale. MySQL and PostgreSQL have real cardinality statistics
 //     for the join and are left to their own optimizers.
 //
-// Bucket timestamps are nonnegative Unix milliseconds, so integer division
-// aligns a child with its parent without dialect-specific date arithmetic.
+// SQL integer division truncates toward zero, whereas bucketStartMillis floors
+// negative timestamps. Find the aligned parent within [r-width+1, r] instead,
+// saturating the lower bound at MinInt64. This preserves the indexed parent
+// lookup and avoids overflowing at either end of the timestamp range.
 func (s *Store) coarseRecoveryQuery(ctx context.Context, metricName string, fineID, coarseID int64, coarse time.Duration) (string, []any) {
-	parentStart := fmt.Sprintf("(r.bucket_milli / %d) * %d", coarse.Milliseconds(), coarse.Milliseconds())
-	if s.cfg.Driver == DriverMySQL {
-		// MySQL / keeps fractions; DIV floors the nonnegative bucket timestamp.
-		parentStart = fmt.Sprintf("(r.bucket_milli DIV %d) * %d", coarse.Milliseconds(), coarse.Milliseconds())
-	}
+	width := coarse.Milliseconds()
+	delta := width - 1
 	hint := ""
 	if index := s.rollupSeriesIndexName(ctx); index != "" {
 		hint = " INDEXED BY " + index
@@ -187,10 +190,13 @@ func (s *Store) coarseRecoveryQuery(ctx context.Context, metricName string, fine
 		WHERE s.metric_name = %s AND r.resolution_id = %s
 		AND NOT EXISTS (SELECT 1 FROM %s p
 			WHERE p.series_id = r.series_id AND p.label_id = r.label_id
-			AND p.resolution_id = %s AND p.bucket_milli = %s)
+			AND p.resolution_id = %s AND p.bucket_milli <= r.bucket_milli
+			AND p.bucket_milli >= CASE WHEN r.bucket_milli < (-9223372036854775807 - 1 + %d)
+				THEN (-9223372036854775807 - 1) ELSE r.bucket_milli - %d END
+			AND p.bucket_milli %% %d = 0)
 		ORDER BY r.bucket_milli ASC`, s.tables.rollups, hint, s.tables.series,
 		s.tables.labels, s.dialect.placeholder(1), s.dialect.placeholder(2), s.tables.rollups,
-		s.dialect.placeholder(3), parentStart)
+		s.dialect.placeholder(3), delta, delta, width)
 	return query, []any{metricName, fineID, coarseID}
 }
 
@@ -351,6 +357,12 @@ func (s *Store) persistClosedCoarseRollups(ctx context.Context, closed []closedC
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	checked := make(map[coarseRollupKey]struct{})
+	for _, item := range closed {
+		if err := s.rejectPersistedCoarseAncestorsTx(ctx, tx, item.key, item.higher, 0, checked, false); err != nil {
+			return 0, err
+		}
+	}
 
 	byMetric := make(map[string]map[time.Duration]map[rollupKey]*rollupBucket)
 	for _, item := range closed {
@@ -389,9 +401,56 @@ func (s *Store) persistClosedCoarseRollups(ctx context.Context, closed []closedC
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return written, err
+		// This function runs under rollupViewMu. The parent upsert is
+		// idempotent, but its higher-tier propagation has not happened yet.
+		s.hotCommitErr = fmt.Errorf("%w: %v", ErrCommitUncertain, err)
+		return 0, s.hotCommitErr
 	}
 	return written, nil
+}
+
+// A pending parent cannot safely be combined with an independently durable
+// ancestor: imported or previously sealed rows may contain observations no
+// longer present in finer tiers. Check under the same view/transaction as the
+// read or write rather than guessing which summary is complete.
+func (s *Store) rejectPersistedCoarseAncestorsTx(ctx context.Context, tx *sql.Tx, key coarseRollupKey, higher []time.Duration, through time.Duration, checked map[coarseRollupKey]struct{}, charge bool) error {
+	query := fmt.Sprintf(`SELECT 1 FROM %s r
+		JOIN %s s ON s.id = r.series_id
+		JOIN %s d ON d.id = r.resolution_id
+		JOIN %s l ON l.id = r.label_id
+		WHERE s.metric_name = %s AND s.entity_id = %s AND s.tags_hash = %s
+		AND l.labels_hash = %s AND d.resolution_milli = %s AND r.bucket_milli = %s`,
+		s.tables.rollups, s.tables.series, s.tables.resolutions, s.tables.labels,
+		s.dialect.placeholder(1), s.dialect.placeholder(2), s.dialect.placeholder(3),
+		s.dialect.placeholder(4), s.dialect.placeholder(5), s.dialect.placeholder(6))
+	intervals := append([]time.Duration{key.interval}, higher...)
+	for _, interval := range intervals {
+		if through > 0 && interval > through {
+			break
+		}
+		ancestor := key
+		ancestor.interval = interval
+		ancestor.bucket = bucketStartMillis(key.bucket, interval.Milliseconds())
+		if _, exists := checked[ancestor]; exists {
+			continue
+		}
+		if charge {
+			if err := spendReadBudget(ctx, 1); err != nil {
+				return err
+			}
+		}
+		var present int
+		err := tx.QueryRowContext(ctx, query, ancestor.metricName, ancestor.entityID, ancestor.tagsHash,
+			ancestor.labelsHash, interval.Milliseconds(), ancestor.bucket).Scan(&present)
+		if err == nil {
+			return ErrRebuildConflict
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		checked[ancestor] = struct{}{}
+	}
+	return nil
 }
 
 // upsertClosedCoarseBucketsTx writes a fully sealed parent exactly once. It
@@ -487,6 +546,24 @@ func (s *Store) metricRollupPolicy(ctx context.Context, metricName string) (Roll
 
 func (s *Store) deleteCoarseRollups(metricName string) {
 	_, _ = s.deleteCoarseRollupsMatching(metricName, "", nil)
+}
+
+// deleteCoarseRollupsBefore mirrors the persisted tier cutoff: a parent
+// straddling the boundary is retained whole, just like its durable row.
+func (s *Store) deleteCoarseRollupsBefore(metricName string, before int64) int64 {
+	s.coarseMu.Lock()
+	defer s.coarseMu.Unlock()
+	var deleted int64
+	for key, parent := range s.coarse {
+		if metricName != "" && key.metricName != metricName {
+			continue
+		}
+		if key.bucket < bucketStartMillis(before, key.interval.Milliseconds()) {
+			deleted += int64(len(parent.children))
+			delete(s.coarse, key)
+		}
+	}
+	return deleted
 }
 
 func (s *Store) deleteCoarseRollupsMatching(metricName, entityID string, tags map[string]string) (int64, error) {

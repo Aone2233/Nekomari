@@ -2,6 +2,7 @@ package metricstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -9,15 +10,28 @@ import (
 
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/pkg/metric"
+	logger "github.com/Aone2233/nekomari/utils/log"
 )
 
 // WritePingRecord 将 ping 记录写入 metric store
 func WritePingRecord(ctx context.Context, rec models.PingRecord) error {
-	if len(rec.Client) > 128 || len(rec.PingType) > 12 || len(rec.Role) > 12 || len(rec.Family) > 8 {
-		return fmt.Errorf("ping record exceeds field limits")
+	if err := validatePingRecord(rec); err != nil {
+		return err
 	}
-	s := GetStore()
-	if s == nil {
+	if ctx == nil {
+		return fmt.Errorf("ping write requires a context")
+	}
+	if !reportAdmissions.TryAcquireShared() {
+		return metric.ErrWriteUnavailable
+	}
+	defer reportAdmissions.ReleaseShared()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if reportClosing.Load() {
+		return ErrReportBatchStopped
+	}
+	if GetStore() == nil {
 		return fmt.Errorf("metric store not enabled")
 	}
 
@@ -30,16 +44,154 @@ func WritePingRecord(ctx context.Context, rec models.PingRecord) error {
 	return writePingRecords(ctx, []models.PingRecord{rec})
 }
 
-func writePingRecords(ctx context.Context, records []models.PingRecord) error {
+// WritePingRecordSync admits a current result into the raw/hot store before
+// returning. A short synchronous retry tolerates transient store contention;
+// a queued writer could instead outlive the task or session admission fence.
+func WritePingRecordSync(ctx context.Context, rec models.PingRecord) error {
+	if err := validatePingRecord(rec); err != nil {
+		return err
+	}
+	points := pingRecordPoints([]models.PingRecord{rec})
+	if ctx == nil {
+		return fmt.Errorf("ping write requires a context")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !reportAdmissions.TryAcquireShared() {
+		return metric.ErrWriteUnavailable
+	}
+	defer reportAdmissions.ReleaseShared()
+	if reportClosing.Load() {
+		return ErrReportBatchStopped
+	}
+	if !storeOperations.TryAcquireShared() {
+		return metric.ErrWriteUnavailable
+	}
+	defer storeOperations.ReleaseShared()
+	if !storeMu.TryRLock() {
+		return metric.ErrWriteUnavailable
+	}
+	s := store
+	storeMu.RUnlock()
+	if s == nil {
+		return fmt.Errorf("metric store not enabled")
+	}
+	return retryPinnedAppend(ctx, func() error { return s.TryAppendCurrentBatch(ctx, points) })
+}
+
+const (
+	pinnedAppendRetryLimit = 100 * time.Millisecond
+	pinnedAppendRetryDelay = 5 * time.Millisecond
+)
+
+// All attempts finish synchronously while the caller still owns its identity
+// fences. No background writer can commit after the caller returns.
+func retryPinnedAppend(ctx context.Context, appendCurrent func() error) error {
+	deadline := time.Now().Add(pinnedAppendRetryLimit)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := appendCurrent()
+		if !errors.Is(err, metric.ErrWriteUnavailable) {
+			return err
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return err
+		}
+		timer := time.NewTimer(min(remaining, pinnedAppendRetryDelay))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+// PreparePinnedPingHistory primes the store's persisted-minute identity
+// checks outside task/session fences. A changed store or minute simply makes
+// the later nonblocking admission fail closed; it cannot admit a stale result.
+func PreparePinnedPingHistory(ctx context.Context, uuid string, task models.PingTask) error {
+	if ctx == nil || uuid == "" || task.Id == 0 || (task.TargetFamily != "ipv4" && task.TargetFamily != "ipv6") {
+		return fmt.Errorf("ping history preparation requires a node and task")
+	}
+	if err := storeOperations.AcquireShared(ctx); err != nil {
+		return err
+	}
+	defer storeOperations.ReleaseShared()
 	s := GetStore()
 	if s == nil {
 		return fmt.Errorf("metric store not enabled")
 	}
+	type leg struct{ role, protocol, family string }
+	var legs []leg
+	primary := []string{task.Type}
+	if task.Type == "auto" || task.Type == "dual" {
+		primary = []string{"icmp", "tcp"}
+	}
+	for _, protocol := range primary {
+		if protocol != "icmp" && protocol != "tcp" && protocol != "http" {
+			return fmt.Errorf("invalid pinned probe type")
+		}
+		legs = append(legs, leg{protocol: protocol, family: task.TargetFamily})
+	}
+	if task.Reference != "" {
+		protocol := task.Type
+		if protocol == "auto" || protocol == "dual" {
+			protocol = "icmp"
+		}
+		legs = append(legs, leg{role: "reference", protocol: protocol, family: "ipv4"}, leg{role: "reference", protocol: protocol, family: "ipv6"})
+	}
+	at := time.Now().UTC()
+	// Some probes cross a minute boundary while they are in flight. Prepare
+	// the current minute and two subsequent minutes; an unusually late result is
+	// refused rather than doing SQL under its identity fence.
+	for _, delta := range []time.Duration{0, time.Minute, 2 * time.Minute} {
+		for _, leg := range legs {
+			rec := models.PingRecord{Client: uuid, TaskId: task.Id, PingType: leg.protocol, Role: leg.role, Family: leg.family, Time: at.Add(delta)}
+			if err := s.PrepareCurrentBatch(ctx, pingRecordPoints([]models.PingRecord{rec})); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func validatePingRecord(rec models.PingRecord) error {
+	if len(rec.Client) > 128 || len(rec.PingType) > 12 || len(rec.Role) > 12 || len(rec.Family) > 8 {
+		return fmt.Errorf("ping record exceeds field limits")
+	}
+	return nil
+}
+
+func writePingRecords(ctx context.Context, records []models.PingRecord) error {
 	if len(records) == 0 {
 		return nil
 	}
+	if err := storeOperations.AcquireShared(ctx); err != nil {
+		return fmt.Errorf("wait for metric store operation before writing ping records: %w", err)
+	}
+	defer storeOperations.ReleaseShared()
+	s := GetStore()
+	if s == nil {
+		return fmt.Errorf("metric store not enabled")
+	}
 
-	points := make([]metric.Point, 0, len(records)*2)
+	if err := s.WriteBatch(ctx, pingRecordPoints(records)); err != nil {
+		var accepted *metric.WriteAcceptedError
+		if !errors.As(err, &accepted) {
+			return err
+		}
+		logger.Errorf("metricstore", "ping batch accepted but maintenance failed: %v", err)
+	}
+	return nil
+}
+
+func pingRecordPoints(records []models.PingRecord) []metric.Point {
+	points := make([]metric.Point, 0, len(records)*3)
 	for _, rec := range records {
 		// protocol 标签让同一任务的 icmp / tcp 两条序列在查询侧可分辨，
 		// 这是「双协议并列探测」的数据基础。空值不写标签，保持与历史数据兼容。
@@ -92,7 +244,7 @@ func writePingRecords(ctx context.Context, records []models.PingRecord) error {
 			points = append(points, metric.Point{MetricName: MetricPingSuccessLatency, EntityID: rec.Client, Timestamp: rec.Time, Value: latency, Tags: tags})
 		}
 	}
-	return s.WriteBatch(ctx, points)
+	return points
 }
 
 func GetPingRecords(ctx context.Context, clientUUID string, taskID int, start, end time.Time) ([]models.PingRecord, error) {

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/database/models"
 	appconfig "github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/pkg/metric"
 	"gorm.io/gorm"
 )
@@ -224,6 +224,11 @@ func runLegacyMonitoringMigration(ctx context.Context, db *gorm.DB, s *metric.St
 
 func migrateLegacyMonitoringTables(ctx context.Context, db *gorm.DB, s *metric.Store, progress func(LegacyMonitoringProgress)) (LegacyMonitoringStats, error) {
 	var stats LegacyMonitoringStats
+	// Fail before writing any legacy data when an ID reservation conflicts
+	// with a live task. A retry must also start with a clean target store.
+	if err := metricstore.ReconcileReservedPingHistory(ctx, s, db); err != nil {
+		return stats, fmt.Errorf("reconcile reserved ping history before legacy import: %w", err)
+	}
 	summary, err := InspectLegacyMonitoring(db)
 	if err != nil {
 		return stats, err
@@ -262,6 +267,11 @@ func migrateLegacyMonitoringTables(ctx context.Context, db *gorm.DB, s *metric.S
 		return stats, err
 	}
 	stats.Ping += n
+	// Recheck before completing the guide. Normal service is not running during
+	// this import; external writers are not covered by this process's fences.
+	if err := metricstore.ReconcileReservedPingHistory(ctx, s, db); err != nil {
+		return stats, fmt.Errorf("reconcile reserved ping history after legacy import: %w", err)
+	}
 
 	return stats, nil
 }
@@ -354,7 +364,19 @@ func migrateLegacyPingRecordTable(ctx context.Context, s *metric.Store, db *gorm
 		return 0, nil
 	}
 
-	rows, err := db.Table(table).Select("*").Order("client ASC, task_id ASC, time ASC").Rows()
+	// Do not write reserved IDs even transiently: an interrupted migration can
+	// otherwise leave deleted history behind in the target before the final
+	// reconciliation. The tables and name here are internal, not user input.
+	eligible := db.WithContext(ctx).Table(table).Where("NOT EXISTS (SELECT 1 FROM ping_task_deletions AS deleted_tasks WHERE deleted_tasks.task_id = " + table + ".task_id)")
+	var eligibleCount int64
+	if err := eligible.Count(&eligibleCount).Error; err != nil {
+		return 0, fmt.Errorf("count eligible legacy %s: %w", table, err)
+	}
+	skipped := total - eligibleCount
+	if skipped > 0 && progress != nil {
+		progress(table, skipped, 0)
+	}
+	rows, err := eligible.Select("*").Order("client ASC, task_id ASC, time ASC").Rows()
 	if err != nil {
 		return 0, fmt.Errorf("stream legacy %s: %w", table, err)
 	}
@@ -366,8 +388,8 @@ func migrateLegacyPingRecordTable(ctx context.Context, s *metric.Store, db *gorm
 	if err != nil {
 		return migrated, fmt.Errorf("aggregate legacy %s: %w", table, err)
 	}
-	logger.Infof("migration", "[legacy-migration] aggregated %d rows from %s", migrated, table)
-	return migrated, nil
+	logger.Infof("migration", "[legacy-migration] aggregated %d rows from %s; skipped %d reserved task rows", migrated, table, skipped)
+	return migrated + skipped, nil
 }
 
 func migrateLegacyStream[T any](ctx context.Context, db *gorm.DB, s *metric.Store, rows *sql.Rows, table string, newValue func() *T, toPoints func(T) []metric.Point, progress legacyBatchProgress) (int64, error) {

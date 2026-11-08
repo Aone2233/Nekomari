@@ -80,6 +80,11 @@ func (s *Store) StorageSize(ctx context.Context) (int64, error) {
 func (s *Store) CheckpointWAL(ctx context.Context) error {
 	s.maintenanceMu.Lock()
 	defer s.maintenanceMu.Unlock()
+	s.retentionMu.Lock()
+	defer s.retentionMu.Unlock()
+	if err := s.pendingCommitError(); err != nil {
+		return err
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.closed || s.db == nil {
@@ -104,6 +109,14 @@ func (s *Store) ReclaimSpace(ctx context.Context) error {
 	ctx = context.Background()
 	s.maintenanceMu.Lock()
 	defer s.maintenanceMu.Unlock()
+	// Coordinate orphan cleanup, digest rewriting and VACUUM with snapshots,
+	// ingestion, retention and close. A snapshot must not observe only part of
+	// the process-local maintenance sequence.
+	s.retentionMu.Lock()
+	defer s.retentionMu.Unlock()
+	if err := s.pendingCommitError(); err != nil {
+		return err
+	}
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()

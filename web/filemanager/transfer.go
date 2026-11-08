@@ -15,11 +15,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/Aone2233/nekomari/database/auditlog"
 	logger "github.com/Aone2233/nekomari/utils/log"
 	"github.com/Aone2233/nekomari/web/api"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 const (
@@ -888,7 +888,7 @@ func removeExpiredUploadSession(id string, session *uploadSession) bool {
 	// The agent owns the temporary part file. Best-effort cleanup is performed
 	// after releasing the server lock so a slow/offline agent cannot block the
 	// upload session manager.
-	go cancelAgentUpload(session)
+	remoteUploadCleanup.start(func(ctx context.Context) { cancelAgentUpload(ctx, session) })
 	return true
 }
 
@@ -931,10 +931,16 @@ func removeUploadSessionState(id string) {
 }
 
 func startUploadCleanup() {
-	go func() {
+	remoteUploadCleanup.start(func(ctx context.Context) {
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
-		for now := range ticker.C {
+		for {
+			var now time.Time
+			select {
+			case now = <-ticker.C:
+			case <-ctx.Done():
+				return
+			}
 			uploadMu.Lock()
 			sessions := make(map[string]*uploadSession, len(uploadSessions))
 			for id, session := range uploadSessions {
@@ -947,7 +953,7 @@ func startUploadCleanup() {
 				}
 			}
 		}
-	}()
+	})
 }
 
 func ensureUploadSessionDirectory() {
@@ -970,11 +976,11 @@ func restoreUploadSession(id string) *uploadSession {
 	}
 }
 
-func cancelAgentUpload(session *uploadSession) {
+func cancelAgentUpload(parent context.Context, session *uploadSession) {
 	if session == nil || session.UUID == "" || session.ID == "" {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 	_, _ = Call(ctx, session.UUID, "upload_cancel", map[string]any{
 		"upload_id": session.ID,
