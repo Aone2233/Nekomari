@@ -16,7 +16,8 @@ it is not a claim that any item below is implemented yet.
 - [x] New-install defaults 30-day node / 7-day ping; existing definitions keep their stored values.
 - [x] Four-way payload compatibility tests; compatibility policy document.
 - [x] Host calibration harness; TCP loopback ±1 ms test; ICMP loopback vs system ping ±50 µs test; HTTP TTFB injected-delay test; boot-id restart test.
-- [ ] Calibration LAN ICMP, `tc netem` loss, clock-skew and retention-expiry runs (clock unit tests exist; the rest remain NOT RUN).
+- [x] Clock-boundary and retention-expiry tests (expired data is absent, never stale or zero).
+- [ ] Calibration LAN ICMP and `tc netem` loss remain NOT RUN.
 - [x] 26/26 plugin archive install; 25/26 load/unload (komari-gfw skipped as a known synthetic-domain fixture). `registerNotificationChannel`, jsruntime TLS and admin channel selection UI added; six notification plugins register/remove channels on load/unload; `CallNotificationChannel` dispatch/unregister is tested against a fake channel. Real external provider delivery pending.
 - [x] 64/64 theme manifests, preflight, install and reinstall pass.
 - [ ] Theme browser/hydration/mobile visual gate.
