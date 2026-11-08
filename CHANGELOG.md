@@ -34,6 +34,34 @@ Nekomari's own.
   Agent image's moving aliases; nodes need an explicitly staged Agent upgrade.
   Other releases must review their own policy before publication.
 
+## [v1.8.0] - 2026-11-08
+
+- **Probe truth release.** Ping tasks can opt into 1–10 attempts per cycle
+  (default 3 for new tasks) and report `attempts`, `success`, `loss_pct`,
+  `min/avg/max` and RFC3550 jitter. Legacy tasks keep the single-probe path and
+  exact old wire shape.
+- **HTTP phase reporting.** HTTP tasks record DNS/TCP/TLS/TTFB/total, final
+  status, redirects, TLS expiry, `reachable` and `available`. `legacy` mode
+  keeps 4xx/5xx as failure; `status_aware` separates reachability from HTTP
+  availability.
+- **Host detail.** CPU uses an explicit `/proc/stat` interval and optional
+  cgroup fields; RAM exposes available/cached/buffers/zswap; disk exposes
+  per-mount top-20 detail; boot-id is hashed for restart detection; TCP
+  counters are stored alongside the retransmit percentage.
+- **Retention and quality.** New installs default to 30-day node metrics and
+  7-day ping/HTTP metrics. A preset RPC/UI applies 7/30/90/365-day windows
+  without re-enabling disabled metrics. An admin probe-quality page shows last
+  report age, unknown-field ratio, CPU interval, cgroup/disk/TCP/boot-id
+  presence.
+- **Compatibility.** 26/26 market plugin archives install and 25/26 load
+  (one known synthetic-domain fixture skip); plugin notification channels and
+  jsruntime TLS are additive. 64/64 theme manifests and install/reinstall
+  gates pass. All new fields are optional; old Agents/Panels remain compatible.
+- **Verification.** OC424 scratch acceptance against a copied production
+  dataset passes `panel-upgrade-check` 9/9, migrations, authenticated quality/
+  ping/retention checks and 0 ERROR. Theme browser, external provider delivery,
+  LAN ICMP and `tc netem` loss remain explicit open gates.
+
 ## [v1.7.29] - 2026-11-05
 
 - **CSV correctness patch, published and deployed on OC424 at approximately
