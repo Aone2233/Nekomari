@@ -1955,5 +1955,14 @@
     "saved": "I have stored the new token",
     "token": "New agent token",
     "uncertain": "Rotation could not be confirmed. The old token may already be invalid. Do not blindly retry: use the authenticated token-read operation and independent SSH/console to recover, then check reporting."
+  },
+  "probeQuality": {
+    "menu": "Probe quality",
+    "title": "Probe data quality",
+    "description": "Last report age, unknown fields, sample interval and v1.8 host detail presence. Unknown is never shown as zero.",
+    "age": "Report age",
+    "interval": "Interval",
+    "unknown": "Unknown fields",
+    "mounts": "Mounts"
   }
 }

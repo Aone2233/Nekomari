@@ -125,19 +125,24 @@ type publicPingMetricTaskStats struct {
 	ValidKnown             bool              `json:"valid_known"`
 	Loss                   *float64          `json:"loss"`
 	LossApproximate        bool              `json:"loss_approximate,omitempty"`
-	Min                    *float64          `json:"min,omitempty"`
-	Max                    *float64          `json:"max,omitempty"`
-	Avg                    *float64          `json:"avg,omitempty"`
-	Latest                 *float64          `json:"latest,omitempty"`
-	P50                    *float64          `json:"p50,omitempty"`
-	P95                    *float64          `json:"p95,omitempty"`
-	P99                    *float64          `json:"p99,omitempty"`
-	StdDev                 *float64          `json:"stddev,omitempty"`
-	P99P50Ratio            *float64          `json:"p99_p50_ratio"`
-	WindowSemantics        string            `json:"window_semantics"`
-	CoverageStart          *time.Time        `json:"coverage_start,omitempty"`
-	CoverageEndExclusive   *time.Time        `json:"coverage_end_exclusive,omitempty"`
-	BackingIntervalSeconds float64           `json:"backing_interval_seconds,omitempty"`
+	// Additive v1.8 multi-probe summary. Nil for old Agents.
+	Attempts               *float64   `json:"attempts,omitempty"`
+	Success                *float64   `json:"success,omitempty"`
+	LossPct                *float64   `json:"loss_pct,omitempty"`
+	Jitter                 *float64   `json:"jitter_ms,omitempty"`
+	Min                    *float64   `json:"min,omitempty"`
+	Max                    *float64   `json:"max,omitempty"`
+	Avg                    *float64   `json:"avg,omitempty"`
+	Latest                 *float64   `json:"latest,omitempty"`
+	P50                    *float64   `json:"p50,omitempty"`
+	P95                    *float64   `json:"p95,omitempty"`
+	P99                    *float64   `json:"p99,omitempty"`
+	StdDev                 *float64   `json:"stddev,omitempty"`
+	P99P50Ratio            *float64   `json:"p99_p50_ratio"`
+	WindowSemantics        string     `json:"window_semantics"`
+	CoverageStart          *time.Time `json:"coverage_start,omitempty"`
+	CoverageEndExclusive   *time.Time `json:"coverage_end_exclusive,omitempty"`
+	BackingIntervalSeconds float64    `json:"backing_interval_seconds,omitempty"`
 }
 
 type publicPingMetricStatsResponse struct {
@@ -1380,6 +1385,10 @@ type publicPingMetricAggregateGroups struct {
 	StdDev               map[string][]metric.AggregatePoint
 	Loss                 map[string][]metric.AggregatePoint
 	LossAvailable        bool
+	Attempts             map[string][]metric.AggregatePoint
+	SuccessCount         map[string][]metric.AggregatePoint
+	LossPct              map[string][]metric.AggregatePoint
+	Jitter               map[string][]metric.AggregatePoint
 	Success              *publicPingMetricAggregateGroups
 	CoverageStart        *time.Time
 	CoverageEndExclusive *time.Time
@@ -1402,6 +1411,10 @@ func loadPublicPingMetricAggregateGroups(ctx context.Context, store *metric.Stor
 			{MetricName: metricstore.MetricPingLatency, Aggregations: latencyAggregations, Interval: interval, PreserveSeries: true, WholeWindow: true},
 			{MetricName: metricstore.MetricPingSuccessLatency, Aggregations: latencyAggregations, Interval: interval, PreserveSeries: true, WholeWindow: true},
 			{MetricName: metricstore.MetricPingLoss, Aggregations: []metric.Aggregation{metric.AggAvg}, Interval: interval, PreserveSeries: true, WholeWindow: true},
+			{MetricName: metricstore.MetricPingAttempts, Aggregations: []metric.Aggregation{metric.AggSum}, Interval: interval, PreserveSeries: true, WholeWindow: true},
+			{MetricName: metricstore.MetricPingSuccess, Aggregations: []metric.Aggregation{metric.AggSum}, Interval: interval, PreserveSeries: true, WholeWindow: true},
+			{MetricName: metricstore.MetricPingLossPct, Aggregations: []metric.Aggregation{metric.AggAvg}, Interval: interval, PreserveSeries: true, WholeWindow: true},
+			{MetricName: metricstore.MetricPingJitter, Aggregations: []metric.Aggregation{metric.AggAvg}, Interval: interval, PreserveSeries: true, WholeWindow: true},
 		},
 		EntityIDs: entityIDs,
 		Start:     start,
@@ -1432,9 +1445,13 @@ func loadPublicPingMetricAggregateGroups(ctx context.Context, store *metric.Stor
 	successP95 := groupPingMetricAggregatePointsByEntity(success[metric.AggP95])
 	successP99 := groupPingMetricAggregatePointsByEntity(success[metric.AggP99])
 	successStd := groupPingMetricAggregatePointsByEntity(success[metric.AggStdDev])
+	attempts := groupPingMetricAggregatePointsByEntity(loaded.Values[metricstore.MetricPingAttempts][metric.AggSum])
+	successCount := groupPingMetricAggregatePointsByEntity(loaded.Values[metricstore.MetricPingSuccess][metric.AggSum])
+	lossPct := groupPingMetricAggregatePointsByEntity(loaded.Values[metricstore.MetricPingLossPct][metric.AggAvg])
+	jitter := groupPingMetricAggregatePointsByEntity(loaded.Values[metricstore.MetricPingJitter][metric.AggAvg])
 
 	entitySet := make(map[string]struct{})
-	for _, groups := range []map[string]map[string][]metric.AggregatePoint{avg, minimum, maximum, last, p50, p99, stddev, loss} {
+	for _, groups := range []map[string]map[string][]metric.AggregatePoint{avg, minimum, maximum, last, p50, p99, stddev, loss, attempts, successCount, lossPct, jitter} {
 		for currentEntityID := range groups {
 			entitySet[currentEntityID] = struct{}{}
 		}
@@ -1455,6 +1472,10 @@ func loadPublicPingMetricAggregateGroups(ctx context.Context, store *metric.Stor
 			StdDev:        stddev[currentEntityID],
 			Loss:          entityLoss,
 			LossAvailable: pingMetricGroupsHaveData(entityLoss),
+			Attempts:      attempts[currentEntityID],
+			SuccessCount:  successCount[currentEntityID],
+			LossPct:       lossPct[currentEntityID],
+			Jitter:        jitter[currentEntityID],
 			CoverageStart: coverageStart, CoverageEndExclusive: coverageEnd, Resolution: resolution,
 		}
 		entry := result[currentEntityID]
@@ -1528,6 +1549,7 @@ func publicPingStatsFromAggregateGroups(entityID string, groups publicPingMetric
 	groupKeys := make(map[string]struct{})
 	for _, group := range []map[string][]metric.AggregatePoint{
 		groups.Avg, groups.Min, groups.Max, groups.Last, groups.P50, groups.P99, groups.StdDev, groups.Loss,
+		groups.Attempts, groups.SuccessCount, groups.LossPct, groups.Jitter,
 	} {
 		for key := range group {
 			groupKeys[key] = struct{}{}
@@ -1617,6 +1639,10 @@ func publicPingStatsFromAggregateGroups(entityID string, groups publicPingMetric
 			P95:                    p95,
 			P99:                    p99,
 			StdDev:                 stddev,
+			Attempts:               singleAggregateValue(groups.Attempts[key]),
+			Success:                singleAggregateValue(groups.SuccessCount[key]),
+			LossPct:                singleAggregateValue(groups.LossPct[key]),
+			Jitter:                 singleAggregateValue(groups.Jitter[key]),
 			WindowSemantics:        "bucket_coverage", CoverageStart: groups.CoverageStart, CoverageEndExclusive: groups.CoverageEndExclusive, BackingIntervalSeconds: groups.Resolution.Seconds(),
 		}
 		if lossKnown {
