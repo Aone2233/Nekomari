@@ -46,7 +46,8 @@ plugins and the email plugin now load after the additive
 `komari-gfw` is skipped as a known synthetic-domain fixture limitation. The
 gate also verifies that each of the six notification plugins registers a
 channel on load and removes it on unload. The admin channel-selection UI is
-present; real provider delivery tests are still pending.
+present; `CallNotificationChannel` dispatch and unregister are covered by a real
+registry test. Real external provider delivery remains pending.
 
 The theme side passes its offline gates: 64/64 manifests match the pinned
 catalog, 64/64 archives preflight, and 64/64 install + reinstall in separate
