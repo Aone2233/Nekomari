@@ -1,0 +1,110 @@
+{
+  "$schema": "./node_modules/@komari-monitor/plugin-sdk/schema/komari-plugin.schema.json",
+  "name": {
+    "zh-CN": "负载通知",
+    "en": "Load Notifications"
+  },
+  "short": "load-notification",
+  "author": "Akizon77",
+  "description": {
+    "zh-CN": "基于 queryMetrics 的可编排指标告警插件",
+    "en": "Composable metric alerts powered by queryMetrics"
+  },
+  "version": "0.2.1",
+  "komari": ">=1.4.3",
+  "entry": "script.js",
+  "permissions": {
+    "node": true,
+    "allowSystemRPC": true
+  },
+  "configuration": {
+    "type": "managed",
+    "data": [
+      {
+        "type": "title",
+        "key": "runtime_policy",
+        "name": {
+          "zh-CN": "运行策略",
+          "en": "Runtime policy"
+        }
+      },
+      {
+        "key": "notifications_enabled",
+        "name": {
+          "zh-CN": "启用通知调度",
+          "en": "Enable notification scheduler"
+        },
+        "type": "switch",
+        "default": true,
+        "help": {
+          "zh-CN": "关闭后保留规则，但暂停后台查询和发送通知。",
+          "en": "Keep the rules but pause background queries and notifications."
+        }
+      },
+      {
+        "key": "default_poll_interval_minutes",
+        "name": {
+          "zh-CN": "默认轮询间隔（分钟）",
+          "en": "Default poll interval (minutes)"
+        },
+        "type": "number",
+        "default": 5,
+        "help": {
+          "zh-CN": "仅用于新建规则；每条规则仍可单独调整。",
+          "en": "Used for new rules; each rule can override it."
+        }
+      },
+      {
+        "key": "default_cooldown_minutes",
+        "name": {
+          "zh-CN": "默认冷却时间（分钟）",
+          "en": "Default cooldown (minutes)"
+        },
+        "type": "number",
+        "default": 60,
+        "help": {
+          "zh-CN": "同一规则重复触发时的默认通知间隔。",
+          "en": "Default minimum time between repeated alerts for one rule."
+        }
+      },
+      {
+        "key": "default_aggregation",
+        "name": {
+          "zh-CN": "默认聚合算法",
+          "en": "Default aggregation"
+        },
+        "type": "select",
+        "options": "avg,min,max,first,last",
+        "default": "avg"
+      },
+      {
+        "key": "send_recovery",
+        "name": {
+          "zh-CN": "发送恢复通知",
+          "en": "Send recovery notifications"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "include_details",
+        "name": {
+          "zh-CN": "通知包含节点明细",
+          "en": "Include node details in notifications"
+        },
+        "type": "switch",
+        "default": true
+      }
+    ]
+  },
+  "pages": [
+    {
+      "file": "admin.html",
+      "title": {
+        "zh-CN": "负载通知配置",
+        "en": "Load notification settings"
+      },
+      "visibility": "admin"
+    }
+  ]
+}

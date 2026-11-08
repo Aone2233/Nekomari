@@ -1,0 +1,58 @@
+{
+  "name": {
+    "zh-CN": "节点在线率历史",
+    "zh_CN": "节点在线率历史",
+    "en": "Availability History"
+  },
+  "short": "availability-history",
+  "version": "0.1.5",
+  "description": {
+    "zh-CN": "基于 WebSocket 实时断连事件记录节点真实在线率历史与 30 天可用性。插件可独立采集数据与提供 API；强烈推荐搭配 Komari Emerald Insights（翡翠洞察）主题，以在前端直观展示真正的 30 天在线率与可用性分析条带。",
+    "zh_CN": "基于 WebSocket 实时断连事件记录节点真实在线率历史与 30 天可用性。插件可独立采集数据与提供 API；强烈推荐搭配 Komari Emerald Insights（翡翠洞察）主题，以在前端直观展示真正的 30 天在线率与可用性分析条带。",
+    "en": "Exact WebSocket connection event ledger and 30-day availability history for Komari. Operates standalone for data collection and APIs; strongly recommended to pair with Komari Emerald Insights theme to display true 30-day availability in the UI."
+  },
+  "author": "Chen017",
+  "license": "MIT",
+  "repository": "https://github.com/Chen017/komari-plugin-availability-history",
+  "komari": ">=1.5.0",
+  "permissions": {
+    "node": true,
+    "allowHooks": true,
+    "allowRoutes": true,
+    "timeout": 10
+  },
+  "configuration": {
+    "type": "managed",
+    "data": [
+      {
+        "name": {
+          "zh-CN": "<div style=\"margin: 0 0 12px 0; padding: 12px 16px; background: rgba(239, 68, 68, 0.08); border-left: 4px solid #dc2626; border-radius: 4px;\"><div style=\"color: #dc2626; font-weight: 700; font-size: 14px; margin-bottom: 6px;\">⚠️ 前置提示与推荐搭配：需配合前端主题展示在线率</div><div style=\"font-size: 13px; color: #475569; line-height: 1.6;\">• <b>独立运行说明</b>：本插件专注于后端事件账本，基于 WebSocket 实时连接事件精确计算 30 天可用性并提供 REST API。插件可单独安装运行，无需前置 VPS 采集端。<br>• <b>强烈推荐搭配主题</b>：Komari 原生界面不包含在线率图表与可用性历史面板，<b>强烈推荐安装配套主题 <a href=\"https://github.com/Chen017/komari-theme-emerald-insights\" target=\"_blank\" style=\"color: #dc2626; font-weight: 700; text-decoration: underline;\">Komari Emerald Insights（翡翠洞察）</a></b>！配合该主题即可在「资源概览」与节点卡片中渲染出真正的 30 天在线率与可用性条带。<br>• <b>相关链接</b>：<a href=\"https://github.com/Chen017/komari-theme-emerald-insights\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">Emerald Insights 翡翠洞察主题</a> ｜ <a href=\"https://github.com/Chen017/komari-emerald-suite\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">Emerald 生态总览</a> ｜ <a href=\"https://github.com/Chen017/komari-plugin-availability-history\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">插件主页</a></div></div>",
+          "zh_CN": "<div style=\"margin: 0 0 12px 0; padding: 12px 16px; background: rgba(239, 68, 68, 0.08); border-left: 4px solid #dc2626; border-radius: 4px;\"><div style=\"color: #dc2626; font-weight: 700; font-size: 14px; margin-bottom: 6px;\">⚠️ 前置提示与推荐搭配：需配合前端主题展示在线率</div><div style=\"font-size: 13px; color: #475569; line-height: 1.6;\">• <b>独立运行说明</b>：本插件专注于后端事件账本，基于 WebSocket 实时连接事件精确计算 30 天可用性并提供 REST API。插件可单独安装运行，无需前置 VPS 采集端。<br>• <b>强烈推荐搭配主题</b>：Komari 原生界面不包含在线率图表与可用性历史面板，<b>强烈推荐安装配套主题 <a href=\"https://github.com/Chen017/komari-theme-emerald-insights\" target=\"_blank\" style=\"color: #dc2626; font-weight: 700; text-decoration: underline;\">Komari Emerald Insights（翡翠洞察）</a></b>！配合该主题即可在「资源概览」与节点卡片中渲染出真正的 30 天在线率与可用性条带。<br>• <b>相关链接</b>：<a href=\"https://github.com/Chen017/komari-theme-emerald-insights\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">Emerald Insights 翡翠洞察主题</a> ｜ <a href=\"https://github.com/Chen017/komari-emerald-suite\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">Emerald 生态总览</a> ｜ <a href=\"https://github.com/Chen017/komari-plugin-availability-history\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">插件主页</a></div></div>",
+          "en": "<div style=\"margin: 0 0 12px 0; padding: 12px 16px; background: rgba(239, 68, 68, 0.08); border-left: 4px solid #dc2626; border-radius: 4px;\"><div style=\"color: #dc2626; font-weight: 700; font-size: 14px; margin-bottom: 6px;\">⚠️ Notice & Recommendation: Frontend Theme Required to Display Availability</div><div style=\"font-size: 13px; color: #475569; line-height: 1.6;\">• <b>Standalone Operation</b>: This plugin operates as a backend ledger, recording real connection events via WebSocket and serving REST APIs. It runs standalone with no extra VPS agent needed.<br>• <b>Strongly Recommended Theme</b>: Komari default UI does not include 30-day availability charts. It is <b>strongly recommended to install the companion theme <a href=\"https://github.com/Chen017/komari-theme-emerald-insights\" target=\"_blank\" style=\"color: #dc2626; font-weight: 700; text-decoration: underline;\">Komari Emerald Insights</a></b> to render actual 30-day uptime and availability history in the UI.<br>• <b>Links</b>: <a href=\"https://github.com/Chen017/komari-theme-emerald-insights\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">Emerald Insights Theme</a> | <a href=\"https://github.com/Chen017/komari-emerald-suite\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">Emerald Suite Overview</a> | <a href=\"https://github.com/Chen017/komari-plugin-availability-history\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">Plugin Repo</a></div></div>"
+        },
+        "type": "textbox"
+      },
+      {
+        "key": "offline_grace_seconds",
+        "name": "节点断连宽限期（秒）",
+        "type": "number",
+        "default": 180,
+        "help": "在此时间内重连不计为离线宕机；有效范围 30–600 秒。"
+      },
+      {
+        "key": "retention_days",
+        "name": "历史事件保留天数",
+        "type": "number",
+        "default": 90,
+        "help": "事件账本的历史保留时间；有效范围 30–365 天。"
+      },
+      {
+        "key": "observer_heartbeat_seconds",
+        "name": "监控者心跳间隔（秒）",
+        "type": "number",
+        "default": 30,
+        "help": "用于记录监控者存活状态；有效范围 10–120 秒。"
+      }
+    ]
+  }
+}

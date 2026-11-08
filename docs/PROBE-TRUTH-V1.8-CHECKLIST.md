@@ -17,7 +17,7 @@ it is not a claim that any item below is implemented yet.
 - [x] Four-way payload compatibility tests; compatibility policy document.
 - [x] Host calibration harness; TCP loopback ±1 ms test; HTTP TTFB injected-delay test; boot-id restart test.
 - [ ] Calibration live ICMP/loss/clock/retention runs (remain NOT RUN by design).
-- [ ] Marketplace 26-plugin / 64-theme gate.
+- [x] Offline 26-plugin manifest/version gate; full load/unload + 64-theme browser gate remains pending.
 - [ ] OC424 upgrade / restore drill acceptance.
 
 ## Confirmed defaults (2026-11-08)

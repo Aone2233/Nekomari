@@ -1,0 +1,161 @@
+{
+  "catalog_updated_at": "2026-11-05T20:17:21.187Z",
+  "items": [
+    {
+      "short": "admin-path",
+      "version": "1.0.0",
+      "archive_sha256": "a1a825f1e588f2458f6a8e7983d8fb3680ad1e9ee0917e6e1128533c7c0526e1",
+      "manifest_sha256": "7a1263acedd4a7282d5216c34c010b379598bcb3955ab7b79c6e8ae5600ef7d7"
+    },
+    {
+      "short": "api",
+      "version": "1.0.3",
+      "archive_sha256": "99147d93bff3f5123a5cb86539a023a41332c770da529d23c57bd0683eaba125",
+      "manifest_sha256": "6d3c4ce5629bf546834af1d49bf818b08d8f31d53bbb8b898623c213bc887a1e"
+    },
+    {
+      "short": "availability-history",
+      "version": "0.1.5",
+      "archive_sha256": "4f06fcbac17bef40df89e32e254c6e3d42997a395bb509e13992889387f335cb",
+      "manifest_sha256": "d9b5a5d23878876d207e811cddb2998333b4a81e1120932b627f16ffc4314a7f"
+    },
+    {
+      "short": "bark-plus",
+      "version": "1.0.0",
+      "archive_sha256": "0dfce7b0b330c0aa6ddc8125a47e47eba07edc8b6723c30c5e881b44878eb279",
+      "manifest_sha256": "34c5fc4c58d7e4c92b8dde2b5851f0c30b449e477b2a8e57d01f18c487d535fd"
+    },
+    {
+      "short": "cf-ddns",
+      "version": "0.1.3",
+      "archive_sha256": "0641d04299f721bba7103357895b603252047e91df5cd02b9b43d20bf8ef4b36",
+      "manifest_sha256": "51b6131675f3415bded3223f5e47f678059bc41e3f29dcb3c787bbe425130abe"
+    },
+    {
+      "short": "cloudflare-ddns",
+      "version": "1.0.1",
+      "archive_sha256": "7ecba07a0d8dda6d30785e02aa1fe573126dd4c089cd3021ccb1a8845fa3844b",
+      "manifest_sha256": "edb6da4cc5d52a63810903742f40620cc109ff0f6e0e758f0a4ebcb003a0cdf4"
+    },
+    {
+      "short": "cloudflare-tunnel",
+      "version": "1.1.0",
+      "archive_sha256": "2068ad4ca1cd3665d08599363635cf444ac912a389c65d4faa8262dbe37bf30d",
+      "manifest_sha256": "ff3d2747800c8d637a53a958880fd2c62d6876f4ffb5258e808b909c973e3373"
+    },
+    {
+      "short": "domain-watch",
+      "version": "1.0.2",
+      "archive_sha256": "e0e34b976c912335bd5bdf1ed295c9d32eb49e19762ebc866020d893979e5284",
+      "manifest_sha256": "25c3c065bd8e528473d4f3665cea55459d997bd736a4f8ecfaaf27cb4de6653b"
+    },
+    {
+      "short": "email-notification-plugin",
+      "version": "1.0.0",
+      "archive_sha256": "3ede48d5f5f1e43de7dc6fdb2685191c3e66bdb383355a2c45d6cfcf95a477a0",
+      "manifest_sha256": "b14c94fd14254a864867d672cd5ced589356faf0e9897466529eb7d12f0b492b"
+    },
+    {
+      "short": "fix-1-5-0-theme-404",
+      "version": "1.0.0",
+      "archive_sha256": "e5794c56c1a47922afdf6b81b5930b6097c56e648a816ff6aa741615650d3abb",
+      "manifest_sha256": "efeaa28569bc0e838aba1481e38bc555e1b9c3649dc32cf8d6e0a475d980785c"
+    },
+    {
+      "short": "github-proxy",
+      "version": "1.3.3",
+      "archive_sha256": "696736900d8c568d8df94340c7755422bc05a627b39fb196745b70862e3b70f5",
+      "manifest_sha256": "71e97a8fb116b412847736de1681b743302a071213d22c64b1d212f8ea447e83"
+    },
+    {
+      "short": "gotify-notification-plugin",
+      "version": "1.0.6",
+      "archive_sha256": "8d596c35101de118dd2295ed763dffa16cc31ab16738db163b67b4e651787b7f",
+      "manifest_sha256": "634f457433dfd93497af53695e0c9f4e4c58864e443f2d92e9b1f7e1e3c4e6c5"
+    },
+    {
+      "short": "ipqa-alert-report",
+      "version": "0.2.5",
+      "archive_sha256": "ef14d3c4ea827350652dcf6b1d75a86e651043b1a4b3b048df186e9778d52a81",
+      "manifest_sha256": "44aeea25fc445a1df484b7cec9180180eb4baf51b33a12a3aa972aba04a9fd9c"
+    },
+    {
+      "short": "komari-gfw",
+      "version": "0.1.6",
+      "archive_sha256": "5656880c894d764249cc978aa6f7c7f5348c104d6f8c143dcc1301ae53056af9",
+      "manifest_sha256": "1096e06d90389bbaa510ec58f3e2ae92e3f7d5d5a4b0ead5a49bada013fe15ae"
+    },
+    {
+      "short": "komari-otp-login",
+      "version": "1.0.0",
+      "archive_sha256": "634d1bcd8fb41a566d6e4073e65d40a7485dc9e8f73b76cf9ed3fbf9a01efe74",
+      "manifest_sha256": "a9005241e2b9f76ed2bc6f505ef54533c33d572e87bd0a0d30a5476fbec8517a"
+    },
+    {
+      "short": "komari-passkey",
+      "version": "0.1.14",
+      "archive_sha256": "568026a59b7a7adb12617ecbe9ba979123a8ddf5730e71860745d9097cc68bd0",
+      "manifest_sha256": "12f93162627729737be96dac2a68ea3455a672b6121dfcf2797f7a124a08e7ba"
+    },
+    {
+      "short": "load-notification",
+      "version": "0.2.1",
+      "archive_sha256": "746f067ba266b0dbf08c2b1090e3215466a2ec87d63d2558f86692de82b7be69",
+      "manifest_sha256": "68a952f5ae2572780b26f667c34fa79b0189af25c0e04583b5296dd0f000e385"
+    },
+    {
+      "short": "mjpeg",
+      "version": "1.1.0",
+      "archive_sha256": "94b6cb3952da82ed91dfec4781332c57bb19d3937b936a725a483aa17a4180d1",
+      "manifest_sha256": "519628c86705662f45353442c1b297a950ab29943f5af6c0a6a8152531df0f79"
+    },
+    {
+      "short": "net-forecast",
+      "version": "26.1021.6",
+      "archive_sha256": "b39c5262264df261f002c19e097cf3f1ff8450d1e4c91a275dd71ad705e7b0a5",
+      "manifest_sha256": "b90eeee21e7503b6e5b80a9c867149842044faeb1e6e729c73b548eef9131af4"
+    },
+    {
+      "short": "override-location",
+      "version": "1.1.5",
+      "archive_sha256": "fa893d862d486b7eeef1b15bc7d2034e4c53c8b6df1b44e8e32480ac095b0660",
+      "manifest_sha256": "c00431f2edd2cbf45d7bf489d27c7768b227479c198d3c28559d0b5f7036586e"
+    },
+    {
+      "short": "serverchan3-notification-plugin",
+      "version": "1.0.0",
+      "archive_sha256": "c638d3c16043c92dcffd73096ccfd82e1e09dd80ebc1fb938a331b993df59606",
+      "manifest_sha256": "8b38316d01c3590cbfe34f7b79b4043e7abe24f4b6c6ec4f9cd8beae2c3415ee"
+    },
+    {
+      "short": "serverchanturbo-notification-plugin",
+      "version": "1.0.0",
+      "archive_sha256": "edd852691de0dcf10ae09fbda7ae061690bf89e1159bea757f1e7d1bec3d048a",
+      "manifest_sha256": "dcf77606dceb1ee0ab2fd9f9a184dade0ea671666343e945ae8cb0423ab725dc"
+    },
+    {
+      "short": "tailscale-status",
+      "version": "1.0.0",
+      "archive_sha256": "68e322ab7b37afec7fdba566a23a36fd5b7df96b76b67c8fce4a11351048e9f5",
+      "manifest_sha256": "09a617e45ba2f073f0666e3c8c4508c78e4d167f2ad3dca5cb0738da43e2f24e"
+    },
+    {
+      "short": "telegram-notification-plugin",
+      "version": "1.0.0",
+      "archive_sha256": "83945127387e25c6d4df2c36d4bfb9d9cfd49e0c8809bddd4f3fb30358d1bb0a",
+      "manifest_sha256": "af2ac3a065bacde27341c95dea2533a44917f16c39739b0538aafd83db1d6229"
+    },
+    {
+      "short": "traffic-report",
+      "version": "0.1.0",
+      "archive_sha256": "8c8ff265cdfcb005f5e90e9aaa58c142b17f1cc919a498b297c1286f8aa1c4d7",
+      "manifest_sha256": "cdc255d4acc87df9fabcecd1f43bd77cdc93c3bf472e2e2db7065b59f8353dc4"
+    },
+    {
+      "short": "unlock-test",
+      "version": "26.1024.1",
+      "archive_sha256": "56b225062068118f33ac7ba711e8298b2ef7ef2227706b68678baa5bbcc54c24",
+      "manifest_sha256": "f5257d90f66d3b3b137371cce04eaa8ba2dbbce63d28b3863cb85a8640944f0a"
+    }
+  ]
+}

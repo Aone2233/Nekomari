@@ -32,9 +32,14 @@ are compared across both protocol copies by the existing contract tests.
 
 Each release must pin one upstream commit and both market catalog hashes, then
 run the 26-plugin / 64-theme fixtures. A failure blocks the release; a plugin
-requirement is never lowered. This branch currently has the protocol/host
-matrix only; the marketplace fixture gate remains a separate integration step
-and is not claimed as passed.
+requirement is never lowered.
+
+This branch contains the offline **26-plugin manifest and version gate**
+(`internal/plugin/market_manifest_gate_test.go`, pinned 2026-11-08 catalog
+fixtures). It validates manifest identity, catalog hashes, manifest rules and
+the `CheckKomariVersion` accept/refuse directions at `1.8.0`. The deeper
+plugin load/unload and 64-theme browser gate remains a separate integration
+step and is not claimed as passed.
 
 ## Rollback boundary
 
