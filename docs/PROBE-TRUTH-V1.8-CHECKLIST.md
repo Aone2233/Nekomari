@@ -15,7 +15,8 @@ it is not a claim that any item below is implemented yet.
 - [x] Ping stats API/UI, quality panel; task form controls; retention preset UI.
 - [x] New-install defaults 30-day node / 7-day ping; existing definitions keep their stored values.
 - [x] Four-way payload compatibility tests; compatibility policy document.
-- [ ] Calibration harness live ping/HTTP/clock/restart/retention runs (host slice exists; others NOT RUN).
+- [x] Host calibration harness; TCP loopback ±1 ms test; HTTP TTFB injected-delay test; boot-id restart test.
+- [ ] Calibration live ICMP/loss/clock/retention runs (remain NOT RUN by design).
 - [ ] Marketplace 26-plugin / 64-theme gate.
 - [ ] OC424 upgrade / restore drill acceptance.
 
