@@ -1,5 +1,5 @@
 diff --git a/src/components/PingChart.vue b/src/components/PingChart.vue
-index d30a02f..c2e4ea7 100644
+index d30a02f..66c1023 100644
 --- a/src/components/PingChart.vue
 +++ b/src/components/PingChart.vue
 @@ -10,6 +10,7 @@ import { Spinner } from '@/components/ui/spinner'
@@ -10,7 +10,7 @@ index d30a02f..c2e4ea7 100644
  import { createPingSeries, smoothPingChartRows } from '@/utils/pingChartSeries'
  import { getSharedRpc, RpcError } from '@/utils/rpc'
  import '@/utils/echarts' // 共享 ECharts 配置
-@@ -110,21 +111,21 @@ watch(availableViews, (views) => {
+@@ -110,27 +111,28 @@ watch(availableViews, (views) => {
  
  interface PingRecord {
    client: string
@@ -36,7 +36,14 @@ index d30a02f..c2e4ea7 100644
    min?: number
    max?: number
    avg?: number
-@@ -155,10 +156,14 @@ interface MetricQueryResponse {
+   latest?: number
+   total?: number
+   type?: string
++  isReference?: boolean
+ }
+ 
+ interface MetricPoint {
+@@ -155,10 +157,14 @@ interface MetricQueryResponse {
  
  interface PingMetricTaskStats {
    task_id: string
@@ -52,7 +59,7 @@ index d30a02f..c2e4ea7 100644
    min?: number
    max?: number
    avg?: number
-@@ -166,20 +171,34 @@ interface PingMetricTaskStats {
+@@ -166,20 +172,34 @@ interface PingMetricTaskStats {
    total: number
    p50?: number
    p99?: number
@@ -91,7 +98,7 @@ index d30a02f..c2e4ea7 100644
    time: string
    loss: number
  }
-@@ -205,7 +224,7 @@ let fetchRequestId = 0
+@@ -205,7 +225,7 @@ let fetchRequestId = 0
  let metricRpcSupported: boolean | null = null
  
  // 任务选择
@@ -100,7 +107,7 @@ index d30a02f..c2e4ea7 100644
  const cutPeak = ref(false)
  const showDelay = ref(true)
  const showLoss = ref(true)
-@@ -228,7 +247,7 @@ function isMethodNotFoundError(err: unknown): boolean {
+@@ -228,7 +248,7 @@ function isMethodNotFoundError(err: unknown): boolean {
    return err instanceof RpcError && err.code === -32601
  }
  
@@ -109,7 +116,7 @@ index d30a02f..c2e4ea7 100644
    const taskId = Number(
      point.tags?.task_id
      ?? series.tags?.task_id
-@@ -236,7 +255,10 @@ function getMetricTaskId(series: MetricSeries, point: MetricPoint): number | nul
+@@ -236,7 +256,10 @@ function getMetricTaskId(series: MetricSeries, point: MetricPoint): number | nul
      ?? series.tag?.task_id,
    )
  
@@ -121,7 +128,7 @@ index d30a02f..c2e4ea7 100644
  }
  
  // 与官方 komari-web HISTORY_MAX_POINTS 对齐；过小会导致长范围间隔过大、曲线断点过多
-@@ -252,7 +274,7 @@ const HISTORY_MAX_POINTS = 700
+@@ -252,7 +275,7 @@ const HISTORY_MAX_POINTS = 700
  function pushLatencyMetricPoint(
    records: PingRecord[],
    uuid: string,
@@ -130,7 +137,7 @@ index d30a02f..c2e4ea7 100644
    point: MetricPoint,
  ) {
    if (point.value === null) {
-@@ -313,7 +335,7 @@ async function fetchMetricRecords(uuid: string, hours: number): Promise<PingChar
+@@ -313,7 +336,7 @@ async function fetchMetricRecords(uuid: string, hours: number): Promise<PingChar
    ])
  
    const records: PingRecord[] = []
@@ -139,7 +146,7 @@ index d30a02f..c2e4ea7 100644
    for (const series of metricResult?.series ?? []) {
      if (series.metric_key !== 'ping.latency_ms')
        continue
-@@ -352,23 +374,41 @@ async function fetchMetricRecords(uuid: string, hours: number): Promise<PingChar
+@@ -352,23 +375,42 @@ async function fetchMetricRecords(uuid: string, hours: number): Promise<PingChar
      }
    }
  
@@ -193,12 +200,13 @@ index d30a02f..c2e4ea7 100644
 +      latest: task.latest,
 +      total: task.total,
 +      type: task.type,
++      isReference: dimensions.role === 'reference',
 +    }
 +  })
  
    return { records, tasks: metricTasks, lossRecords }
  }
-@@ -380,10 +420,58 @@ async function fetchLegacyRecords(uuid: string, hours: number): Promise<PingChar
+@@ -380,10 +422,59 @@ async function fetchLegacyRecords(uuid: string, hours: number): Promise<PingChar
      hours,
    })
  
@@ -244,6 +252,7 @@ index d30a02f..c2e4ea7 100644
 +        ...base,
 +        id,
 +        name: groups.size > 1 ? pingSeriesLabel(task.name, group.dimensions) : task.name,
++        isReference: group.dimensions.role === 'reference',
 +        loss: values.length ? (values.length - valid.length) * 100 / values.length : null,
 +        min: valid.length ? Math.min(...valid) : undefined,
 +        max: valid.length ? Math.max(...valid) : undefined,
@@ -260,7 +269,7 @@ index d30a02f..c2e4ea7 100644
  }
  
  async function fetchRecords() {
-@@ -539,12 +627,23 @@ function formatTimeForTooltip(time: string, hours: number): string {
+@@ -539,12 +630,23 @@ function formatTimeForTooltip(time: string, hours: number): string {
    return date.format('MM/DD HH:mm')
  }
  
@@ -285,7 +294,7 @@ index d30a02f..c2e4ea7 100644
    const taskIndex = tasks.value.findIndex(t => t.id === taskId)
    const safeIndex = Math.max(0, taskIndex % chartColors.length)
    return chartColors[safeIndex]!
-@@ -555,7 +654,7 @@ const latestValues = computed(() => {
+@@ -555,7 +657,7 @@ const latestValues = computed(() => {
    if (!tasks.value.length)
      return []
  
@@ -294,7 +303,7 @@ index d30a02f..c2e4ea7 100644
    for (const task of tasks.value) {
      for (let i = remoteData.value.length - 1; i >= 0; i--) {
        const rec = remoteData.value[i]
-@@ -582,7 +681,7 @@ const selectedTasks = computed(() => {
+@@ -582,7 +684,7 @@ const selectedTasks = computed(() => {
  
  const packetLossMarkers = computed(() => {
    const data = mergedData.value
@@ -303,7 +312,7 @@ index d30a02f..c2e4ea7 100644
  
    if (!data.length || !selectedTasks.value.length)
      return markers
-@@ -667,7 +766,7 @@ const totalLossMarkersCount = computed(() => {
+@@ -667,7 +769,7 @@ const totalLossMarkersCount = computed(() => {
  })
  
  // 切换任务选中状态
@@ -312,7 +321,7 @@ index d30a02f..c2e4ea7 100644
    if (selectedTaskIds.value.includes(taskId)) {
      selectedTaskIds.value = selectedTaskIds.value.filter(id => id !== taskId)
    }
-@@ -727,7 +826,7 @@ const pingChartOption = computed(() => {
+@@ -727,7 +829,7 @@ const pingChartOption = computed(() => {
    const timeToIndex = new Map(chartTimes.map((time, index) => [time, index]))
  
    // 预先统计各时间点存在丢包的任务，用于多任务同时丢包时的精准对称并排
@@ -321,7 +330,7 @@ index d30a02f..c2e4ea7 100644
    if (showLoss.value) {
      for (const task of taskList) {
        const lossMarkers = packetLossMarkers.value.get(task.id) || []
-@@ -810,7 +909,7 @@ const pingChartOption = computed(() => {
+@@ -810,7 +912,7 @@ const pingChartOption = computed(() => {
    const series = [...lineSeries, ...lossSeries]
  
    // 颜色映射表（用于 Tooltip）
@@ -330,7 +339,7 @@ index d30a02f..c2e4ea7 100644
    tasks.value.forEach((task, idx) => {
      const safeIdx = Math.max(0, idx % chartColors.length)
      colorMap.set(task.id, chartColors[safeIdx]!)
-@@ -1001,14 +1100,14 @@ const pingChartOption = computed(() => {
+@@ -1001,14 +1103,14 @@ const pingChartOption = computed(() => {
      },
      graphic: [
        // 无丢包时的状态反馈提示
@@ -347,7 +356,7 @@ index d30a02f..c2e4ea7 100644
                  fill: isDark.value ? 'rgba(52, 211, 153, 0.65)' : 'rgba(16, 185, 129, 0.75)',
                  fontSize: 11,
                  fontWeight: 500,
-@@ -1083,16 +1182,17 @@ const pingChartOption = computed(() => {
+@@ -1083,16 +1185,17 @@ const pingChartOption = computed(() => {
          for (const { task, delayVal, loss } of taskRows) {
            const color = colorMap.get(task.id) || chartColors[0]!
            const colorDot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:8px;flex-shrink:0"></span>`
@@ -367,7 +376,25 @@ index d30a02f..c2e4ea7 100644
            }
          }
          if (taskRows.every(row => row.delayVal === null && !(row.loss !== undefined && row.loss > 0)))
-@@ -1235,7 +1335,7 @@ onMounted(() => {
+@@ -1203,13 +1306,16 @@ onMounted(() => {
+             <div class="flex-1 min-w-0">
+               <div class="flex gap-2 items-center">
+                 <div class="rounded h-4 w-1" :style="{ backgroundColor: task.color }" />
+-                <span class="text-sm font-semibold truncate">{{ task.name }}</span>
++                <span class="text-sm font-semibold truncate" :title="task.name">{{ task.name }}</span>
+                 <div class="flex-1" />
+                 <DataTooltip placement="left" content-class="!rounded p-3 w-60 backdrop-blur">
+                   <Button variant="ghost" size="icon-xs" class="text-slate-500" @click.stop>
+                     <Icon icon="carbon:information" :width="14" :height="14" />
+                   </Button>
+                   <template #content>
++                    <div v-if="task.isReference" class="mb-2 text-xs">
++                      参考点是此任务配置的辅助探测，不是独立任务。
++                    </div>
+                     <div class="text-xs gap-x-4 gap-y-1.5 grid grid-cols-4">
+                       <template v-if="task.min !== undefined">
+                         <span class="text-muted-foreground">最小</span>
+@@ -1235,7 +1341,7 @@ onMounted(() => {
                          <span class="text-muted-foreground">P99</span>
                          <span class="font-medium">{{ Math.round(task.p99) }} ms</span>
                        </template>
@@ -376,7 +403,7 @@ index d30a02f..c2e4ea7 100644
                          <span class="text-muted-foreground">波动率</span>
                          <span class="font-medium">{{ task.p99_p50_ratio.toFixed(2) }}</span>
                        </template>
-@@ -1260,8 +1360,8 @@ onMounted(() => {
+@@ -1260,8 +1366,8 @@ onMounted(() => {
                    {{ task.avg !== undefined ? `${Math.round(task.avg)}ms` : '-' }}
                  </span>
                  <span class="opacity-60">·</span>
@@ -387,6 +414,35 @@ index d30a02f..c2e4ea7 100644
                    <span class="opacity-60">·</span>
                    <span title="波动率">{{ task.p99_p50_ratio.toFixed(2) }}</span>
                  </template>
+diff --git a/src/utils/pingChartIdentity.ts b/src/utils/pingChartIdentity.ts
+new file mode 100644
+index 0000000..04062f3
+--- /dev/null
++++ b/src/utils/pingChartIdentity.ts
+@@ -0,0 +1,23 @@
++export interface PingDimensions {
++  taskId: string | number
++  family?: string
++  protocol?: string
++  role?: string
++}
++
++export function pingSeriesId(dimensions: PingDimensions): string {
++  return JSON.stringify([
++    String(dimensions.taskId),
++    dimensions.family ?? '',
++    dimensions.protocol ?? '',
++    dimensions.role ?? '',
++  ])
++}
++
++export function pingSeriesLabel(name: string, dimensions: PingDimensions): string {
++  const details = [dimensions.family?.toUpperCase() || '族未知', dimensions.protocol?.toUpperCase() || '协议未知']
++  // Nekomari's legacy wire format omits the role for the primary target.
++  // Keep IDs distinct; only the user-facing meaning of an empty role changes.
++  details.push(dimensions.role === 'reference' ? '参考点' : !dimensions.role || dimensions.role === 'primary' ? '主目标' : `未知角色: ${dimensions.role}`)
++  return `${name} (${details.join(' / ')})`
++}
 diff --git a/src/utils/pingChartSeries.ts b/src/utils/pingChartSeries.ts
 index bd8cdf9..206b826 100644
 --- a/src/utils/pingChartSeries.ts
@@ -409,39 +465,12 @@ index bd8cdf9..206b826 100644
    const taskLine = buildPingLine(rows, String(task.id), task.interval, hours)
    const toTime = ([index, value]: [number, number | null]): [number, number | null] => [Date.parse(String(rows[index]!.time)), value]
    return [{
-diff --git a/src/utils/pingChartIdentity.ts b/src/utils/pingChartIdentity.ts
-new file mode 100644
-index 0000000..869bc0d
---- /dev/null
-+++ b/src/utils/pingChartIdentity.ts
-@@ -0,0 +1,21 @@
-+export interface PingDimensions {
-+  taskId: string | number
-+  family?: string
-+  protocol?: string
-+  role?: string
-+}
-+
-+export function pingSeriesId(dimensions: PingDimensions): string {
-+  return JSON.stringify([
-+    String(dimensions.taskId),
-+    dimensions.family ?? '',
-+    dimensions.protocol ?? '',
-+    dimensions.role ?? '',
-+  ])
-+}
-+
-+export function pingSeriesLabel(name: string, dimensions: PingDimensions): string {
-+  const details = [dimensions.family?.toUpperCase() || '族未知', dimensions.protocol?.toUpperCase() || '协议未知']
-+  details.push(dimensions.role === 'reference' ? '参考' : dimensions.role === 'primary' ? '主目标' : dimensions.role || '角色未标记')
-+  return `${name} (${details.join(' / ')})`
-+}
 diff --git a/tests/utils/ping-chart-identity.test.ts b/tests/utils/ping-chart-identity.test.ts
 new file mode 100644
-index 0000000..6bcd36b
+index 0000000..9bbf6f9
 --- /dev/null
 +++ b/tests/utils/ping-chart-identity.test.ts
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,39 @@
 +import assert from 'node:assert/strict'
 +// eslint-disable-next-line test/no-import-node-test -- This repository uses Node's test runner.
 +import { it } from 'node:test'
@@ -460,8 +489,11 @@ index 0000000..6bcd36b
 +  ]
 +  assert.equal(new Set(ids).size, ids.length)
 +  assert.equal(pingSeriesId({ taskId: 28 }), pingSeriesId({ taskId: '28', family: '', protocol: '', role: '' }))
-+  assert.match(pingSeriesLabel('Example', { ...base, role: 'reference' }), /IPV6 \/ ICMP \/ 参考/)
-+  assert.match(pingSeriesLabel('Example', { taskId: 28 }), /族未知 \/ 协议未知 \/ 角色未标记/)
++  assert.match(pingSeriesLabel('Example', { ...base, role: 'reference' }), /IPV6 \/ ICMP \/ 参考点/)
++  assert.match(pingSeriesLabel('Example', { taskId: 28 }), /族未知 \/ 协议未知 \/ 主目标/)
++  assert.match(pingSeriesLabel('Example', { ...base, role: 'primary' }), /主目标/)
++  assert.match(pingSeriesLabel('Example', { ...base, role: 'future' }), /未知角色: future/)
++  assert.notEqual(pingSeriesId(base), pingSeriesId({ ...base, role: 'primary' }))
 +})
 +
 +it('draws and smooths keyed groups separately', () => {

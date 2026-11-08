@@ -18,6 +18,27 @@ The upstream v2.0.6 fixes long-range chart time alignment. This patch additional
   ungrouped stats cannot be matched safely, do not attach a tagged curve.
 - Computes legacy-interface statistics separately from the returned samples;
   escapes task labels inserted into the chart tooltip.
+- Labels an empty legacy probe role as the primary target and `reference` as
+  a reference point. Only the display label changes: raw series identities
+  stay separate, including explicit `primary` versus an empty role. Reference
+  cards explain that the point is an auxiliary probe of the same task.
+
+The official theme's home-card summary uses `common:getRecords`, which removes
+the protocol/family/role dimensions and combines records for each task. Its
+aggregate latency and loss can therefore mix primary and reference readings;
+it is not a reliable per-path measurement. The patched detail chart uses the
+dimensioned metric endpoints instead. Do not infer zero loss from missing
+samples, and do not merge different address families or protocols.
+
+2026-11-08 compatibility check: the configured MegaBox education task is a
+dual ICMP/TCP task with a reference target. Separate IPv6 primary ICMP,
+primary TCP and reference ICMP metric series exist. The sanitized fixture in
+`fixtures/` covers those shapes, explicit pinned primary roles, independent
+selection, desktop/mobile widths and 7/30-day smoothing. This does not expose
+the configured target or assert acceptance in the owner's signed-in session.
+The original live task, its reference configuration and history are unchanged.
+The online theme remains upstream v2.0.6 with this local compatibility patch;
+an upstream reinstall can overwrite it.
 
 `nekomari.patch` is against the exact upstream commit, including regression
 unit tests. The upstream tag ignores its lockfile. `bun.lock` records this
@@ -42,3 +63,9 @@ The clean-source patch application and a fresh Bun frozen-lockfile install/build
 were also verified. The original tested zip was additionally opened as a full
 mocked instance page in Chromium; the unmodified 2.0.5 and 2.0.6 comparison
 components reproduce the null crash and identity collision.
+
+2026-11-08 role-label build: the clean-source patch check and all 81 tests pass.
+The actual zip was opened as a mocked full instance page at desktop and mobile
+widths, including the primary/reference labels, selection and 7/30-day smoothing.
+This supersedes the older bundle hash above. The tested zip SHA-256 is
+`8db889bd761bbbb577780632a4974782b76a951c4aa23728fbd643ae6a0f7567`.
