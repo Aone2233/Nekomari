@@ -12,9 +12,11 @@ it is not a claim that any item below is implemented yet.
 - [x] Panel ingestion, metric definitions and ping/HTTP metric points.
 - [x] Host detail metrics: CPU interval/cgroup, RAM detail, per-mount disk, boot-id hash, TCP counters.
 - [x] Retention preset backend (node/ping windows, disabled definitions preserved).
-- [ ] Ping stats API/UI, host UI, quality panel.
-- [ ] Calibration harness and tolerance runs.
-- [ ] Upstream compatibility gate and four-way matrix.
+- [x] Ping stats API/UI, quality panel; task form controls; retention preset UI.
+- [x] New-install defaults 30-day node / 7-day ping; existing definitions keep their stored values.
+- [x] Four-way payload compatibility tests; compatibility policy document.
+- [ ] Calibration harness live ping/HTTP/clock/restart/retention runs (host slice exists; others NOT RUN).
+- [ ] Marketplace 26-plugin / 64-theme gate.
 - [ ] OC424 upgrade / restore drill acceptance.
 
 ## Confirmed defaults (2026-11-08)
