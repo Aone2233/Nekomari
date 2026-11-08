@@ -19,6 +19,29 @@ from urllib.error import URLError
 from urllib.request import HTTPCookieProcessor, ProxyHandler, Request, build_opener
 
 
+def fixture_reset_day(now):
+    # Pick a valid day in the current month; never carry a day such as 31
+    # from the preceding, longer month into datetime.replace().
+    return now.day - 8 if now.day > 8 else now.day + 20
+
+
+def fixture_cycle_start(now, reset_day):
+    first = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    def reset_in_month(month):
+        # Match the panel's roll-forward rule for a short month.
+        candidate = month + dt.timedelta(days=reset_day - 1)
+        if candidate.month != month.month:
+            return (month + dt.timedelta(days=31)).replace(day=1)
+        return candidate
+
+    current = reset_in_month(first)
+    if current <= now:
+        return current
+    previous = (first - dt.timedelta(days=1)).replace(day=1)
+    return reset_in_month(previous)
+
+
 def seed_metrics(path, nodes, now, reset_day):
     with contextlib.closing(sqlite3.connect(path)) as db, db:
         db.execute("INSERT OR IGNORE INTO metric_resolutions (resolution_milli) VALUES (60000)")
@@ -29,10 +52,7 @@ def seed_metrics(path, nodes, now, reset_day):
         label = hashlib.sha256(b"forecast-fixture").hexdigest()
         db.execute("INSERT OR IGNORE INTO metric_label_sets (labels_hash,labels) VALUES (?, '{}')", (label,))
         label_id = db.execute("SELECT id FROM metric_label_sets WHERE labels_hash=?", (label,)).fetchone()[0]
-        boundary = now.replace(day=reset_day, hour=0, minute=0, second=0, microsecond=0)
-        if boundary > now:
-            previous = boundary.replace(day=1) - dt.timedelta(days=1)
-            boundary = previous.replace(day=reset_day)
+        boundary = fixture_cycle_start(now, reset_day)
         for node, kind in nodes:
             for direction in ("up", "down"):
                 name = "traffic." + direction
@@ -137,8 +157,7 @@ def main():
                         "traffic_limit_type": "up" if kind == "up" else "sum"})["status"] == "success"
                 stop()
                 now = dt.datetime.now(dt.timezone.utc)
-                # Reset day 8 days ago makes this fixture independent of the calendar day.
-                reset_day = (now - dt.timedelta(days=8)).day
+                reset_day = fixture_reset_day(now)
                 seed_metrics(scratch / "data/metrics.db", [(uuid, kind) for uuid, kind in nodes if kind != "empty"], now, reset_day)
                 start()
                 wait("/api/public")
