@@ -48,20 +48,26 @@ type row struct {
 func (row) TableName() string { return "nekomari_ping_rollback_rows" }
 
 type taskData struct {
-	ID          uint               `json:"id"`
-	ConfigUID   string             `json:"config_uid"`
-	Weight      int                `json:"weight"`
-	Name        string             `json:"name"`
-	Clients     models.StringArray `json:"clients"`
-	ClientsRaw  []byte             `json:"clients_raw"`
-	ClientsType string             `json:"clients_type"`
-	DefaultOn   bool               `json:"default_on"`
-	Type        string             `json:"type"`
-	Target      string             `json:"target"`
-	Reference   string             `json:"reference"`
-	Interval    int                `json:"interval"`
-	Family      string             `json:"family"`
-	Generation  string             `json:"generation"`
+	ID                  uint               `json:"id"`
+	ConfigUID           string             `json:"config_uid"`
+	Weight              int                `json:"weight"`
+	Name                string             `json:"name"`
+	Clients             models.StringArray `json:"clients"`
+	ClientsRaw          []byte             `json:"clients_raw"`
+	ClientsType         string             `json:"clients_type"`
+	DefaultOn           bool               `json:"default_on"`
+	Type                string             `json:"type"`
+	Target              string             `json:"target"`
+	Reference           string             `json:"reference"`
+	Interval            int                `json:"interval"`
+	Family              string             `json:"family"`
+	Generation          string             `json:"generation"`
+	ProbeAttempts       int                `json:"probe_attempts,omitempty"`
+	ProbeSpacingMS      int                `json:"probe_spacing_ms,omitempty"`
+	ProbeTimeoutMS      int                `json:"probe_timeout_ms,omitempty"`
+	HTTPMode            string             `json:"http_mode,omitempty"`
+	HTTPExpectedStatus  string             `json:"http_expected_status,omitempty"`
+	IPVersionPreference string             `json:"ip_version_preference,omitempty"`
 }
 
 type rawClients struct {
@@ -105,7 +111,8 @@ func encode(task models.PingTask, raw rawClients) (row, error) {
 		return row{}, ErrConflict
 	}
 	data, err := json.Marshal(taskData{task.Id, task.ConfigUID, task.Weight, task.Name, task.Clients, raw.Raw, raw.StorageType,
-		task.DefaultOn, task.Type, task.Target, task.Reference, task.Interval, task.TargetFamily, task.PinnedGeneration})
+		task.DefaultOn, task.Type, task.Target, task.Reference, task.Interval, task.TargetFamily, task.PinnedGeneration,
+		task.ProbeAttempts, task.ProbeSpacingMS, task.ProbeTimeoutMS, task.HTTPMode, task.HTTPExpectedStatus, task.IPVersionPreference})
 	if err != nil {
 		return row{}, err
 	}
@@ -119,7 +126,9 @@ func decode(r row) (models.PingTask, rawClients, error) {
 	}
 	task := models.PingTask{Id: data.ID, ConfigUID: data.ConfigUID, Weight: data.Weight, Name: data.Name, Clients: data.Clients,
 		DefaultOn: data.DefaultOn, Type: data.Type, Target: data.Target, Reference: data.Reference,
-		Interval: data.Interval, TargetFamily: data.Family, PinnedGeneration: data.Generation}
+		Interval: data.Interval, TargetFamily: data.Family, PinnedGeneration: data.Generation,
+		ProbeAttempts: data.ProbeAttempts, ProbeSpacingMS: data.ProbeSpacingMS, ProbeTimeoutMS: data.ProbeTimeoutMS,
+		HTTPMode: data.HTTPMode, HTTPExpectedStatus: data.HTTPExpectedStatus, IPVersionPreference: data.IPVersionPreference}
 	raw := rawClients{Raw: data.ClientsRaw, StorageType: data.ClientsType}
 	if _, err := encode(task, raw); err != nil {
 		return models.PingTask{}, rawClients{}, ErrConflict
@@ -149,7 +158,9 @@ func checkSchema(tx *gorm.DB) error {
 		return err
 	}
 	wanted := map[string]bool{"id": true, "config_uid": true, "weight": true, "name": true, "clients": true, "all_clients": true,
-		"type": true, "target": true, "reference": true, "interval": true, "target_family": true, "pinned_generation": true}
+		"type": true, "target": true, "reference": true, "interval": true, "target_family": true, "pinned_generation": true,
+		"probe_attempts": true, "probe_spacing_ms": true, "probe_timeout_ms": true,
+		"http_mode": true, "http_expected_status": true, "ip_version_preference": true}
 	if len(columns) != len(wanted) {
 		return ErrConflict
 	}
