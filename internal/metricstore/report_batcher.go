@@ -33,6 +33,7 @@ type reportTrafficValues struct {
 	uptimeLast  float64
 	hasUptime   bool
 	restarts    float64
+	bootIDHash  string
 }
 
 var reportTrafficStates sync.Map
@@ -609,9 +610,21 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 		// A large, durable uptime regression means the OS rebooted. Count it
 		// once per detected event and rebase so the post-reboot climb does not
 		// re-trigger. Skipped/out-of-order samples never reach this point.
+		restartDetected := false
+		hadBootEvidence := values.bootIDHash != ""
+		if report.BootIDHash != "" && values.bootIDHash != "" && report.BootIDHash != values.bootIDHash {
+			restartDetected = true
+		}
+		if report.BootIDHash != "" {
+			values.bootIDHash = report.BootIDHash
+		}
 		if validReportUptime(report) {
 			uptime := float64(report.Uptime)
-			if values.hasUptime && uptime < values.uptimeLast-restartDetectDecreaseSeconds {
+			if !restartDetected && !hadBootEvidence && values.hasUptime && uptime < values.uptimeLast-restartDetectDecreaseSeconds {
+				// Fallback only when boot-id evidence is unavailable.
+				restartDetected = true
+			}
+			if restartDetected {
 				values.restarts++
 				points = append(points, metric.Point{
 					MetricName: MetricRestarts,
@@ -619,11 +632,19 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 					Timestamp:  report.UpdatedAt,
 					Value:      values.restarts,
 				})
-				values.uptimeLast = uptime
-			} else if !values.hasUptime || uptime > values.uptimeLast {
+			}
+			if !values.hasUptime || uptime > values.uptimeLast || restartDetected {
 				values.uptimeLast = uptime
 			}
 			values.hasUptime = true
+		} else if restartDetected {
+			values.restarts++
+			points = append(points, metric.Point{
+				MetricName: MetricRestarts,
+				EntityID:   report.UUID,
+				Timestamp:  report.UpdatedAt,
+				Value:      values.restarts,
+			})
 		}
 		values.timestamp = report.UpdatedAt
 		values.hasUp = true

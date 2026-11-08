@@ -69,19 +69,25 @@ func (s *tcpCounterSampler) sample(out, retrans uint64) *float64 {
 
 var retransSampler tcpCounterSampler
 
-func tcpRetransPercent() *float64 {
+func tcpRetransMetrics() (outCount, retransCount *uint64, percent *float64) {
 	root := flags.HostProc
 	if root == "" {
 		root = "/proc"
 	}
 	file, err := os.Open(filepath.Join(root, "net", "snmp"))
 	if err != nil {
-		return nil
+		return nil, nil, nil
 	}
 	defer file.Close()
 	out, retrans, ok := parseTCPCounters(file)
 	if !ok {
-		return nil
+		return nil, nil, nil
 	}
-	return retransSampler.sample(out, retrans)
+	outCopy, retransCopy := out, retrans
+	return &outCopy, &retransCopy, retransSampler.sample(out, retrans)
+}
+
+func tcpRetransPercent() *float64 {
+	_, _, percent := tcpRetransMetrics()
+	return percent
 }

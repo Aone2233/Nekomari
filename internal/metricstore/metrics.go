@@ -20,6 +20,19 @@ const (
 	MetricTrafficIntervalUp    = "traffic.interval.up"
 	MetricTrafficIntervalDown  = "traffic.interval.down"
 	MetricTrafficIntervalValid = "traffic.interval.valid"
+	MetricCPUInterval          = "cpu.interval_seconds"
+	MetricCPUCgroupUsage       = "cpu.cgroup.usage"
+	MetricCPUCgroupQuota       = "cpu.cgroup.quota_cores"
+	MetricCPUCgroupThrottled   = "cpu.cgroup.throttled_seconds_total"
+	MetricRAMAvailable         = "ram.available"
+	MetricRAMCached            = "ram.cached"
+	MetricRAMBuffers           = "ram.buffers"
+	MetricRAMZswap             = "ram.zswap"
+	MetricDiskMountUsed        = "disk.mount.used"
+	MetricDiskMountTotal       = "disk.mount.total"
+	MetricTCPOutSegs           = "tcp.outsegs"
+	MetricTCPRetransSegs       = "tcp.retranssegs"
+	MetricTCPRetransPct        = "tcp.retrans_pct"
 	MetricProcess              = "process.count"
 	MetricConnections          = "connections.tcp"
 	MetricConnectionsUDP       = "connections.udp"
@@ -75,7 +88,13 @@ var gpuDeviceRecordMetricNames = []string{
 	MetricGPUDeviceUsage, MetricGPUMem, MetricGPUMemTotal, MetricGPUTemp,
 }
 
-var recordMetricNames = joinMetricNames(loadRecordMetricNames, gpuDeviceRecordMetricNames, []string{MetricTrafficIntervalUp, MetricTrafficIntervalDown, MetricTrafficIntervalValid, MetricUptime, MetricRestarts})
+var recordMetricNames = joinMetricNames(loadRecordMetricNames, gpuDeviceRecordMetricNames, []string{
+	MetricTrafficIntervalUp, MetricTrafficIntervalDown, MetricTrafficIntervalValid, MetricUptime, MetricRestarts,
+	MetricCPUInterval, MetricCPUCgroupUsage, MetricCPUCgroupQuota, MetricCPUCgroupThrottled,
+	MetricRAMAvailable, MetricRAMCached, MetricRAMBuffers, MetricRAMZswap,
+	MetricDiskMountUsed, MetricDiskMountTotal,
+	MetricTCPOutSegs, MetricTCPRetransSegs, MetricTCPRetransPct,
+})
 
 // Ping has an independent retention and cleanup boundary.
 var pingMetricNames = []string{
@@ -97,6 +116,16 @@ var panelMetricNames = joinMetricNames([]string{MetricPanelRSS, MetricPanelHeap,
 	[]string{MetricPanelThemeDisk, MetricPanelThemeMemory})
 
 var builtinMetricNames = joinMetricNames(recordMetricNames, pingMetricNames, panelMetricNames)
+
+// IsPingMetric reports whether a metric belongs to the ping retention family.
+func IsPingMetric(name string) bool {
+	for _, metricName := range pingMetricNames {
+		if name == metricName {
+			return true
+		}
+	}
+	return false
+}
 
 // Panel metrics are private even when requested through the public node API.
 func IsPanelMetric(name string) bool {

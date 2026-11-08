@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -30,6 +31,7 @@ import (
 func init() {
 	reg("listMetricDefinitions", adminListMetricDefinitions, "List metric definitions and retention policies")
 	reg("updateMetricDefinition", adminUpdateMetricDefinition, "Update a metric definition")
+	reg("applyRetentionPreset", adminApplyRetentionPreset, "Apply node/ping retention presets to built-in metrics")
 	reg("getMetricMigrationStatus", adminGetMetricMigrationStatus, "Get metrics store migration status (SQLite -> MySQL/PostgreSQL)")
 	reg("startMetricMigration", adminStartMetricMigration, "Start migrating metrics data from source SQLite to the current MySQL/PostgreSQL target")
 	reg("cancelMetricMigration", adminCancelMetricMigration, "Cancel the currently running metrics store migration")
@@ -125,6 +127,28 @@ func adminUpdateMetricDefinition(ctx context.Context, req *rpc.JsonRpcRequest) (
 		Metadata:      def.Metadata,
 		CreatedAt:     def.CreatedAt,
 		UpdatedAt:     def.UpdatedAt,
+	}, nil
+}
+
+func adminApplyRetentionPreset(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	var params struct {
+		NodeDays int `json:"node_days"`
+		PingDays int `json:"ping_days"`
+	}
+	if err := req.BindParams(&params); err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request body: "+err.Error(), nil)
+	}
+	if params.NodeDays < 1 || params.NodeDays > 3650 || params.PingDays < 1 || params.PingDays > 3650 {
+		return nil, rpc.MakeError(rpc.InvalidParams, "node_days and ping_days must be between 1 and 3650", nil)
+	}
+	updated, err := metricstore.ApplyRetentionPreset(ctx, params.NodeDays, params.PingDays)
+	if err != nil {
+		return nil, rpc.MakeError(rpc.InternalError, "Failed to apply retention preset: "+err.Error(), nil)
+	}
+	actor, ip := auditActor(ctx)
+	auditlog.Log(ip, actor, fmt.Sprintf("apply retention preset: node=%d days ping=%d days", params.NodeDays, params.PingDays), "info")
+	return map[string]any{
+		"updated": updated, "node_days": params.NodeDays, "ping_days": params.PingDays,
 	}, nil
 }
 
