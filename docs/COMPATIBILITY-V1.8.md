@@ -40,11 +40,11 @@ fixtures). It validates manifest identity, catalog hashes, manifest rules and
 the `CheckKomariVersion` accept/refuse directions at `1.8.0`.
 
 With the hash-verified ZIPs supplied, `TestKomariMarketPluginArchives` installs
-26/26. `TestKomariMarketPluginLoadUnload` currently loads 19/26: the six
-notification plugins require the additive `server.registerNotificationChannel`
-API, and the email plugin requires the jsruntime TLS module; `komari-gfw` is
-skipped as a known synthetic-domain fixture limitation. These are recorded as
-open compatibility work, not passes.
+26/26. `TestKomariMarketPluginLoadUnload` loads 25/26: all six notification
+plugins and the email plugin now load after the additive
+`server.registerNotificationChannel` API and the jsruntime TLS module.
+`komari-gfw` is skipped as a known synthetic-domain fixture limitation. The
+admin channel-selection UI and delivery tests are still pending.
 
 The theme side passes its offline gates: 64/64 manifests match the pinned
 catalog, 64/64 archives preflight, and 64/64 install + reinstall in separate

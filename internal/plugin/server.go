@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/pkg/jsruntime"
 	"github.com/Aone2233/nekomari/pkg/jsruntime/httpbody"
 	"github.com/Aone2233/nekomari/pkg/rpc"
@@ -86,6 +87,25 @@ func (m *Manager) registerServerModule(host *jsruntime.Host, registry *require.R
 				panic(vm.NewTypeError("server.route requires the \"route\" permission (allowRoutes)"))
 			}
 			if err := m.registerRoute(inst.info.Short, method, path, handler); err != nil {
+				panic(vm.NewGoError(err))
+			}
+			return goja.Undefined()
+		})
+		_ = exports.Set("registerNotificationChannel", func(call goja.FunctionCall) goja.Value {
+			id := strings.TrimSpace(call.Argument(0).String())
+			handler, ok := goja.AssertFunction(call.Argument(2))
+			if id == "" || !ok {
+				panic(vm.NewTypeError("server.registerNotificationChannel requires an id and handler"))
+			}
+			raw, err := json.Marshal(call.Argument(1).Export())
+			if err != nil {
+				panic(vm.NewTypeError("invalid notification configuration"))
+			}
+			var cfg models.Configuration
+			if err := json.Unmarshal(raw, &cfg); err != nil {
+				panic(vm.NewTypeError("invalid notification configuration"))
+			}
+			if err := m.registerNotificationChannel(inst, id, cfg, handler, host); err != nil {
 				panic(vm.NewGoError(err))
 			}
 			return goja.Undefined()
