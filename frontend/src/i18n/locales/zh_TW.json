@@ -1955,5 +1955,14 @@
     "saved": "我已妥善儲存新 token",
     "token": "新的節點 token",
     "uncertain": "無法確認輪替是否成功，舊 token 可能已失效。請勿盲目重試：透過已驗證身分的 token 讀取介面及獨立 SSH／主控台復原，再檢查回報。"
+  },
+  "probeQuality": {
+    "menu": "探針品質",
+    "title": "探針資料品質",
+    "description": "最近上報時間、未知欄位、取樣間隔與 v1.8 主機明細是否存在。未知不會顯示成 0。",
+    "age": "上報距今",
+    "interval": "取樣間隔",
+    "unknown": "未知欄位",
+    "mounts": "掛載點"
   }
 }

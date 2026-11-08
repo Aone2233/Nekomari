@@ -122,7 +122,10 @@ class PingFamilyBrowserTest(unittest.TestCase):
                         "body": {"name": "Tianjin IPv6", "type": "auto",
                                  "target": "tj-ct-v6.ip.zstaticcdn.com:80", "reference": "",
                                  "default_on": False, "clients": ["alpha", "beta", "gamma"],
-                                 "interval": 60, "target_family": "ipv6"},
+                                 "interval": 60, "target_family": "ipv6",
+                                 "probe_attempts": 3, "probe_spacing_ms": 200,
+                                 "http_mode": "legacy", "http_expected_status": "200-399",
+                                 "ip_version_preference": "auto"},
                     })
                     self.assertEqual(page.evaluate("window.pingFamilyFixture.refreshes()"), 1)
                     self.assertEqual(errors, [])
@@ -151,7 +154,10 @@ class PingFamilyBrowserTest(unittest.TestCase):
             edit = calls[-1]["body"]["tasks"][0]
             self.assertEqual(edit, {"id": 7, "name": "Renamed", "type": "auto", "target": "example.test:80",
                                     "reference": "gateway", "default_on": False,
-                                    "clients": ["alpha", "beta"], "interval": 60})
+                                    "clients": ["alpha", "beta"], "interval": 60,
+                                    "probe_attempts": 0, "probe_spacing_ms": 200, "probe_timeout_ms": 0,
+                                    "http_mode": "legacy", "http_expected_status": "200-399",
+                                    "ip_version_preference": "auto"})
 
             row = page.locator(".km-pingtask-server-list tr").filter(has_text="gamma")
             row.get_by_role("button", name="Select tasks").click()
@@ -162,7 +168,10 @@ class PingFamilyBrowserTest(unittest.TestCase):
             membership = page.evaluate("window.pingFamilyFixture.calls()")[-1]["body"]["tasks"][0]
             self.assertEqual(membership, {"id": 7, "name": "IPv6 fixture", "type": "auto",
                                           "target": "example.test:80", "default_on": False,
-                                          "clients": ["alpha", "beta", "gamma"], "interval": 60})
+                                          "clients": ["alpha", "beta", "gamma"], "interval": 60,
+                                          "probe_attempts": 0, "probe_spacing_ms": 200, "probe_timeout_ms": 0,
+                                          "http_mode": "legacy", "http_expected_status": "200-399",
+                                          "ip_version_preference": "auto"})
             self.assertEqual(page.evaluate("window.pingFamilyFixture.refreshes()"), 2)
             self.assertEqual(errors, [])
         finally:
