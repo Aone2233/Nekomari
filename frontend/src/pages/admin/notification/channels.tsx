@@ -14,9 +14,18 @@ import React from "react";
 import { renderProviderInputs } from "@/utils/renderProviders";
 import { SquareArrowOutUpRight } from "lucide-react";
 import { Link } from "react-router-dom";
+import ConfigFormTabs, { type ConfigFormItem } from "@/components/admin/ConfigFormTabs";
+import { useRPC2Call } from "@/contexts/RPC2Context";
+import { resolveI18nText } from "@/utils/i18nText";
+
+// Several marketplace manifests mark credentials as ordinary strings.
+const notificationSecretKeys = new Set(["password", "token", "bot_token", "device_key", "api_url"]);
 
 const NotificationSettings = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const { call } = useRPC2Call();
+  const [pluginChoices, setPluginChoices] = React.useState<Record<string, {name?: any; data?: ConfigFormItem[]}>>({});
+  const [pluginValues, setPluginValues] = React.useState<Record<string, any>>({});
   const { settings, loading, error } = useSettings();
   const [messageDefs, setMessageDefs] = React.useState<any>({});
   const [messageList, setMessageList] = React.useState<string[]>([]);
@@ -63,20 +72,31 @@ const NotificationSettings = () => {
     syncedMessageSender.t !== t
   ) {
     setSyncedMessageSender({ sender: currentMessageSender, t });
-    if (currentMessageSender) {
+    if (currentMessageSender && currentMessageSender !== "none" && (pluginChoices[currentMessageSender] || messageDefs[currentMessageSender])) {
       setMessageLoading(true);
     }
   }
 
+  React.useEffect(() => {
+    let active = true;
+    void call<any, Record<string, {name?: any; data?: ConfigFormItem[]}>>("admin:listPluginNotificationChoices")
+      .then((choices) => { if (active) setPluginChoices(choices); })
+      .catch(() => { if (active) setPluginChoices({}); });
+    return () => { active = false; };
+  }, [call]);
+
   // 拉取所有 message sender 及字段定义
   React.useEffect(() => {
     if (loading) return;
+    let active = true;
     fetch("/api/admin/settings/message-sender")
       .then((res) => res.json())
       .then((data) => {
+        if (!active) return;
         if (data.status === "success" && data.data) {
           setMessageDefs(data.data);
-          const senders = Object.keys(data.data);
+          const senders = [...Object.keys(data.data), ...Object.keys(pluginChoices)];
+          if (settings.notification_method && !senders.includes(settings.notification_method)) senders.push(settings.notification_method);
           setMessageList(senders);
           const initialSender =
             settings.notification_method && senders.includes(settings.notification_method)
@@ -87,16 +107,28 @@ const NotificationSettings = () => {
           setMessageError(data.message || t("settings.notification.provider_fetch_failed"));
         }
       })
-      .catch(() => setMessageError(t("settings.notification.provider_fetch_failed")))
-      .finally(() => setMessageLoading(false));
-  }, [loading, settings.notification_method, t]);
+      .catch(() => { if (active) setMessageError(t("settings.notification.provider_fetch_failed")); })
+      .finally(() => { if (active) setMessageLoading(false); });
+    return () => { active = false; };
+  }, [loading, settings.notification_method, t, pluginChoices]);
 
   // 拉取当前 message sender 的设置（loading 由上面的渲染期守卫置位）
   React.useEffect(() => {
-    if (!currentMessageSender) return;
+    if (!currentMessageSender || currentMessageSender === "none" || (!currentMessageSender.startsWith("plugin:") && !messageDefs[currentMessageSender])) return;
+    let active = true;
+    if (currentMessageSender.startsWith("plugin:")) {
+      if (!pluginChoices[currentMessageSender]) return () => { active = false; };
+      const id = currentMessageSender.slice(currentMessageSender.indexOf(":", 7) + 1);
+      void call<any, {data: Record<string, any>}>("admin:getNotificationChannelConfiguration", { id })
+        .then((result) => { if (active) setPluginValues(result.data || {}); })
+        .catch(() => { if (active) setMessageError(t("settings.notification.provider_settings_fetch_failed")); })
+        .finally(() => { if (active) setMessageLoading(false); });
+      return () => { active = false; };
+    }
     fetch(`/api/admin/settings/message-sender?provider=${currentMessageSender}`)
       .then((res) => res.json())
       .then((data) => {
+        if (!active) return;
         if (data.status === "success" && data.data) {
           try {
             setMessageValues(JSON.parse(data.data.addition || "{}"));
@@ -107,9 +139,10 @@ const NotificationSettings = () => {
           setMessageError(data.message || t("settings.notification.provider_settings_fetch_failed"));
         }
       })
-      .catch(() => setMessageError(t("settings.notification.provider_settings_fetch_failed")))
-      .finally(() => setMessageLoading(false));
-  }, [currentMessageSender, t]);
+      .catch(() => { if (active) setMessageError(t("settings.notification.provider_settings_fetch_failed")); })
+      .finally(() => { if (active) setMessageLoading(false); });
+    return () => { active = false; };
+  }, [currentMessageSender, t, call, pluginChoices, messageDefs]);
 
   // 处理保存
   const handleMessageSave = async (values: any) => {
@@ -171,7 +204,7 @@ const NotificationSettings = () => {
       <SettingCardSelect
         title={t("settings.notification.method")}
         description={t("settings.notification.method_description")}
-        options={messageList.map((sender) => ({ value: sender, label: sender }))}
+        options={messageList.map((sender) => ({ value: sender, label: pluginChoices[sender] ? (resolveI18nText(pluginChoices[sender].name, i18n.language) || sender) + " (Plugin)" : sender }))}
         value={currentMessageSender}
         OnSave={async (val: string) => {
           if (val === currentMessageSender) return;
@@ -179,7 +212,20 @@ const NotificationSettings = () => {
           setCurrentMessageSender(val);
         }}
       />
-      {messageLoading ? <Loading /> : renderProviderInputs({
+      {messageLoading ? <Loading /> : currentMessageSender.startsWith("plugin:") && pluginChoices[currentMessageSender] ? <ConfigFormTabs
+        items={pluginChoices[currentMessageSender].data || []}
+        secretKeys={notificationSecretKeys}
+        values={pluginValues}
+        onValueChange={(key, value) => setPluginValues((old) => ({ ...old, [key]: value }))}
+        resolveText={(value) => resolveI18nText(value, i18n.language)}
+        footer={<SettingCardButton title={t("settings.notification.provider_fields")} onClick={async () => {
+          try {
+            const id = currentMessageSender.slice(currentMessageSender.indexOf(":", 7) + 1);
+            await call("admin:setNotificationChannelConfiguration", { id, data: pluginValues });
+            toast.success(t("common.success"));
+          } catch (error) { toast.error(error instanceof Error ? error.message : String(error)); }
+        }}>{t("common.save")}</SettingCardButton>}
+      /> : renderProviderInputs({
         currentProvider: currentMessageSender,
         providerDefs: messageDefs,
         providerValues: messageValues,

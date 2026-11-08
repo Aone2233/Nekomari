@@ -145,6 +145,7 @@ interface ConfigFormTabsProps {
   footer?: ReactNode;
   className?: string;
   formClassName?: string;
+  secretKeys?: ReadonlySet<string>;
 }
 
 const SPY_LINE_OFFSET = 16;
@@ -166,6 +167,7 @@ const ConfigFormTabs = ({
   footer,
   className,
   formClassName,
+  secretKeys,
 }: ConfigFormTabsProps) => {
   const { t } = useTranslation();
   const { nodeList } = useNodeList();
@@ -448,6 +450,8 @@ const ConfigFormTabs = ({
             <SettingCardShortTextInput
               title={title}
               description={description}
+              type={secretKeys?.has(key) ? "password" : "text"}
+              autoComplete={secretKeys?.has(key) ? "new-password" : undefined}
               value={value !== undefined ? String(value) : ""}
               required={item.required}
               showSaveButton={false}
