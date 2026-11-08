@@ -510,14 +510,9 @@ func processV2Event(conn *ws.SafeConn, method string, params interface{}, eventI
 			log.Printf("bad v2 exec params: %v", err)
 		}
 	case v2.MethodAgentPing:
-		var p struct {
-			TaskID    uint   `json:"ping_task_id"`
-			Type      string `json:"ping_type"`
-			Target    string `json:"ping_target"`
-			Reference string `json:"ping_reference"`
-		}
+		var p v2.PingParams
 		if err := v2.BindParams(params, &p); err == nil {
-			go NewPingTask(conn, p.TaskID, p.Type, p.Target, p.Reference)
+			go NewPingTaskWithParams(conn, p)
 			return true
 		} else {
 			log.Printf("bad v2 ping params: %v", err)

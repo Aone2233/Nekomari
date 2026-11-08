@@ -243,8 +243,67 @@ func pingRecordPoints(records []models.PingRecord) []metric.Point {
 		if rec.Value >= 0 {
 			points = append(points, metric.Point{MetricName: MetricPingSuccessLatency, EntityID: rec.Client, Timestamp: rec.Time, Value: latency, Tags: tags})
 		}
+		if rec.Attempts > 0 {
+			add := func(name string, value float64) {
+				points = append(points, metric.Point{MetricName: name, EntityID: rec.Client, Timestamp: rec.Time, Value: value, Tags: tags})
+			}
+			add(MetricPingAttempts, float64(rec.Attempts))
+			add(MetricPingSuccess, float64(rec.Success))
+			add(MetricPingLossPct, rec.LossPct)
+			if rec.Success > 0 {
+				add(MetricPingMin, float64(rec.MinUS)/1000)
+				add(MetricPingAvg, float64(rec.AvgUS)/1000)
+				add(MetricPingMax, float64(rec.MaxUS)/1000)
+			}
+			if rec.JitterUS >= 0 && rec.Success >= 2 {
+				add(MetricPingJitter, float64(rec.JitterUS)/1000)
+			}
+		}
+		if rec.HTTP != nil {
+			add := func(name string, value float64) {
+				points = append(points, metric.Point{MetricName: name, EntityID: rec.Client, Timestamp: rec.Time, Value: value, Tags: tags})
+			}
+			h := rec.HTTP
+			if h.DNSUS != nil {
+				add(MetricHTTPDNS, float64(*h.DNSUS)/1000)
+			}
+			if h.TCPUS != nil {
+				add(MetricHTTPTCP, float64(*h.TCPUS)/1000)
+			}
+			if h.TLSUS != nil {
+				add(MetricHTTPTLS, float64(*h.TLSUS)/1000)
+			}
+			if h.TTFBUS != nil {
+				add(MetricHTTPTTFB, float64(*h.TTFBUS)/1000)
+			}
+			if h.TotalUS != nil {
+				add(MetricHTTPTotal, float64(*h.TotalUS)/1000)
+			}
+			if h.StatusCode != nil {
+				add(MetricHTTPStatus, float64(*h.StatusCode))
+			}
+			if h.Redirects != nil {
+				add(MetricHTTPRedirects, float64(*h.Redirects))
+			}
+			if h.TLSExpiryDays != nil {
+				add(MetricHTTPTLSExpiryDays, *h.TLSExpiryDays)
+			}
+			if h.Reachable != nil {
+				add(MetricHTTPReachable, boolValue(*h.Reachable))
+			}
+			if h.Available != nil {
+				add(MetricHTTPAvailable, boolValue(*h.Available))
+			}
+		}
 	}
 	return points
+}
+
+func boolValue(v bool) float64 {
+	if v {
+		return 1
+	}
+	return 0
 }
 
 func GetPingRecords(ctx context.Context, clientUUID string, taskID int, start, end time.Time) ([]models.PingRecord, error) {

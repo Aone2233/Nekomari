@@ -147,7 +147,9 @@ func handleV2RPCOperation(ctx context.Context, uuid string, req v2.RawRequest, a
 				if task.TargetFamily != "" {
 					return errors.New("legacy result is not accepted for a family-pinned task")
 				}
-				return metricstore.WritePingRecord(ctx, newPingRecord(uuid, params.TaskID, params.PingType, params.Role, params.Family, params.Value, params.ValueUS, time.Now().UTC()))
+				return metricstore.WritePingRecord(ctx, newPingRecordWithStats(
+					uuid, params.TaskID, params.PingType, params.Role, params.Family,
+					params.Value, params.ValueUS, pingStatsFromParams(params), time.Now().UTC()))
 			})
 		}); err != nil {
 			return failure("failed to save ping result", err)

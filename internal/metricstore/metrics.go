@@ -28,6 +28,23 @@ const (
 	MetricPingLatency          = "ping.latency_ms"
 	MetricPingSuccessLatency   = "ping.success_latency_ms"
 	MetricPingLoss             = "ping.loss"
+	MetricPingAttempts         = "ping.attempts"
+	MetricPingSuccess          = "ping.success"
+	MetricPingLossPct          = "ping.loss_pct"
+	MetricPingMin              = "ping.min_ms"
+	MetricPingAvg              = "ping.avg_ms"
+	MetricPingMax              = "ping.max_ms"
+	MetricPingJitter           = "ping.jitter_ms"
+	MetricHTTPDNS              = "http.dns_ms"
+	MetricHTTPTCP              = "http.tcp_ms"
+	MetricHTTPTLS              = "http.tls_ms"
+	MetricHTTPTTFB             = "http.ttfb_ms"
+	MetricHTTPTotal            = "http.total_ms"
+	MetricHTTPStatus           = "http.status_code"
+	MetricHTTPRedirects        = "http.redirects"
+	MetricHTTPTLSExpiryDays    = "http.tls_expiry_days"
+	MetricHTTPReachable        = "http.reachable"
+	MetricHTTPAvailable        = "http.available"
 	MetricBackupAge            = "backup.age_seconds"
 	MetricBackupOK             = "backup.ok"
 	MetricPanelRSS             = "panel.self.rss_bytes"
@@ -61,7 +78,14 @@ var gpuDeviceRecordMetricNames = []string{
 var recordMetricNames = joinMetricNames(loadRecordMetricNames, gpuDeviceRecordMetricNames, []string{MetricTrafficIntervalUp, MetricTrafficIntervalDown, MetricTrafficIntervalValid, MetricUptime, MetricRestarts})
 
 // Ping has an independent retention and cleanup boundary.
-var pingMetricNames = []string{MetricPingLatency, MetricPingLoss, MetricPingSuccessLatency}
+var pingMetricNames = []string{
+	MetricPingLatency, MetricPingLoss, MetricPingSuccessLatency,
+	MetricPingAttempts, MetricPingSuccess, MetricPingLossPct,
+	MetricPingMin, MetricPingAvg, MetricPingMax, MetricPingJitter,
+	MetricHTTPDNS, MetricHTTPTCP, MetricHTTPTLS, MetricHTTPTTFB, MetricHTTPTotal,
+	MetricHTTPStatus, MetricHTTPRedirects, MetricHTTPTLSExpiryDays,
+	MetricHTTPReachable, MetricHTTPAvailable,
+}
 
 var panelPoolMetricNames = []string{
 	MetricPanelMainWaitCount, MetricPanelMainWaitMS,

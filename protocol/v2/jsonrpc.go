@@ -331,6 +331,38 @@ type BasicInfoParams struct {
 	Info map[string]interface{} `json:"info"`
 }
 
+// HTTPProbeReport is the additive HTTP phase breakdown. Every field is a
+// pointer so an absent measurement is distinguishable from a measured zero.
+type HTTPProbeReport struct {
+	DNSUS         *int64   `json:"dns_us,omitempty"`
+	TCPUS         *int64   `json:"tcp_us,omitempty"`
+	TLSUS         *int64   `json:"tls_us,omitempty"`
+	TTFBUS        *int64   `json:"ttfb_us,omitempty"`
+	TotalUS       *int64   `json:"total_us,omitempty"`
+	StatusCode    *int     `json:"status_code,omitempty"`
+	Redirects     *int     `json:"redirects,omitempty"`
+	TLSExpiryDays *float64 `json:"tls_expiry_days,omitempty"`
+	Reachable     *bool    `json:"reachable,omitempty"`
+	Available     *bool    `json:"available,omitempty"`
+}
+
+// PingProbeStats is the additive multi-probe summary. Old Agents omit it;
+// old Panels ignore it. A measured zero (success=0, loss_pct=0) is distinct
+// from an absent field because every field is a pointer.
+type PingProbeStats struct {
+	Attempts       *int             `json:"attempts,omitempty"`
+	Success        *int             `json:"success,omitempty"`
+	LossPct        *float64         `json:"loss_pct,omitempty"`
+	MinUS          *int64           `json:"min_us,omitempty"`
+	AvgUS          *int64           `json:"avg_us,omitempty"`
+	MaxUS          *int64           `json:"max_us,omitempty"`
+	JitterUS       *int64           `json:"jitter_us,omitempty"`
+	HTTP           *HTTPProbeReport `json:"http,omitempty"`
+	ResolvedIP     string           `json:"resolved_ip,omitempty"`
+	ResolvedFamily string           `json:"resolved_family,omitempty"`
+	ProbeMode      string           `json:"probe_mode,omitempty"`
+}
+
 type PingResultParams struct {
 	TaskID   uint   `json:"task_id"`
 	PingType string `json:"ping_type"`
@@ -349,6 +381,19 @@ type PingResultParams struct {
 	// 「同一任务、不同路径」拆成两条序列。旧 agent 不发该字段，此时为空，
 	// 行为与改动前完全一致。
 	Family string `json:"family,omitempty"`
+	// Additive v1.8 probe-truth fields. Omitted by old Agents; zero values are
+	// always accompanied by the pointer, so `success=0` is not an absent field.
+	Attempts       *int             `json:"attempts,omitempty"`
+	Success        *int             `json:"success,omitempty"`
+	LossPct        *float64         `json:"loss_pct,omitempty"`
+	MinUS          *int64           `json:"min_us,omitempty"`
+	AvgUS          *int64           `json:"avg_us,omitempty"`
+	MaxUS          *int64           `json:"max_us,omitempty"`
+	JitterUS       *int64           `json:"jitter_us,omitempty"`
+	HTTP           *HTTPProbeReport `json:"http,omitempty"`
+	ResolvedIP     string           `json:"resolved_ip,omitempty"`
+	ResolvedFamily string           `json:"resolved_family,omitempty"`
+	ProbeMode      string           `json:"probe_mode,omitempty"`
 }
 
 type TaskResultParams struct {
@@ -376,6 +421,14 @@ type PingParams struct {
 	// Reference 非空时，agent 会在同一周期额外探测该目标，
 	// 并以 role="reference" 上报，用于主机 vs 网关的路径归因。
 	Reference string `json:"ping_reference,omitempty"`
+	// Additive v1.8 fields. Zero/empty means legacy single-probe behavior, so an
+	// old panel talking to a new agent is unchanged.
+	ProbeAttempts       int    `json:"probe_attempts,omitempty"`
+	ProbeSpacingMS      int    `json:"probe_spacing_ms,omitempty"`
+	ProbeTimeoutMS      int    `json:"probe_timeout_ms,omitempty"`
+	HTTPMode            string `json:"http_mode,omitempty"`
+	HTTPExpectedStatus  string `json:"http_expected_status,omitempty"`
+	IPVersionPreference string `json:"ip_version_preference,omitempty"`
 }
 
 type MessageParams struct {

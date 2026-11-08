@@ -95,7 +95,24 @@ func createMetricDefinitionsWithDefaultRetention(ctx context.Context, s *metric.
 		{Name: MetricRestarts, Type: metric.TypeCounter, Unit: "count", Description: "Detected node restarts (cumulative; conservative uptime-decrease inference)", RetentionDays: defaultRetentionDays},
 		{Name: MetricPingLatency, Type: metric.TypeGauge, Unit: "ms", Description: "Ping latency", RetentionDays: defaultRetentionDays},
 		{Name: MetricPingSuccessLatency, Type: metric.TypeGauge, Unit: "ms", Description: "v2 successful Ping latency only; negative failures excluded", RetentionDays: defaultRetentionDays},
-		{Name: MetricPingLoss, Type: metric.TypeGauge, Unit: "ratio", Description: "Ping packet loss indicator", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingLoss, Type: metric.TypeGauge, Unit: "ratio", Description: "Per-attempt ping failure indicator (legacy 0/1)", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingAttempts, Type: metric.TypeGauge, Unit: "count", Description: "Probe attempts in this cycle", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingSuccess, Type: metric.TypeGauge, Unit: "count", Description: "Successful probe attempts in this cycle", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingLossPct, Type: metric.TypeGauge, Unit: "%", Description: "Cycle loss percentage (0-100); not a per-attempt 0/1", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingMin, Type: metric.TypeGauge, Unit: "ms", Description: "Minimum successful RTT in this cycle", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingAvg, Type: metric.TypeGauge, Unit: "ms", Description: "Average successful RTT in this cycle", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingMax, Type: metric.TypeGauge, Unit: "ms", Description: "Maximum successful RTT in this cycle", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingJitter, Type: metric.TypeGauge, Unit: "ms", Description: "RFC3550 instantaneous jitter in this cycle", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPDNS, Type: metric.TypeGauge, Unit: "ms", Description: "HTTP DNS phase", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPTCP, Type: metric.TypeGauge, Unit: "ms", Description: "HTTP TCP connect phase", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPTLS, Type: metric.TypeGauge, Unit: "ms", Description: "HTTP TLS handshake phase", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPTTFB, Type: metric.TypeGauge, Unit: "ms", Description: "HTTP time to first byte", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPTotal, Type: metric.TypeGauge, Unit: "ms", Description: "HTTP total attempt time", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPStatus, Type: metric.TypeGauge, Unit: "code", Description: "HTTP final status code", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPRedirects, Type: metric.TypeGauge, Unit: "count", Description: "HTTP redirect hops", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPTLSExpiryDays, Type: metric.TypeGauge, Unit: "days", Description: "Remaining days of the final verified leaf certificate", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPReachable, Type: metric.TypeGauge, Unit: "bool", Description: "TCP/TLS completed regardless of HTTP status", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPAvailable, Type: metric.TypeGauge, Unit: "bool", Description: "HTTP status matched the expected set", RetentionDays: defaultRetentionDays},
 		{Name: MetricBackupAge, Type: metric.TypeGauge, Unit: "s", Description: "Seconds since the last successful backup", RetentionDays: defaultRetentionDays},
 		{Name: MetricBackupOK, Type: metric.TypeGauge, Unit: "bool", Description: "Last backup succeeded (1) or not (0)", RetentionDays: defaultRetentionDays},
 		{Name: MetricPanelRSS, Type: metric.TypeGauge, Unit: "bytes", Description: "Panel process resident memory (unavailable readings omitted)", RetentionDays: defaultBuiltinMetricRetentionDays},
@@ -112,7 +129,20 @@ func createMetricDefinitionsWithDefaultRetention(ctx context.Context, s *metric.
 	}
 
 	for _, def := range definitions {
-		companion := map[string]string{MetricTrafficIntervalUp: MetricTrafficUp, MetricTrafficIntervalDown: MetricTrafficDown, MetricTrafficIntervalValid: MetricTrafficUp, MetricPingSuccessLatency: MetricPingLatency}[def.Name]
+		companion := map[string]string{
+			MetricTrafficIntervalUp: MetricTrafficUp, MetricTrafficIntervalDown: MetricTrafficDown,
+			MetricTrafficIntervalValid: MetricTrafficUp,
+			MetricPingSuccessLatency:   MetricPingLatency,
+			MetricPingAttempts:         MetricPingLatency, MetricPingSuccess: MetricPingLatency,
+			MetricPingLossPct: MetricPingLatency, MetricPingMin: MetricPingLatency,
+			MetricPingAvg: MetricPingLatency, MetricPingMax: MetricPingLatency,
+			MetricPingJitter: MetricPingLatency,
+			MetricHTTPDNS:    MetricPingLatency, MetricHTTPTCP: MetricPingLatency,
+			MetricHTTPTLS: MetricPingLatency, MetricHTTPTTFB: MetricPingLatency,
+			MetricHTTPTotal: MetricPingLatency, MetricHTTPStatus: MetricPingLatency,
+			MetricHTTPRedirects: MetricPingLatency, MetricHTTPTLSExpiryDays: MetricPingLatency,
+			MetricHTTPReachable: MetricPingLatency, MetricHTTPAvailable: MetricPingLatency,
+		}[def.Name]
 		if companion != "" {
 			base, err := s.GetMetric(ctx, companion)
 			if err == nil {
