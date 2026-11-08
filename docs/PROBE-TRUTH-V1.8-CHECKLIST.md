@@ -17,7 +17,7 @@ it is not a claim that any item below is implemented yet.
 - [x] Four-way payload compatibility tests; compatibility policy document.
 - [x] Host calibration harness; TCP loopback ±1 ms test; HTTP TTFB injected-delay test; boot-id restart test.
 - [ ] Calibration live ICMP/loss/clock/retention runs (remain NOT RUN by design).
-- [x] 26/26 plugin archive install; 25/26 load/unload (komari-gfw skipped as a known synthetic-domain fixture). `registerNotificationChannel`, jsruntime TLS and admin channel selection UI added; real delivery tests pending.
+- [x] 26/26 plugin archive install; 25/26 load/unload (komari-gfw skipped as a known synthetic-domain fixture). `registerNotificationChannel`, jsruntime TLS and admin channel selection UI added; six notification plugins register/remove channels on load/unload. Real provider delivery tests pending.
 - [x] 64/64 theme manifests, preflight, install and reinstall pass.
 - [ ] Theme browser/hydration/mobile visual gate.
 - [ ] OC424 upgrade / restore drill acceptance.

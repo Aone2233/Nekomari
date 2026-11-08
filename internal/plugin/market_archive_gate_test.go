@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Aone2233/nekomari/utils"
+	"github.com/Aone2233/nekomari/utils/messageSender"
 	"github.com/gin-gonic/gin"
 )
 
@@ -94,9 +95,30 @@ func TestKomariMarketPluginLoadUnload(t *testing.T) {
 			if err := SetEnabled(short, true, true); err != nil {
 				t.Fatalf("load: %v", err)
 			}
+			if isNotificationPlugin(short) {
+				if len(messageSender.PluginChannelChoices()) == 0 {
+					t.Fatalf("notification plugin %s registered no channel", short)
+				}
+			}
 			if err := SetEnabled(short, false, false); err != nil {
 				t.Fatalf("unload: %v", err)
 			}
+			if isNotificationPlugin(short) {
+				if len(messageSender.PluginChannelChoices()) != 0 {
+					t.Fatalf("notification plugin %s channel survived unload", short)
+				}
+			}
 		})
+	}
+}
+
+func isNotificationPlugin(short string) bool {
+	switch short {
+	case "bark-plus", "email-notification-plugin", "gotify-notification-plugin",
+		"serverchan3-notification-plugin", "serverchanturbo-notification-plugin",
+		"telegram-notification-plugin":
+		return true
+	default:
+		return false
 	}
 }
