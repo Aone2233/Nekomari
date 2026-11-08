@@ -24,7 +24,10 @@ client.call = async (method: string, params: any) => {
 }
 const app = createApp({ render: () => h(PingChart, { uuid: 'fixture' }) })
 app.use(createPinia())
-useAppStore().publicSettings = { ping_record_preserve_time: 2160 } as any
+useAppStore().publicSettings = {
+  ping_record_preserve_time: 2160,
+  theme_settings: { showPingReference: new URLSearchParams(location.search).get('reference') === '1' },
+} as any
 ;(window as any).fixtureErrors = []
 app.config.errorHandler = error => (window as any).fixtureErrors.push(String(error))
 app.mount('#app')

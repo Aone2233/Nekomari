@@ -18,18 +18,21 @@ holds the evidence and the acceptance criteria for each item. This file is the l
 [v1.7.30 release](https://github.com/Aone2233/Nekomari/releases/tag/v1.7.30)
 and its pinned panel image are live on OC424; the release record, backup hashes,
 rollout evidence and caveats are in the latest checkpoint in
-[`DEPLOY-OC424.md`](./DEPLOY-OC424.md). All 14 nodes report fresh CPU data; 13
-are on v1.7.30. HKHKT remains on v1.6.24 because its configured SSH paths timed
-out. Do not guess its credentials or assume the manual-only v1.7.30 release can
-be installed by the old Agent's normal updater. Task 30 now has actual IPv6
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md). All 14 nodes now report v1.7.30;
+HKHKT was reached through MAC-WAN and the OC424 IPv4 jump and its CPU and ping
+samples resumed. The Agent release remains manual-only. Task 30 has actual IPv6
 latency and loss samples from MegaBox, Riven and the updated Frankfurt Agent.
+Task 28's formerly configured reference was cleared without removing its dual
+ICMP/TCP main target or historical samples. Both assigned nodes resumed both
+main series, with no new reference samples through the observation period.
 
 Remaining acceptance and operational limits:
 
 - The owner should refresh the signed-in MegaBox and HK04 detail pages to
-  confirm the theme labels and charts; mocked browser tests and public assets do
-  not substitute for that session. The home-card `common:getRecords` aggregate
-  can mix roles, protocols and families; use the dimensioned detail chart for
+  confirm the removed reference curve and retained main charts; mocked browser
+  tests and public assets do not substitute for that session. The home-card
+  `common:getRecords` aggregate can mix roles, protocols and families while
+  historical data remains in its window; use the dimensioned detail chart for
   per-path readings. Reinstalling the online theme overwrites the local patch.
 - One recent MegaBox task-30 minute was absent despite the v1.7.30 follow-up,
   with a `permit_write` warning. Missing observations are not packet loss; the

@@ -22,6 +22,9 @@ The upstream v2.0.6 fixes long-range chart time alignment. This patch additional
   a reference point. Only the display label changes: raw series identities
   stay separate, including explicit `primary` versus an empty role. Reference
   cards explain that the point is an auxiliary probe of the same task.
+- Hides reference-role detail series by default, including old history.
+  `showPingReference` opts in to displaying them without enabling a probe;
+  it is a presentation setting and does not mutate tasks or retained samples.
 
 The official theme's home-card summary uses `common:getRecords`, which removes
 the protocol/family/role dimensions and combines records for each task. Its
@@ -30,13 +33,13 @@ it is not a reliable per-path measurement. The patched detail chart uses the
 dimensioned metric endpoints instead. Do not infer zero loss from missing
 samples, and do not merge different address families or protocols.
 
-2026-11-08 compatibility check: the configured MegaBox education task is a
+2026-11-08 earlier compatibility check: the configured MegaBox education task was a
 dual ICMP/TCP task with a reference target. Separate IPv6 primary ICMP,
 primary TCP and reference ICMP metric series exist. The sanitized fixture in
 `fixtures/` covers those shapes, explicit pinned primary roles, independent
 selection, desktop/mobile widths and 7/30-day smoothing. This does not expose
 the configured target or assert acceptance in the owner's signed-in session.
-The original live task, its reference configuration and history are unchanged.
+This was the state before the reference cleanup described below.
 The online theme remains upstream v2.0.6 with this local compatibility patch;
 an upstream reinstall can overwrite it.
 
@@ -64,8 +67,25 @@ were also verified. The original tested zip was additionally opened as a full
 mocked instance page in Chromium; the unmodified 2.0.5 and 2.0.6 comparison
 components reproduce the null crash and identity collision.
 
-2026-11-08 role-label build: the clean-source patch check and all 81 tests pass.
+2026-11-08 earlier role-label build: the clean-source patch check and all 81 tests pass.
 The actual zip was opened as a mocked full instance page at desktop and mobile
 widths, including the primary/reference labels, selection and 7/30-day smoothing.
 This supersedes the older bundle hash above. The tested zip SHA-256 is
 `8db889bd761bbbb577780632a4974782b76a951c4aa23728fbd643ae6a0f7567`.
+
+2026-11-08 reference-cleanup build: the owner requested removal of unwanted
+extra probes, not just a label change. The production task 28 reference was
+cleared separately and no reference is configured among the 13 current tasks;
+its two primary protocols and past samples are retained. By default this patch
+hides reference-role chart stats, latency and loss points, including in the
+legacy fallback; the opt-in switch restores them where dimensions exist. A
+legacy API that omits roles cannot distinguish historic reference samples.
+The home-card aggregate also uses that dimensionless API and may mix roles.
+82 tests, production build/typecheck, changed-file lint, and component/full-ZIP
+Chromium checks at desktop/mobile widths passed with the switch off and on,
+including 7/30-day smoothing. Run the full ZIP check with
+`python fixtures/zip-acceptance.browser.spec.py /path/to/theme.zip` in a
+Playwright-enabled environment. The tested and deployed ZIP SHA-256 is
+`8923beefc031c3cffec7810c99538e439256c15f6e66d35b2fbb88b0af3d43c5`.
+It remains a locally patched upstream theme, not an official release; the
+owner's signed-in visual acceptance remains outstanding.

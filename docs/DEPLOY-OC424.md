@@ -3,6 +3,54 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## Reference-probe cleanup (2026-11-08 08:18 UTC)
+
+The owner clarified that unlisted extra probes should stop, not just be
+relabelled. The only nonempty reference in the 13 configured ping tasks was
+task 28. Its task edit form had a reference field, but the task list did not
+show it. After a verified encrypted pre-backup, the panel was briefly stopped,
+the exact task roster and client identity digest were rechecked, only task 28's
+reference field was cleared in an offline transaction, and the same pinned
+v1.7.30 container was restarted to reload the in-memory schedule. No task,
+node, token, assignment, main target, protocol, or historical metric was
+removed. Both assigned nodes subsequently reported fresh IPv6 ICMP and TCP
+primary series; their last reference reports remained before the 08:18:44 UTC
+configuration change for over three minutes. A 30-day read-only inventory of
+all nodes found no unassigned or missing-task ping series; only these two
+task-28 reference groups were obsolete. The rollback record is
+`/opt/nekomari/rollbacks/task28-reference-20261108T081843Z-5GgNHSMr`.
+Its DB snapshot is not a license to overwrite newer live data.
+
+The existing online Emerald Insights theme remains based on v2.0.6 with the
+local patch. Reference-role series are hidden by default, including retained
+historical series. The managed `showPingReference` switch can opt back in; it
+only affects the detail chart and does not start/stop probes. The theme does
+not remove reference support from the Agent or panel for other installations.
+The actually deployed tested ZIP has SHA-256
+`8923beefc031c3cffec7810c99538e439256c15f6e66d35b2fbb88b0af3d43c5`;
+public chart and index assets match it. Previous assets and the prior theme
+tree remain in `/opt/nekomari/rollbacks/emerald-v206-no-ref-20261108T082010Z`.
+82 theme tests, build/typecheck, changed-file lint and desktop/mobile Chromium
+fixtures passed with the switch both off and on. The owner's signed-in visual
+acceptance is still pending; home-card legacy aggregates can still mix retained
+roles/protocols within their window.
+
+HKHKT was upgraded over `MAC-WAN -> OC424 -> HKHKT` to the verified manual
+v1.7.30 Agent. OpenRC and its disabled-auto-update policy remain unchanged; its
+CPU and ping samples resumed, and all 14 clients now report v1.7.30. The
+previous binary and unit copy are on HKHKT under
+`/root/nekomari-agent/v1730-agent-hkhkt-20261108`.
+
+MAC-WAN's pre-change encrypted snapshot
+`manual/v1730-release-post-20261108T081146Z/oc424-20261108T081146375268Z-fa7e7af82a99.tar.gz.age`
+has SHA-256 `9300e4c4b54900dfefb226f735d0f3bb14d37aca1624902d588f1254f26fff7c`.
+The post-change snapshot
+`manual/v1730-release-post-20261108T082128Z/oc424-20261108T082128245772Z-2738c19451f8.tar.gz.age`
+has SHA-256 `2614827978a1d7ac5276aa93b734d60fe829a492a80ce43497faeec36b31c891`.
+Both passed network-isolated v1.7.30 restoration drills. These are online
+snapshots rather than atomic cross-database/in-memory handoffs. Automatic
+backup/health timers remain absent/inactive by owner design.
+
 ## v1.7.30 release checkpoint (2026-11-08, Asia/Shanghai)
 
 The production panel runs the published **v1.7.30/1a77f04**, pinned to OCI
@@ -39,7 +87,7 @@ The subsequent workflow fix disables implicit `latest`; the actual metadata
 action was exercised with Agent and panel rules. The GitHub latest release
 remains v1.7.29 by design.
 
-**Agents.** MegaBox, Riven, HK04, BERO, OC424, MAC-WAN, Frankfurt, ATT,
+**Agents at the earlier release checkpoint (superseded above).** MegaBox, Riven, HK04, BERO, OC424, MAC-WAN, Frankfurt, ATT,
 Lightlayer, SB01, QWRT, PZYC and Windows-WAN were individually upgraded to the
 checksum-verified manual v1.7.30 binary, with old binaries and service/task
 configuration retained locally. Each subsequently reported new CPU and ping
@@ -51,7 +99,7 @@ nodes. A recent 15-minute interval had 14/15 MegaBox loss buckets and 15/15
 Riven/Frankfurt, with a MegaBox `permit_write` warning at 15:37 China time:
 missing data is not packet loss, and this intermittent gap is not fully fixed.
 
-**Theme.** Official Emerald Insights v2.0.6 remains active with the local
+**Theme at the earlier release checkpoint (superseded above).** Official Emerald Insights v2.0.6 remains active with the local
 compatibility patch, not a replacement theme. The updated tested ZIP hash is
 `8db889bd761bbbb577780632a4974782b76a951c4aa23728fbd643ae6a0f7567`;
 the publicly served chart bytes match it. Legacy empty role now labels a primary
