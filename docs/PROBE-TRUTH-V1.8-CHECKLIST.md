@@ -21,7 +21,7 @@ it is not a claim that any item below is implemented yet.
 - [x] 26/26 plugin archive install; 25/26 load/unload (komari-gfw skipped as a known synthetic-domain fixture). `registerNotificationChannel`, jsruntime TLS and admin channel selection UI added; six notification plugins register/remove channels on load/unload; `CallNotificationChannel` dispatch/unregister is tested against a fake channel. Real external provider delivery pending.
 - [x] 64/64 theme manifests, preflight, install and reinstall pass.
 - [ ] Theme browser/hydration/mobile visual gate.
-- [x] OC424 scratch acceptance: v1.8 arm64 binary against a copied production dataset passes `panel-upgrade-check` 9/9, migration and 0 ERROR; see `V1.8-OC424-STAGING.md`.
+- [x] OC424 scratch acceptance: `panel-upgrade-check` 9/9, migration, authenticated `admin:getProbeQuality`, `public:getPingMetricStats` and retention preset against copied production data; see `V1.8-OC424-STAGING.md`.
 - [ ] OC424 production upgrade, pre/post encrypted backup and isolated restore drill.
 
 ## Confirmed defaults (2026-11-08)
