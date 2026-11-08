@@ -37,9 +37,15 @@ requirement is never lowered.
 This branch contains the offline **26-plugin manifest and version gate**
 (`internal/plugin/market_manifest_gate_test.go`, pinned 2026-11-08 catalog
 fixtures). It validates manifest identity, catalog hashes, manifest rules and
-the `CheckKomariVersion` accept/refuse directions at `1.8.0`. The deeper
-plugin load/unload and 64-theme browser gate remains a separate integration
-step and is not claimed as passed.
+the `CheckKomariVersion` accept/refuse directions at `1.8.0`.
+
+With the hash-verified ZIPs supplied, `TestKomariMarketPluginArchives` installs
+26/26. `TestKomariMarketPluginLoadUnload` currently loads 19/26: the six
+notification plugins require the additive `server.registerNotificationChannel`
+API, and the email plugin requires the jsruntime TLS module; `komari-gfw` is
+skipped as a known synthetic-domain fixture limitation. These are recorded as
+open compatibility work, not passes. The 64-theme browser gate is also still
+pending.
 
 ## Rollback boundary
 
