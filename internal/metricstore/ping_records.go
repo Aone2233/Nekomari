@@ -45,9 +45,8 @@ func WritePingRecord(ctx context.Context, rec models.PingRecord) error {
 }
 
 // WritePingRecordSync admits a current result into the raw/hot store before
-// returning without waiting on store locks. It may drop a sample under contention;
-// the regular rollup durability rules still apply. A queued result could instead
-// be ingested after the task or session admission fence has been released.
+// returning. A short synchronous retry tolerates transient store contention;
+// a queued writer could instead outlive the task or session admission fence.
 func WritePingRecordSync(ctx context.Context, rec models.PingRecord) error {
 	if err := validatePingRecord(rec); err != nil {
 		return err
@@ -78,7 +77,38 @@ func WritePingRecordSync(ctx context.Context, rec models.PingRecord) error {
 	if s == nil {
 		return fmt.Errorf("metric store not enabled")
 	}
-	return s.TryAppendCurrentBatch(ctx, points)
+	return retryPinnedAppend(ctx, func() error { return s.TryAppendCurrentBatch(ctx, points) })
+}
+
+const (
+	pinnedAppendRetryLimit = 100 * time.Millisecond
+	pinnedAppendRetryDelay = 5 * time.Millisecond
+)
+
+// All attempts finish synchronously while the caller still owns its identity
+// fences. No background writer can commit after the caller returns.
+func retryPinnedAppend(ctx context.Context, appendCurrent func() error) error {
+	deadline := time.Now().Add(pinnedAppendRetryLimit)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := appendCurrent()
+		if !errors.Is(err, metric.ErrWriteUnavailable) {
+			return err
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return err
+		}
+		timer := time.NewTimer(min(remaining, pinnedAppendRetryDelay))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 // PreparePinnedPingHistory primes the store's persisted-minute identity

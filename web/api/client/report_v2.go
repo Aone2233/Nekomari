@@ -20,6 +20,7 @@ import (
 	"github.com/Aone2233/nekomari/database/unlock"
 	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/internal/pingguard"
+	"github.com/Aone2233/nekomari/pkg/metric"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 	"github.com/Aone2233/nekomari/utils/notifier"
 	agent_runtime "github.com/Aone2233/nekomari/web/agent"
@@ -256,10 +257,20 @@ func UploadV2RPC(c *gin.Context) {
 }
 
 func retirePinnedWSForPOST(ctx context.Context, uuid string, operation clientOperation) error {
-	return operation(ctx, func() error {
-		agent_runtime.RetirePinnedWSOnPOST(uuid)
+	var retired *connection.SafeConn
+	err := operation(ctx, func() error {
+		retired = agent_runtime.RetirePinnedWSOnPOST(uuid)
 		return nil
 	})
+	if err != nil || retired == nil {
+		return err
+	}
+	// The hint is best effort and never authorizes a probe. If it is dropped,
+	// the Agent's regular renewal still discovers the retirement.
+	hintCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	_ = retired.WriteJSONContext(hintCtx, v2.Request{JSONRPC: v2.Version, Method: v2.MethodAgentPingFamilyRetired})
+	return nil
 }
 
 func WebSocketV2RPC(c *gin.Context) {
@@ -409,6 +420,7 @@ func handlePinnedWSResult(ctx context.Context, uuid string, conn *connection.Saf
 		return v2.Error(req.ID, -32001, "invalid token", nil)
 	}
 	if err != nil {
+		agent_runtime.ObservePinnedAdmissionFailure(result.TaskID, uuid, errors.Is(err, metric.ErrWriteUnavailable))
 		return v2.Error(req.ID, -32000, "pinned result rejected", nil)
 	}
 	return v2.Success(req.ID, gin.H{"status": "success"})

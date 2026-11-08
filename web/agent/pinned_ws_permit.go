@@ -20,6 +20,11 @@ const (
 
 var errPinnedReservation = errors.New("pinned permit reservation unavailable")
 
+type pinnedPermitError string
+
+func (e pinnedPermitError) Error() string        { return errPinnedReservation.Error() }
+func (e pinnedPermitError) Is(target error) bool { return target == errPinnedReservation }
+
 type pinnedPermitEntry struct {
 	sequence uint64
 	expires  time.Time
@@ -213,13 +218,13 @@ func requestPinnedWSPermit(ctx context.Context, uuid string) (pinnedPermitLease,
 
 func requestPinnedWSPermitWithWriter(ctx context.Context, uuid string, write func(context.Context, *connection.SafeConn, v2.Request) error) (pinnedPermitLease, error) {
 	if ctx == nil || write == nil {
-		return pinnedPermitLease{}, errPinnedReservation
+		return pinnedPermitLease{}, pinnedPermitError("permit_context")
 	}
 	mu.RLock()
 	s, ok := pinnedWSSessions[uuid]
 	if !ok || s.conn == nil || connectedClients[uuid] != s.conn || !s.active || s.writeLock == nil || !time.Now().Before(s.expires) {
 		mu.RUnlock()
-		return pinnedPermitLease{}, errPinnedReservation
+		return pinnedPermitLease{}, pinnedPermitError("permit_session")
 	}
 	conn, session, lock := s.conn, s.challenge, s.writeLock
 	mu.RUnlock()
@@ -231,16 +236,16 @@ func requestPinnedWSPermitLocked(ctx context.Context, uuid string, conn *connect
 	select {
 	case lock <- struct{}{}:
 	default:
-		return pinnedPermitLease{}, errPinnedReservation
+		return pinnedPermitLease{}, pinnedPermitError("permit_busy")
 	}
 	if ctx.Err() != nil {
 		<-lock
-		return pinnedPermitLease{}, errPinnedReservation
+		return pinnedPermitLease{}, pinnedPermitError("permit_context")
 	}
 	reservedConn, req, waiter, err := reservePinnedPermitForSession(uuid, conn, session)
 	if err != nil {
 		<-lock
-		return pinnedPermitLease{}, errPinnedReservation
+		return pinnedPermitLease{}, pinnedPermitError("permit_reserve")
 	}
 	p := req.Params.(v2.PingFamilyPermitParams)
 	// Preserve only the identity of an attempted reservation on failure. It
@@ -253,23 +258,23 @@ func requestPinnedWSPermitLocked(ctx context.Context, uuid string, conn *connect
 	<-lock
 	if err != nil {
 		cancelPinnedPermit(uuid, conn, p.DispatchID)
-		return attempt, errPinnedReservation
+		return attempt, pinnedPermitError("permit_write")
 	}
 	timer := time.NewTimer(pinnedPermitTTL)
 	defer timer.Stop()
 	select {
 	case outcome := <-waiter:
 		if outcome.err != nil || ctx.Err() != nil || !PinnedWSSessionCurrent(uuid, conn, p.Instance, session, time.Now()) {
-			return attempt, errPinnedReservation
+			return attempt, pinnedPermitError("permit_response")
 		}
 		return pinnedPermitLease{conn: conn, instance: p.Instance, session: p.Session,
 			dispatch: p.DispatchID, ticket: outcome.permit.FreshnessTicket, sequence: p.Sequence,
 			validUntil: outcome.validUntil}, nil
 	case <-ctx.Done():
 		cancelPinnedPermit(uuid, conn, p.DispatchID)
-		return attempt, errPinnedReservation
+		return attempt, pinnedPermitError("permit_context")
 	case <-timer.C:
 		cancelPinnedPermit(uuid, conn, p.DispatchID)
-		return attempt, errPinnedReservation
+		return attempt, pinnedPermitError("permit_timeout")
 	}
 }

@@ -136,6 +136,32 @@ func (c *pinnedWSController) begin() error {
 	return c.send(c.handshake.begin())
 }
 
+// A POST may have retired this socket's panel-side lease. The hint contains no
+// capability; only a fresh challenge and acknowledgement can restore one.
+func (c *pinnedWSController) handleRetirementHint(data []byte) (bool, error) {
+	if len(data) > 4096 {
+		return false, nil
+	}
+	var frame struct {
+		JSONRPC string          `json:"jsonrpc"`
+		Method  string          `json:"method"`
+		ID      json.RawMessage `json:"id"`
+	}
+	if json.Unmarshal(data, &frame) != nil || frame.Method != v2.MethodAgentPingFamilyRetired {
+		return false, nil
+	}
+	if frame.JSONRPC != v2.Version || len(frame.ID) != 0 {
+		return true, nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.stopped || c.handshake.unsupported {
+		return true, nil
+	}
+	c.retireLocked()
+	return true, c.send(c.handshake.begin())
+}
+
 func (c *pinnedWSController) maintain() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

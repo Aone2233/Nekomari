@@ -111,10 +111,15 @@ func PinnedWSSessionCurrent(uuid string, conn *connection.SafeConn, instance, ch
 // leaves legacy WebSocket and POST traffic intact; a capable Agent must begin
 // a fresh handshake before any later pinned dispatch.
 // The caller must hold the node's credential admission.
-func RetirePinnedWSOnPOST(uuid string) {
+func RetirePinnedWSOnPOST(uuid string) *connection.SafeConn {
 	unlock := lockPinnedSessionLifecycle(uuid)
 	defer unlock()
 	mu.Lock()
 	defer mu.Unlock()
+	var conn *connection.SafeConn
+	if s, ok := pinnedWSSessions[uuid]; ok && s.conn != nil && connectedClients[uuid] == s.conn {
+		conn = s.conn
+	}
 	retirePinnedWSLocked(uuid)
+	return conn
 }

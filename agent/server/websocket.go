@@ -451,6 +451,15 @@ func handleWebSocketMessagesWithController(conn pinnedHandshakeConn, done chan<-
 			if handled {
 				continue
 			}
+			handled, err = controller.handleRetirementHint(message_raw)
+			if err != nil {
+				log.Printf("Pinned-probe retirement recovery failed: %v", err)
+				conn.Abort()
+				return
+			}
+			if handled {
+				continue
+			}
 			handled, err = controller.handleProbePermit(message_raw)
 			if err != nil {
 				log.Printf("Pinned-probe permit response failed: %v", err)

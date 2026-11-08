@@ -202,6 +202,74 @@ func TestPinnedWSReaderDoesNotSpamOldPanel(t *testing.T) {
 	waitPinnedReader(t, done)
 }
 
+func TestPinnedWSRetirementHintCancelsWorkAndStartsFreshHandshake(t *testing.T) {
+	controller, params := activePinnedController(t)
+	conn := newPinnedFakeConn(false)
+	controller.conn = conn
+	_, _, _, canceled, ok := controller.current(time.Now())
+	if !ok {
+		t.Fatal("fixture session is not active")
+	}
+	hint := []byte(`{"jsonrpc":"2.0","method":"agent.pingFamily.retired.v1"}`)
+	if handled, err := controller.handleRetirementHint(hint); !handled || err != nil {
+		t.Fatalf("hint handled=%v err=%v", handled, err)
+	}
+	select {
+	case <-canceled:
+	default:
+		t.Fatal("retirement hint did not cancel old work")
+	}
+	begin := takePinnedRequest(t, conn)
+	if begin.Method != v2.MethodAgentPingFamilySession || begin.Params.(v2.PingFamilySessionParams).Action != "begin" {
+		t.Fatalf("hint did not start a fresh handshake: %+v", begin)
+	}
+	if _, _, _, _, ok := controller.current(time.Now()); ok {
+		t.Fatal("hint alone restored capability")
+	}
+	if _, err := controller.issueProbePermit(permitFor(params, 1)); err == nil {
+		t.Fatal("old permit request survived retirement")
+	}
+	challenge := "fedcba9876543210fedcba9876543210"
+	if handled, err := controller.handle(pinnedResponse(t, begin.ID, challenge, nil)); !handled || err != nil {
+		t.Fatalf("begin response handled=%v err=%v", handled, err)
+	}
+	ack := takePinnedRequest(t, conn)
+	if handled, err := controller.handle(pinnedResponse(t, ack.ID, challenge, nil)); !handled || err != nil {
+		t.Fatalf("ack response handled=%v err=%v", handled, err)
+	}
+	_, current, _, _, ok := controller.current(time.Now())
+	if !ok || current != challenge {
+		t.Fatal("fresh challenge did not restore capability")
+	}
+	controller.clear()
+}
+
+func TestPinnedWSRetirementHintIgnoresRequestsAndOldPanels(t *testing.T) {
+	controller, _ := activePinnedController(t)
+	conn := newPinnedFakeConn(false)
+	controller.conn = conn
+	for _, raw := range []string{
+		`{"jsonrpc":"2.0","method":"agent.pingFamily.retired.v1","id":"request"}`,
+		`{"jsonrpc":"1.0","method":"agent.pingFamily.retired.v1"}`,
+	} {
+		if handled, err := controller.handleRetirementHint([]byte(raw)); !handled || err != nil {
+			t.Fatalf("invalid hint handled=%v err=%v", handled, err)
+		}
+	}
+	controller.mu.Lock()
+	controller.handshake.unsupported = true
+	controller.mu.Unlock()
+	if handled, err := controller.handleRetirementHint([]byte(`{"jsonrpc":"2.0","method":"agent.pingFamily.retired.v1"}`)); !handled || err != nil {
+		t.Fatalf("unsupported hint handled=%v err=%v", handled, err)
+	}
+	select {
+	case req := <-conn.outbound:
+		t.Fatalf("invalid hint triggered handshake: %+v", req)
+	default:
+	}
+	controller.clear()
+}
+
 func TestPinnedWSRejectedRenewalRetiresSessionBeforeFreshHandshake(t *testing.T) {
 	controller, params := activePinnedController(t)
 	conn := newPinnedFakeConn(false)

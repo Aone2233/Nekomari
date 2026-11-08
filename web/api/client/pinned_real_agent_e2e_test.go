@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -25,7 +24,6 @@ import (
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/database/tasks"
-	"github.com/Aone2233/nekomari/internal/clientguard"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/internal/scheduler"
@@ -233,7 +231,7 @@ func TestPinnedRealAgentProductionTransport(t *testing.T) {
 			f.ready = filepath.Join(dir, "ready")
 			f.cmd.Env = append(f.cmd.Env, "NEKOMARI_PINNED_TEST_DISABLE_PROBE=1", "NEKOMARI_PINNED_TEST_READY="+f.ready)
 		}
-		if owner.Name() == "TestPinnedRealAgentProductionTransport/scheduled_post_retirement_recovers_with_normal_heartbeat" {
+		if strings.Contains(owner.Name(), "normal_heartbeat") {
 			f.cmd.Env = append(f.cmd.Env, "NEKOMARI_PINNED_TEST_NORMAL_HEARTBEAT=1")
 		}
 		f.output = &bytes.Buffer{}
@@ -344,6 +342,21 @@ func TestPinnedRealAgentProductionTransport(t *testing.T) {
 		// the actual Agent's accelerated re-handshake completes.
 		dispatch(t, f)
 		waitUntil(t, "measurement after POST recovery", func() bool { return len(points(t, f)) == 2 })
+	})
+	t.Run("post_hint_recovers_before_normal_heartbeat", func(t *testing.T) {
+		f := newFixture(t, "post-hint")
+		launch(t, f, "ipv6", false, false)
+		dispatch(t, f)
+		waitUntil(t, "pre-POST sample", func() bool { return len(points(t, f)) == 1 })
+		if code, resp := post(t, f.token, v2.MethodAgentPingFamilyResult, map[string]any{}); code != http.StatusBadRequest || resp.Error == nil || resp.Error.Code != -32601 {
+			t.Fatalf("WS-only POST: status=%d response=%+v", code, resp)
+		}
+		waitFor(t, 5*time.Second, "hint-initiated recovery before 25-second heartbeat", func() bool {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			return agentRuntime.DispatchPinnedPing(ctx, f.uuid, f.task) == nil
+		})
+		waitUntil(t, "post-hint sample", func() bool { return len(points(t, f)) == 2 })
 	})
 	t.Run("no_ipv6_answer_is_not_loss", func(t *testing.T) {
 		f := newFixture(t, "no-family")
@@ -521,25 +534,23 @@ func TestPinnedRealAgentProductionTransport(t *testing.T) {
 		}
 		f.task = task
 		waitFor(t, 35*time.Second, "first normal-heartbeat scheduled sample", func() bool { return len(points(t, f)) > 0 })
-		code, response := post(t, f.token, v2.MethodAgentPingFamilyResult, map[string]any{})
-		if code != http.StatusBadRequest || response.Error == nil || response.Error.Code != -32601 {
-			t.Fatalf("WS-only POST: status=%d response=%+v", code, response)
-		}
-		var baseline []metric.Point
-		if err := clientguard.With(t.Context(), f.uuid, func() error {
-			baseline = points(t, f)
-			return nil
-		}); err != nil {
+		// Direct retirement models a lost best-effort hint without aborting the
+		// WebSocket (the real interceptor deliberately aborts on a dropped frame).
+		mgr.Stop()
+		agentRuntime.RetirePinnedWSOnPOST(f.uuid)
+		baseline := points(t, f)
+		last := baseline[len(baseline)-1].Timestamp
+		if err := mgr.Reload([]models.PingTask{task}); err != nil {
 			t.Fatal(err)
 		}
-		// A retired result cannot append after this credential-fence barrier.
-		// An ack at the next 25-second tick discovers retirement. Observe the
-		// gap and recovery after the fresh challenge and scheduler firing.
-		time.Sleep(2 * time.Second)
-		if got := points(t, f); !reflect.DeepEqual(got, baseline) {
-			t.Fatalf("points changed before session recovery: before=%+v after=%+v", baseline, got)
-		}
-		waitFor(t, 35*time.Second, "scheduled sample after normal-heartbeat recovery", func() bool { return len(points(t, f)) > len(baseline) })
+		waitFor(t, 35*time.Second, "scheduled sample after normal-heartbeat recovery", func() bool {
+			for _, point := range points(t, f) {
+				if point.Timestamp.After(last) {
+					return true
+				}
+			}
+			return false
+		})
 		for _, point := range points(t, f) {
 			if point.Value != 0 || point.Tags["family"] != "ipv6" || point.Tags["protocol"] != "tcp" {
 				t.Fatalf("scheduled result after POST = %+v", point)

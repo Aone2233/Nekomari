@@ -14,6 +14,26 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
+**Current IPv6 reliability follow-up (2026-11-08):** OC424 remains on the
+internal `v1.7.30/canary3`, not a GitHub release. From 04:31 through 04:43 UTC
+the persisted task 30 loss series had 10/13 complete MegaBox minutes and 13/13
+Riven minutes. MegaBox skips at 04:32 and 04:42 followed its normal HTTP basic
+info reports; an authenticated POST retires the pinned WS lease by design.
+The 04:38 permit failure had no matching observed POST, so the earlier gaps
+cannot all be attributed to that cause. Missing minutes are not loss samples.
+
+The local follow-up adds a target-free, best-effort retirement hint: the Agent
+cancels the old capability and completes a fresh challenge before any new
+dispatch. If the hint cannot be sent, normal lease renewal still recovers.
+An additional synchronous 100 ms retry handles transient metric write lock
+contention while the existing task, credential and session fences remain held.
+This is not proof of the cause of all historic gaps. Bounded, redacted stage
+logs distinguish failures without printing targets or credentials, and an old
+or disconnected Agent does not create one warning per scheduled minute. The
+new source has not yet passed release CI or been formally published/deployed;
+the exact source, GitHub assets, production panel and staged Agents all need
+separate acceptance. No credentials, task assignments or history were changed.
+
 **Current IPv6 production canary (2026-11-07 17:25 UTC):** OC424 is running
 the locally built, non-public candidate `v1.7.30/d1a15af`, not a published
 stable release. Exact-commit CI 42393310935 passed 8/8. The arm64 image is

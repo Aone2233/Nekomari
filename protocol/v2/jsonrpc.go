@@ -16,6 +16,7 @@ const (
 	MethodAgentPing              = "agent.ping"
 	MethodAgentPingFamilySession = "agent.pingFamily.session.v1"
 	MethodAgentPingFamilyPermit  = "agent.pingFamily.permit.v1"
+	MethodAgentPingFamilyRetired = "agent.pingFamily.retired.v1"
 	MethodAgentPingFamilyProbe   = "agent.pingFamily.probe.v1"
 	MethodAgentPingFamilyResult  = "agent.pingFamily.result.v1"
 	MethodAgentMessage           = "agent.message"

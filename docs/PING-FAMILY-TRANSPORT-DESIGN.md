@@ -248,10 +248,18 @@ process-local fence, but the planner, cross-entity atomicity and cross-process
 coordination remain unresolved. A committed create also needs visible reload
 failure and reconciliation before release.
 
-The local POST handler conservatively retires WS capability on every bounded,
+The POST handler conservatively retires WS capability on every bounded,
 authenticated POST. This avoids treating an ambiguous transport transition as
 proof that the same Agent is active, but the current Agent also uses POST for
-ordinary unlock and exec results while WS is healthy. A local loopback test
+ordinary basic info, unlock and exec results while WS is healthy. A best-effort,
+target-free WS notification now asks the retired Agent to cancel its local
+capability and begin a fresh challenge immediately. It conveys no task, ticket
+or authorization; the server still requires all normal fences. A missing hint
+falls back to regular renewal, and a failed frame write may close the socket.
+An isolated real-handler test exercises recovery before the normal 25-second
+tick; a separate test omits the hint and checks the normal-renewal fallback.
+This reduces a known skip window without guaranteeing delivery under churn.
+A local loopback test
 now uses the actual Agent reader and panel helpers: after simulated POST
 retirement the old capability cannot issue a permit, a failed renewal clears
 the Agent state, a later heartbeat starts a fresh handshake, and another IPv6

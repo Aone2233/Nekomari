@@ -23,6 +23,7 @@ func DispatchPinnedPing(ctx context.Context, uuid string, scheduled models.PingT
 		return errors.New("database unavailable")
 	}
 	if err := metricstore.PreparePinnedPingHistory(ctx, uuid, scheduled); err != nil {
+		observePinnedFailure("history", scheduled.Id, uuid)
 		return err
 	}
 	lease, err := requestPinnedWSPermit(ctx, uuid)
@@ -30,11 +31,19 @@ func DispatchPinnedPing(ctx context.Context, uuid string, scheduled models.PingT
 		// A failed target-free permit request sends no probe. Record only an
 		// unknown reason after rechecking task, credential and session fences.
 		recordPinnedPermitFailureWith(ctx, db, uuid, scheduled, lease, pinnedDiagnostics, time.Now)
+		var permitErr pinnedPermitError
+		if errors.As(err, &permitErr) && permitErr != "permit_session" {
+			observePinnedFailure(string(permitErr), scheduled.Id, uuid)
+		}
 		return err
 	}
-	return deliverPinnedPingWith(ctx, db, uuid, scheduled, lease, func(ctx context.Context, conn *connection.SafeConn, request v2.Request) error {
+	err = deliverPinnedPingWith(ctx, db, uuid, scheduled, lease, func(ctx context.Context, conn *connection.SafeConn, request v2.Request) error {
 		return conn.WriteJSONContext(ctx, request)
 	})
+	if err != nil {
+		observePinnedFailure("delivery", scheduled.Id, uuid)
+	}
+	return err
 }
 
 type pinnedDeliveryWriter func(context.Context, *connection.SafeConn, v2.Request) error
