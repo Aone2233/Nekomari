@@ -9,6 +9,8 @@ type QualityNode = {
   last_report_age_seconds?: number | null;
   sample_interval_seconds?: number;
   quality?: Record<string, string>;
+  quality_fields: number;
+  unknown_fields: number;
   cpu_interval_seconds?: number;
   cgroup_present: boolean;
   disk_mounts: number;
@@ -101,9 +103,14 @@ export default function ProbeQualityPage() {
                     : "-"}
                 </Table.Cell>
                 <Table.Cell>
-                  <Text size="1" color="gray">
-                    {unknownKeys(node)}
-                  </Text>
+                  <Flex direction="column" gap="1">
+                    <Text size="1">
+                      {node.unknown_fields}/{node.quality_fields}
+                    </Text>
+                    <Text size="1" color="gray">
+                      {unknownKeys(node)}
+                    </Text>
+                  </Flex>
                 </Table.Cell>
                 <Table.Cell>
                   {typeof node.cpu_interval_seconds === "number" && node.cpu_interval_seconds > 0

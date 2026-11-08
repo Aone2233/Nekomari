@@ -18,6 +18,8 @@ type probeQualityNode struct {
 	ReceivedAt            *time.Time        `json:"received_at,omitempty"`
 	SampleIntervalSeconds float64           `json:"sample_interval_seconds,omitempty"`
 	Quality               map[string]string `json:"quality,omitempty"`
+	QualityFields         int               `json:"quality_fields"`
+	UnknownFields         int               `json:"unknown_fields"`
 	CPUIntervalSeconds    float64           `json:"cpu_interval_seconds,omitempty"`
 	CgroupPresent         bool              `json:"cgroup_present"`
 	DiskMounts            int               `json:"disk_mounts"`
@@ -64,6 +66,10 @@ func adminGetProbeQuality(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.J
 				entry.Quality = make(map[string]string, len(report.Quality))
 				for key, value := range report.Quality {
 					entry.Quality[key] = value
+					entry.QualityFields++
+					if value != "ok" {
+						entry.UnknownFields++
+					}
 				}
 			}
 			entry.CPUIntervalSeconds = report.CPU.IntervalSeconds
