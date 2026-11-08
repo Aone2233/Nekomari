@@ -4,6 +4,19 @@ Status: implementation checklist. Baseline `origin/main` at v1.7.30 (`e17bb57`).
 Branch: `codex/v1.8-probe-truth`. This file is the contract for the release;
 it is not a claim that any item below is implemented yet.
 
+## Implementation status (living)
+
+- [x] Additive protocol fields for multi-probe, HTTP phases and address identity.
+- [x] Agent multi-probe (1–10, default 3), RFC3550 jitter, legacy single-probe path.
+- [x] HTTP phase capture and `legacy` / `status_aware` semantics.
+- [x] Panel ingestion, metric definitions and ping/HTTP metric points.
+- [x] Host detail metrics: CPU interval/cgroup, RAM detail, per-mount disk, boot-id hash, TCP counters.
+- [x] Retention preset backend (node/ping windows, disabled definitions preserved).
+- [ ] Ping stats API/UI, host UI, quality panel.
+- [ ] Calibration harness and tolerance runs.
+- [ ] Upstream compatibility gate and four-way matrix.
+- [ ] OC424 upgrade / restore drill acceptance.
+
 ## Confirmed defaults (2026-11-08)
 
 | Decision | Value |
