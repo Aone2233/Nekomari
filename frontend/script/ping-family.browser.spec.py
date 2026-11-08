@@ -168,10 +168,7 @@ class PingFamilyBrowserTest(unittest.TestCase):
             membership = page.evaluate("window.pingFamilyFixture.calls()")[-1]["body"]["tasks"][0]
             self.assertEqual(membership, {"id": 7, "name": "IPv6 fixture", "type": "auto",
                                           "target": "example.test:80", "default_on": False,
-                                          "clients": ["alpha", "beta", "gamma"], "interval": 60,
-                                          "probe_attempts": 0, "probe_spacing_ms": 200, "probe_timeout_ms": 0,
-                                          "http_mode": "legacy", "http_expected_status": "200-399",
-                                          "ip_version_preference": "auto"})
+                                          "clients": ["alpha", "beta", "gamma"], "interval": 60})
             self.assertEqual(page.evaluate("window.pingFamilyFixture.refreshes()"), 2)
             self.assertEqual(errors, [])
         finally:
