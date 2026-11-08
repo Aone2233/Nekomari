@@ -122,6 +122,27 @@ jobs:
           curl -sf -X POST http://127.0.0.1:25774/api/install/complete \
             -H 'Content-Type: application/json' \
             -d '{"username":"admin","password":"E2e-verify1","sitename":"Nekomari CI","description":"CI smoke instance","metric_dsn":"./smoke/metrics.db"}'
+          # Installation closes the guide listener before starting the normal
+          # server. Wait for its API, not the guide's earlier redirect.
+          python - <<'PY'
+          import json
+          import time
+          import urllib.error
+          import urllib.request
+
+          deadline = time.monotonic() + 60
+          while time.monotonic() < deadline:
+              try:
+                  with urllib.request.urlopen('http://127.0.0.1:25774/api/version', timeout=2) as response:
+                      body = json.load(response)
+                  if body.get('status') == 'success' and isinstance(body.get('data', {}).get('version'), str):
+                      break
+              except (OSError, ValueError, AttributeError, urllib.error.URLError):
+                  pass
+              time.sleep(0.25)
+          else:
+              raise SystemExit('normal server API never became ready after installation')
+          PY
           cd frontend && python script/panel-smoke.spec.py http://127.0.0.1:25774
           # The cd above leaves this shell inside frontend for the rest of the step.
           python script/admin-write-paths.spec.py http://127.0.0.1:25774
