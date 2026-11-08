@@ -1,0 +1,166 @@
+{
+    "name": "Komari Web Mochi",
+    "short": "Mochi", 
+    "description": "Another Komari Web Theme",
+    "version": "1.1.8",
+    "author": "Mochi DEV Team",
+    "url": "https://github.com/svnmoe/komari-web-mochi",
+    "preview": "preview.png",
+    "configuration":{
+        "type":"managed",
+        "data":[
+            {
+                "name":"主页面",
+                "type":"title"
+            },
+            {
+                "key":"enableVirtualScroll",
+                "name":"启用虚拟滚动",
+                "type":"switch",
+                "default": false,
+                "help":"启用虚拟滚动时，内容将会在可视区域内进行虚拟渲染，以提高性能和流畅度，但会导致部分内容在滚动时延迟加载。"
+            },
+            {
+                "key":"offlineNodePosition",
+                "name":"离线节点位置",
+                "type":"select",
+                "options":"前面,原位置,后面",
+                "default":"后面",
+                "help":"设置离线节点的显示位置。前面：离线节点显示在最前；原位置：按权重排序不区分在线状态；后面：离线节点显示在最后。"
+            },
+            {
+                "key":"defaultViewMode",
+                "name":"默认视图模式",
+                "type":"select",
+                "options":"Modern,Compact,Classic,Detailed,Task,Earth",
+                "default":"Modern",
+                "help":"设置首页的默认视图模式。Modern：现代卡片视图；Compact：紧凑列表视图；Classic：经典网格视图；Detailed：详细表格视图；Task：任务视图；Earth：地球视图。"
+            },
+            {
+                "key":"desktopDefaultViewMode",
+                "name":"桌面端默认视图",
+                "type":"select",
+                "options":"Modern,Compact,Classic,Detailed,Task,Earth",
+                "default":"Classic",
+                "help":"桌面端首次访问时使用的默认视图。用户手动切换后会按桌面端单独记忆。"
+            },
+            {
+                "key":"mobileDefaultViewMode",
+                "name":"移动端默认视图",
+                "type":"select",
+                "options":"Modern,Compact,Classic,Detailed,Task,Earth",
+                "default":"Modern",
+                "help":"移动端首次访问时使用的默认视图。用户手动切换后会按移动端单独记忆。"
+            },
+            {
+                "key":"enablePagination",
+                "name":"启用分页",
+                "type":"switch",
+                "default": false,
+                "help":"开启后首页节点将在各个视图中按分页展示，可在前端页面切换页码。"
+            },
+            {
+                "key":"paginationPageSize",
+                "name":"每页节点数",
+                "type":"input",
+                "default":"24",
+                "help":"设置启用分页后每页显示的节点数量。"
+            },
+            {
+                "key":"enableStaggeredCards",
+                "name":"启用卡片渐入",
+                "type":"switch",
+                "default": true,
+                "help":"开启后节点卡片会使用轻量渐入效果，适合节点较多时保持清晰的进入节奏。"
+            },
+            {
+                "key":"dashboardMaxWidth",
+                "name":"主内容最大宽度",
+                "type":"input",
+                "default":"1880",
+                "help":"限制首页内容在超宽屏上的最大宽度，单位 px。设置为 0 表示不限制。"
+            },
+            {
+                "key":"showModernPingStats",
+                "name":"Modern延迟统计",
+                "type":"switch",
+                "default": true,
+                "help":"在 Modern 卡片中显示轻量延迟/丢包统计。节点很多时可关闭以减少额外请求。"
+            },
+            {
+                "key":"modernPingStatsHours",
+                "name":"延迟统计时间",
+                "type":"input",
+                "default":"24",
+                "help":"Modern 卡片延迟统计的时间范围，单位小时。"
+            },
+            {
+                "name":"外观定制",
+                "type":"title"
+            },
+            {
+                "key":"customAppearance.enabled",
+                "name":"启用自定义外观",
+                "type":"switch",
+                "default": false,
+                "help":"开启后可以设置自定义背景图片和玻璃拟态效果，打造独特的视觉风格。"
+            },
+            {
+                "key":"customBackground.imageUrl",
+                "name":"背景图片URL",
+                "type":"input",
+                "default":"",
+                "help":"背景图片的URL地址，支持图片直链或随机图API。留空则不显示背景图。"
+            },
+            {
+                "key":"customBackground.fixed",
+                "name":"背景固定显示",
+                "type":"switch",
+                "default": true,
+                "help":"开启后背景图片固定不随页面滚动，关闭则背景会随内容滚动。"
+            },
+            {
+                "key":"glassmorphism.blurStrength",
+                "name":"毛玻璃模糊强度",
+                "type":"input",
+                "default":"5",
+                "help":"设置背景模糊程度，单位px，范围0-20，数值越大越模糊。"
+            },
+            {
+                "key":"glassmorphism.lightOpacity",
+                "name":"浅色模式透明度",
+                "type":"input",
+                "default":"30",
+                "help":"浅色主题下所有组件背景透明度，范围0-100，0为完全透明，100为完全不透明。影响导航栏、页脚、节点卡片等所有组件。"
+            },
+            {
+                "key":"glassmorphism.darkOpacity",
+                "name":"深色模式透明度",
+                "type":"input",
+                "default":"30",
+                "help":"深色主题下所有组件背景透明度，范围0-100，0为完全透明，100为完全不透明。影响导航栏、页脚、节点卡片等所有组件。"
+            },
+            {
+                "key":"layout.opacity",
+                "name":"整体透明度",
+                "type":"input",
+                "default":"95",
+                "help":"整体布局透明度，范围80-100，100为完全不透明。"
+            },
+            {
+                "key":"layout.borderRadius",
+                "name":"圆角大小",
+                "type":"input",
+                "default":"8",
+                "help":"组件圆角大小，单位px，范围0-16，0为直角。"
+            },
+            {
+                "key":"shadow.glowStrength",
+                "name":"光晕强度",
+                "type":"input",
+                "default":"5",
+                "help":"组件阴影/光晕强度，单位px，范围0-20，0为无阴影。"
+            }
+        ]
+    }
+}

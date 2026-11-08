@@ -44,8 +44,12 @@ With the hash-verified ZIPs supplied, `TestKomariMarketPluginArchives` installs
 notification plugins require the additive `server.registerNotificationChannel`
 API, and the email plugin requires the jsruntime TLS module; `komari-gfw` is
 skipped as a known synthetic-domain fixture limitation. These are recorded as
-open compatibility work, not passes. The 64-theme browser gate is also still
-pending.
+open compatibility work, not passes.
+
+The theme side passes its offline gates: 64/64 manifests match the pinned
+catalog, 64/64 archives preflight, and 64/64 install + reinstall in separate
+temporary panel directories. Browser rendering, hydration diagnostics and
+mobile interaction across those themes remain the pending visual gate.
 
 ## Rollback boundary
 

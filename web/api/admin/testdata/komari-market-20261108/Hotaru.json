@@ -1,0 +1,9 @@
+{
+    "name": "ServerStatus-Hotaru",
+    "short": "Hotaru",
+    "description": "ServerStatus-Hotaru theme for Komari Monitor",
+    "version": "1.0.0",
+    "author": "cokemine & Claude Sonnet 4",
+    "url": "https://github.com/cokemine/ServerStatus-Hotaru",
+    "preview": "preview.png"
+}

@@ -1,0 +1,318 @@
+{
+  "name": "Komari Deer",
+  "short": "komari-deer",
+  "description": "Deer themed Komari Monitor dashboard",
+  "version": "0.1.0",
+  "author": "DeerYang",
+  "url": "https://github.com/DeerYang/komari-deer",
+  "preview": "preview.png",
+  "configuration": {
+    "name": "Theme Settings",
+    "icon": "Palette",
+    "description": "Komari Deer theme settings",
+    "managedFields": [
+      {
+        "key": "language",
+        "type": "option",
+        "label": "Default language",
+        "options": [
+          "auto",
+          "en",
+          "zh-CN",
+          "zh-TW"
+        ],
+        "default": "auto"
+      },
+      {
+        "key": "nodeViewMode",
+        "type": "option",
+        "label": "Default node view",
+        "options": [
+          "grid",
+          "table"
+        ],
+        "default": "grid"
+      },
+      {
+        "key": "backgroundImageUrl",
+        "type": "text",
+        "label": "Background image URL",
+        "default": ""
+      },
+      {
+        "key": "backgroundBlurEnabled",
+        "type": "bool",
+        "label": "Enable background blur",
+        "default": false
+      },
+      {
+        "key": "backgroundBlurType",
+        "type": "option",
+        "label": "Background blur type",
+        "options": [
+          "soft",
+          "glass"
+        ],
+        "default": "soft"
+      },
+      {
+        "key": "backgroundBlurIntensity",
+        "type": "number",
+        "label": "Background blur intensity",
+        "default": 35
+      }
+    ],
+    "fields": [
+      {
+        "type": "title",
+        "name": "Theme Settings"
+      },
+      {
+        "key": "language",
+        "type": "select",
+        "name": {
+          "zh-CN": "默认语言",
+          "en-US": "Default Language"
+        },
+        "default": "auto",
+        "options": "auto,en,zh-CN,zh-TW"
+      },
+      {
+        "key": "nodeViewMode",
+        "type": "select",
+        "name": {
+          "zh-CN": "默认节点视图",
+          "en-US": "Default Node View"
+        },
+        "default": "grid",
+        "options": "grid,table"
+      },
+      {
+        "key": "backgroundImageUrl",
+        "type": "string",
+        "name": {
+          "zh-CN": "背景图片链接",
+          "en-US": "Background Image URL"
+        },
+        "default": ""
+      },
+      {
+        "key": "backgroundBlurEnabled",
+        "type": "switch",
+        "name": {
+          "zh-CN": "启用背景模糊",
+          "en-US": "Enable Background Blur"
+        },
+        "default": false
+      },
+      {
+        "key": "backgroundBlurType",
+        "type": "select",
+        "name": {
+          "zh-CN": "背景模糊类型",
+          "en-US": "Background Blur Type"
+        },
+        "default": "soft",
+        "options": "soft,glass"
+      },
+      {
+        "key": "backgroundBlurIntensity",
+        "type": "number",
+        "name": {
+          "zh-CN": "背景模糊强度",
+          "en-US": "Background Blur Intensity"
+        },
+        "default": 35
+      }
+    ],
+    "options": [
+      {
+        "type": "title",
+        "name": "Theme Settings"
+      },
+      {
+        "key": "language",
+        "type": "select",
+        "name": {
+          "zh-CN": "默认语言",
+          "en-US": "Default Language"
+        },
+        "default": "auto",
+        "options": "auto,en,zh-CN,zh-TW"
+      },
+      {
+        "key": "nodeViewMode",
+        "type": "select",
+        "name": {
+          "zh-CN": "默认节点视图",
+          "en-US": "Default Node View"
+        },
+        "default": "grid",
+        "options": "grid,table"
+      },
+      {
+        "key": "backgroundImageUrl",
+        "type": "string",
+        "name": {
+          "zh-CN": "背景图片链接",
+          "en-US": "Background Image URL"
+        },
+        "default": ""
+      },
+      {
+        "key": "backgroundBlurEnabled",
+        "type": "switch",
+        "name": {
+          "zh-CN": "启用背景模糊",
+          "en-US": "Enable Background Blur"
+        },
+        "default": false
+      },
+      {
+        "key": "backgroundBlurType",
+        "type": "select",
+        "name": {
+          "zh-CN": "背景模糊类型",
+          "en-US": "Background Blur Type"
+        },
+        "default": "soft",
+        "options": "soft,glass"
+      },
+      {
+        "key": "backgroundBlurIntensity",
+        "type": "number",
+        "name": {
+          "zh-CN": "背景模糊强度",
+          "en-US": "Background Blur Intensity"
+        },
+        "default": 35
+      }
+    ],
+    "items": [
+      {
+        "type": "title",
+        "name": "Theme Settings"
+      },
+      {
+        "key": "language",
+        "type": "select",
+        "name": {
+          "zh-CN": "默认语言",
+          "en-US": "Default Language"
+        },
+        "default": "auto",
+        "options": "auto,en,zh-CN,zh-TW"
+      },
+      {
+        "key": "nodeViewMode",
+        "type": "select",
+        "name": {
+          "zh-CN": "默认节点视图",
+          "en-US": "Default Node View"
+        },
+        "default": "grid",
+        "options": "grid,table"
+      },
+      {
+        "key": "backgroundImageUrl",
+        "type": "string",
+        "name": {
+          "zh-CN": "背景图片链接",
+          "en-US": "Background Image URL"
+        },
+        "default": ""
+      },
+      {
+        "key": "backgroundBlurEnabled",
+        "type": "switch",
+        "name": {
+          "zh-CN": "启用背景模糊",
+          "en-US": "Enable Background Blur"
+        },
+        "default": false
+      },
+      {
+        "key": "backgroundBlurType",
+        "type": "select",
+        "name": {
+          "zh-CN": "背景模糊类型",
+          "en-US": "Background Blur Type"
+        },
+        "default": "soft",
+        "options": "soft,glass"
+      },
+      {
+        "key": "backgroundBlurIntensity",
+        "type": "number",
+        "name": {
+          "zh-CN": "背景模糊强度",
+          "en-US": "Background Blur Intensity"
+        },
+        "default": 35
+      }
+    ],
+    "data": [
+      {
+        "type": "title",
+        "name": "Theme Settings"
+      },
+      {
+        "key": "language",
+        "type": "select",
+        "name": {
+          "zh-CN": "默认语言",
+          "en-US": "Default Language"
+        },
+        "default": "auto",
+        "options": "auto,en,zh-CN,zh-TW"
+      },
+      {
+        "key": "nodeViewMode",
+        "type": "select",
+        "name": {
+          "zh-CN": "默认节点视图",
+          "en-US": "Default Node View"
+        },
+        "default": "grid",
+        "options": "grid,table"
+      },
+      {
+        "key": "backgroundImageUrl",
+        "type": "string",
+        "name": {
+          "zh-CN": "背景图片链接",
+          "en-US": "Background Image URL"
+        },
+        "default": ""
+      },
+      {
+        "key": "backgroundBlurEnabled",
+        "type": "switch",
+        "name": {
+          "zh-CN": "启用背景模糊",
+          "en-US": "Enable Background Blur"
+        },
+        "default": false
+      },
+      {
+        "key": "backgroundBlurType",
+        "type": "select",
+        "name": {
+          "zh-CN": "背景模糊类型",
+          "en-US": "Background Blur Type"
+        },
+        "default": "soft",
+        "options": "soft,glass"
+      },
+      {
+        "key": "backgroundBlurIntensity",
+        "type": "number",
+        "name": {
+          "zh-CN": "背景模糊强度",
+          "en-US": "Background Blur Intensity"
+        },
+        "default": 35
+      }
+    ]
+  }
+}

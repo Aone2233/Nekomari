@@ -17,7 +17,8 @@ it is not a claim that any item below is implemented yet.
 - [x] Four-way payload compatibility tests; compatibility policy document.
 - [x] Host calibration harness; TCP loopback ±1 ms test; HTTP TTFB injected-delay test; boot-id restart test.
 - [ ] Calibration live ICMP/loss/clock/retention runs (remain NOT RUN by design).
-- [x] 26/26 plugin archive install; 19/26 load/unload. Six notification plugins need `registerNotificationChannel`; email needs jsruntime TLS; 64 themes pending.
+- [x] 26/26 plugin archive install; 19/26 load/unload. Six notification plugins need `registerNotificationChannel`; email needs jsruntime TLS. 64/64 theme manifests, preflight, install and reinstall pass.
+- [ ] Theme browser/hydration/mobile visual gate.
 - [ ] OC424 upgrade / restore drill acceptance.
 
 ## Confirmed defaults (2026-11-08)
