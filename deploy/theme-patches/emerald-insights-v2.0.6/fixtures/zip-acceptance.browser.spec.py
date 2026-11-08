@@ -16,7 +16,7 @@ def route(r):
       return [{'time':(now-timedelta(hours=hours)+timedelta(seconds=i*hours*3600/30)).isoformat(),'value':value} for i in range(31)]
     if method=='rpc.ping': result='pong'
     elif method=='public:getPingMetricStats':
-      result={'stats':[dict(s, name=contract['legacy_task']['name'] if s['task_id']=='28' else contract['pinned_task']['name'], interval=60, loss=0, avg=s['value'], total=31) for s in contract['series']]}
+      result={'stats':[dict(s, name=contract['legacy_task']['name'] if s['task_id']=='28' else contract['pinned_task']['name'], type=(scenario if scenario!='unknown' else None) if s['task_id']=='28' else 'tcp', interval=60, loss=0, avg=s['value'], total=31) for s in contract['series']]}
     elif method=='public:queryMetrics':
       k=params['metric_keys'][0]
       result={'series':[{'metric_key':k, 'tags':{a:b for a,b in s.items() if a!='value'}, 'points':pts(0 if k=='ping.loss' else s['value'])} for s in contract['series']]}
@@ -39,14 +39,16 @@ def route(r):
   r.fulfill(status=404,body='')
 with sync_playwright() as p:
   b=p.chromium.launch(headless=True,args=['--no-sandbox'])
-  for width, enabled in ((1440,False),(390,False),(1440,True),(390,True)):
+  for width, enabled, scenario in ((1440,False,'dual'),(390,True,'dual'),(1440,False,'icmp'),(390,False,'icmp'),(1440,True,'icmp'),(390,True,'unknown')):
     page=b.new_page(viewport={'width':width,'height':950});errors=[];requests=[]
     page.on('pageerror',lambda e:errors.append(str(e)))
     page.add_init_script("window.WebSocket = class { static OPEN=1; static CLOSED=3; constructor(){ this.readyState=3; setTimeout(()=>this.onerror?.(new Event('error')),0) } close(){} }")
     page.route('https://**/*',lambda r: route(r) if r.request.url.startswith('https://fixture.test/') else r.abort())
     page.goto('https://fixture.test/instance/fixture',wait_until='domcontentloaded')
-    page.get_by_text('Education IPv6 (IPV6 / ICMP / 主目标)',exact=True).wait_for(timeout=20000)
-    page.get_by_text('Education IPv6 (IPV6 / TCP / 主目标)',exact=True).wait_for()
+    primary_icmp='Education IPv6 (IPV6 / ICMP / 主目标)' if scenario!='icmp' or enabled else 'Education IPv6'
+    page.get_by_text(primary_icmp,exact=True).wait_for(timeout=20000)
+    tcp=page.get_by_text('Education IPv6 (IPV6 / TCP / 主目标)',exact=True)
+    assert tcp.count()==(0 if scenario=='icmp' else 1), (width,scenario,tcp.count())
     ref=page.get_by_text('Education IPv6 (IPV6 / ICMP / 参考点)',exact=True)
     assert ref.count()==(1 if enabled else 0), (width,enabled,ref.count())
     assert '角色未标记' not in page.locator('body').inner_text()
@@ -54,11 +56,12 @@ with sync_playwright() as p:
     if enabled: ref.click()
     for period in ('7 天','30 天'):
       page.get_by_role('tab',name=period,exact=True).last.click()
+      assert tcp.count()==(0 if scenario=='icmp' else 1), (width,scenario,period)
       page.get_by_role('button',name='平滑峰值').click()
       assert page.locator('canvas').count()>0
       page.get_by_role('button',name='平滑峰值').click()
     assert not errors,errors
     assert any(re.search(r'PingChart-[^/]+\.js$',x) for x in reqs)
-    print(f'actual zip full instance width={width} reference={enabled}: roles, selection, chart, 7/30-day smoothing PASS')
+    print(f'actual zip full instance width={width} reference={enabled} type={scenario}: protocol filtering, chart, 7/30-day smoothing PASS')
     page.close()
   b.close()

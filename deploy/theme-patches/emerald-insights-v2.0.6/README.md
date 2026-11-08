@@ -25,6 +25,12 @@ The upstream v2.0.6 fixes long-range chart time alignment. This patch additional
 - Hides reference-role detail series by default, including old history.
   `showPingReference` opts in to displaying them without enabling a probe;
   it is a presentation setting and does not mutate tasks or retained samples.
+- On dimensioned endpoints, hides retired primary protocol series when the
+  current task type unambiguously selects one of ICMP, TCP or HTTP. It leaves
+  `dual`, `auto`, unknown types, unknown protocols and explicitly enabled
+  references visible. It uses the returned current task metadata and does not
+  infer unknown protocols or delete history. Older dimensionless endpoints may
+  not provide enough information to apply this distinction.
 
 The official theme's home-card summary uses `common:getRecords`, which removes
 the protocol/family/role dimensions and combines records for each task. Its
@@ -89,3 +95,15 @@ Playwright-enabled environment. The tested and deployed ZIP SHA-256 is
 `8923beefc031c3cffec7810c99538e439256c15f6e66d35b2fbb88b0af3d43c5`.
 It remains a locally patched upstream theme, not an official release; the
 owner's signed-in visual acceptance remains outstanding.
+
+2026-11-08 single-protocol follow-up: the owner chose ICMP-only for production
+task 28. The patched detail chart filters historical TCP primary samples while
+retaining both protocols for `dual`, unknown task types and `auto`. Reference
+visibility remains controlled independently. Tests cover missing/conflicting
+types, unknown roles/protocols, and references that use a different protocol.
+84 theme tests, typecheck/build, changed-file lint, and desktop/mobile component
+and full-ZIP Chromium cases passed, including 7/30-day smoothing. This build's
+ZIP SHA-256 is `4b6487f0cff286d6ed7b9bffaa39f9c6653ec96dcb21981863717196cec9d918`.
+Its public chart/index bytes match the tested build; signed-in visual acceptance
+remains the owner's check. See the current deployment checkpoint for the
+non-destructive task change, backups, and live Agent observations.

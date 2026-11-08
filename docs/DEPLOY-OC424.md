@@ -3,9 +3,46 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## Education IPv6 ICMP-only (2026-11-08 19:36 Asia/Shanghai)
+
+The owner chose one ICMP probe rather than the two `dual` primary legs. After
+the pre-change encrypted backup and isolated restore, the existing task 28 was
+changed from `dual` to `icmp` in a guarded offline transaction and the same
+v1.7.30 panel container restarted to reload its scheduler. The task ID, both
+node assignments, target, 60-second interval, empty reference, other 12 tasks,
+and all 14 client UUID/token pairs were preserved. The local config snapshot is
+`/opt/nekomari/rollbacks/task28-icmp-20261108T113604Z-MawagsBl`; do not
+restore the whole older database over live changes. MegaBox and HK04 have each
+reported fresh ICMP results since 19:36:05; no TCP or reference results arrived
+after the change during the observation period. Old metrics remain stored.
+
+The active upstream Emerald Insights v2.0.6 plus local compatibility patch now
+hides retired primary protocol series when the task's current single protocol
+is known. Dual/auto/unknown modes are not reduced, and enabled reference series
+remain independently controlled. It does not rewrite history; dimensionless
+legacy APIs cannot always distinguish old protocols. Public chart and index
+assets match tested ZIP SHA-256
+`4b6487f0cff286d6ed7b9bffaa39f9c6653ec96dcb21981863717196cec9d918`.
+84 theme tests, build/typecheck, changed-file lint and desktop/mobile browser
+fixtures passed. The previous theme tree/assets remain at
+`/opt/nekomari/rollbacks/emerald-v206-current-protocol-20261108T113715Z`.
+Signed-in MegaBox/HK04 page acceptance remains the owner's check; reinstalling
+the marketplace theme will replace the patch.
+
+MAC-WAN's pre-change encrypted backup
+`manual/v1730-release-post-20261108T113226Z/oc424-20261108T113226257686Z-f0263633671e.tar.gz.age`
+has SHA-256 `b3706cb03abdf1ae43c3ac3104eb94c26888630e17a69183dd12468fc4f95d34`.
+The post-change backup
+`manual/v1730-release-post-20261108T113740Z/oc424-20261108T113740646225Z-335873c4553e.tar.gz.age`
+has SHA-256 `542c14486d7892c6fcae82270cfc241ab1caa46c77b7fbdbe034c1932c044145`.
+Both passed isolated v1.7.30 restore drills. Online snapshots are not atomic
+across databases or in-memory queues; backup/health timers remain absent or
+inactive by owner design.
+
 ## Reference-probe cleanup (2026-11-08 08:18 UTC)
 
-The owner clarified that unlisted extra probes should stop, not just be
+Historical checkpoint; task 28's later ICMP-only change above supersedes the
+description of its dual main legs. The owner clarified that unlisted extra probes should stop, not just be
 relabelled. The only nonempty reference in the 13 configured ping tasks was
 task 28. Its task edit form had a reference field, but the task list did not
 show it. After a verified encrypted pre-backup, the panel was briefly stopped,

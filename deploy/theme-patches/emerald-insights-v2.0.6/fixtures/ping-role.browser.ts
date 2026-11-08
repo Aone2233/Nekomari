@@ -8,13 +8,14 @@ import contract from './ping-role-contract.json'
 import '@/styles/main.css'
 
 const client = getSharedRpc().getClient()
+const scenario = new URLSearchParams(location.search).get('scenario') ?? 'dual'
 client.call = async (method: string, params: any) => {
   const hours = Number(params.hours ?? 1)
   const latest = Date.now()
   const spacing = hours >= 24 ? 3600_000 : 60_000
   const points = Array.from({ length: 10 }, (_, i) => new Date(latest - (9 - i) * spacing).toISOString())
   if (method === 'public:getPingMetricStats') {
-    return { stats: contract.series.map((s) => ({ ...s, name: s.task_id === '28' ? contract.legacy_task.name : contract.pinned_task.name, interval: 60, loss: 0, avg: s.value, total: points.length })) }
+    return { stats: contract.series.map((s) => ({ ...s, name: s.task_id === '28' ? contract.legacy_task.name : contract.pinned_task.name, type: s.task_id === '28' ? scenario === 'icmp' ? 'icmp' : scenario === 'unknown' ? undefined : 'dual' : 'tcp', interval: 60, loss: 0, avg: s.value, total: points.length })) }
   }
   if (method === 'public:queryMetrics') {
     const key = params.metric_keys[0]

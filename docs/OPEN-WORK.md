@@ -22,14 +22,16 @@ rollout evidence and caveats are in the latest checkpoint in
 HKHKT was reached through MAC-WAN and the OC424 IPv4 jump and its CPU and ping
 samples resumed. The Agent release remains manual-only. Task 30 has actual IPv6
 latency and loss samples from MegaBox, Riven and the updated Frankfurt Agent.
-Task 28's formerly configured reference was cleared without removing its dual
-ICMP/TCP main target or historical samples. Both assigned nodes resumed both
-main series, with no new reference samples through the observation period.
+Task 28's formerly configured reference was cleared and, following the owner's
+subsequent choice, its type changed from dual to ICMP. Both assigned nodes have
+fresh ICMP samples and stopped producing TCP and reference samples. The prior
+protocol and reference history is retained but hidden in the patched detail
+chart when current type/role are known.
 
 Remaining acceptance and operational limits:
 
 - The owner should refresh the signed-in MegaBox and HK04 detail pages to
-  confirm the removed reference curve and retained main charts; mocked browser
+  confirm that only the ICMP primary appears; mocked browser
   tests and public assets do not substitute for that session. The home-card
   `common:getRecords` aggregate can mix roles, protocols and families while
   historical data remains in its window; use the dimensioned detail chart for
