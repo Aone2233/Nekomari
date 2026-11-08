@@ -8,7 +8,14 @@ import (
 	"github.com/Aone2233/nekomari/pkg/metric"
 )
 
-const defaultBuiltinMetricRetentionDays = 1
+const (
+	// Panel-only history is cheap to rebuild and stays at one day.
+	defaultBuiltinMetricRetentionDays = 1
+	// New installs keep a useful personal history: 30 days of node metrics and
+	// 7 days of ping/HTTP. Existing definitions keep their stored retention.
+	defaultNodeMetricRetentionDays = 30
+	defaultPingMetricRetentionDays = 7
+)
 
 // RetentionSummary is the compatibility view of node metric policies.
 type RetentionSummary struct {
@@ -55,7 +62,7 @@ func summarizeRetentionDefinitions(defs []metric.Definition) RetentionSummary {
 
 // createMetricDefinitions creates built-in definitions with explicit policies.
 func createMetricDefinitions(ctx context.Context, s *metric.Store) error {
-	return createMetricDefinitionsWithDefaultRetention(ctx, s, defaultBuiltinMetricRetentionDays)
+	return createMetricDefinitionsWithDefaultRetention(ctx, s, defaultNodeMetricRetentionDays)
 }
 
 // EnsureBuiltinMetricDefinitions registers definitions for the server's
@@ -142,6 +149,11 @@ func createMetricDefinitionsWithDefaultRetention(ctx context.Context, s *metric.
 	}
 
 	for _, def := range definitions {
+		if IsPingMetric(def.Name) {
+			def.RetentionDays = defaultPingMetricRetentionDays
+		} else if IsPanelMetric(def.Name) {
+			def.RetentionDays = defaultBuiltinMetricRetentionDays
+		}
 		companion := map[string]string{
 			MetricTrafficIntervalUp: MetricTrafficUp, MetricTrafficIntervalDown: MetricTrafficDown,
 			MetricTrafficIntervalValid: MetricTrafficUp,

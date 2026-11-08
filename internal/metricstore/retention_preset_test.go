@@ -29,7 +29,7 @@ func TestApplyRetentionPresetUpdatesNodeAndPingOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	updated, err := ApplyRetentionPreset(ctx, 30, 7)
+	updated, err := ApplyRetentionPreset(ctx, 90, 14)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,11 +42,11 @@ func TestApplyRetentionPresetUpdatesNodeAndPingOnly(t *testing.T) {
 	}{
 		{MetricCPU, 0}, // explicitly disabled, left alone
 		{MetricSwap, 0},
-		{MetricRAM, 30},
-		{MetricDisk, 30},
-		{MetricPingLatency, 7},
-		{MetricPingLossPct, 7},
-		{MetricHTTPStatus, 7},
+		{MetricRAM, 90},
+		{MetricDisk, 90},
+		{MetricPingLatency, 14},
+		{MetricPingLossPct, 14},
+		{MetricHTTPStatus, 14},
 		{MetricPanelRSS, defaultBuiltinMetricRetentionDays},
 	} {
 		def, err := s.GetMetric(ctx, tc.name)
