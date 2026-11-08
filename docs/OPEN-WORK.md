@@ -14,7 +14,36 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**Current IPv6 reliability follow-up (2026-11-08):** OC424 remains on the
+**Current v1.7.30 checkpoint (2026-11-08, Asia/Shanghai):** The formal
+[v1.7.30 release](https://github.com/Aone2233/Nekomari/releases/tag/v1.7.30)
+and its pinned panel image are live on OC424; the release record, backup hashes,
+rollout evidence and caveats are in the latest checkpoint in
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md). All 14 nodes report fresh CPU data; 13
+are on v1.7.30. HKHKT remains on v1.6.24 because its configured SSH paths timed
+out. Do not guess its credentials or assume the manual-only v1.7.30 release can
+be installed by the old Agent's normal updater. Task 30 now has actual IPv6
+latency and loss samples from MegaBox, Riven and the updated Frankfurt Agent.
+
+Remaining acceptance and operational limits:
+
+- The owner should refresh the signed-in MegaBox and HK04 detail pages to
+  confirm the theme labels and charts; mocked browser tests and public assets do
+  not substitute for that session. The home-card `common:getRecords` aggregate
+  can mix roles, protocols and families; use the dimensioned detail chart for
+  per-path readings. Reinstalling the online theme overwrites the local patch.
+- One recent MegaBox task-30 minute was absent despite the v1.7.30 follow-up,
+  with a `permit_write` warning. Missing observations are not packet loss; the
+  underlying intermittent skip is not claimed fixed or fully diagnosed.
+- MAC-WAN's prior backup and backup-health timer units are absent/inactive by
+  owner design. Manual pre/post encrypted archives and isolated drills passed,
+  but there is no verified automatic backup schedule or alert in this state;
+  do not silently re-enable or assume one. Online archives are not atomic
+  snapshots across databases and in-memory queues.
+- PZYC's pre-existing `/dev/null` is a regular root-owned mode-755 file, not a
+  character device. Its Agent was updated and reports, but the host-level issue
+  remains for the owner to assess; the rollout did not alter it.
+
+**Historical IPv6 reliability follow-up (2026-11-08, superseded above):** OC424 remains on the
 internal `v1.7.30/canary3`, not a GitHub release. From 04:31 through 04:43 UTC
 the persisted task 30 loss series had 10/13 complete MegaBox minutes and 13/13
 Riven minutes. MegaBox skips at 04:32 and 04:42 followed its normal HTTP basic
@@ -34,7 +63,7 @@ new source has not yet passed release CI or been formally published/deployed;
 the exact source, GitHub assets, production panel and staged Agents all need
 separate acceptance. No credentials, task assignments or history were changed.
 
-**Current IPv6 production canary (2026-11-07 17:25 UTC):** OC424 is running
+**Historical IPv6 production canary (2026-11-07 17:25 UTC, superseded above):** OC424 is running
 the locally built, non-public candidate `v1.7.30/d1a15af`, not a published
 stable release. Exact-commit CI 42393310935 passed 8/8. The arm64 image is
 `sha256:7988a75ea14363e4e131ed577946afac27d0d7f69791b47928b73e5cae3b44b7`,

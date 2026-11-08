@@ -3,6 +3,79 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.7.30 release checkpoint (2026-11-08, Asia/Shanghai)
+
+The production panel runs the published **v1.7.30/1a77f04**, pinned to OCI
+index `sha256:f93becf6d2da2dc4b46e1604d0e8884a6c40187e1c6eeb1944620af80d7b476a`.
+The arm64 and amd64 image binaries match the corresponding release assets.
+The panel is healthy with zero restarts; the post-rollout check passes 9/9,
+both SQLite `quick_check`s pass, and all 14 registered clients have fresh CPU
+data. The 14 UUID/token pairs and 13 ping tasks were preserved. The prior
+candidate image and compose are retained at
+`/opt/nekomari/rollbacks/v1.7.30-20261108T060225Z-lQLBNIZ4`. Do not restore
+old DBs over the live databases or blindly downgrade a panel with pinned tasks.
+
+The release tag points to `1a77f04074fb197cbc54e348b9dab87bdf79a16e`; the
+release commit's CI passed 8/8. Release workflow
+[42451434798](https://github.com/Aone2233/Nekomari/actions/runs/42451434798)
+built and attested the assets but failed when looking up its draft by tag, so
+its two deploy-verification jobs were skipped. The original draft and assets
+were independently verified and published by draft ID; the published amd64 and
+arm64 assets each passed a 23/23 isolated install/report check. Docker workflow
+[42452235853](https://github.com/Aone2233/Nekomari/actions/runs/42452235853)
+passed 2/2. `main` subsequently received the draft-ID and image-alias fixes plus
+the theme source patch at `f19493ac35436299762c7f0fb12f5c3cc79c08d4`; exact
+branch CI [42453671851](https://github.com/Aone2233/Nekomari/actions/runs/42453671851)
+and main CI [42458525061](https://github.com/Aone2233/Nekomari/actions/runs/42458525061)
+both passed 8/8. These follow-up commits do not change the released tag.
+
+The Agent assets are intentionally `manual-` prefixed. A metadata-action default
+briefly moved `nekomari-agent:latest` to v1.7.30 despite that policy; the
+reviewed alias was restored by guarded workflow
+[42452727020](https://github.com/Aone2233/Nekomari/actions/runs/42452727020).
+Both Agent `latest` and `1.7` again point to the prior index
+`sha256:7fce2571fe38a1ef4a5e2f22dde530c8953cab6987398715d9670a1cf9c8fe0c`.
+The subsequent workflow fix disables implicit `latest`; the actual metadata
+action was exercised with Agent and panel rules. The GitHub latest release
+remains v1.7.29 by design.
+
+**Agents.** MegaBox, Riven, HK04, BERO, OC424, MAC-WAN, Frankfurt, ATT,
+Lightlayer, SB01, QWRT, PZYC and Windows-WAN were individually upgraded to the
+checksum-verified manual v1.7.30 binary, with old binaries and service/task
+configuration retained locally. Each subsequently reported new CPU and ping
+samples. MAC-WAN's `cap_net_raw=ep` was preserved; QWRT's procd, SB01's OpenRC
+and Windows' SYSTEM scheduled-task supervision were retained. HKHKT remains
+online on v1.6.24 because the known SSH paths timed out; do not claim a full
+fleet upgrade. Task 30 now has actual IPv6 samples from all three assigned
+nodes. A recent 15-minute interval had 14/15 MegaBox loss buckets and 15/15
+Riven/Frankfurt, with a MegaBox `permit_write` warning at 15:37 China time:
+missing data is not packet loss, and this intermittent gap is not fully fixed.
+
+**Theme.** Official Emerald Insights v2.0.6 remains active with the local
+compatibility patch, not a replacement theme. The updated tested ZIP hash is
+`8db889bd761bbbb577780632a4974782b76a951c4aa23728fbd643ae6a0f7567`;
+the publicly served chart bytes match it. Legacy empty role now labels a primary
+target; `reference` labels the same task's auxiliary probe. Curves, assignments,
+history and the existing theme configuration are unchanged. The prior theme is
+retained at `/opt/nekomari/rollbacks/emerald-v206-role-20261108T060359Z`;
+old hashed assets remain available. A marketplace reinstall overwrites the
+patch. Owner signed-in visual acceptance remains open, and the home-card
+unpartitioned aggregate is not a reliable per-path measurement.
+
+**Recovery.** MAC-WAN pre-switch archive
+`manual/v1730-release-pre-final-20261108T055832Z/oc424-20261108T055832525611Z-bb0bd2675abd.tar.gz.age`
+has SHA-256 `55cbecb5bef53a217088aa378f2c50646e8fe0d9f1cd4a83423c3c3be4a0de3d`.
+The final post-fleet archive
+`manual/v1730-fleet-final-post-20261108T074549Z/oc424-20261108T074549937292Z-08831bac3a71.tar.gz.age`
+has SHA-256 `f59ba6e6d9f97e7a2cc8ef279bf724100b86abf266146c74e0b70c75188eccb9`.
+Both passed checksum and network-isolated restore drills on MAC-WAN using the
+digest-pinned official v1.7.30 amd64 image. Archives are online snapshots, not
+an atomic cross-database or zero-in-memory-RPO guarantee. The prior scheduled
+backup and health timer units are absent/inactive by owner design, so automatic
+backup and alerting are not verified; do not silently recreate or start them.
+PZYC's pre-existing `/dev/null` is a regular root-owned mode-755 file rather
+than a character device; it was not modified as part of this rollout.
+
 ## Theme checkpoint (2026-11-06 10:52 UTC)
 
 The active `emerald-insights` theme was atomically exchanged from official
