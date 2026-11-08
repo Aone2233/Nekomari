@@ -56,7 +56,7 @@ EXPECTED_REPOSITORY = "Aone2233/Nekomari"
 # The policy, verbatim from docs/RELEASING.md: latest requires a non-prerelease
 # tag AND a verified release run. The `== 'true'` comparison is load-bearing --
 # GitHub treats any non-empty string as true, and the string "false" is not empty.
-EXPECTED_LATEST_ENABLE = "!contains(steps.tag.outputs.tag, '-') && steps.tag.outputs.release_verified == 'true'"
+EXPECTED_LATEST_ENABLE = "!contains(steps.tag.outputs.tag, '-') && steps.tag.outputs.release_verified == 'true' && matrix.package == 'nekomari'"
 
 # Expressions in a `run:` script whose value a git ref name can influence.
 TAINTED_EXPRESSION = re.compile(
@@ -247,7 +247,7 @@ def substitute(raw: str, case: Case, workflow_env: dict, matrix_row: dict) -> st
     return re.sub(r"\$\{\{\s*(.*?)\s*\}\}", replace, raw)
 
 
-def eval_github_expression(expr: str, case: Case, verified: str) -> bool:
+def eval_github_expression(expr: str, case: Case, verified: str, package: str = "nekomari") -> bool:
     """Evaluate the two boolean expressions, atom by atom.
 
     Only the atoms these expressions actually use are translated; anything left
@@ -261,6 +261,7 @@ def eval_github_expression(expr: str, case: Case, verified: str) -> bool:
         "github.event.workflow_run.conclusion == 'success'": case.conclusion == "success",
         "!contains(steps.tag.outputs.tag, '-')": "-" not in case.tag,
         "steps.tag.outputs.release_verified == 'true'": verified == "true",
+        "matrix.package == 'nekomari'": package == "nekomari",
     }
     for atom, value in replacements.items():
         translated = translated.replace(atom, repr(value))
@@ -392,6 +393,8 @@ def check_truth_table(docker_yml: Path, workflow: dict, bash: str, quiet: bool, 
             problems.append(
                 f"{docker_yml}: agent row produced image={outputs.get('image')!r} (exit {code}), want {expected!r}"
             )
+        if eval_github_expression(EXPECTED_LATEST_ENABLE, good, "true", "nekomari-agent"):
+            problems.append(f"{docker_yml}: manual-only Agent image would move latest")
 
     if not quiet:
         print("truth table (every `release_verified` value below came from running the")

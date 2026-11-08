@@ -69,3 +69,31 @@ func TestReleaseValidation(t *testing.T) {
 		t.Fatalf("stable selection: %+v", got)
 	}
 }
+
+func TestManualAgentAssetsNeverTriggerAutomaticOrTargetedUpdate(t *testing.T) {
+	for _, name := range []string{
+		"komari-agent-linux-amd64", "komari-agent-linux-arm64",
+		"komari-agent-windows-amd64.exe", "komari-agent-darwin-amd64", "komari-agent-darwin-arm64",
+	} {
+		t.Run(name, func(t *testing.T) {
+			current, err := parseVersion("v1.7.29")
+			if err != nil {
+				t.Fatal(err)
+			}
+			releases := []githubRelease{
+				release("v1.7.29", false, false, name, "SHA256SUMS.txt"),
+				release("v1.7.30", false, false, "manual-"+name, "SHA256SUMS.txt"),
+			}
+			if candidate, ok := selectStableRelease(releases, name, current); ok {
+				t.Fatalf("manual asset triggered automatic update: %+v", candidate)
+			}
+			if candidate, ok := findReleaseByTag(releases, "v1.7.30", name); ok {
+				t.Fatalf("manual asset triggered targeted update: %+v", candidate)
+			}
+			older, _ := parseVersion("v1.6.24")
+			if candidate, ok := selectStableRelease(releases, name, older); !ok || candidate.TagName != "v1.7.29" {
+				t.Fatalf("older Agent fallback changed: %+v, found=%v", candidate, ok)
+			}
+		})
+	}
+}

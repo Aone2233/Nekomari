@@ -286,6 +286,7 @@ jobs:
         run: |
           python -m pip install --quiet pyyaml
           python deploy/docker-workflow-check.py
+          python deploy/manual-agent-release-contract.py
 
       - name: Check that every `with:` input still exists on the pinned action
         # 这条检查的是「major 升级把某个 with: 输入删掉/改名」——那种失败只在

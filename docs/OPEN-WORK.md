@@ -39,17 +39,20 @@ pinned tasks exist. Do not copy the archive over live data or blindly start an
 old binary. A post-cutover online archive also passes the candidate restore
 drill; it has the usual online snapshot RPO limitations.
 
-Open acceptance: create and observe a new IPv6 task through an authenticated
-admin session on MegaBox and Riven, with historical task 29 left separate. The
-tooling available to this executor cannot access the owner's existing in-app
-browser session, and ping-task writes deliberately require a session; do not
-extract a live session token or fabricate one in SQLite. Confirm both real
-latency and loss points, including a multi-node task and UI rendering. The
-current candidate has not been published as a stable GitHub Release: the
-standard workflow publishes Agent assets that can auto-update nodes whose
-policies are unknown. Keep the internal canary and restore/forward-fix path
-until that rollout hazard and real acceptance are resolved. Configuration
-import limitations described below apply in this running candidate.
+On 2026-11-08 the owner created IPv6 TCP task 30 assigned to MegaBox, Riven and
+Frankfurt. Real `family=ipv6` latency and loss samples are persisted for both
+compatible canary Agents. Frankfurt still reports Agent v1.7.1, so it has no
+pinned series and must not be presented as a packet-loss measurement. The
+owner's task and node configuration must be retained. User-facing chart
+rendering still needs acceptance. The old task 29 is no longer present; do not
+recreate it or change current data without an explicit owner instruction.
+
+The current candidate has not yet been published as a stable GitHub Release.
+The pending release workflow changes stage Agent assets under manual-only names,
+keep GitHub's latest release and the Agent image's moving aliases unchanged,
+and require exact-commit CI and published-artifact checks. Retain the internal
+canary and use restore/forward-fix rather than a blind old-image downgrade.
+Configuration import limitations described below apply in this running candidate.
 
 **Earlier IPv6 release-candidate checkpoint (2026-11-07 16:30 UTC):** the
 production scheduler and public task creation/edit paths in the local candidate
