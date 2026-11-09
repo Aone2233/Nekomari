@@ -1,5 +1,25 @@
 # MAC-WAN backup receiver (updated 2026-11-05)
 
+## 2026-11-09 v1.8.0 production cutover
+
+Pre and post snapshots were produced by the existing OC424 producer and
+received into new private `manual/` directories while the panel was online:
+
+- Pre: `manual/v180-pre-20261109T0230Z/oc424-pre.tar.gz.age`,
+  245,230,973 bytes, SHA-256
+  `d8c5bf371f575578132c056a3372fdca6be0eba428215e91d0d1fe9fbddec40b`.
+- Post: `manual/v180-post-20261109T0233Z/oc424-post.tar.gz.age`,
+  245,110,016 bytes, SHA-256
+  `c8c053e0086f1f5af9e784c0c534bff0c7e2421270c1a72ba466024d40d44b18`.
+
+Both archives authenticated with the MAC-WAN identity; extracted databases
+passed `quick_check`. The post archive booted an isolated amd64 v1.8.0
+container with 14 clients, 13 tasks, `/api/version` v1.8.0/a92a242 and 0
+restarts; the scratch container and plaintext were removed. The decryption
+identity stayed on MAC-WAN. These are online snapshots, not cross-store atomic
+and not proof that every in-memory sample was captured. Backup/health timers
+were not changed.
+
 ## 2026-11-07 IPv6 production canary
 
 After an old-panel stop with exit code 0 and a check that neither SQLite file
