@@ -13,18 +13,20 @@ new theme. Upstream baseline:
 
 Two independent defects were reproduced with the disposable panel:
 
-1. **React #418 during hydration.** The data providers (`/api/public`,
-   `/api/rpc2`, `/api/me`, ...) start fetching in effects immediately after the
-   first commit. On this page the API answers fast enough that state updates
-   can commit while React is still hydrating the large client tree, producing
-   `Hydration failed because the server rendered HTML didn't match the client`.
+1. **React #418 during hydration.** The market ZIP's static build is not a
+   clean reproduction of the tagged source: serving its `dist` from a plain
+   static server still produced #418 with no API at all. Rebuilding v2.0.0
+   from source produced a clean static page. The clean rebuild still produced
+   #418 when the panel answered APIs quickly; blocking any one API endpoint or
+   delaying `/api/**` by 1.5 s removed it. The remaining trigger is that data
+   providers (`/api/public`, `/api/rpc2`, `/api/me`, ...) start fetching in
+   effects immediately after the first commit, and their state updates can
+   commit while React is still hydrating the large client tree.
    Evidence:
-   - Original theme: `pageerror: Minified React error #418` on public desktop
-     and mobile; `/admin/` was unaffected.
-   - Blocking any one API endpoint or delaying `/api/**` by 1.5 s removed the
-     #418.
-   - The same built files served by a plain static server showed no #418 until
-     an API/data update was introduced.
+   - Market ZIP: `pageerror: Minified React error #418` on public desktop and
+     mobile; `/admin/` was unaffected.
+   - Fresh source rebuild in the panel: same #418; API block/delay removed it.
+   - Fresh source rebuild on a plain static server: no #418.
 2. **`404 http://127.0.0.1:<port>/` console error.** Next.js `<Link href="/">`
    prefetches an RSC payload; the panel does not serve the Next RSC response for
    that request, so the prefetch is logged as a 404. It is local to the panel,
