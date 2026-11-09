@@ -34,9 +34,10 @@ Remaining acceptance and operational limits:
 
 - The three v1.8.0 verification gates are still open: 64-theme
   browser/hydration/mobile, real external provider delivery, and LAN ICMP /
-  `tc netem` loss. A v1.8.1 verification close-out is a **draft, owner
-  confirmation pending**; it contains only these gates and no new features.
-  See [`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md) and
+  `tc netem` loss. **v1.8.1 is a formal patch release** scoped only to these
+  gates and no new features; release tag/OC424 deploy mechanics and the
+  defect-fix boundary remain TBD. See
+  [`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md) and
   [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md).
 - The owner should refresh the signed-in MegaBox and HK04 detail pages to
   confirm that only the ICMP primary appears; mocked browser
@@ -278,8 +279,8 @@ The next bounded releases and operational gates, in order:
    passing isolated restore drills. Exit closed 2026-11-04: the owner
    sent a test notification from the button and acknowledged the real
    receipt.
-3. **v1.8.0 Probe Truth delivered; v1.8.1 verification close-out is a
-   draft (owner confirmation pending).** The uptime restart-count metric
+3. **v1.8.0 Probe Truth delivered; v1.8.1 is a formal verification
+   close-out patch.** The uptime restart-count metric
    (`system.restarts`) shipped in v1.7.26 and the 50-node capacity/memory gate
    passed on 2026-11-04; see [`CAPACITY-50NODE.md`](./CAPACITY-50NODE.md).
    v1.8.0 itself is released and deployed as `v1.8.0/a92a242`; 14 clients and
@@ -290,20 +291,21 @@ The next bounded releases and operational gates, in order:
      64/64 manifests, preflight, install and reinstall; browser rendering,
      hydration diagnostics and mobile interaction remain pending.
    - Real external provider delivery. Channel registry, plugin load/unload and
-     fake-channel dispatch are tested; a real configured provider receipt
-     (Telegram, Email, Bark or another) remains pending.
+     fake-channel dispatch are tested; every provider configured in the runtime
+     at gate time still needs a real bounded test message and receipt.
    - LAN ICMP and `tc netem` loss. Loopback ICMP/TCP and HTTP TTFB calibration
      pass; LAN ICMP and 0/1/5/20% `tc netem` loss runs remain NOT RUN.
 
    v1.8.1 contains no new features; v1.9.0 exec-result history and the other
-   v1.9 slices are explicitly out of scope. Whether an Agent v1.8.0 staged
-   rollout runs during the v1.8.1 window is **TBD**. The second off-host
-   destination decision remains with the owner.
+   v1.9 slices are explicitly out of scope. Agent v1.8.0 staged rollout is
+   **not started during v1.8.1**; it will be discussed only after all three
+   gates close. Release tag/OC424 deploy mechanics and the defect-fix boundary
+   remain TBD. The second off-host destination decision remains with the owner.
 4. **Still open acceptance.** Real remote notification receipt (a genuine
    incident, not the acknowledged test send) and MegaBox provider-billing
    equivalence; the latter needs provider-side data and must never be
    claimed from panel numbers alone.
-5. **v1.9.0 next (v1.7.27 and v1.7.29 CSV; v1.8.0 Probe Truth released 2026-11-09).** Metric CSV export
+5. **v1.9.0 next (v1.7.27 and v1.7.29 CSV; v1.8.0 Probe Truth released 2026-11-08, deployed 2026-11-09).** Metric CSV export
    on the node chart page — a wide CSV (time plus one column per metric
    series with tags preserved) of the loaded window, built from the same
    `public:queryMetrics` data the charts draw, with a shared quoting util

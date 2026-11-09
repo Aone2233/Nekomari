@@ -66,26 +66,26 @@ decides at the gates marked **[Owner]**.
 | `v1.7.27` | 2026-11-04 → 05 | First v1.9.0 slice: metric CSV export on the node chart page — wide table of chart series, BOM + CRLF, five locales — **deployed 2026-11-04**; tagged headers need the follow-up fix | CI green; OC424 9/9; owner on-page acceptance **[Owner]** |
 | `v1.7.28` / `v1.7.29` | 2026-11-04 → 05 | Ping/load CSV export was published in v1.7.28 but skipped in production; the v1.7.29 correction deploys explicit historical bucket semantics | CI and release complete; backup/identity gates pass; signed-in OC424 CSV acceptance **[Owner]** |
 | `v1.8.0` | 2026-11 (released 2026-11-08) | Probe Truth: additive multi-probe, HTTP phases, host detail, retention/quality and compatibility gates; see [`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md) | CI/release green; OC424 9/9; fresh pre/post backups and restore drill. Three verification gates remain open. |
-| `v1.8.1` | **TBD** | Verification close-out **draft, owner confirmation pending** | No new features: 64-theme browser/hydration/mobile; external provider delivery; LAN ICMP and `tc netem` loss. | Every gate has retained raw evidence and passes. Version/release mechanics and Agent rollout remain TBD. |
+| `v1.8.1` | TBD (release window) | Verification close-out **formal patch release**; no new features: 64-theme browser/hydration/mobile; external provider delivery for runtime-configured providers; LAN ICMP and `tc netem` loss | All three gates close with retained evidence. Release tag/OC424 deploy mechanics and defect-fix boundary remain TBD; Agent rollout only after the gates. |
 | `v1.9.0` | 2026-11 → 2027-01 | Metric CSV ships as v1.7.27 and corrected history-bucket CSV as v1.7.29; remaining: exec-result history, cost-forecast column, roles (viewer/operator/admin), frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
 | `v2.0.0` | 2027-Q2 | non-root agent default, protocol consolidation, secrets at rest, 200-node benchmark | migration guide; two-minor compat policy; benchmark |
 
-### v1.8.1 verification close-out (draft, owner confirmation pending)
+### v1.8.1 verification close-out patch
 
-Status: **draft only, not a committed release.** v1.8.1 contains no new
-features; v1.9.0 exec-result history and the other v1.9 slices are explicitly
-out of scope. It exists only to close the three v1.8.0 gates.
+Status: **formal patch release, scoped to verification close-out.** v1.8.1
+contains no new features; v1.9.0 exec-result history and the other v1.9 slices
+are explicitly out of scope. It exists only to close the three v1.8.0 gates.
 
 | Item | Recorded basis | Proposed acceptance | Status |
 |---|---|---|---|
 | 64 themes: browser, hydration, mobile | 64/64 manifests, preflight, install and reinstall already pass; browser/hydration/mobile is the recorded pending visual gate ([`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md)) | Disposable panel; every theme loaded at the existing desktop/mobile browser viewports; check rendered pages, hydration diagnostics, console errors and primary public/admin routes; record a per-theme pass/fail matrix and retain failures. | Gate is recorded; execution protocol is a proposal. |
-| External provider delivery | Registry/load/unload and fake-channel dispatch are tested; real external delivery is the recorded pending item ([`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md)) | Use a real configured provider, send a bounded test message, record provider, receipt and timestamp; never print secrets; retain failures. Which provider(s) count is TBD. | Gate is recorded; provider set is TBD. |
+| External provider delivery | Registry/load/unload and fake-channel dispatch are tested; real external delivery is the recorded pending item ([`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md)) | Use every provider configured in the runtime at gate time; send one bounded test message per provider, record provider, receipt and timestamp; never print secrets; retain failures. | Gate is recorded; provider set is defined by runtime configuration. |
 | LAN ICMP and `tc netem` loss | Loopback ICMP ±50 µs, TCP ±1 ms and HTTP TTFB tests pass; LAN ICMP and 0/1/5/20% loss are recorded NOT RUN ([`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md)) | Disposable root host and the real measurement path; LAN ICMP against `ping` within ±1 ms; loss within ≤1 percentage point at N≥100; repeat 3 times and report median/p95; without root the item is NOT RUN, never pass. | Gate and tolerances are recorded; environment is a proposal. |
 
-Version mechanics are TBD: whether any code defect found by a gate is fixed in
-v1.8.1 and whether a production deploy is needed. Starting an Agent v1.8.0
-staged rollout during the v1.8.1 window is also **TBD**; no Agent rollout is
-required for v1.8.1 verification.
+Release mechanics remain TBD: whether v1.8.1 is tagged and deployed to OC424,
+and the boundary for fixing any defect found by a gate. Agent v1.8.0 staged
+rollout is **not started during v1.8.1**; it will be discussed only after all
+three verification gates close.
 
 ### Delivery sequence checkpoint (2026-11-05, historical)
 
@@ -104,12 +104,13 @@ required for v1.8.1 verification.
 1. **v1.7.25 acceptance** — closed: the owner confirmed receipt of the real
    `[TEST]` notification on 2026-11-04. A real incident remains unverified.
 2. **Second off-host destination** — decide whether a second receiver is
-   wanted and where; until then MAC-WAN stays the sole off-host receiver
-   (needed before v1.8.0 closes). OVH is sold and removed from all plans.
+   wanted and where; until then MAC-WAN stays the sole off-host receiver.
+   v1.8.0 was released without this decision. OVH is sold and removed from all
+   plans.
 3. **Key/token rotation cadence** — currently "no rotation for now"; revisit
    at each monthly SLO review.
-4. **200-node target** — stays deferred; revisit only after the v1.8.0
-   50-node gate passes.
+4. **200-node target** — stays deferred; revisit after the v1.8.0 50-node gate
+   (passed 2026-11-04).
 
 ### Standing maintenance
 
@@ -132,13 +133,16 @@ Fresh encrypted MAC-WAN pre/post backups and an isolated amd64 restore drill
 pass. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and
 [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
 
-**Next:** v1.8.1 is a **verification close-out draft, owner confirmation
-pending**, not a committed release. Its scope is only the three gates left by
-v1.8.0: 64-theme browser/hydration/mobile, external provider delivery, and LAN
-ICMP/`tc netem` loss. No new features. [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md)
-remains the next v1.9.0 slice after those gates; the current unbounded N+1 task
-listing is not the UI backend, result cleanup does not imply command retention,
-and sensitive outputs require explicit access. The second off-host destination
+**Next:** v1.8.1 is a **formal patch release** scoped only to verification
+close-out. Its scope is the three gates left by v1.8.0: 64-theme
+browser/hydration/mobile, external provider delivery for runtime-configured
+providers, and LAN ICMP/`tc netem` loss. No new features. Release tag/OC424
+deploy mechanics and the defect-fix boundary remain TBD. Agent v1.8.0 staged
+rollout is not started during v1.8.1; it will be discussed only after all three
+gates close. [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md) remains the
+next v1.9.0 slice after those gates; the current unbounded N+1 task listing is
+not the UI backend, result cleanup does not imply command retention, and
+sensitive outputs require explicit access. The second off-host destination
 remains an owner decision; 200-node work and token rotation remain deferred.
 
 ## Previous Delivery Checkpoint (2026-11-04, CSV gate)
