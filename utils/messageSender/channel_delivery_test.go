@@ -34,6 +34,7 @@ func TestCallNotificationChannelDispatchesAndUnregisters(t *testing.T) {
 	if err := dbcore.Initialize(); err != nil {
 		t.Skipf("isolated database unavailable: %v", err)
 	}
+	t.Cleanup(func() { _ = dbcore.Close() })
 
 	recorder := &recordingChannel{got: make(chan Notification, 1)}
 	if err := RegisterNotificationChannel("fake", "plugin:test:fake", models.Configuration{Type: models.ThemeConfigurationManaged}, recorder); err != nil {
