@@ -5,7 +5,10 @@ import (
 	"math"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	pkg_flags "github.com/Aone2233/nekomari/agent/cmd/flags"
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -19,15 +22,89 @@ type CpuInfo struct {
 	CPUCores         int     `json:"cpu_cores"`
 	CPUPhysicalCores int     `json:"cpu_physical_cores"`
 	CPUUsage         float64 `json:"cpu_usage"`
+	IntervalSeconds  float64 `json:"interval_seconds,omitempty"`
 	Valid            bool    `json:"-"`
+}
+
+var cpuIntervalState struct {
+	sync.Mutex
+	lastTotal uint64
+	lastIdle  uint64
+	lastAt    time.Time
+	ready     bool
+}
+
+// cpuIntervalSample computes host CPU usage from /proc/stat deltas. The first
+// call only establishes a baseline: a percentage without a known interval is
+// unknown, not zero.
+func cpuIntervalSample() (usage, interval float64, ok bool) {
+	file, err := os.Open(procRoot() + "/stat")
+	if err != nil {
+		return 0, 0, false
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	if !scanner.Scan() {
+		return 0, 0, false
+	}
+	fields := strings.Fields(scanner.Text())
+	if len(fields) < 5 || fields[0] != "cpu" {
+		return 0, 0, false
+	}
+	var total, idle uint64
+	for i, field := range fields[1:] {
+		value, err := strconv.ParseUint(field, 10, 64)
+		if err != nil {
+			return 0, 0, false
+		}
+		total += value
+		if i == 3 || i == 4 { // idle + iowait
+			idle += value
+		}
+	}
+	now := time.Now()
+	cpuIntervalState.Lock()
+	defer cpuIntervalState.Unlock()
+	if !cpuIntervalState.ready {
+		cpuIntervalState.lastTotal, cpuIntervalState.lastIdle = total, idle
+		cpuIntervalState.lastAt, cpuIntervalState.ready = now, true
+		return 0, 0, false
+	}
+	totalDelta := total - cpuIntervalState.lastTotal
+	idleDelta := idle - cpuIntervalState.lastIdle
+	elapsed := now.Sub(cpuIntervalState.lastAt).Seconds()
+	cpuIntervalState.lastTotal, cpuIntervalState.lastIdle = total, idle
+	cpuIntervalState.lastAt = now
+	if totalDelta == 0 || elapsed <= 0 {
+		return 0, 0, false
+	}
+	usage = (1 - float64(idleDelta)/float64(totalDelta)) * 100
+	if math.IsNaN(usage) || math.IsInf(usage, 0) || usage < 0 || usage > 100 {
+		return 0, 0, false
+	}
+	return usage, elapsed, true
 }
 
 func Cpu() CpuInfo {
 	cpuinfo := CpuStaticInfo()
 
+	if runtime.GOOS == "linux" {
+		if usage, interval, ok := cpuIntervalSample(); ok {
+			cpuinfo.CPUUsage = usage
+			cpuinfo.IntervalSeconds = interval
+			cpuinfo.Valid = true
+			return cpuinfo
+		}
+		// First Linux sample only establishes the baseline; an unqualified
+		// percentage is unknown, not zero.
+		cpuinfo.Valid = false
+		return cpuinfo
+	}
+
 	percentages, err := cpu.Percent(0, false)
 	if err == nil && len(percentages) > 0 {
 		cpuinfo.CPUUsage = percentages[0]
+		cpuinfo.IntervalSeconds = flags.Interval
 		cpuinfo.Valid = !math.IsNaN(percentages[0]) && !math.IsInf(percentages[0], 0) && percentages[0] >= 0 && percentages[0] <= 100
 	}
 

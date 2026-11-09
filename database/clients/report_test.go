@@ -68,7 +68,7 @@ func TestReportResourceClampDoesNotHideInvalidInputs(t *testing.T) {
 			if fields, err := NormalizeReportResources(&r); err == nil || len(fields) != 0 {
 				t.Fatal("invalid input was repaired into a valid report")
 			}
-			if r.Ram != ram || r.Swap != swap || r.Disk != disk {
+			if !reflect.DeepEqual(r.Ram, ram) || !reflect.DeepEqual(r.Swap, swap) || !reflect.DeepEqual(r.Disk, disk) {
 				t.Fatal("rejected report was partially modified")
 			}
 		})

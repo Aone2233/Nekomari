@@ -8,7 +8,14 @@ import (
 	"github.com/Aone2233/nekomari/pkg/metric"
 )
 
-const defaultBuiltinMetricRetentionDays = 1
+const (
+	// Panel-only history is cheap to rebuild and stays at one day.
+	defaultBuiltinMetricRetentionDays = 1
+	// New installs keep a useful personal history: 30 days of node metrics and
+	// 7 days of ping/HTTP. Existing definitions keep their stored retention.
+	defaultNodeMetricRetentionDays = 30
+	defaultPingMetricRetentionDays = 7
+)
 
 // RetentionSummary is the compatibility view of node metric policies.
 type RetentionSummary struct {
@@ -55,7 +62,7 @@ func summarizeRetentionDefinitions(defs []metric.Definition) RetentionSummary {
 
 // createMetricDefinitions creates built-in definitions with explicit policies.
 func createMetricDefinitions(ctx context.Context, s *metric.Store) error {
-	return createMetricDefinitionsWithDefaultRetention(ctx, s, defaultBuiltinMetricRetentionDays)
+	return createMetricDefinitionsWithDefaultRetention(ctx, s, defaultNodeMetricRetentionDays)
 }
 
 // EnsureBuiltinMetricDefinitions registers definitions for the server's
@@ -70,19 +77,32 @@ func createMetricDefinitionsWithDefaultRetention(ctx context.Context, s *metric.
 	}
 	definitions := []metric.Definition{
 		{Name: MetricCPU, Type: metric.TypeGauge, Unit: "%", Description: "CPU usage percentage", RetentionDays: defaultRetentionDays},
+		{Name: MetricCPUInterval, Type: metric.TypeGauge, Unit: "s", Description: "Actual host CPU averaging interval", RetentionDays: defaultRetentionDays},
+		{Name: MetricCPUCgroupUsage, Type: metric.TypeGauge, Unit: "%", Description: "cgroup CPU usage percentage", RetentionDays: defaultRetentionDays},
+		{Name: MetricCPUCgroupQuota, Type: metric.TypeGauge, Unit: "cores", Description: "cgroup CPU quota in cores", RetentionDays: defaultRetentionDays},
+		{Name: MetricCPUCgroupThrottled, Type: metric.TypeGauge, Unit: "s", Description: "cgroup cumulative throttled seconds", RetentionDays: defaultRetentionDays},
 		{Name: MetricGPU, Type: metric.TypeGauge, Unit: "%", Description: "GPU usage percentage", RetentionDays: defaultRetentionDays},
 		{Name: MetricGPUDeviceUsage, Type: metric.TypeGauge, Unit: "%", Description: "Per-device GPU utilization", RetentionDays: defaultRetentionDays},
 		{Name: MetricGPUMem, Type: metric.TypeGauge, Unit: "bytes", Description: "GPU memory used", RetentionDays: defaultRetentionDays},
 		{Name: MetricGPUMemTotal, Type: metric.TypeGauge, Unit: "bytes", Description: "GPU memory total", RetentionDays: defaultRetentionDays},
 		{Name: MetricGPUTemp, Type: metric.TypeGauge, Unit: "°C", Description: "GPU temperature", RetentionDays: defaultRetentionDays},
 		{Name: MetricRAM, Type: metric.TypeGauge, Unit: "bytes", Description: "RAM used", RetentionDays: defaultRetentionDays},
+		{Name: MetricRAMAvailable, Type: metric.TypeGauge, Unit: "bytes", Description: "RAM available", RetentionDays: defaultRetentionDays},
+		{Name: MetricRAMCached, Type: metric.TypeGauge, Unit: "bytes", Description: "RAM cached", RetentionDays: defaultRetentionDays},
+		{Name: MetricRAMBuffers, Type: metric.TypeGauge, Unit: "bytes", Description: "RAM buffers", RetentionDays: defaultRetentionDays},
+		{Name: MetricRAMZswap, Type: metric.TypeGauge, Unit: "bytes", Description: "zswap compressed pool", RetentionDays: defaultRetentionDays},
 		{Name: MetricSwap, Type: metric.TypeGauge, Unit: "bytes", Description: "Swap used", RetentionDays: defaultRetentionDays},
 		{Name: MetricLoad, Type: metric.TypeGauge, Unit: "", Description: "System load average", RetentionDays: defaultRetentionDays},
-		{Name: MetricDisk, Type: metric.TypeGauge, Unit: "bytes", Description: "Disk used", RetentionDays: defaultRetentionDays},
+		{Name: MetricDisk, Type: metric.TypeGauge, Unit: "bytes", Description: "Disk used (physical-mount sum)", RetentionDays: defaultRetentionDays},
+		{Name: MetricDiskMountUsed, Type: metric.TypeGauge, Unit: "bytes", Description: "Per-mount used bytes (top 20)", RetentionDays: defaultRetentionDays},
+		{Name: MetricDiskMountTotal, Type: metric.TypeGauge, Unit: "bytes", Description: "Per-mount total bytes (top 20)", RetentionDays: defaultRetentionDays},
 		{Name: MetricNetIn, Type: metric.TypeGauge, Unit: "bytes/s", Description: "Network in rate", RetentionDays: defaultRetentionDays},
 		{Name: MetricNetOut, Type: metric.TypeGauge, Unit: "bytes/s", Description: "Network out rate", RetentionDays: defaultRetentionDays},
 		{Name: MetricNetTotalUp, Type: metric.TypeCounter, Unit: "bytes", Description: "Network total upload", RetentionDays: defaultRetentionDays},
 		{Name: MetricNetTotalDown, Type: metric.TypeCounter, Unit: "bytes", Description: "Network total download", RetentionDays: defaultRetentionDays},
+		{Name: MetricTCPOutSegs, Type: metric.TypeCounter, Unit: "count", Description: "Kernel TCP outbound segments", RetentionDays: defaultRetentionDays},
+		{Name: MetricTCPRetransSegs, Type: metric.TypeCounter, Unit: "count", Description: "Kernel TCP retransmitted segments", RetentionDays: defaultRetentionDays},
+		{Name: MetricTCPRetransPct, Type: metric.TypeGauge, Unit: "%", Description: "Interval TCP retransmit percentage (host-wide)", RetentionDays: defaultRetentionDays},
 		{Name: MetricTrafficUp, Type: metric.TypeGauge, Unit: "bytes", Description: "Billing-cycle cumulative upload (last only; legacy history may have mixed semantics)", RetentionDays: defaultRetentionDays},
 		{Name: MetricTrafficDown, Type: metric.TypeGauge, Unit: "bytes", Description: "Billing-cycle cumulative download (last only; legacy history may have mixed semantics)", RetentionDays: defaultRetentionDays},
 		{Name: MetricTrafficIntervalUp, Type: metric.TypeGauge, Unit: "bytes", Description: "v2 validated upload interval delta; sum is additive; missing intervals are unknown", RetentionDays: defaultRetentionDays},
@@ -95,7 +115,24 @@ func createMetricDefinitionsWithDefaultRetention(ctx context.Context, s *metric.
 		{Name: MetricRestarts, Type: metric.TypeCounter, Unit: "count", Description: "Detected node restarts (cumulative; conservative uptime-decrease inference)", RetentionDays: defaultRetentionDays},
 		{Name: MetricPingLatency, Type: metric.TypeGauge, Unit: "ms", Description: "Ping latency", RetentionDays: defaultRetentionDays},
 		{Name: MetricPingSuccessLatency, Type: metric.TypeGauge, Unit: "ms", Description: "v2 successful Ping latency only; negative failures excluded", RetentionDays: defaultRetentionDays},
-		{Name: MetricPingLoss, Type: metric.TypeGauge, Unit: "ratio", Description: "Ping packet loss indicator", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingLoss, Type: metric.TypeGauge, Unit: "ratio", Description: "Per-attempt ping failure indicator (legacy 0/1)", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingAttempts, Type: metric.TypeGauge, Unit: "count", Description: "Probe attempts in this cycle", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingSuccess, Type: metric.TypeGauge, Unit: "count", Description: "Successful probe attempts in this cycle", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingLossPct, Type: metric.TypeGauge, Unit: "%", Description: "Cycle loss percentage (0-100); not a per-attempt 0/1", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingMin, Type: metric.TypeGauge, Unit: "ms", Description: "Minimum successful RTT in this cycle", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingAvg, Type: metric.TypeGauge, Unit: "ms", Description: "Average successful RTT in this cycle", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingMax, Type: metric.TypeGauge, Unit: "ms", Description: "Maximum successful RTT in this cycle", RetentionDays: defaultRetentionDays},
+		{Name: MetricPingJitter, Type: metric.TypeGauge, Unit: "ms", Description: "RFC3550 instantaneous jitter in this cycle", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPDNS, Type: metric.TypeGauge, Unit: "ms", Description: "HTTP DNS phase", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPTCP, Type: metric.TypeGauge, Unit: "ms", Description: "HTTP TCP connect phase", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPTLS, Type: metric.TypeGauge, Unit: "ms", Description: "HTTP TLS handshake phase", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPTTFB, Type: metric.TypeGauge, Unit: "ms", Description: "HTTP time to first byte", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPTotal, Type: metric.TypeGauge, Unit: "ms", Description: "HTTP total attempt time", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPStatus, Type: metric.TypeGauge, Unit: "code", Description: "HTTP final status code", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPRedirects, Type: metric.TypeGauge, Unit: "count", Description: "HTTP redirect hops", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPTLSExpiryDays, Type: metric.TypeGauge, Unit: "days", Description: "Remaining days of the final verified leaf certificate", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPReachable, Type: metric.TypeGauge, Unit: "bool", Description: "TCP/TLS completed regardless of HTTP status", RetentionDays: defaultRetentionDays},
+		{Name: MetricHTTPAvailable, Type: metric.TypeGauge, Unit: "bool", Description: "HTTP status matched the expected set", RetentionDays: defaultRetentionDays},
 		{Name: MetricBackupAge, Type: metric.TypeGauge, Unit: "s", Description: "Seconds since the last successful backup", RetentionDays: defaultRetentionDays},
 		{Name: MetricBackupOK, Type: metric.TypeGauge, Unit: "bool", Description: "Last backup succeeded (1) or not (0)", RetentionDays: defaultRetentionDays},
 		{Name: MetricPanelRSS, Type: metric.TypeGauge, Unit: "bytes", Description: "Panel process resident memory (unavailable readings omitted)", RetentionDays: defaultBuiltinMetricRetentionDays},
@@ -112,7 +149,32 @@ func createMetricDefinitionsWithDefaultRetention(ctx context.Context, s *metric.
 	}
 
 	for _, def := range definitions {
-		companion := map[string]string{MetricTrafficIntervalUp: MetricTrafficUp, MetricTrafficIntervalDown: MetricTrafficDown, MetricTrafficIntervalValid: MetricTrafficUp, MetricPingSuccessLatency: MetricPingLatency}[def.Name]
+		if IsPingMetric(def.Name) {
+			def.RetentionDays = defaultPingMetricRetentionDays
+		} else if IsPanelMetric(def.Name) {
+			def.RetentionDays = defaultBuiltinMetricRetentionDays
+		}
+		companion := map[string]string{
+			MetricTrafficIntervalUp: MetricTrafficUp, MetricTrafficIntervalDown: MetricTrafficDown,
+			MetricTrafficIntervalValid: MetricTrafficUp,
+			MetricPingSuccessLatency:   MetricPingLatency,
+			MetricPingAttempts:         MetricPingLatency, MetricPingSuccess: MetricPingLatency,
+			MetricPingLossPct: MetricPingLatency, MetricPingMin: MetricPingLatency,
+			MetricPingAvg: MetricPingLatency, MetricPingMax: MetricPingLatency,
+			MetricPingJitter:  MetricPingLatency,
+			MetricCPUInterval: MetricCPU, MetricCPUCgroupUsage: MetricCPU,
+			MetricCPUCgroupQuota: MetricCPU, MetricCPUCgroupThrottled: MetricCPU,
+			MetricRAMAvailable: MetricRAM, MetricRAMCached: MetricRAM,
+			MetricRAMBuffers: MetricRAM, MetricRAMZswap: MetricRAM,
+			MetricDiskMountUsed: MetricDisk, MetricDiskMountTotal: MetricDisk,
+			MetricTCPOutSegs: MetricNetIn, MetricTCPRetransSegs: MetricNetIn,
+			MetricTCPRetransPct: MetricNetIn,
+			MetricHTTPDNS:       MetricPingLatency, MetricHTTPTCP: MetricPingLatency,
+			MetricHTTPTLS: MetricPingLatency, MetricHTTPTTFB: MetricPingLatency,
+			MetricHTTPTotal: MetricPingLatency, MetricHTTPStatus: MetricPingLatency,
+			MetricHTTPRedirects: MetricPingLatency, MetricHTTPTLSExpiryDays: MetricPingLatency,
+			MetricHTTPReachable: MetricPingLatency, MetricHTTPAvailable: MetricPingLatency,
+		}[def.Name]
 		if companion != "" {
 			base, err := s.GetMetric(ctx, companion)
 			if err == nil {

@@ -155,7 +155,18 @@ func (m *PingTaskManager) executePingTaskTracked(ctx context.Context, task model
 			// Context is still active, continue.
 		}
 
-		agent_runtime.DispatchPing(clientUUID, v2.PingParams{TaskID: task.Id, Type: task.Type, Target: task.Target, Reference: task.Reference})
+		agent_runtime.DispatchPing(clientUUID, v2.PingParams{
+			TaskID:              task.Id,
+			Type:                task.Type,
+			Target:              task.Target,
+			Reference:           task.Reference,
+			ProbeAttempts:       task.ProbeAttempts,
+			ProbeSpacingMS:      task.ProbeSpacingMS,
+			ProbeTimeoutMS:      task.ProbeTimeoutMS,
+			HTTPMode:            task.HTTPMode,
+			HTTPExpectedStatus:  task.HTTPExpectedStatus,
+			IPVersionPreference: task.IPVersionPreference,
+		})
 	}
 }
 

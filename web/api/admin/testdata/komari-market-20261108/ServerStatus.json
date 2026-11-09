@@ -1,0 +1,58 @@
+{
+  "name": "ServerStatus · Komari",
+  "short": "ServerStatus",
+  "description": "A native Komari port of the classic compact ServerStatus table theme.",
+  "version": "1.0.18",
+  "author": "tfhmc&chatgpt",
+  "url": "https://github.com/tfhmc/serverstatus",
+  "preview": "preview.png",
+  "configuration": {
+    "type": "managed",
+    "name": {
+      "zh-CN": "ServerStatus 主题设置",
+      "zh-TW": "ServerStatus 主題設定",
+      "en": "ServerStatus theme settings"
+    },
+    "data": [
+      {
+        "type": "title",
+        "name": {
+          "zh-CN": "背景与通信",
+          "zh-TW": "背景與通訊",
+          "en": "Background and transport"
+        }
+      },
+      {
+        "key": "backgroundImageUrl",
+        "type": "string",
+        "default": "",
+        "name": {
+          "zh-CN": "背景图片 URL",
+          "zh-TW": "背景圖片 URL",
+          "en": "Background image URL"
+        },
+        "help": {
+          "zh-CN": "支持 HTTPS 图片或主题内资源地址；留空使用默认纹理背景。",
+          "zh-TW": "支援 HTTPS 圖片或主題內資源網址；留空使用預設紋理背景。",
+          "en": "Use an HTTPS image or bundled theme asset; leave empty for the default texture."
+        }
+      },
+      {
+        "key": "rpcTransport",
+        "type": "select",
+        "options": "HTTP,WebSocket",
+        "default": "WebSocket",
+        "name": {
+          "zh-CN": "监控通信方式",
+          "zh-TW": "監控通訊方式",
+          "en": "Monitoring transport"
+        },
+        "help": {
+          "zh-CN": "WebSocket 为默认实时通信方式，断线时自动使用 HTTP 保底；HTTP 模式不会建立 WebSocket。Komari 浏览器接口不支持 gRPC。",
+          "zh-TW": "WebSocket 為預設即時通訊方式，斷線時自動以 HTTP 備援；HTTP 模式不會建立 WebSocket。Komari 瀏覽器介面不支援 gRPC。",
+          "en": "WebSocket is the default live transport and falls back to HTTP when disconnected. HTTP mode opens no WebSocket. Komari does not expose browser gRPC."
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "Komari Minecraft",
+  "short": "Minecraft",
+  "description": "支持浅色、深色与 Minecraft 外观的监控面板",
+  "version": "1.1.0",
+  "author": "ShumTin",
+  "preview": "dist/preview.png",
+  "url": "https://github.com/ShumTin/komari-minecraft",
+  "configuration": {
+    "type": "managed",
+    "name": "主题设置",
+    "data": [
+      { "type": "title", "name": "服务器卡片" },
+      { "key": "showCarrierPing", "name": "启用三网延迟", "type": "switch", "default": false, "help": "开启显示电信、移动、联通延迟和丢包；关闭显示平均值。" },
+      { "key": "telecomPingTaskName", "name": "电信延迟任务名称", "type": "string", "default": "", "help": "填写完整任务名。三项全部留空时按运营商名称匹配，再按任务顺序补充；指定任务无数据时显示 --。" },
+      { "key": "mobilePingTaskName", "name": "移动延迟任务名称", "type": "string", "default": "", "help": "仅在启用三网延迟后生效。" },
+      { "key": "unicomPingTaskName", "name": "联通延迟任务名称", "type": "string", "default": "", "help": "仅在启用三网延迟后生效。" },
+      { "type": "title", "name": "首页总览" },
+      { "key": "showStatsBar", "name": "显示总览统计条", "type": "switch", "default": true },
+      { "key": "showOnline", "name": "显示在线", "type": "switch", "default": true },
+      { "key": "showAssets", "name": "显示资产", "type": "switch", "default": true },
+      { "key": "showTraffic", "name": "显示累计流量", "type": "switch", "default": true },
+      { "key": "showSpeed", "name": "显示实时网速", "type": "switch", "default": true }
+    ]
+  }
+}

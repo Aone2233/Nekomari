@@ -1,4 +1,7 @@
 *.sh text eol=lf
+# Market fixtures are byte-hashed; a CRLF checkout changes the digest on Windows.
+web/api/admin/testdata/**/*.json -text
+internal/plugin/testdata/**/*.json -text
 # Unified patches need a leading space on empty context lines.
 *.patch whitespace=-blank-at-eol
 # git archive substitutes the commit time, so a tarball build has a deterministic __BUILD_TIME__.

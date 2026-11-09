@@ -1,0 +1,32 @@
+{
+  "name": {
+    "zh_CN": "Email 通知",
+    "zh_TW": "Email 通知",
+    "en": "Email Notification",
+    "ja_JP": "メール通知",
+    "id_ID": "Notifikasi Email"
+  },
+  "short": "email-notification-plugin",
+  "description": {
+    "zh_CN": "通过 SMTP 发送 Komari 通知",
+    "zh_TW": "透過 SMTP 傳送 Komari 通知",
+    "en": "Send Komari notifications through SMTP",
+    "ja_JP": "SMTP で Komari 通知を送信します",
+    "id_ID": "Kirim notifikasi Komari melalui SMTP"
+  },
+  "author": {
+    "zh_CN": "Akizon77",
+    "zh_TW": "Akizon77",
+    "en": "Akizon77",
+    "ja_JP": "Akizon77",
+    "id_ID": "Akizon77"
+  },
+  "version": "1.0.0",
+  "komari": ">=1.6.0",
+  "entry": "script.js",
+  "icon": "icon.webp",
+  "permissions": {
+    "node": true,
+    "timeout": 30
+  }
+}

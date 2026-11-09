@@ -47,24 +47,90 @@ func (e *PingDeletionPendingError) Error() string {
 
 func (e *PingDeletionPendingError) Unwrap() error { return e.Err }
 
+// PingTaskOptions carries the additive v1.8 probe settings. The zero value is
+// the legacy single-probe behavior, so existing callers are unchanged.
+type PingTaskOptions struct {
+	ProbeAttempts       int
+	ProbeSpacingMS      int
+	ProbeTimeoutMS      int
+	HTTPMode            string
+	HTTPExpectedStatus  string
+	IPVersionPreference string
+}
+
+// ValidateProbeOptions validates the additive v1.8 probe fields. Zero/empty is
+// the legacy single-probe behavior and is always valid.
+func ValidateProbeOptions(task *models.PingTask) error {
+	if task == nil {
+		return errors.New("invalid ping task")
+	}
+	if task.ProbeAttempts < 0 || task.ProbeAttempts > 10 {
+		return &PingTaskValidationError{Err: errors.New("probe_attempts must be between 0 and 10")}
+	}
+	if task.ProbeSpacingMS != 0 && (task.ProbeSpacingMS < 50 || task.ProbeSpacingMS > 1000) {
+		return &PingTaskValidationError{Err: errors.New("probe_spacing_ms must be 0 or between 50 and 1000")}
+	}
+	if task.ProbeTimeoutMS != 0 && (task.ProbeTimeoutMS < 100 || task.ProbeTimeoutMS > 30000) {
+		return &PingTaskValidationError{Err: errors.New("probe_timeout_ms must be 0 or between 100 and 30000")}
+	}
+	switch task.HTTPMode {
+	case "", "legacy", "status_aware":
+	default:
+		return &PingTaskValidationError{Err: errors.New("http_mode must be empty, legacy, or status_aware")}
+	}
+	if len(task.HTTPExpectedStatus) > 128 {
+		return &PingTaskValidationError{Err: errors.New("http_expected_status is too long")}
+	}
+	for _, char := range task.HTTPExpectedStatus {
+		if (char < '0' || char > '9') && char != ',' && char != '-' && char != ' ' {
+			return &PingTaskValidationError{Err: errors.New("http_expected_status must contain codes, ranges, commas and spaces")}
+		}
+	}
+	switch task.IPVersionPreference {
+	case "", "auto", "4", "6":
+	default:
+		return &PingTaskValidationError{Err: errors.New("ip_version_preference must be empty, auto, 4, or 6")}
+	}
+	return nil
+}
+
 // AddPingTask 创建延迟监测任务。defaultOn 表示新加入的服务器是否自动开启此监测。
 func AddPingTask(clients []string, defaultOn bool, name string, target, task_type string, interval int, reference string) (uint, error) {
-	return addPingTaskWith(context.Background(), dbcore.GetDBInstance(), clients, defaultOn, name, target, task_type, interval, reference, ReloadPingSchedule)
+	return AddPingTaskWithOptions(clients, defaultOn, name, target, task_type, interval, reference, PingTaskOptions{})
+}
+
+// AddPingTaskWithOptions creates a task with the additive probe settings. It is
+// the only legacy-path constructor that writes the v1.8 columns.
+func AddPingTaskWithOptions(clients []string, defaultOn bool, name string, target, taskType string, interval int, reference string, opts PingTaskOptions) (uint, error) {
+	return addPingTaskWithOptions(context.Background(), dbcore.GetDBInstance(), clients, defaultOn, name, target, taskType, interval, reference, opts, ReloadPingSchedule)
 }
 
 func addPingTaskWith(ctx context.Context, db *gorm.DB, clients []string, defaultOn bool, name string, target, taskType string, interval int, reference string, reload func() error) (uint, error) {
+	return addPingTaskWithOptions(ctx, db, clients, defaultOn, name, target, taskType, interval, reference, PingTaskOptions{}, reload)
+}
+
+func addPingTaskWithOptions(ctx context.Context, db *gorm.DB, clients []string, defaultOn bool, name string, target, taskType string, interval int, reference string, opts PingTaskOptions, reload func() error) (uint, error) {
 	if ctx == nil || db == nil || reload == nil {
 		return 0, errors.New("invalid task creation context")
 	}
 	normalizedClients := normalizePingClients(models.StringArray(clients))
 	task := models.PingTask{
-		Clients:   normalizedClients,
-		DefaultOn: defaultOn,
-		Name:      name,
-		Type:      taskType,
-		Target:    target,
-		Reference: strings.TrimSpace(reference),
-		Interval:  interval,
+		Clients:             normalizedClients,
+		DefaultOn:           defaultOn,
+		Name:                name,
+		Type:                taskType,
+		Target:              target,
+		Reference:           strings.TrimSpace(reference),
+		Interval:            interval,
+		ProbeAttempts:       opts.ProbeAttempts,
+		ProbeSpacingMS:      opts.ProbeSpacingMS,
+		ProbeTimeoutMS:      opts.ProbeTimeoutMS,
+		HTTPMode:            opts.HTTPMode,
+		HTTPExpectedStatus:  opts.HTTPExpectedStatus,
+		IPVersionPreference: opts.IPVersionPreference,
+	}
+	if err := ValidateProbeOptions(&task); err != nil {
+		return 0, err
 	}
 	err := pingguard.WithTaskCreation(ctx, func() error {
 		return pingguard.WithDefaultRoster(ctx, func() error {
@@ -326,6 +392,9 @@ func editPingTasksWith(ctx context.Context, db *gorm.DB, edits []PingTaskEdit, r
 		if edit.Task == nil || edit.Task.Id == 0 {
 			return errors.New("invalid ping task ID")
 		}
+		if err := ValidateProbeOptions(edit.Task); err != nil {
+			return err
+		}
 		if _, exists := seen[edit.Task.Id]; exists {
 			return errors.New("duplicate ping task ID")
 		}
@@ -367,12 +436,18 @@ func editPingTasksWith(ctx context.Context, db *gorm.DB, edits []PingTaskEdit, r
 					return &PingTaskValidationError{Err: err}
 				}
 				updates := map[string]interface{}{
-					"name":        task.Name,
-					"clients":     normalizePingClients(task.Clients),
-					"all_clients": task.DefaultOn,
-					"type":        task.Type,
-					"target":      task.Target,
-					"interval":    task.Interval,
+					"name":                  task.Name,
+					"clients":               normalizePingClients(task.Clients),
+					"all_clients":           task.DefaultOn,
+					"type":                  task.Type,
+					"target":                task.Target,
+					"interval":              task.Interval,
+					"probe_attempts":        task.ProbeAttempts,
+					"probe_spacing_ms":      task.ProbeSpacingMS,
+					"probe_timeout_ms":      task.ProbeTimeoutMS,
+					"http_mode":             task.HTTPMode,
+					"http_expected_status":  task.HTTPExpectedStatus,
+					"ip_version_preference": task.IPVersionPreference,
 				}
 				if edit.Reference != nil {
 					updates["reference"] = strings.TrimSpace(*edit.Reference)

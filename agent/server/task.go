@@ -4,16 +4,20 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -328,6 +332,165 @@ func httpPingWith(target string, timeout time.Duration, resolve func(string) (st
 	return latency, family, errors.New("http status not ok")
 }
 
+// httpProbeOutcome is one HTTP attempt with its phase breakdown. The legacy
+// value/loss decision is derived separately so status-aware and legacy modes can
+// share the same measurement.
+type httpProbeOutcome struct {
+	totalUS   int64
+	family    string
+	obs       *v2.HTTPProbeReport
+	err       error
+	reachable bool
+}
+
+// httpProbe measures one HTTP GET and records DNS/TCP/TLS/TTFB/total phases.
+// expectedStatus is a comma-separated list of codes/ranges; empty means the
+// legacy 200-399 policy. statusAware=false keeps 4xx/5xx as a failed probe.
+func httpProbe(target string, timeout time.Duration, expectedStatus string, statusAware bool) httpProbeOutcome {
+	if strings.Contains(target, ":") && !strings.Contains(target, "[") {
+		if ip := net.ParseIP(target); ip != nil && ip.To4() == nil {
+			target = "[" + target + "]"
+		}
+	}
+	if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
+		target = "http://" + target
+	}
+
+	var phaseMu sync.Mutex
+	var dnsUS, tcpUS int64
+	var tcpSet bool
+	var firstFamily string
+	transport := &http.Transport{
+		DisableKeepAlives: true,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			dnsStart := time.Now()
+			ip, err := resolveIP(host)
+			dnsElapsed := time.Since(dnsStart).Microseconds()
+			phaseMu.Lock()
+			dnsUS += dnsElapsed
+			if firstFamily == "" {
+				firstFamily = addressFamilyOf(ip)
+			}
+			phaseMu.Unlock()
+			if err != nil {
+				return nil, err
+			}
+			tcpStart := time.Now()
+			conn, err := net.DialTimeout(network, net.JoinHostPort(ip, port), timeout)
+			tcpElapsed := time.Since(tcpStart).Microseconds()
+			phaseMu.Lock()
+			tcpUS += tcpElapsed
+			tcpSet = true
+			phaseMu.Unlock()
+			return conn, err
+		},
+	}
+	defer transport.CloseIdleConnections()
+
+	var tlsStart time.Time
+	var tlsUS int64
+	var ttfbUS int64
+	var ttfbSet bool
+	var redirects int
+	start := time.Now()
+	trace := &httptrace.ClientTrace{
+		TLSHandshakeStart: func() { tlsStart = time.Now() },
+		TLSHandshakeDone: func(_ tls.ConnectionState, _ error) {
+			if !tlsStart.IsZero() {
+				tlsUS = time.Since(tlsStart).Microseconds()
+			}
+		},
+		GotFirstResponseByte: func() {
+			ttfbUS = time.Since(start).Microseconds()
+			ttfbSet = true
+		},
+	}
+	client := &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			redirects++
+			return nil
+		},
+	}
+	req, err := http.NewRequest(http.MethodGet, target, nil)
+	if err != nil {
+		return httpProbeOutcome{err: err}
+	}
+	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+	resp, err := client.Do(req)
+	totalUS := time.Since(start).Microseconds()
+	phaseMu.Lock()
+	family := firstFamily
+	tcpKnown := tcpSet
+	phaseMu.Unlock()
+	out := httpProbeOutcome{totalUS: totalUS, family: family, reachable: err == nil}
+	obs := &v2.HTTPProbeReport{
+		DNSUS: &dnsUS, TotalUS: &totalUS, Redirects: &redirects,
+	}
+	if tcpKnown {
+		obs.TCPUS = &tcpUS
+	}
+	if tlsUS > 0 {
+		obs.TLSUS = &tlsUS
+	}
+	if ttfbSet {
+		obs.TTFBUS = &ttfbUS
+	}
+	if resp != nil {
+		defer resp.Body.Close()
+		status := resp.StatusCode
+		available := httpStatusAllowed(status, expectedStatus)
+		obs.StatusCode = &status
+		obs.Reachable = &out.reachable
+		obs.Available = &available
+		if resp.TLS != nil && len(resp.TLS.PeerCertificates) > 0 {
+			days := time.Until(resp.TLS.PeerCertificates[0].NotAfter).Hours() / 24
+			obs.TLSExpiryDays = &days
+		}
+		if !statusAware && !available {
+			out.err = errors.New("http status not ok")
+		}
+	} else {
+		reachable := false
+		obs.Reachable = &reachable
+	}
+	out.obs = obs
+	if err != nil {
+		out.err = err
+	}
+	return out
+}
+
+func httpStatusAllowed(code int, spec string) bool {
+	if strings.TrimSpace(spec) == "" {
+		return code >= 200 && code < 400
+	}
+	for _, part := range strings.Split(spec, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if strings.Contains(part, "-") {
+			bounds := strings.SplitN(part, "-", 2)
+			low, errLow := strconv.Atoi(strings.TrimSpace(bounds[0]))
+			high, errHigh := strconv.Atoi(strings.TrimSpace(bounds[1]))
+			if errLow == nil && errHigh == nil && code >= low && code <= high {
+				return true
+			}
+			continue
+		}
+		if exact, err := strconv.Atoi(part); err == nil && code == exact {
+			return true
+		}
+	}
+	return false
+}
+
 // auto 类型的协议解析（新增）
 //
 // 背景：监测任务的类型是每个任务一个（icmp/tcp/http）。选错协议的后果是恒定的
@@ -452,105 +615,304 @@ func isPermissionErr(err error) bool {
 //
 // 否则只看到一条抖动的曲线，无从判断是哪一段出了问题。
 func NewPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget, reference string) {
-	if taskID == 0 {
-		log.Printf("Invalid task ID: %d", taskID)
+	NewPingTaskWithParams(conn, v2.PingParams{
+		TaskID: taskID, Type: pingType, Target: pingTarget, Reference: reference,
+	})
+}
+
+// NewPingTaskWithParams is the v1.8 entrypoint. Zero/empty additive fields keep
+// the legacy single-probe behavior exactly.
+func NewPingTaskWithParams(conn *ws.SafeConn, p v2.PingParams) {
+	if p.TaskID == 0 {
+		log.Printf("Invalid task ID: %d", p.TaskID)
 		return
 	}
-	runPingTask(conn, taskID, pingType, pingTarget)
-
-	if ref := strings.TrimSpace(reference); ref != "" {
-		runReferenceProbe(conn, taskID, pingType, ref, 3*time.Second)
+	runPingTaskConfig(conn, p)
+	if ref := strings.TrimSpace(p.Reference); ref != "" {
+		refParams := p
+		refParams.Reference = ""
+		runReferenceProbeConfig(conn, refParams, ref)
 	}
 }
 
-// runReferenceProbe 探测参考目标并以 role="reference" 上报。
-// 协议沿用主任务的协议（icmp/tcp/http）；不认识的协议按 icmp 处理。
+// runReferenceProbe 保留旧签名，供既有测试/调用方使用。
 func runReferenceProbe(conn *ws.SafeConn, taskID uint, pingType, reference string, timeout time.Duration) {
-	// 归一化：auto/dual 这类「主目标侧的策略」对参考点没有意义，退回 icmp。
-	kind := pingType
+	p := v2.PingParams{TaskID: taskID, Type: pingType, Target: reference,
+		ProbeTimeoutMS: int(timeout / time.Millisecond)}
+	runReferenceProbeConfig(conn, p, reference)
+}
+
+// runReferenceProbeConfig 探测参考目标并以 role="reference" 上报。
+// 协议沿用主任务的协议（icmp/tcp/http）；不认识的协议按 icmp 处理。
+func runReferenceProbeConfig(conn *ws.SafeConn, p v2.PingParams, reference string) {
+	kind := p.Type
 	switch kind {
 	case "tcp", "http", "icmp":
 	default:
 		kind = "icmp"
 	}
-
-	var latencyUS int64 = -1
-	var family string
-	var err error
-	switch kind {
-	case "tcp":
-		latencyUS, family, err = tcpPing(reference, timeout)
-	case "http":
-		latencyUS, family, err = httpPing(reference, timeout)
-	default:
-		latencyUS, family, err = icmpPing(reference, timeout)
-	}
-	if err != nil {
-		log.Printf("reference probe task %d [%s] target=%s failed: %v", taskID, kind, reference, err)
-	}
-	value, valueUS := pingResultValues(latencyUS, err == nil)
-	uploadPingResult(conn, kind, v2.BuildPingResultPayloadWithRoleFamilyAndMicros(
-		taskID, kind, "reference", family, value, valueUS, time.Now()))
-}
-
-// runPingTask 是单个目标的实际测量逻辑（原 NewPingTask 主体）。
-func runPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget string) {
-	if taskID == 0 {
-		log.Printf("Invalid task ID: %d", taskID)
+	if kind == "http" {
+		runHTTPProbeConfig(conn, p, reference, "reference")
 		return
 	}
-	// dual：同一周期内 ICMP 与 TCP 各测一次，上报两条结果。
-	// 这条路径不参与单协议的测量/重试逻辑，直接返回。
+	timeout := probeTimeout(p)
+	measure := func() (int64, string, error) {
+		switch kind {
+		case "tcp":
+			return tcpPing(reference, timeout)
+		default:
+			return icmpPing(reference, timeout)
+		}
+	}
+	attempts, spacing := probeAttempts(p)
+	if attempts <= 1 {
+		latencyUS, family, err := measure()
+		if err != nil {
+			log.Printf("reference probe task %d [%s] target=%s failed: %v", p.TaskID, kind, reference, err)
+		}
+		value, valueUS := pingResultValues(latencyUS, err == nil)
+		uploadPingResult(conn, kind, v2.BuildPingResultPayloadWithRoleFamilyAndMicros(
+			p.TaskID, kind, "reference", family, value, valueUS, time.Now()))
+		return
+	}
+	cycle := runProbeCycle(measure, attempts, spacing)
+	value, valueUS := pingResultValues(cycle.firstUS, cycle.success > 0)
+	stats := cycle.stats()
+	uploadPingResult(conn, kind, v2.BuildPingResultPayloadWithStats(
+		p.TaskID, kind, "reference", cycle.family, value, valueUS, stats, time.Now()))
+}
+
+// runPingTask 保留旧签名，供既有测试/调用方使用。
+func runPingTask(conn *ws.SafeConn, taskID uint, pingType, pingTarget string) {
+	runPingTaskConfig(conn, v2.PingParams{TaskID: taskID, Type: pingType, Target: pingTarget})
+}
+
+// runPingTaskConfig 是单个目标的实际测量逻辑。
+func runPingTaskConfig(conn *ws.SafeConn, p v2.PingParams) {
+	if p.TaskID == 0 {
+		log.Printf("Invalid task ID: %d", p.TaskID)
+		return
+	}
+	pingType, pingTarget := p.Type, p.Target
+	// dual：同一周期内 ICMP 与 TCP 各测 N 次，上报两条结果。
 	if pingType == "dual" {
-		runDualPing(conn, taskID, pingTarget, 3*time.Second)
+		runDualPingWithConfig(conn, p)
 		return
 	}
 	// auto：先探一次，选一个该目标真正答应的协议；下游逻辑（含上报的 ping_type）
 	// 统一使用解析后的值，因此面板上能看到实际采用的协议。
 	if pingType == "auto" {
-		resolvedKind, resolvedTarget := ResolveAuto(pingTarget)
-		log.Printf("ping task %d: auto resolved target=%s -> type=%s target=%s", taskID, pingTarget, resolvedKind, resolvedTarget)
+		resolvedKind, resolvedTarget := ResolveAuto(p.Target)
+		log.Printf("ping task %d: auto resolved target=%s -> type=%s target=%s", p.TaskID, p.Target, resolvedKind, resolvedTarget)
 		pingType, pingTarget = resolvedKind, resolvedTarget
 	}
+	if pingType == "http" {
+		runHTTPProbeConfig(conn, p, pingTarget, "")
+		return
+	}
 
-	timeout := 3 * time.Second // 默认超时时间
-
-	// family 由 measure 写入。measureWithRetries 返回的延迟总是来自最后一次成功的
-	// measure 调用（首次够快就用首次，否则用那次重试；全部偏慢时用最后一次探测的
-	// 延迟），所以这里记下的族与最终上报的延迟同源，不会出现「报了 A 的延迟、写了 B
-	// 的族」。pingResult 只有在那次调用真的失败时才是 -1（丢包）。
-	var family string
-	measure := func() (int64, error) {
+	timeout := probeTimeout(p)
+	measure := func() (int64, string, error) {
 		switch pingType {
 		case "icmp":
-			latency, used, err := icmpPing(pingTarget, timeout)
-			family = used
-			return latency, err
+			return icmpPing(pingTarget, timeout)
 		case "tcp":
-			latency, used, err := tcpPing(pingTarget, timeout)
-			family = used
-			return latency, err
+			return tcpPing(pingTarget, timeout)
 		case "http":
-			latency, used, err := httpPing(pingTarget, timeout)
-			family = used
-			return latency, err
+			return httpPing(pingTarget, timeout)
 		default:
-			return -1, errors.New("unsupported ping type")
+			return -1, "", errors.New("unsupported ping type")
 		}
 	}
 
-	// 内部延迟是微秒；上报时同时给出旧面板要的毫秒与新的微秒字段（见 pingResultValues）。
-	latencyUS, ok := measureWithRetries(taskID, pingType, measure)
-	pingResult, pingResultUS := pingResultValues(latencyUS, ok)
-	finishedAt := time.Now()
-	wsPayload := v2.BuildPingResultPayloadWithRoleFamilyAndMicros(
-		taskID, pingType, "", family, pingResult, pingResultUS, finishedAt)
-	// https://github.com/komari-monitor/komari/commit/eb87a4fc330b7d1c407fa4ff70177615a4f50a1f
-	// -1 代表丢包，服务端计算
-	//if pingResult == -1 {
-	//	return
-	//}
-	uploadPingResult(conn, pingType, wsPayload)
+	attempts, spacing := probeAttempts(p)
+	if attempts <= 1 {
+		// Legacy single-probe path: keep the SYN-retransmit retry and the exact
+		// old wire shape. Do not attach v1.8 stats here.
+		var family string
+		latencyUS, ok := measureWithRetries(p.TaskID, pingType, func() (int64, error) {
+			latency, used, err := measure()
+			if err == nil {
+				family = used
+			}
+			return latency, err
+		})
+		pingResult, pingResultUS := pingResultValues(latencyUS, ok)
+		uploadPingResult(conn, pingType, v2.BuildPingResultPayloadWithRoleFamilyAndMicros(
+			p.TaskID, pingType, "", family, pingResult, pingResultUS, time.Now()))
+		return
+	}
+
+	cycle := runProbeCycle(measure, attempts, spacing)
+	value, valueUS := pingResultValues(cycle.firstUS, cycle.success > 0)
+	stats := cycle.stats()
+	uploadPingResult(conn, pingType, v2.BuildPingResultPayloadWithStats(
+		p.TaskID, pingType, "", cycle.family, value, valueUS, stats, time.Now()))
+}
+
+// runHTTPProbeConfig measures HTTP with the additive phase breakdown. The
+// legacy value/loss decision stays in place for `legacy` mode; `status_aware`
+// turns 4xx/5xx into reachable-but-unavailable instead of packet loss.
+func runHTTPProbeConfig(conn *ws.SafeConn, p v2.PingParams, target, role string) {
+	attempts, spacing := probeAttempts(p)
+	timeout := probeTimeout(p)
+	expected := p.HTTPExpectedStatus
+	statusAware := p.HTTPMode == "status_aware"
+	var diagnostic, successful *v2.HTTPProbeReport
+	measure := func() (int64, string, error) {
+		out := httpProbe(target, timeout, expected, statusAware)
+		if diagnostic == nil {
+			diagnostic = out.obs
+		}
+		if out.err == nil && successful == nil {
+			successful = out.obs
+		}
+		return out.totalUS, out.family, out.err
+	}
+
+	if attempts <= 1 {
+		out := httpProbe(target, timeout, expected, statusAware)
+		if out.err != nil {
+			log.Printf("http ping task %d target=%s failed: %v", p.TaskID, target, out.err)
+		}
+		value, valueUS := pingResultValues(out.totalUS, out.err == nil)
+		stats := v2.PingProbeStats{HTTP: out.obs}
+		uploadPingResult(conn, "http", v2.BuildPingResultPayloadWithStats(
+			p.TaskID, "http", role, out.family, value, valueUS, stats, time.Now()))
+		return
+	}
+
+	cycle := runProbeCycle(measure, attempts, spacing)
+	value, valueUS := pingResultValues(cycle.firstUS, cycle.success > 0)
+	stats := cycle.stats()
+	stats.HTTP = successful
+	if stats.HTTP == nil {
+		stats.HTTP = diagnostic
+	}
+	uploadPingResult(conn, "http", v2.BuildPingResultPayloadWithStats(
+		p.TaskID, "http", role, cycle.family, value, valueUS, stats, time.Now()))
+}
+
+// probeCycle is the result of N attempts in one scheduled cycle.
+type probeCycle struct {
+	attempts int
+	success  int
+	lossPct  float64
+	firstUS  int64
+	minUS    *int64
+	avgUS    *int64
+	maxUS    *int64
+	jitterUS *int64
+	family   string
+}
+
+func (c probeCycle) stats() v2.PingProbeStats {
+	attempts, success, loss := c.attempts, c.success, c.lossPct
+	return v2.PingProbeStats{
+		Attempts: &attempts, Success: &success, LossPct: &loss,
+		MinUS: c.minUS, AvgUS: c.avgUS, MaxUS: c.maxUS, JitterUS: c.jitterUS,
+		ProbeMode: "multi",
+	}
+}
+
+// runProbeCycle performs attempts with spacing and computes success-only
+// statistics. A failed attempt contributes to loss_pct but never to
+// min/avg/max/jitter.
+func runProbeCycle(measure func() (int64, string, error), attempts, spacingMS int) probeCycle {
+	if attempts < 1 {
+		attempts = 1
+	}
+	if attempts > 10 {
+		attempts = 10
+	}
+	cycle := probeCycle{attempts: attempts, firstUS: -1}
+	var latencies []int64
+	var firstFamily string
+	for i := 0; i < attempts; i++ {
+		if i > 0 && spacingMS > 0 {
+			time.Sleep(time.Duration(spacingMS) * time.Millisecond)
+		}
+		latency, family, err := measure()
+		if firstFamily == "" && family != "" {
+			firstFamily = family
+		}
+		if err != nil {
+			continue
+		}
+		cycle.success++
+		if cycle.firstUS < 0 {
+			cycle.firstUS = latency
+			cycle.family = family
+		}
+		latencies = append(latencies, latency)
+	}
+	if cycle.family == "" {
+		cycle.family = firstFamily
+	}
+	cycle.lossPct = float64(cycle.attempts-cycle.success) / float64(cycle.attempts) * 100
+	if len(latencies) > 0 {
+		minV, maxV := latencies[0], latencies[0]
+		var sum int64
+		for _, v := range latencies {
+			if v < minV {
+				minV = v
+			}
+			if v > maxV {
+				maxV = v
+			}
+			sum += v
+		}
+		avgV := sum / int64(len(latencies))
+		cycle.minUS, cycle.avgUS, cycle.maxUS = &minV, &avgV, &maxV
+	}
+	if len(latencies) >= 2 {
+		// RFC 3550 instantaneous jitter over consecutive successful RTTs.
+		var jitter float64
+		previous := latencies[0]
+		seen := 0
+		for _, current := range latencies[1:] {
+			delta := float64(current - previous)
+			if delta < 0 {
+				delta = -delta
+			}
+			jitter += (delta - jitter) / 16
+			previous = current
+			seen++
+		}
+		if seen > 0 {
+			rounded := int64(math.Round(jitter))
+			cycle.jitterUS = &rounded
+		}
+	}
+	return cycle
+}
+
+func probeTimeout(p v2.PingParams) time.Duration {
+	if p.ProbeTimeoutMS >= 100 && p.ProbeTimeoutMS <= 30000 {
+		return time.Duration(p.ProbeTimeoutMS) * time.Millisecond
+	}
+	return 3 * time.Second
+}
+
+func probeAttempts(p v2.PingParams) (int, int) {
+	attempts := p.ProbeAttempts
+	if attempts <= 0 {
+		attempts = 1
+	}
+	if attempts > 10 {
+		attempts = 10
+	}
+	spacing := p.ProbeSpacingMS
+	if spacing <= 0 {
+		spacing = 200
+	}
+	if spacing < 50 {
+		spacing = 50
+	}
+	if spacing > 1000 {
+		spacing = 1000
+	}
+	return attempts, spacing
 }
 
 // 首次测量超过这个延迟就重试：Linux 的初始 RTO 是 1s，一次 SYN 重传会把
@@ -687,39 +1049,57 @@ func dualTCPTarget(target string) string {
 	return net.JoinHostPort(target, "443")
 }
 
-// runDualPing 执行「双协议并列探测」：同一周期内用 ICMP 和 TCP 各测一次目标，
-// 分别上报两条结果（同一 task_id、不同 ping_type）。
+// runDualPing 保留旧签名，供既有测试/调用方使用。
+func runDualPing(conn *ws.SafeConn, taskID uint, pingTarget string, timeout time.Duration) {
+	runDualPingWithConfig(conn, v2.PingParams{
+		TaskID: taskID, Type: "dual", Target: pingTarget,
+		ProbeTimeoutMS: int(timeout / time.Millisecond),
+	})
+}
+
+// runDualPingWithConfig 执行「双协议并列探测」：同一周期内用 ICMP 和 TCP 各测
+// N 次目标，分别上报两条结果（同一 task_id、不同 ping_type）。
 //
 // 为什么需要它：任务的探测协议是每个任务一个，选错就会得到恒定的 100% 丢包，
 // 看起来像宕机，实际是协议不匹配。并列探测后，面板上会同时出现
 // 「ICMP 100%」和「TCP 2ms」两组数据 —— 一眼就能区分「目标不答这个协议」
 // 和「目标真的不可达」，不再需要人来推断。
-func runDualPing(conn *ws.SafeConn, taskID uint, pingTarget string, timeout time.Duration) {
+func runDualPingWithConfig(conn *ws.SafeConn, p v2.PingParams) {
+	timeout := probeTimeout(p)
+	attempts, spacing := probeAttempts(p)
 	legs := []struct {
 		kind   string
 		target string
 	}{
-		{"icmp", pingTarget},
-		{"tcp", dualTCPTarget(pingTarget)},
+		{"icmp", p.Target},
+		{"tcp", dualTCPTarget(p.Target)},
 	}
 
 	for _, leg := range legs {
-		var latencyUS int64 = -1
-		var family string
-		var err error
-		switch leg.kind {
-		case "icmp":
-			latencyUS, family, err = icmpPing(leg.target, timeout)
-		case "tcp":
-			latencyUS, family, err = tcpPing(leg.target, timeout)
+		measure := func() (int64, string, error) {
+			switch leg.kind {
+			case "icmp":
+				return icmpPing(leg.target, timeout)
+			case "tcp":
+				return tcpPing(leg.target, timeout)
+			default:
+				return -1, "", errors.New("unsupported dual leg")
+			}
 		}
-		if err != nil {
-			log.Printf("dual ping task %d [%s] target=%s failed: %v", taskID, leg.kind, leg.target, err)
+		if attempts <= 1 {
+			latencyUS, family, err := measure()
+			if err != nil {
+				log.Printf("dual ping task %d [%s] target=%s failed: %v", p.TaskID, leg.kind, leg.target, err)
+			}
+			value, valueUS := pingResultValues(latencyUS, err == nil)
+			uploadPingResult(conn, leg.kind, v2.BuildPingResultPayloadWithRoleFamilyAndMicros(
+				p.TaskID, leg.kind, "", family, value, valueUS, time.Now()))
+			continue
 		}
-		value, valueUS := pingResultValues(latencyUS, err == nil)
-		// -1 表示丢包，由服务端统一换算丢包率；微秒字段与毫秒字段用同一个哨兵。
-		uploadPingResult(conn, leg.kind, v2.BuildPingResultPayloadWithRoleFamilyAndMicros(
-			taskID, leg.kind, "", family, value, valueUS, time.Now()))
+		cycle := runProbeCycle(measure, attempts, spacing)
+		value, valueUS := pingResultValues(cycle.firstUS, cycle.success > 0)
+		uploadPingResult(conn, leg.kind, v2.BuildPingResultPayloadWithStats(
+			p.TaskID, leg.kind, "", cycle.family, value, valueUS, cycle.stats(), time.Now()))
 	}
 }
 

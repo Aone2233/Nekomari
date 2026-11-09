@@ -2,11 +2,13 @@ package jsonrpc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/Aone2233/nekomari/database"
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/database/models/messageEvent"
@@ -23,6 +25,10 @@ import (
 // 通知相关 RPC2 方法（admin 命名空间）：负载告警、离线通知。
 
 func init() {
+	reg("listNotificationChannels", adminListNotificationChannels, "List plugin notification channels")
+	reg("listPluginNotificationChoices", adminListPluginNotificationChoices, "List plugin notification choices")
+	reg("getNotificationChannelConfiguration", adminGetNotificationChannelConfiguration, "Get notification channel configuration")
+	reg("setNotificationChannelConfiguration", adminSetNotificationChannelConfiguration, "Set notification channel configuration")
 	// load notifications
 	reg("addLoadNotification", adminAddLoadNotification, "Create a load notification")
 	reg("deleteLoadNotification", adminDeleteLoadNotification, "Delete load notifications by ids")
@@ -37,6 +43,56 @@ func init() {
 	reg("disableOfflineNotification", adminDisableOfflineNotification, "Disable offline notifications for clients")
 	// send notification
 	reg("sendNotification", adminSendNotification, "Send a notification")
+}
+
+func adminListNotificationChannels(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	return messageSender.ListNotificationChannels(), nil
+}
+
+func adminListPluginNotificationChoices(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	return messageSender.PluginChannelChoices(), nil
+}
+
+func adminGetNotificationChannelConfiguration(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	var params struct {
+		ID string `json:"id"`
+	}
+	if err := req.BindParams(&params); err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request", nil)
+	}
+	cfg, values, exists, err := messageSender.GetNotificationChannelConfiguration(params.ID)
+	if err != nil {
+		return nil, rpc.MakeError(rpc.InternalError, "Failed to load notification channel configuration", nil)
+	}
+	if !exists {
+		return nil, rpc.MakeError(rpc.NotFound, "Notification channel not found", nil)
+	}
+	return map[string]any{"configuration": cfg, "data": values}, nil
+}
+
+func adminSetNotificationChannelConfiguration(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	var params struct {
+		ID   string         `json:"id"`
+		Data map[string]any `json:"data"`
+	}
+	if err := req.BindParams(&params); err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request", nil)
+	}
+	selectionID, exists := messageSender.ChannelSelectionID(params.ID)
+	if !exists {
+		return nil, rpc.MakeError(rpc.NotFound, "Notification channel not found", nil)
+	}
+	if params.Data == nil {
+		params.Data = map[string]any{}
+	}
+	raw, err := json.Marshal(params.Data)
+	if err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid configuration", nil)
+	}
+	if err := database.SaveMessageSenderConfig(&models.MessageSenderProvider{Name: selectionID, Addition: string(raw)}); err != nil {
+		return nil, rpc.MakeError(rpc.InternalError, "Failed to save notification configuration", nil)
+	}
+	return nil, nil
 }
 
 // One preview at a time, with no queue: repeated clicks must not compete with

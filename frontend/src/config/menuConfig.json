@@ -173,6 +173,11 @@
           "labelKey": "pprof.title",
           "path": "/admin/pprof",
           "icon": "Activity"
+        },
+        {
+          "labelKey": "probeQuality.menu",
+          "path": "/admin/probe-quality",
+          "icon": "Activity"
         }
       ]
     },

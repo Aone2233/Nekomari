@@ -139,6 +139,32 @@ func memHtopLikeFrom(info *ProcMemInfo) RamInfo {
 	return r
 }
 
+// MemoryDetails returns /proc/meminfo detail for the additive RAM report.
+// A field absent from procfs is nil, never zero.
+func MemoryDetails() (available, cached, buffers, zswap *int64) {
+	info, err := ReadProcMeminfo()
+	if err != nil || info == nil {
+		return nil, nil, nil, nil
+	}
+	if info.hasFields("MemAvailable") {
+		v := int64(info.MemAvailable)
+		available = &v
+	}
+	if info.hasFields("Cached") {
+		v := int64(info.Cached)
+		cached = &v
+	}
+	if info.hasFields("Buffers") {
+		v := int64(info.Buffers)
+		buffers = &v
+	}
+	if info.hasFields("Zswap") {
+		v := int64(info.Zswap)
+		zswap = &v
+	}
+	return available, cached, buffers, zswap
+}
+
 func GetMemGopsutil() RamInfo {
 	raminfo := RamInfo{Mode: "gopsutil"}
 	v, err := mem.VirtualMemory()

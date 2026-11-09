@@ -31,7 +31,7 @@ var ErrStructureUpgradeRequired = errors.New("metric store structure upgrade is 
 
 // openStore 按配置打开 metric store 并创建指标定义。
 func openStore(ctx context.Context, cfg *MetricStoreConfig) (*metric.Store, error) {
-	return openStoreWithDefaultRetention(ctx, cfg, defaultBuiltinMetricRetentionDays)
+	return openStoreWithDefaultRetention(ctx, cfg, defaultNodeMetricRetentionDays)
 }
 
 func openStoreWithDefaultRetention(ctx context.Context, cfg *MetricStoreConfig, defaultRetentionDays int) (*metric.Store, error) {

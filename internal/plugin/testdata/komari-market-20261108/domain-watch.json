@@ -1,0 +1,84 @@
+{
+  "$schema": "./node_modules/@komari-monitor/plugin-sdk/schema/komari-plugin.schema.json",
+  "name": "Domain Watch",
+  "short": "domain-watch",
+  "description": "域名监控插件：基于 RDAP 协议的 Whois 查询与域名续费到期提醒。",
+  "author": "Geekertao",
+  "version": "1.0.2",
+  "komari": ">=1.0.0",
+  "entry": "script.js",
+  "permissions": {
+    "node": true,
+    "allowRoutes": true,
+    "allowSystemRPC": true,
+    "allowHTMLInject": true
+  },
+  "pages": [
+    {
+      "file": "admin.html",
+      "title": { "zh_CN": "Whois 查询", "en": "Whois Lookup" }
+    }
+  ],
+  "configuration": {
+    "type": "managed",
+    "data": [
+      {
+        "key": "domains",
+        "name": { "zh_CN": "监控域名", "en": "Domains" },
+        "type": "string",
+        "default": "",
+        "help": {
+          "zh_CN": "要监控的域名列表，用逗号分隔，例如：example.com, example.org",
+          "en": "Comma-separated domains to monitor, e.g.: example.com, example.org"
+        }
+      },
+      {
+        "key": "remind_days",
+        "name": { "zh_CN": "提前提醒天数", "en": "Remind Days" },
+        "type": "number",
+        "default": 30,
+        "help": {
+          "zh_CN": "距到期日小于等于该天数时发送提醒（默认 30）",
+          "en": "Notify when days left to expiration is less than or equal to this (default 30)"
+        }
+      },
+      {
+        "key": "backorder_notify",
+        "name": { "zh_CN": "过期抢注提醒", "en": "Expired Backorder Alert" },
+        "type": "switch",
+        "default": true,
+        "help": {
+          "zh_CN": "域名过期后发送一次提醒：已进入删除期，可续费赎回或关注抢注",
+          "en": "Send one alert after a domain expires: in the deletion period, can renew/redemption or watch for backorder"
+        }
+      },
+      {
+        "key": "check_time",
+        "name": { "zh_CN": "每日检查时间", "en": "Daily Check Time" },
+        "type": "string",
+        "default": "0 9 * * *",
+        "help": {
+          "zh_CN": "每日检查的 cron 表达式（分 时 日 月 周），修改后需重启插件生效",
+          "en": "Cron expression for daily check (min hour day month weekday). Restart the plugin after change."
+        }
+      },
+      {
+        "key": "test_notify",
+        "name": { "zh_CN": "测试发送通知", "en": "Test Notification" },
+        "type": "title",
+        "help": {
+          "zh_CN": "在下方的测试按钮发送一条测试通知到已配置的通知渠道",
+          "en": "Click the test button below to send a test notification to configured channels"
+        }
+      },
+      {
+        "key": "recommend_sites",
+        "name": {
+          "zh_CN": "推荐的域名比价平台：tldes.com、nazhumi.com、miqingju.com、tld-list.com。同类平台还有很多，只要善用搜索引擎即可找到，我们无法全部列出。",
+          "en": "Recommended domain price comparison platforms: tldes.com, nazhumi.com, miqingju.com, tld-list.com. There are many similar platforms; just search and you will find them. We cannot list them all."
+        },
+        "type": "title"
+      }
+    ]
+  }
+}

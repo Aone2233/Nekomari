@@ -1,0 +1,24 @@
+{
+  "name": {
+    "zh_CN": "一次性验证码登录",
+    "en": "One-time Code Login"
+  },
+  "short": "komari-otp-login",
+  "description": {
+    "zh_CN": "通过 Komari 已配置的通知渠道发送一次性验证码登录。验证码有效期为 3 分钟。",
+    "en": "Sign in with a one-time code sent through a configured Komari notification channel. Codes expire after three minutes."
+  },
+  "author": "Akizon77",
+  "version": "1.0.0",
+  "entry": "script.js",
+  "icon": "assets/key-round.svg",
+  "komari": ">=1.6.0",
+  "permissions": {
+    "node": true,
+    "allowRoutes": true,
+    "allowHTMLInject": true,
+    "allowSystemRPC": true,
+    "maxHTTPBodyBytes": 16384,
+    "timeout": 15
+  }
+}

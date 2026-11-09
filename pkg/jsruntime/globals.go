@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Aone2233/nekomari/pkg/jsruntime/xhr"
+	nodeurl "github.com/dop251/goja_nodejs/url"
 )
 
 // JavaScript compatibility: injects bounded timer APIs, console, Fetch API,
@@ -21,6 +22,7 @@ func (r *Runtime) injectGlobals() error {
 			return err
 		}
 	}
+	nodeurl.Enable(r.vm)
 	if err := r.fetchMod.Inject(r.vm); err != nil {
 		return fmt.Errorf("inject Fetch API: %w", err)
 	}

@@ -95,17 +95,65 @@ func adminAddPingTask(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.J
 	return adminAddPingTaskWith(ctx, req, tasks.AddPingTaskPinned)
 }
 
+// pingTaskOptions validates the additive v1.8 probe fields. Omitted attempts
+// default to 3 for a newly created task; existing tasks keep their stored value
+// because edits never call this helper with nil fields.
+func pingTaskOptions(attempts, spacing, timeout *int, httpMode, expectedStatus, ipPreference string) (tasks.PingTaskOptions, error) {
+	opts := tasks.PingTaskOptions{ProbeAttempts: 3, ProbeSpacingMS: 200}
+	if attempts != nil {
+		opts.ProbeAttempts = *attempts
+	}
+	if opts.ProbeAttempts < 1 || opts.ProbeAttempts > 10 {
+		return opts, errors.New("probe_attempts must be between 1 and 10")
+	}
+	if spacing != nil {
+		opts.ProbeSpacingMS = *spacing
+	}
+	if opts.ProbeSpacingMS < 50 || opts.ProbeSpacingMS > 1000 {
+		return opts, errors.New("probe_spacing_ms must be between 50 and 1000")
+	}
+	if timeout != nil {
+		opts.ProbeTimeoutMS = *timeout
+	}
+	if opts.ProbeTimeoutMS != 0 && (opts.ProbeTimeoutMS < 100 || opts.ProbeTimeoutMS > 30000) {
+		return opts, errors.New("probe_timeout_ms must be 0 or between 100 and 30000")
+	}
+	switch httpMode {
+	case "", "legacy", "status_aware":
+		opts.HTTPMode = httpMode
+	default:
+		return opts, errors.New("http_mode must be empty, legacy, or status_aware")
+	}
+	if len(expectedStatus) > 128 {
+		return opts, errors.New("http_expected_status is too long")
+	}
+	opts.HTTPExpectedStatus = expectedStatus
+	switch ipPreference {
+	case "", "auto", "4", "6":
+		opts.IPVersionPreference = ipPreference
+	default:
+		return opts, errors.New("ip_version_preference must be empty, auto, 4, or 6")
+	}
+	return opts, nil
+}
+
 // A nil callback disables family-pinned creation for isolated callers.
 func adminAddPingTaskWith(ctx context.Context, req *rpc.JsonRpcRequest, addPinned func(context.Context, *models.PingTask) error) (any, *rpc.JsonRpcError) {
 	var params struct {
-		Clients      []string `json:"clients"`
-		DefaultOn    bool     `json:"default_on"`
-		Name         string   `json:"name"`
-		Target       string   `json:"target"`
-		TaskType     string   `json:"type"`
-		Interval     int      `json:"interval"`
-		Reference    string   `json:"reference"`
-		TargetFamily string   `json:"target_family"`
+		Clients             []string `json:"clients"`
+		DefaultOn           bool     `json:"default_on"`
+		Name                string   `json:"name"`
+		Target              string   `json:"target"`
+		TaskType            string   `json:"type"`
+		Interval            int      `json:"interval"`
+		Reference           string   `json:"reference"`
+		TargetFamily        string   `json:"target_family"`
+		ProbeAttempts       *int     `json:"probe_attempts"`
+		ProbeSpacingMS      *int     `json:"probe_spacing_ms"`
+		ProbeTimeoutMS      *int     `json:"probe_timeout_ms"`
+		HTTPMode            string   `json:"http_mode"`
+		HTTPExpectedStatus  string   `json:"http_expected_status"`
+		IPVersionPreference string   `json:"ip_version_preference"`
 	}
 	if err := req.BindParams(&params); err != nil {
 		return nil, rpc.MakeError(rpc.InvalidParams, "Invalid request data", nil)
@@ -116,6 +164,11 @@ func adminAddPingTaskWith(ctx context.Context, req *rpc.JsonRpcRequest, addPinne
 	if !params.DefaultOn && len(params.Clients) == 0 {
 		return nil, rpc.MakeError(rpc.InvalidParams, "clients is required when default_on is false", nil)
 	}
+	opts, err := pingTaskOptions(params.ProbeAttempts, params.ProbeSpacingMS, params.ProbeTimeoutMS,
+		params.HTTPMode, params.HTTPExpectedStatus, params.IPVersionPreference)
+	if err != nil {
+		return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
+	}
 	if params.TargetFamily != "" {
 		if addPinned == nil {
 			return nil, rpc.MakeError(rpc.InvalidParams, "family-pinned tasks are not available yet", nil)
@@ -125,7 +178,10 @@ func adminAddPingTaskWith(ctx context.Context, req *rpc.JsonRpcRequest, addPinne
 		}
 		task := models.PingTask{Name: params.Name, Target: params.Target, Type: params.TaskType,
 			TargetFamily: params.TargetFamily, Reference: params.Reference, DefaultOn: params.DefaultOn,
-			Clients: models.StringArray(params.Clients), Interval: params.Interval}
+			Clients: models.StringArray(params.Clients), Interval: params.Interval,
+			ProbeAttempts: opts.ProbeAttempts, ProbeSpacingMS: opts.ProbeSpacingMS,
+			ProbeTimeoutMS: opts.ProbeTimeoutMS, HTTPMode: opts.HTTPMode,
+			HTTPExpectedStatus: opts.HTTPExpectedStatus, IPVersionPreference: opts.IPVersionPreference}
 		if err := addPinned(ctx, &task); err != nil {
 			var pending *tasks.ScheduleReloadPendingError
 			if errors.As(err, &pending) {
@@ -141,7 +197,7 @@ func adminAddPingTaskWith(ctx context.Context, req *rpc.JsonRpcRequest, addPinne
 	}
 	// The legacy hostname/family rule is checked inside the task-creation
 	// transaction, rather than against an earlier RPC-layer snapshot.
-	taskID, err := tasks.AddPingTask(params.Clients, params.DefaultOn, params.Name, params.Target, params.TaskType, params.Interval, params.Reference)
+	taskID, err := tasks.AddPingTaskWithOptions(params.Clients, params.DefaultOn, params.Name, params.Target, params.TaskType, params.Interval, params.Reference, opts)
 	if err != nil {
 		var validation *tasks.PingTaskValidationError
 		if errors.As(err, &validation) {

@@ -1,0 +1,31 @@
+{
+  "name": {
+    "zh_CN": "Server酱 Turbo 通知",
+    "zh_TW": "Server醬 Turbo 通知",
+    "en": "ServerChan Turbo Notification",
+    "ja_JP": "Server酱 Turbo 通知",
+    "id_ID": "Notifikasi ServerChan Turbo"
+  },
+  "short": "serverchanturbo-notification-plugin",
+  "description": {
+    "zh_CN": "通过 Server酱 Turbo 发送 Komari 通知",
+    "zh_TW": "透過 Server醬 Turbo 傳送 Komari 通知",
+    "en": "Send Komari notifications through ServerChan Turbo",
+    "ja_JP": "Server酱 Turbo で Komari 通知を送信します",
+    "id_ID": "Kirim notifikasi Komari melalui ServerChan Turbo"
+  },
+  "author": {
+    "zh_CN": "Akizon77",
+    "zh_TW": "Akizon77",
+    "en": "Akizon77",
+    "ja_JP": "Akizon77",
+    "id_ID": "Akizon77"
+  },
+  "version": "1.0.0",
+  "komari": ">=1.6.0",
+  "entry": "script.js",
+  "icon": "icon.webp",
+  "permissions": {
+    "timeout": 30
+  }
+}

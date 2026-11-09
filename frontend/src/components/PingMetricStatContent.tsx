@@ -34,6 +34,14 @@ const PingMetricStatContent = ({ stat, t }: PingMetricStatContentProps) => {
       ? `${stat.loss.toFixed(1)}%${stat.loss_approximate ? ` ${t("chart.approximate")}` : ""}`
       : "-",
   );
+  if (typeof stat.loss_pct === "number") {
+    push(t("chart.lossPct", "Multi-probe loss"), `${stat.loss_pct.toFixed(1)}%`);
+  }
+  if (typeof stat.attempts === "number") {
+    const success = typeof stat.success === "number" ? stat.success : "-";
+    push(t("chart.probeAttempts", "Probes"), `${success}/${stat.attempts}`);
+  }
+  push(t("chart.jitter", "Jitter"), formatMilliseconds(stat.jitter_ms));
   push(t("chart.min"), formatMilliseconds(stat.min));
   push(t("chart.max"), formatMilliseconds(stat.max));
   push(t("chart.avg"), formatMilliseconds(stat.avg));

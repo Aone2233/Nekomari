@@ -20,6 +20,19 @@ const (
 	MetricTrafficIntervalUp    = "traffic.interval.up"
 	MetricTrafficIntervalDown  = "traffic.interval.down"
 	MetricTrafficIntervalValid = "traffic.interval.valid"
+	MetricCPUInterval          = "cpu.interval_seconds"
+	MetricCPUCgroupUsage       = "cpu.cgroup.usage"
+	MetricCPUCgroupQuota       = "cpu.cgroup.quota_cores"
+	MetricCPUCgroupThrottled   = "cpu.cgroup.throttled_seconds_total"
+	MetricRAMAvailable         = "ram.available"
+	MetricRAMCached            = "ram.cached"
+	MetricRAMBuffers           = "ram.buffers"
+	MetricRAMZswap             = "ram.zswap"
+	MetricDiskMountUsed        = "disk.mount.used"
+	MetricDiskMountTotal       = "disk.mount.total"
+	MetricTCPOutSegs           = "tcp.outsegs"
+	MetricTCPRetransSegs       = "tcp.retranssegs"
+	MetricTCPRetransPct        = "tcp.retrans_pct"
 	MetricProcess              = "process.count"
 	MetricConnections          = "connections.tcp"
 	MetricConnectionsUDP       = "connections.udp"
@@ -28,6 +41,23 @@ const (
 	MetricPingLatency          = "ping.latency_ms"
 	MetricPingSuccessLatency   = "ping.success_latency_ms"
 	MetricPingLoss             = "ping.loss"
+	MetricPingAttempts         = "ping.attempts"
+	MetricPingSuccess          = "ping.success"
+	MetricPingLossPct          = "ping.loss_pct"
+	MetricPingMin              = "ping.min_ms"
+	MetricPingAvg              = "ping.avg_ms"
+	MetricPingMax              = "ping.max_ms"
+	MetricPingJitter           = "ping.jitter_ms"
+	MetricHTTPDNS              = "http.dns_ms"
+	MetricHTTPTCP              = "http.tcp_ms"
+	MetricHTTPTLS              = "http.tls_ms"
+	MetricHTTPTTFB             = "http.ttfb_ms"
+	MetricHTTPTotal            = "http.total_ms"
+	MetricHTTPStatus           = "http.status_code"
+	MetricHTTPRedirects        = "http.redirects"
+	MetricHTTPTLSExpiryDays    = "http.tls_expiry_days"
+	MetricHTTPReachable        = "http.reachable"
+	MetricHTTPAvailable        = "http.available"
 	MetricBackupAge            = "backup.age_seconds"
 	MetricBackupOK             = "backup.ok"
 	MetricPanelRSS             = "panel.self.rss_bytes"
@@ -58,10 +88,23 @@ var gpuDeviceRecordMetricNames = []string{
 	MetricGPUDeviceUsage, MetricGPUMem, MetricGPUMemTotal, MetricGPUTemp,
 }
 
-var recordMetricNames = joinMetricNames(loadRecordMetricNames, gpuDeviceRecordMetricNames, []string{MetricTrafficIntervalUp, MetricTrafficIntervalDown, MetricTrafficIntervalValid, MetricUptime, MetricRestarts})
+var recordMetricNames = joinMetricNames(loadRecordMetricNames, gpuDeviceRecordMetricNames, []string{
+	MetricTrafficIntervalUp, MetricTrafficIntervalDown, MetricTrafficIntervalValid, MetricUptime, MetricRestarts,
+	MetricCPUInterval, MetricCPUCgroupUsage, MetricCPUCgroupQuota, MetricCPUCgroupThrottled,
+	MetricRAMAvailable, MetricRAMCached, MetricRAMBuffers, MetricRAMZswap,
+	MetricDiskMountUsed, MetricDiskMountTotal,
+	MetricTCPOutSegs, MetricTCPRetransSegs, MetricTCPRetransPct,
+})
 
 // Ping has an independent retention and cleanup boundary.
-var pingMetricNames = []string{MetricPingLatency, MetricPingLoss, MetricPingSuccessLatency}
+var pingMetricNames = []string{
+	MetricPingLatency, MetricPingLoss, MetricPingSuccessLatency,
+	MetricPingAttempts, MetricPingSuccess, MetricPingLossPct,
+	MetricPingMin, MetricPingAvg, MetricPingMax, MetricPingJitter,
+	MetricHTTPDNS, MetricHTTPTCP, MetricHTTPTLS, MetricHTTPTTFB, MetricHTTPTotal,
+	MetricHTTPStatus, MetricHTTPRedirects, MetricHTTPTLSExpiryDays,
+	MetricHTTPReachable, MetricHTTPAvailable,
+}
 
 var panelPoolMetricNames = []string{
 	MetricPanelMainWaitCount, MetricPanelMainWaitMS,
@@ -73,6 +116,16 @@ var panelMetricNames = joinMetricNames([]string{MetricPanelRSS, MetricPanelHeap,
 	[]string{MetricPanelThemeDisk, MetricPanelThemeMemory})
 
 var builtinMetricNames = joinMetricNames(recordMetricNames, pingMetricNames, panelMetricNames)
+
+// IsPingMetric reports whether a metric belongs to the ping retention family.
+func IsPingMetric(name string) bool {
+	for _, metricName := range pingMetricNames {
+		if name == metricName {
+			return true
+		}
+	}
+	return false
+}
 
 // Panel metrics are private even when requested through the public node API.
 func IsPanelMetric(name string) bool {

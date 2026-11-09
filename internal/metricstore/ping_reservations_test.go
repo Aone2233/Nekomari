@@ -97,7 +97,7 @@ func TestReservedPingHistoryCleanupAndMigration(t *testing.T) {
 	if err := cleanReservedPingHistory(ctx, dst, ids); err != nil {
 		t.Fatal(err)
 	}
-	if count, err := migrateBetweenStores(ctx, src, dst, ids, nil); err != nil || count != 4 {
+	if count, err := migrateBetweenStores(ctx, src, dst, ids, nil); err != nil || count != int64(len(pingMetricNames))+1 {
 		t.Fatalf("migration count=%d err=%v", count, err)
 	}
 	for _, name := range pingMetricNames {
@@ -278,7 +278,21 @@ func TestStoreTransitionsFenceDeletionAndDrainReservedQueue(t *testing.T) {
 				}
 			})
 			for _, id := range []uint{12, 13} {
-				if err := WritePingRecord(t.Context(), models.PingRecord{TaskId: id, Client: "node", Time: time.Now().UTC(), Value: 7}); err != nil {
+				// Emit the v1.8 probe-truth points too: deletion must fence every
+				// ping series, not only the legacy three.
+				dns, tcp, tls, ttfb, total := int64(100), int64(200), int64(250), int64(300), int64(700)
+				status, redirects := 200, 0
+				reachable, available := true, true
+				expiry := 30.0
+				rec := models.PingRecord{
+					TaskId: id, Client: "node", Time: time.Now().UTC(), Value: 7, ValueUS: 7000,
+					Attempts: 3, Success: 3, LossPct: 0, MinUS: 7000, AvgUS: 7000, MaxUS: 7000, JitterUS: 0,
+					HTTP: &models.PingHTTPObservation{
+						DNSUS: &dns, TCPUS: &tcp, TLSUS: &tls, TTFBUS: &ttfb, TotalUS: &total,
+						StatusCode: &status, Redirects: &redirects, TLSExpiryDays: &expiry, Reachable: &reachable, Available: &available,
+					},
+				}
+				if err := WritePingRecord(t.Context(), rec); err != nil {
 					t.Fatal(err)
 				}
 			}

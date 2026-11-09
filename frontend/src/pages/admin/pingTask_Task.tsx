@@ -244,6 +244,12 @@ const Row = ({
     default_on: task.default_on || false,
     interval: task.interval || 60,
     reference: task.reference || "",
+    probe_attempts: task.probe_attempts || 0,
+    probe_spacing_ms: task.probe_spacing_ms || 200,
+    probe_timeout_ms: task.probe_timeout_ms || 0,
+    http_mode: task.http_mode || "legacy",
+    http_expected_status: task.http_expected_status || "200-399",
+    ip_version_preference: task.ip_version_preference || "auto",
   });
   const [probe, setProbe] = React.useState<ProbeState | null>(null);
 
@@ -301,6 +307,12 @@ const Row = ({
             default_on: newForm.default_on,
             clients: newForm.clients,
             interval: newForm.interval,
+            probe_attempts: newForm.probe_attempts,
+            probe_spacing_ms: newForm.probe_spacing_ms,
+            probe_timeout_ms: newForm.probe_timeout_ms,
+            http_mode: newForm.http_mode,
+            http_expected_status: newForm.http_expected_status,
+            ip_version_preference: newForm.ip_version_preference,
           },
         ],
       }),
@@ -578,6 +590,57 @@ const Row = ({
                 }
                 required
               />
+              <details className="rounded border border-gray-200 p-3">
+                <summary className="cursor-pointer text-sm font-medium">
+                  {t("ping.probeTruth", "Probe truth (optional)")}
+                </summary>
+                <Flex direction="column" gap="2" className="mt-3">
+                  <label className="text-sm">{t("ping.probeAttempts", "Attempts per cycle (0 = legacy single probe)")}</label>
+                  <TextField.Root
+                    type="number"
+                    min={0}
+                    max={10}
+                    value={form.probe_attempts}
+                    onChange={(e) => setForm((f) => ({ ...f, probe_attempts: Number(e.target.value) }))}
+                  />
+                  <label className="text-sm">{t("ping.probeSpacing", "Spacing between attempts (ms)")}</label>
+                  <TextField.Root
+                    type="number"
+                    min={50}
+                    max={1000}
+                    value={form.probe_spacing_ms}
+                    onChange={(e) => setForm((f) => ({ ...f, probe_spacing_ms: Number(e.target.value) }))}
+                  />
+                  <label className="text-sm">{t("ping.httpMode", "HTTP mode")}</label>
+                  <Select.Root
+                    value={form.http_mode}
+                    onValueChange={(value) => setForm((f) => ({ ...f, http_mode: value as typeof f.http_mode }))}
+                  >
+                    <Select.Trigger />
+                    <Select.Content>
+                      <Select.Item value="legacy">legacy (4xx/5xx = failure)</Select.Item>
+                      <Select.Item value="status_aware">status_aware (reachable separately)</Select.Item>
+                    </Select.Content>
+                  </Select.Root>
+                  <label className="text-sm">{t("ping.httpExpected", "Expected HTTP status (e.g. 200-399)")}</label>
+                  <TextField.Root
+                    value={form.http_expected_status}
+                    onChange={(e) => setForm((f) => ({ ...f, http_expected_status: e.target.value }))}
+                  />
+                  <label className="text-sm">{t("ping.ipPreference", "IP version preference")}</label>
+                  <Select.Root
+                    value={form.ip_version_preference}
+                    onValueChange={(value) => setForm((f) => ({ ...f, ip_version_preference: value as typeof f.ip_version_preference }))}
+                  >
+                    <Select.Trigger />
+                    <Select.Content>
+                      <Select.Item value="auto">auto</Select.Item>
+                      <Select.Item value="4">IPv4</Select.Item>
+                      <Select.Item value="6">IPv6</Select.Item>
+                    </Select.Content>
+                  </Select.Root>
+                </Flex>
+              </details>
               <Flex gap="2" justify="end" className="mt-4">
                 <Dialog.Close>
                   <Button

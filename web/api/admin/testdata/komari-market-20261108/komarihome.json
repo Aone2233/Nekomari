@@ -1,0 +1,42 @@
+{
+    "name": "Komari Home",
+    "short": "komarihome",
+    "description": "A Komari Web Theme with HomePage",
+    "version": "1.0.2",
+    "author": "mogumc",
+    "url": "https://github.com/mogumc/Komari-Home",
+    "preview": "preview.png",
+    "configuration": {
+        "type": "managed",
+        "data": [
+            { "name": { "zh-CN": "基础信息", "en": "General" }, "type": "title" },
+            { "key": "avatarUrl", "name": { "zh-CN": "头像链接", "en": "Avatar URL" }, "type": "string", "default": "", "help": { "zh-CN": "首页头像图片的完整 URL，留空则不显示" } },
+            { "key": "displayName", "name": { "zh-CN": "显示名称", "en": "Display Name" }, "type": "string", "default": "", "help": { "zh-CN": "首页展示的用户名/昵称" } },
+            { "key": "bio", "name": { "zh-CN": "个人简介", "en": "Bio" }, "type": "string", "default": "", "help": { "zh-CN": "简短的自我介绍或签名" } },
+            { "key": "location", "name": { "zh-CN": "所在地", "en": "Location" }, "type": "string", "default": "", "help": { "zh-CN": "如：中国 · 上海" } },
+            { "name": { "zh-CN": "社交链接", "en": "Social Links" }, "type": "title" },
+            { "key": "socialLinks", "name": { "zh-CN": "社交链接 (JSON)", "en": "Social Links (JSON)" }, "type": "richtext", "default": "[]", "help": { "zh-CN": "JSON数组，每项含 name/icon/url" } },
+            { "name": { "zh-CN": "首页快速链接", "en": "Home Quick Links" }, "type": "title" },
+            { "key": "enableHomeSites", "name": { "zh-CN": "启用", "en": "Enable" }, "type": "switch", "default": true },
+            { "key": "homeSites", "name": { "zh-CN": "链接列表 (JSON)", "en": "Link List (JSON)" }, "type": "richtext", "default": "[]", "help": { "zh-CN": "JSON数组，每项含 name/icon/url" } },
+            { "name": { "zh-CN": "RSS 订阅", "en": "RSS Feed" }, "type": "title" },
+            { "key": "enableRssFeed", "name": { "zh-CN": "启用", "en": "Enable" }, "type": "switch", "default": false },
+            { "key": "rssFeedUrl", "name": { "zh-CN": "订阅地址", "en": "Feed URL" }, "type": "string", "default": "", "help": { "zh-CN": "RSS/Atom 订阅源 URL" } },
+            { "name": { "zh-CN": "自定义 HTML", "en": "Custom HTML" }, "type": "title" },
+            { "key": "enableCustomHtml", "name": { "zh-CN": "启用", "en": "Enable" }, "type": "switch", "default": false },
+            { "key": "customHtml", "name": { "zh-CN": "HTML 内容", "en": "HTML Content" }, "type": "richtext", "default": "", "help": { "zh-CN": "支持任意 HTML 片段，将直接渲染在首页" } },
+            { "name": { "zh-CN": "网址导航", "en": "Websites Page" }, "type": "title" },
+            { "key": "webSites", "name": { "zh-CN": "链接列表 (JSON)", "en": "Link List (JSON)" }, "type": "richtext", "default": "[]", "help": { "zh-CN": "JSON数组，每项含 name/icon/desc/url" } },
+            { "name": { "zh-CN": "监控页设置", "en": "Monitor Settings" }, "type": "title" },
+            { "key": "komariSortBy", "name": { "zh-CN": "排序方式", "en": "Sort By" }, "type": "select", "options": "原顺序,分类,名字", "default": "原顺序", "help": { "zh-CN": "服务器列表的排序规则" } },
+            { "key": "komariOnlineFirst", "name": { "zh-CN": "在线靠前", "en": "Online First" }, "type": "switch", "default": true, "help": { "zh-CN": "是否将在线服务器排在前面" } },
+            { "key": "komariRowsPerPage", "name": { "zh-CN": "每页行数", "en": "Rows Per Page" }, "type": "number", "default": 3, "help": { "zh-CN": "服务器列表每页最多显示行数" } },
+            { "key": "komariBillingEnabled", "name": { "zh-CN": "服务器月计费功能", "en": "Server Billing" }, "type": "switch", "default": false, "help": { "zh-CN": "开启后显示每月成本统计与服务器到期滚动提示" } },
+            { "name": { "zh-CN": "外观设置", "en": "Appearance" }, "type": "title" },
+            { "key": "themeFaviconEnabled", "name": { "zh-CN": "启用主题 favicon", "en": "Theme Favicon" }, "type": "switch", "default": true, "help": { "zh-CN": "开启后页面使用主题自带 favicon，关闭则直接使用默认 favicon" } },
+            { "key": "backgroundImageUrl", "name": { "zh-CN": "背景图片链接", "en": "Background Image URL" }, "type": "string", "default": "", "help": { "zh-CN": "全屏背景图片的完整 URL，留空则不显示背景图" } },
+            { "key": "enableClock", "name": { "zh-CN": "启用时钟", "en": "Enable Clock" }, "type": "switch", "default": true },
+            { "key": "enableHitokoto", "name": { "zh-CN": "启用一言", "en": "Enable Hitokoto" }, "type": "switch", "default": true }
+        ]
+    }
+}

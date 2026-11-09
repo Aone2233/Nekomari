@@ -1955,5 +1955,14 @@
     "saved": "Saya telah menyimpan token baru",
     "token": "Token agen baru",
     "uncertain": "Rotasi belum dapat dipastikan. Token lama mungkin sudah tidak berlaku. Jangan langsung mencoba ulang: pulihkan melalui operasi baca token terautentikasi dan SSH/konsol independen, lalu periksa pelaporan."
+  },
+  "probeQuality": {
+    "menu": "Kualitas probe",
+    "title": "Kualitas data probe",
+    "description": "Usia laporan terakhir, field tidak diketahui, interval sampel, dan detail host v1.8. Nilai tidak diketahui tidak pernah ditampilkan sebagai 0.",
+    "age": "Usia laporan",
+    "interval": "Interval",
+    "unknown": "Field tidak diketahui",
+    "mounts": "Mount point"
   }
 }

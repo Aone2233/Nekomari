@@ -1,0 +1,44 @@
+{
+  "name": {
+    "zh_CN": "被墙检测",
+    "en": "Block Detection"
+  },
+  "short": "komari-gfw",
+  "description": {
+    "zh_CN": "基于多目标 TCP 探测检测服务器疑似被墙状态，支持双向严格模式、恢复通知、IP 脱敏和管理总览。",
+    "en": "Detect suspected server blocking with multi-target TCP probes, bidirectional strict mode, recovery notifications, IP masking, and an admin overview."
+  },
+  "author": "Connor",
+  "version": "0.1.6",
+  "url": "https://github.com/Connor3773/Komari_GFW",
+  "komari": ">=1.6.1",
+  "entry": "script.js",
+  "permissions": {
+    "node": true,
+    "allowSystemRPC": true,
+    "allowRoutes": true,
+    "allowHooks": true,
+    "timeout": 60,
+    "maxHTTPBodyBytes": 8388608
+  },
+  "configuration": {
+    "type": "managed",
+    "data": [
+      {
+        "type": "textbox",
+        "name": "<iframe title=\"被墙检测配置\" src=\"/api/admin/plugin/komari-gfw/pages/settings.html\" sandbox=\"allow-forms allow-modals allow-same-origin allow-scripts\" style=\"display:block;width:100%;height:calc(100vh - 240px);min-height:560px;border:0;border-radius:10px\"></iframe>"
+      }
+    ]
+  },
+  "pages": [
+    {
+      "file": "pages/overview.html",
+      "title": {
+        "zh_CN": "被墙检测总览",
+        "en": "Block Detection Overview"
+      },
+      "type": "iframe",
+      "visibility": "admin"
+    }
+  ]
+}

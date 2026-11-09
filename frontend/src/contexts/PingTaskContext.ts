@@ -10,6 +10,12 @@ export interface PingTask {
   // reference 可选：路径归因用的参考目标（典型填本机网关）
   reference?: string;
   type?: string;
+  probe_attempts?: number;
+  probe_spacing_ms?: number;
+  probe_timeout_ms?: number;
+  http_mode?: "" | "legacy" | "status_aware";
+  http_expected_status?: string;
+  ip_version_preference?: "" | "auto" | "4" | "6";
   [property: string]: any;
 }
 export interface Response {

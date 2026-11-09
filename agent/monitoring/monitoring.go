@@ -18,7 +18,7 @@ type report struct {
 	Ram         usageReport       `json:"ram"`
 	Swap        usageReport       `json:"swap"`
 	Load        loadReport        `json:"load"`
-	Disk        usageReport       `json:"disk"`
+	Disk        diskReport        `json:"disk"`
 	Network     networkReport     `json:"network"`
 	Connections connectionsReport `json:"connections"`
 	GPU         interface{}       `json:"gpu,omitempty"`
@@ -31,15 +31,43 @@ type report struct {
 	SampleIntervalSeconds float64           `json:"sample_interval_seconds"`
 	CounterEpoch          string            `json:"counter_epoch,omitempty"`
 	Quality               map[string]string `json:"quality"`
+	BootIDHash            string            `json:"boot_id_hash,omitempty"`
 }
 
 type cpuReport struct {
-	Usage float64 `json:"usage"`
+	Usage           float64          `json:"usage"`
+	IntervalSeconds float64          `json:"interval_seconds,omitempty"`
+	Cgroup          *cgroupCPUReport `json:"cgroup,omitempty"`
+}
+
+type cgroupCPUReport struct {
+	UsagePercent          *float64 `json:"usage_percent,omitempty"`
+	QuotaCores            *float64 `json:"quota_cores,omitempty"`
+	ThrottledSecondsTotal *float64 `json:"throttled_seconds_total,omitempty"`
 }
 
 type usageReport struct {
-	Total uint64 `json:"total"`
-	Used  uint64 `json:"used"`
+	Total     uint64 `json:"total"`
+	Used      uint64 `json:"used"`
+	Available *int64 `json:"available,omitempty"`
+	Cached    *int64 `json:"cached,omitempty"`
+	Buffers   *int64 `json:"buffers,omitempty"`
+	Zswap     *int64 `json:"zswap,omitempty"`
+	Mode      string `json:"mode,omitempty"`
+}
+
+type diskReport struct {
+	Total  uint64            `json:"total"`
+	Used   uint64            `json:"used"`
+	Mounts []diskMountReport `json:"mounts,omitempty"`
+}
+
+type diskMountReport struct {
+	Device     string `json:"device,omitempty"`
+	Mountpoint string `json:"mountpoint"`
+	FSType     string `json:"fstype,omitempty"`
+	Total      uint64 `json:"total"`
+	Used       uint64 `json:"used"`
 }
 
 type loadReport struct {
@@ -50,6 +78,8 @@ type loadReport struct {
 
 type networkReport struct {
 	TCPRetransPercent *float64 `json:"tcp_retrans_percent,omitempty"`
+	TCPOutSegs        *uint64  `json:"tcp_outsegs,omitempty"`
+	TCPRetransSegs    *uint64  `json:"tcp_retranssegs,omitempty"`
 	Up                uint64   `json:"up"`
 	Down              uint64   `json:"down"`
 	TotalUp           uint64   `json:"totalUp"`
@@ -105,11 +135,24 @@ func GenerateReport() []byte {
 	if !cpu.Valid {
 		cpuUsage = 0
 	}
-	data.CPU = cpuReport{Usage: cpuUsage}
+	data.CPU = cpuReport{Usage: cpuUsage, IntervalSeconds: cpu.IntervalSeconds}
+	cg := unit.CgroupCPU()
+	if cg != nil {
+		data.CPU.Cgroup = &cgroupCPUReport{
+			UsagePercent:          cg.UsagePercent,
+			QuotaCores:            cg.QuotaCores,
+			ThrottledSecondsTotal: cg.ThrottledSecondsTotal,
+		}
+	}
 	mark("cpu", cpu.Valid)
+	mark("cgroup", cg != nil)
 
 	ram := unit.Ram()
-	data.Ram = usageReport{Total: ram.Total, Used: ram.Used}
+	available, cached, buffers, zswap := unit.MemoryDetails()
+	data.Ram = usageReport{
+		Total: ram.Total, Used: ram.Used, Mode: ram.Mode,
+		Available: available, Cached: cached, Buffers: buffers, Zswap: zswap,
+	}
 	mark("ram", ram.Valid)
 	data.Quality["ram_mode"] = ram.Mode
 
@@ -121,16 +164,24 @@ func GenerateReport() []byte {
 	mark("load", load.Valid)
 
 	disk := unit.Disk()
-	data.Disk = usageReport{Total: disk.Total, Used: disk.Used}
+	data.Disk = diskReport{Total: disk.Total, Used: disk.Used}
+	for _, mount := range disk.Mounts {
+		data.Disk.Mounts = append(data.Disk.Mounts, diskMountReport{
+			Device: mount.Device, Mountpoint: mount.Mountpoint, FSType: mount.FSType,
+			Total: mount.Total, Used: mount.Used,
+		})
+	}
 	mark("disk", disk.Valid)
 
 	totalUp, totalDown, cycleUp, cycleDown, networkUp, networkDown, err := unit.NetworkSpeed()
 	if err != nil {
 		message += fmt.Sprintf("failed to get network speed: %v\n", err)
 	}
+	tcpOut, tcpRetrans, tcpPercent := tcpRetransMetrics()
 	data.Network = networkReport{
-		TCPRetransPercent: tcpRetransPercent(),
-		Up:                networkUp, Down: networkDown,
+		TCPRetransPercent: tcpPercent,
+		TCPOutSegs:        tcpOut, TCPRetransSegs: tcpRetrans,
+		Up: networkUp, Down: networkDown,
 		TotalUp: totalUp, TotalDown: totalDown,
 		CycleUp: cycleUp, CycleDown: cycleDown,
 	}
@@ -160,6 +211,8 @@ func GenerateReport() []byte {
 
 	data.Process = unit.ProcessCount()
 	mark("process", data.Process > 0)
+	data.BootIDHash = unit.BootIDHash()
+	mark("boot_id", data.BootIDHash != "")
 
 	// 备份新鲜度（可选）：未配置状态文件时不上报，避免写入无意义的零值序列。
 	if path := strings.TrimSpace(flags.BackupStatusFile); path != "" {

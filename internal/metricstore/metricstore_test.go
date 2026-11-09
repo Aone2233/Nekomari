@@ -223,7 +223,10 @@ func TestGetPingRecordsReadsRollupsAfterRawCompaction(t *testing.T) {
 
 func TestCreateMetricDefinitionsUsesExplicitRetentionAndPreservesOverrides(t *testing.T) {
 	if defaultBuiltinMetricRetentionDays != 1 {
-		t.Fatalf("default built-in metric retention = %d, want 1 day", defaultBuiltinMetricRetentionDays)
+		t.Fatalf("default panel metric retention = %d, want 1 day", defaultBuiltinMetricRetentionDays)
+	}
+	if defaultNodeMetricRetentionDays != 30 || defaultPingMetricRetentionDays != 7 {
+		t.Fatalf("new-install presets = node %d / ping %d, want 30/7", defaultNodeMetricRetentionDays, defaultPingMetricRetentionDays)
 	}
 
 	ctx := context.Background()
@@ -247,8 +250,14 @@ func TestCreateMetricDefinitionsUsesExplicitRetentionAndPreservesOverrides(t *te
 		t.Fatalf("definition count = %d, want %d (builtinMetricNames)", len(defs), len(builtinMetricNames))
 	}
 	for _, def := range defs {
-		if def.RetentionDays != defaultBuiltinMetricRetentionDays {
-			t.Fatalf("%s retention = %d, want %d", def.Name, def.RetentionDays, defaultBuiltinMetricRetentionDays)
+		want := defaultNodeMetricRetentionDays
+		if IsPingMetric(def.Name) {
+			want = defaultPingMetricRetentionDays
+		} else if IsPanelMetric(def.Name) {
+			want = defaultBuiltinMetricRetentionDays
+		}
+		if def.RetentionDays != want {
+			t.Fatalf("%s retention = %d, want %d", def.Name, def.RetentionDays, want)
 		}
 	}
 
@@ -334,7 +343,9 @@ func TestCreateMetricDefinitionsUsesLegacySpanOnlyForNewDefinitions(t *testing.T
 	}
 	for _, def := range defs {
 		want := 10
-		if IsPanelMetric(def.Name) {
+		if IsPingMetric(def.Name) {
+			want = defaultPingMetricRetentionDays
+		} else if IsPanelMetric(def.Name) {
 			// Panel history has no legacy node data to preserve.
 			want = defaultBuiltinMetricRetentionDays
 		}

@@ -1955,5 +1955,14 @@
     "saved": "我已妥善保存新 token",
     "token": "新的节点 token",
     "uncertain": "无法确认轮换是否成功，旧 token 可能已经失效。请勿盲目重试：通过经过身份验证的 token 读取接口及独立 SSH／控制台恢复，再检查上报。"
+  },
+  "probeQuality": {
+    "menu": "探针质量",
+    "title": "探针数据质量",
+    "description": "最近上报时间、未知字段、采样间隔与 v1.8 主机明细是否存在。未知不会显示成 0。",
+    "age": "上报距今",
+    "interval": "采样间隔",
+    "unknown": "未知字段",
+    "mounts": "挂载点"
   }
 }

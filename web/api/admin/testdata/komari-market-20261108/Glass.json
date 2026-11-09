@@ -1,0 +1,200 @@
+{
+  "name": "Komari Glass",
+  "short": "Glass",
+  "description": "一个轻量的Komari主题。",
+  "version": "1.1.1",
+  "author": "mengying",
+  "url": "https://github.com/imengying/Komari-Glass",
+  "preview": "dist/preview.png",
+  "configuration": {
+    "type": "managed",
+    "icon": "Bolt",
+    "name": "主题设置",
+    "data": [
+      {
+        "name": {
+          "zh-CN": "基础外观",
+          "en": "Appearance"
+        },
+        "type": "title"
+      },
+      {
+        "key": "defaultAppearance",
+        "name": {
+          "zh-CN": "默认主题模式",
+          "en": "Default Appearance"
+        },
+        "type": "select",
+        "options": "system,light,dark",
+        "default": "system",
+        "help": {
+          "zh-CN": "system 跟随系统；light 浅色；dark 深色。用户本地选择会覆盖此默认值。",
+          "en": "system follows OS; user local choice overrides this."
+        }
+      },
+      {
+        "key": "assetCurrency",
+        "name": {
+          "zh-CN": "资产折算币种",
+          "en": "Asset Currency"
+        },
+        "type": "select",
+        "options": "CNY,USD,HKD,EUR,GBP,JPY,RUB,CHF,INR,VND,THB,CAD",
+        "default": "CNY",
+        "help": {
+          "zh-CN": "首页总览会将节点价格折算为该币种",
+          "en": "Convert node prices to this currency"
+        }
+      },
+      {
+        "key": "enableBlur",
+        "name": {
+          "zh-CN": "启用毛玻璃效果",
+          "en": "Enable Glass Blur"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "backgroundImage",
+        "name": {
+          "zh-CN": "背景图片 URL",
+          "en": "Background Image URL"
+        },
+        "type": "string",
+        "default": "",
+        "help": {
+          "zh-CN": "支持用 | 分隔浅色/深色背景，例如 light.jpg|dark.jpg",
+          "en": "Use | to separate light/dark backgrounds"
+        }
+      },
+      {
+        "name": {
+          "zh-CN": "服务器卡片",
+          "en": "Server Cards"
+        },
+        "type": "title"
+      },
+      {
+        "key": "showCarrierPing",
+        "name": {
+          "zh-CN": "启用三网延迟",
+          "en": "Enable Carrier Ping"
+        },
+        "type": "switch",
+        "default": false,
+        "help": {
+          "zh-CN": "开启后分别显示电信、移动、联通延迟与丢包；关闭时显示平均延迟与丢包。",
+          "en": "Show carrier-specific latency and loss; when disabled, show aggregate latency and loss."
+        }
+      },
+      {
+        "key": "telecomPingTaskName",
+        "name": {
+          "zh-CN": "电信延迟任务名称",
+          "en": "Telecom Ping Task Name"
+        },
+        "type": "string",
+        "default": "",
+        "help": {
+          "zh-CN": "仅在启用三网延迟后生效。填写 Komari 后台中的完整任务名称；三项全部留空时优先按运营商名称自动匹配，未匹配项按后台顺序补充。",
+          "en": "Only used when carrier ping is enabled. Enter the exact task name, or leave all three empty to match carrier names first and fill unmatched slots in backend order."
+        }
+      },
+      {
+        "key": "mobilePingTaskName",
+        "name": {
+          "zh-CN": "移动延迟任务名称",
+          "en": "Mobile Ping Task Name"
+        },
+        "type": "string",
+        "default": "",
+        "help": {
+          "zh-CN": "仅在启用三网延迟后生效。",
+          "en": "Only used when carrier ping is enabled."
+        }
+      },
+      {
+        "key": "unicomPingTaskName",
+        "name": {
+          "zh-CN": "联通延迟任务名称",
+          "en": "Unicom Ping Task Name"
+        },
+        "type": "string",
+        "default": "",
+        "help": {
+          "zh-CN": "仅在启用三网延迟后生效。",
+          "en": "Only used when carrier ping is enabled."
+        }
+      },
+      {
+        "name": {
+          "zh-CN": "首页总览",
+          "en": "Overview"
+        },
+        "type": "title"
+      },
+      {
+        "key": "showStatsBar",
+        "name": {
+          "zh-CN": "显示总览统计条",
+          "en": "Show Stats Bar"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showOnline",
+        "name": {
+          "zh-CN": "显示在线",
+          "en": "Show Online"
+        },
+        "type": "switch",
+        "default": true,
+        "help": {
+          "zh-CN": "总览条显示在线节点数",
+          "en": "Show online node count"
+        }
+      },
+      {
+        "key": "showAssets",
+        "name": {
+          "zh-CN": "显示资产",
+          "en": "Show Assets"
+        },
+        "type": "switch",
+        "default": true,
+        "help": {
+          "zh-CN": "总览条显示总价值与剩余价值",
+          "en": "Show total and remaining value"
+        }
+      },
+      {
+        "key": "showTraffic",
+        "name": {
+          "zh-CN": "显示累计流量",
+          "en": "Show Traffic"
+        },
+        "type": "switch",
+        "default": true,
+        "help": {
+          "zh-CN": "总览条显示累计流量",
+          "en": "Show total traffic"
+        }
+      },
+      {
+        "key": "showSpeed",
+        "name": {
+          "zh-CN": "显示实时网速",
+          "en": "Show Network Speed"
+        },
+        "type": "switch",
+        "default": true,
+        "help": {
+          "zh-CN": "总览条显示实时网速",
+          "en": "Show realtime speed"
+        }
+      }
+    ]
+  }
+}
