@@ -3,6 +3,47 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.8.0 Probe Truth release (2026-11-09 10:32 Asia/Shanghai)
+
+Production runs **v1.8.0 / a92a242**, image
+`ghcr.io/aone2233/nekomari:v1.8.0@sha256:119f7aab805d46cf947008be9003ead4d508cbb1abd08534cec5551a4b659e9f`.
+The release was built from tag `v1.8.0` on merge commit `a92a242`; main CI was
+8/8 and the release workflow run `42550381372` finished 10/10. Its arm64 binary
+SHA-256 `a844fe74198e5dd7d81b46b902b8ce04a275b61722f64f8487d39c29bcc73c89`
+matches the published `SHA256SUMS.txt`.
+
+Before switching, a fresh encrypted snapshot was received on MAC-WAN at
+`manual/v180-pre-20261109T0230Z/oc424-pre.tar.gz.age` (245,230,973 bytes,
+SHA-256 `d8c5bf371f575578132c056a3372fdca6be0eba428215e91d0d1fe9fbddec40b`).
+Both databases passed `quick_check`. The old compose/container state is at
+`/opt/nekomari/backups/v1.8.0-cutover-20261109T0232Z/`; the old v1.7.30 image
+remains locally available. The compose image line was then pin-updated and the
+container recreated.
+
+Post-switch verification:
+
+- `panel-upgrade-check.sh`: **9 passed, 0 failed, 0 skipped** (healthy, 0
+  restarts, `/api/version` v1.8.0/a92a242, `/api/public` success, `/` 200,
+  `quick_check` ok, 3 upgrade archives, 0 ERROR lines in 5 minutes).
+- 14 clients and 13 ping tasks preserved; all 14 Agents still report v1.7.30
+  (panel-only release, no Agent rollout).
+- Public HTTPS returns v1.8.0 with valid TLS.
+- No ERROR lines in the observed panel logs.
+
+A separate post snapshot was received at
+`manual/v180-post-20261109T0233Z/oc424-post.tar.gz.age` (245,110,016 bytes,
+SHA-256 `c8c053e0086f1f5af9e784c0c534bff0c7e2421270c1a72ba466024d40d44b18`).
+It passed authenticated decryption, `quick_check`, and an isolated amd64
+v1.8.0 boot drill: `/api/version` v1.8.0/a92a242, 14 clients, 13 tasks, 0
+restarts. These are online snapshots, not cross-store atomic or proof of every
+in-memory sample.
+
+The release workflow initially refused the tag because its manual-only Agent
+policy was hardcoded to v1.7.30. The policy was widened for v1.8.0 and the
+workflow was dispatched from `fix/v1.8-release-policy`; that workflow-only fix
+still needs to be merged to main. Theme browser visual checks, external
+provider delivery, LAN ICMP and `tc netem` loss remain open.
+
 ## Education IPv6 ICMP-only (2026-11-08 19:36 Asia/Shanghai)
 
 The owner chose one ICMP probe rather than the two `dual` primary legs. After

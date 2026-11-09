@@ -22,7 +22,7 @@ it is not a claim that any item below is implemented yet.
 - [x] 64/64 theme manifests, preflight, install and reinstall pass.
 - [ ] Theme browser/hydration/mobile visual gate.
 - [x] OC424 scratch acceptance: `panel-upgrade-check` 9/9, migration, authenticated `admin:getProbeQuality`, `public:getPingMetricStats` and retention preset against copied production data; see `V1.8-OC424-STAGING.md`.
-- [ ] OC424 production upgrade, pre/post encrypted backup and isolated restore drill.
+- [x] OC424 production upgrade to v1.8.0/a92a242, pre/post encrypted backups, `panel-upgrade-check` 9/9 and isolated amd64 restore drill. See `DEPLOY-OC424.md` and `MAC-WAN-BACKUP.md`.
 
 ## Confirmed defaults (2026-11-08)
 
