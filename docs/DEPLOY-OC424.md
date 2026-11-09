@@ -41,7 +41,8 @@ in-memory sample.
 The release workflow initially refused the tag because its manual-only Agent
 policy was hardcoded to v1.7.30. The policy was widened for v1.8.0 and the
 workflow was dispatched from `fix/v1.8-release-policy`; that workflow-only fix
-still needs to be merged to main. Theme browser visual checks, external
+was merged to main as `5dd1522`, whose CI went 8/8 after one flaky IPv6 rerun.
+Theme browser visual checks, external
 provider delivery, LAN ICMP and `tc netem` loss remain open.
 
 ## Education IPv6 ICMP-only (2026-11-08 19:36 Asia/Shanghai)
