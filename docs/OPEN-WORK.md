@@ -14,22 +14,30 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**Current v1.7.30 checkpoint (2026-11-08, Asia/Shanghai):** The formal
-[v1.7.30 release](https://github.com/Aone2233/Nekomari/releases/tag/v1.7.30)
-and its pinned panel image are live on OC424; the release record, backup hashes,
-rollout evidence and caveats are in the latest checkpoint in
-[`DEPLOY-OC424.md`](./DEPLOY-OC424.md). All 14 nodes now report v1.7.30;
+**Current v1.8.0 Probe Truth checkpoint (2026-11-09, Asia/Shanghai):** The formal
+[v1.8.0 release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.0)
+and its pinned panel image are live on OC424; the release record, image digest,
+backup hashes, rollout evidence and caveats are in
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md). All 14 clients and 13 ping tasks remain;
+all 14 Agents still report v1.7.30. The panel is additive and compatible with
+old Agents, so no Agent rollout was required for this release. The Agent release
+remains manual-only; nodes need an explicitly staged upgrade.
 HKHKT was reached through MAC-WAN and the OC424 IPv4 jump and its CPU and ping
-samples resumed. The Agent release remains manual-only. Task 30 has actual IPv6
-latency and loss samples from MegaBox, Riven and the updated Frankfurt Agent.
-Task 28's formerly configured reference was cleared and, following the owner's
-subsequent choice, its type changed from dual to ICMP. Both assigned nodes have
-fresh ICMP samples and stopped producing TCP and reference samples. The prior
-protocol and reference history is retained but hidden in the patched detail
-chart when current type/role are known.
+samples resumed. Task 30 has actual IPv6 latency and loss samples from MegaBox,
+Riven and the updated Frankfurt Agent. Task 28's formerly configured reference
+was cleared and, following the owner's subsequent choice, its type changed from
+dual to ICMP. Both assigned nodes have fresh ICMP samples and stopped producing
+TCP and reference samples. The prior protocol and reference history is retained
+but hidden in the patched detail chart when current type/role are known.
 
 Remaining acceptance and operational limits:
 
+- The three v1.8.0 verification gates are still open: 64-theme
+  browser/hydration/mobile, real external provider delivery, and LAN ICMP /
+  `tc netem` loss. A v1.8.1 verification close-out is a **draft, owner
+  confirmation pending**; it contains only these gates and no new features.
+  See [`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md) and
+  [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md).
 - The owner should refresh the signed-in MegaBox and HK04 detail pages to
   confirm that only the ICMP primary appears; mocked browser
   tests and public assets do not substitute for that session. The home-card
@@ -48,8 +56,8 @@ Remaining acceptance and operational limits:
   character device. Its Agent was updated and reports, but the host-level issue
   remains for the owner to assess; the rollout did not alter it.
 
-**Historical IPv6 reliability follow-up (2026-11-08, superseded above):** OC424 remains on the
-internal `v1.7.30/canary3`, not a GitHub release. From 04:31 through 04:43 UTC
+**Historical IPv6 reliability follow-up (2026-11-08, superseded above):** At that point OC424 ran
+the internal `v1.7.30/canary3`, not a GitHub release. From 04:31 through 04:43 UTC
 the persisted task 30 loss series had 10/13 complete MegaBox minutes and 13/13
 Riven minutes. MegaBox skips at 04:32 and 04:42 followed its normal HTTP basic
 info reports; an authenticated POST retires the pinned WS lease by design.
@@ -68,7 +76,7 @@ new source has not yet passed release CI or been formally published/deployed;
 the exact source, GitHub assets, production panel and staged Agents all need
 separate acceptance. No credentials, task assignments or history were changed.
 
-**Historical IPv6 production canary (2026-11-07 17:25 UTC, superseded above):** OC424 is running
+**Historical IPv6 production canary (2026-11-07 17:25 UTC, superseded above):** At that point OC424 ran
 the locally built, non-public candidate `v1.7.30/d1a15af`, not a published
 stable release. Exact-commit CI 42393310935 passed 8/8. The arm64 image is
 `sha256:7988a75ea14363e4e131ed577946afac27d0d7f69791b47928b73e5cae3b44b7`,
@@ -270,21 +278,32 @@ The next bounded releases and operational gates, in order:
    passing isolated restore drills. Exit closed 2026-11-04: the owner
    sent a test notification from the button and acknowledged the real
    receipt.
-3. **v1.8.0 remainder.** The uptime restart-count metric (`system.restarts`)
-   is delivered in v1.7.26 (2026-11-04): conservative 300 s
-   uptime-regression detection, restart-durable baselines, `last` API
-   aggregation, an uptime-page count in five locales, unit tests and OC424
-   acceptance with restore drills. The 50-node capacity/memory gate is
-   measured and passes (2026-11-04): `deploy/capacity50.py` drives 50
-   synthetic nodes against a scratch panel for 30 minutes — 30047/30047
-   reports accepted, report p95 2.0 ms, RSS plateau 92–96 MiB, no ERROR
-   lines; see [`CAPACITY-50NODE.md`](./CAPACITY-50NODE.md). Remaining:
-   the second off-host destination decision (owner).
+3. **v1.8.0 Probe Truth delivered; v1.8.1 verification close-out is a
+   draft (owner confirmation pending).** The uptime restart-count metric
+   (`system.restarts`) shipped in v1.7.26 and the 50-node capacity/memory gate
+   passed on 2026-11-04; see [`CAPACITY-50NODE.md`](./CAPACITY-50NODE.md).
+   v1.8.0 itself is released and deployed as `v1.8.0/a92a242`; 14 clients and
+   13 ping tasks remain, and all 14 Agents still report v1.7.30. The three
+   remaining gates are:
+
+   - 64-theme browser/hydration/mobile visual gate. Offline gates are
+     64/64 manifests, preflight, install and reinstall; browser rendering,
+     hydration diagnostics and mobile interaction remain pending.
+   - Real external provider delivery. Channel registry, plugin load/unload and
+     fake-channel dispatch are tested; a real configured provider receipt
+     (Telegram, Email, Bark or another) remains pending.
+   - LAN ICMP and `tc netem` loss. Loopback ICMP/TCP and HTTP TTFB calibration
+     pass; LAN ICMP and 0/1/5/20% `tc netem` loss runs remain NOT RUN.
+
+   v1.8.1 contains no new features; v1.9.0 exec-result history and the other
+   v1.9 slices are explicitly out of scope. Whether an Agent v1.8.0 staged
+   rollout runs during the v1.8.1 window is **TBD**. The second off-host
+   destination decision remains with the owner.
 4. **Still open acceptance.** Real remote notification receipt (a genuine
    incident, not the acknowledged test send) and MegaBox provider-billing
    equivalence; the latter needs provider-side data and must never be
    claimed from panel numbers alone.
-5. **v1.9.0 begins (v1.7.27 and v1.7.29, 2026-11-04/05).** Metric CSV export
+5. **v1.9.0 next (v1.7.27 and v1.7.29 CSV; v1.8.0 Probe Truth released 2026-11-09).** Metric CSV export
    on the node chart page — a wide CSV (time plus one column per metric
    series with tags preserved) of the loaded window, built from the same
    `public:queryMetrics` data the charts draw, with a shared quoting util
@@ -293,8 +312,8 @@ The next bounded releases and operational gates, in order:
    drills. The v1.7.29 correction replaces misleading v1.7.28 reconstructed
    history rows with retained bucket data and is now deployed. Owner on-page
    acceptance of both Export CSV and Export history-bucket CSV remains open.
-   See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md). Next: bounded
-   exec-result history, designed separately in
+   See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md). After the v1.8.1
+   verification gates: bounded exec-result history, designed separately in
    [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md). Later slices include
    the cost-forecast column, roles UI, frontend budgets and an a11y pass.
 
@@ -1385,9 +1404,9 @@ MAC-WAN's `manual/v1725-recovery-20261103/` with sidecars, and two isolated
 drills pass (pre boots v1.7.24 amd64; post boots and serves
 v1.7.25/05e7fe2). Owner-session UI acceptance of the test button, one
 owner-acknowledged real test receipt and real remote alert receipt remain
-unverified. The next bounded slice is the v1.8.0 remainder: uptime
-restart-count metric, then the 50-node gate and the second-destination
-decision.
+unverified. At that point the next bounded slice was the v1.8.0
+remainder: uptime restart-count metric, then the 50-node gate and the
+second-destination decision.
 See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md).
 
 **Previous operational checkpoint (2026-11-03 14:20 UTC):** OC424 was

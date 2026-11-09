@@ -32,7 +32,7 @@ its exit criteria are met, not when the calendar says so.
 |---|---|---|---|---|
 | `v1.6.x` | ongoing | Patch/soak | Bug fixes, dependency and CVE updates, backup/monitoring tweaks | CI green; no P0 regression; panel check 9/9 |
 | `v1.7.0` | 2026-11 | Security and invariants | API-key scopes + rotation, scoped/step-up policy for `exec`/`roll`/`getClientToken`; input caps for `getRecords`/`getLogs`; `v2EventQueues` cleanup; `used > total` clamp; encrypted off-host backups (`age`/`gpg`) with key-management decision; token rotation API/UI | No unbounded admin inputs; no global all-powerful API key; every sensitive method gated or scoped; backup encrypted and restore drill automated; zero P0 |
-| `v1.8.0` | 2026-12 → 2027-01 | Observability and SLOs | uptime/restart-count metric; alert-rule test button; SLA window-coverage fields; second off-host destination decision. Shipped in v1.7.x already: panel self-metrics history/trend view, backup-freshness alerts (`backup_age`/`backup_ok`), forecast reset/overflow fixes, SLA coverage clarification | SLO dashboard/measurement exists; stale-backup and agent-offline alerts tested; SLA numbers reproducible against raw points; 50-node capacity test (passes 2026-11-04) |
+| `v1.8.0` | 2026-11 (released 2026-11-08) | Probe Truth | Additive multi-probe (1–10 attempts), RFC3550 jitter, HTTP phases with `legacy`/`status_aware`, host detail, retention presets and quality panel; 26-plugin/64-theme compatibility gates. Uptime/restart, alert-test, SLA and 50-node items shipped earlier in v1.7.x. | v1.8.0 checklist; OC424 9/9; fresh pre/post backups and isolated restore drill. Three verification gates remain open: 64-theme browser/hydration/mobile, external provider delivery, LAN ICMP/`tc netem` loss. |
 | `v1.9.0` | 2027-02 → 2027-03 | Operator features and UX | metric/record CSV export; exec-result history; cost-forecast column; roles (viewer/operator/admin) if not in v1.7; frontend entry < 160 KB gzip, < 35 JS requests, PWA precache < 3 MB; timezone labels, raw-HTML locale hardening, TerminalDialog focus trap; screen-reader pass | Feature acceptance tests; a11y checklist signed off; budget targets met on a production build |
 | `v2.0.0` | 2027-Q2 | Agent and platform v2 | non-root agent default with capability/ICMP strategy; Windows/macOS agent support and footprint measurement; single protocol source (remove root/agent duplication); agent updater/rollback hardening; secrets at rest (session/2FA) with key management; optional DB encryption; 200-node capacity | Migration guide; protocol compatibility policy (two-minor deprecation); 200-node benchmark; no plaintext session/2FA secrets on new installs |
 | `v2.1.0` | 2027-Q3 | Scale and ecosystem | HA/read-replica evaluation, plugin/theme marketplace signing, multi-region backup, optional external metrics export | Scale/HA runbook; marketplace signature verification; backup across two providers |
@@ -65,11 +65,29 @@ decides at the gates marked **[Owner]**.
 | `v1.7.2x` patches | as needed | CVE, dependency and bug fixes only | standard delivery gates |
 | `v1.7.27` | 2026-11-04 → 05 | First v1.9.0 slice: metric CSV export on the node chart page — wide table of chart series, BOM + CRLF, five locales — **deployed 2026-11-04**; tagged headers need the follow-up fix | CI green; OC424 9/9; owner on-page acceptance **[Owner]** |
 | `v1.7.28` / `v1.7.29` | 2026-11-04 → 05 | Ping/load CSV export was published in v1.7.28 but skipped in production; the v1.7.29 correction deploys explicit historical bucket semantics | CI and release complete; backup/identity gates pass; signed-in OC424 CSV acceptance **[Owner]** |
-| `v1.8.0` | 2026-11 → 12 | Uptime restart-count metric; 50-node capacity/memory gate (passes 2026-11-04); second off-host destination decision **[Owner]** | each slice deployed and accepted; 50-node gate passes |
+| `v1.8.0` | 2026-11 (released 2026-11-08) | Probe Truth: additive multi-probe, HTTP phases, host detail, retention/quality and compatibility gates; see [`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md) | CI/release green; OC424 9/9; fresh pre/post backups and restore drill. Three verification gates remain open. |
+| `v1.8.1` | **TBD** | Verification close-out **draft, owner confirmation pending** | No new features: 64-theme browser/hydration/mobile; external provider delivery; LAN ICMP and `tc netem` loss. | Every gate has retained raw evidence and passes. Version/release mechanics and Agent rollout remain TBD. |
 | `v1.9.0` | 2026-11 → 2027-01 | Metric CSV ships as v1.7.27 and corrected history-bucket CSV as v1.7.29; remaining: exec-result history, cost-forecast column, roles (viewer/operator/admin), frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
 | `v2.0.0` | 2027-Q2 | non-root agent default, protocol consolidation, secrets at rest, 200-node benchmark | migration guide; two-minor compat policy; benchmark |
 
-### Immediate delivery sequence (2026-11-05)
+### v1.8.1 verification close-out (draft, owner confirmation pending)
+
+Status: **draft only, not a committed release.** v1.8.1 contains no new
+features; v1.9.0 exec-result history and the other v1.9 slices are explicitly
+out of scope. It exists only to close the three v1.8.0 gates.
+
+| Item | Recorded basis | Proposed acceptance | Status |
+|---|---|---|---|
+| 64 themes: browser, hydration, mobile | 64/64 manifests, preflight, install and reinstall already pass; browser/hydration/mobile is the recorded pending visual gate ([`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md)) | Disposable panel; every theme loaded at the existing desktop/mobile browser viewports; check rendered pages, hydration diagnostics, console errors and primary public/admin routes; record a per-theme pass/fail matrix and retain failures. | Gate is recorded; execution protocol is a proposal. |
+| External provider delivery | Registry/load/unload and fake-channel dispatch are tested; real external delivery is the recorded pending item ([`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md)) | Use a real configured provider, send a bounded test message, record provider, receipt and timestamp; never print secrets; retain failures. Which provider(s) count is TBD. | Gate is recorded; provider set is TBD. |
+| LAN ICMP and `tc netem` loss | Loopback ICMP ±50 µs, TCP ±1 ms and HTTP TTFB tests pass; LAN ICMP and 0/1/5/20% loss are recorded NOT RUN ([`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md)) | Disposable root host and the real measurement path; LAN ICMP against `ping` within ±1 ms; loss within ≤1 percentage point at N≥100; repeat 3 times and report median/p95; without root the item is NOT RUN, never pass. | Gate and tolerances are recorded; environment is a proposal. |
+
+Version mechanics are TBD: whether any code defect found by a gate is fixed in
+v1.8.1 and whether a production deploy is needed. Starting an Agent v1.8.0
+staged rollout during the v1.8.1 window is also **TBD**; no Agent rollout is
+required for v1.8.1 verification.
+
+### Delivery sequence checkpoint (2026-11-05, historical)
 
 1. v1.7.29 is released and deployed with exact-merge CI, verified artifacts,
    node-identity and freshness checks and isolated pre/post MAC-WAN recovery.
@@ -101,24 +119,27 @@ decides at the gates marked **[Owner]**.
 - Quarterly panel rollback drill (< 5 min) and monthly restore check
   (RPO ≤ 24 h, RTO ≤ 30 min).
 
-## Current Delivery Checkpoint (2026-11-05)
+## Current Delivery Checkpoint (2026-11-09)
 
-**Latest OC424 delivery: v1.7.29/94e1973**, switched approximately 02:48 UTC.
-PR #163 and exact-merge CI pass 8/8; release and Docker workflows pass 10/10
-and 2/2, respectively. Upgrade checks pass 9/9; both databases pass read-only
-checks, the same 13 UUID/token pairs remain and all 13 have fresh CPU/uptime
-data. Fresh encrypted MAC-WAN pre/post backups pass isolated recovery.
-v1.7.28 was published but not deployed. The corrected CSV exports need owner
-on-page acceptance. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and
-[`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md).
+**Latest OC424 delivery: v1.8.0/a92a242**, switched 2026-11-09 10:32
+Asia/Shanghai. PR #171 and exact-merge CI pass 8/8; release workflow
+`42550381372` passes 10/10 and publishes the multi-arch v1.8.0 image. The
+pinned OC424 image is
+`ghcr.io/aone2233/nekomari:v1.8.0@sha256:119f7aab805d46cf947008be9003ead4d508cbb1abd08534cec5551a4b659e9f`.
+Upgrade checks pass 9/9; both databases pass read-only checks; 14 clients and
+13 ping tasks remain; all 14 Agents still report v1.7.30 (panel-only release).
+Fresh encrypted MAC-WAN pre/post backups and an isolated amd64 restore drill
+pass. See [`DEPLOY-OC424.md`](./DEPLOY-OC424.md) and
+[`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
 
-**Next design:** [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md) records
-the bounded, authorization-aware history contract. The current unbounded N+1
-task listing is not the UI backend, result cleanup does not imply command
-retention, and sensitive outputs require explicit access. Coding can proceed
-on a separate branch, but the next operator-visible release waits for CSV UI
-acceptance. The second off-host destination remains an owner decision; 200-node
-work and token rotation remain deferred.
+**Next:** v1.8.1 is a **verification close-out draft, owner confirmation
+pending**, not a committed release. Its scope is only the three gates left by
+v1.8.0: 64-theme browser/hydration/mobile, external provider delivery, and LAN
+ICMP/`tc netem` loss. No new features. [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md)
+remains the next v1.9.0 slice after those gates; the current unbounded N+1 task
+listing is not the UI backend, result cleanup does not imply command retention,
+and sensitive outputs require explicit access. The second off-host destination
+remains an owner decision; 200-node work and token rotation remain deferred.
 
 ## Previous Delivery Checkpoint (2026-11-04, CSV gate)
 
@@ -239,8 +260,9 @@ encrypted pre/post archives exist with matching MAC-WAN copies and two
 passing isolated restore drills (pre boots v1.7.24, post boots v1.7.25).
 Owner on-page acceptance of the v1.7.24 window figure and of the v1.7.25
 test notification receipt are both confirmed on 2026-11-04, closing the
-v1.7.25 exit gate. The next slice is the v1.8.0 remainder; see
-[`OPEN-WORK.md`](./OPEN-WORK.md).
+v1.7.25 exit gate. At that point the next slice was the v1.8.0 remainder;
+that work has since shipped in v1.7.26/v1.7.30 and the v1.8.0 Probe Truth
+release. See [`OPEN-WORK.md`](./OPEN-WORK.md).
 
 ## Previous Delivery Checkpoint (2026-11-03)
 
