@@ -213,7 +213,7 @@ Two consequences worth remembering when the fleet does move:
 
 ## Container images
 
-CI and release builds pin Go 1.27.3 independently of the `go.mod` minimum.
+CI and release builds pin Go 1.27.4 independently of the `go.mod` minimum. This fixes GO-2026-6859 in the standard library.
 Update both workflows together when applying compiler security patches. Every
 server/agent executable must pass `govulncheck -mode=binary` (tool v1.8.0) before
 artifact upload. Local source scanning alone does not verify the compiler used

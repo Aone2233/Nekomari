@@ -10,6 +10,9 @@ Nekomari's own.
 
 ### v1.8.1 candidate — probe correctness
 
+- Build CI and release artifacts with Go 1.27.4 to address GO-2026-6859 in
+  `net/http`; the earlier 1.27.3 compiler is affected.
+
 - Correct Linux CPU guest accounting and reject counter-reset intervals; align
   the independent calibration harness.
 - Honor ordinary probe IP preference; reject advanced options on pinned tasks,

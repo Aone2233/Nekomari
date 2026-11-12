@@ -52,7 +52,7 @@ const ForecastShell: React.FC = () => {
   );
 
   useEffect(() => {
-    void load().catch(() => {});
+    void Promise.resolve().then(() => load()).catch(() => {});
   }, [load]);
 
   const onPreview = useCallback((day: number) => load(day), [load]);

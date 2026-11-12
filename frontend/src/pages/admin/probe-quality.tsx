@@ -41,7 +41,7 @@ export default function ProbeQualityPage() {
   const [error, setError] = React.useState<string | null>(null);
 
   const [receivedAt, setReceivedAt] = React.useState<number | null>(null);
-  const [now, setNow] = React.useState(Date.now());
+  const [now, setNow] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
   const [retry, setRetry] = React.useState(0);
 
