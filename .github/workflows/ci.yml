@@ -267,6 +267,9 @@ jobs:
         run: python3 -W error::ResourceWarning deploy/capacity50_test.py
       - name: Test forecast fixture calendar boundaries (offline)
         run: python3 -W error::ResourceWarning deploy/forecast_direction_test.py
+      - name: Test independent CPU calibration reference (offline)
+        working-directory: deploy/calibrate
+        run: python3 -m unittest test_probe_calibrate.py
       - name: Test encrypted backups with throwaway identities (offline)
         run: |
           sudo apt-get update -qq

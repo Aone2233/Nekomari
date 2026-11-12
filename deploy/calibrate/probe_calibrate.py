@@ -45,7 +45,10 @@ def read_proc_stat() -> tuple[int, int]:
     if not fields or fields[0] != "cpu":
         raise RuntimeError("/proc/stat has no aggregate cpu line")
     values = [int(value) for value in fields[1:]]
-    total = sum(values)
+    if len(values) < 4:
+        raise RuntimeError("/proc/stat has an incomplete aggregate cpu line")
+    # guest and guest_nice are already included in user and nice.
+    total = sum(values[:8])
     idle = values[3] + (values[4] if len(values) > 4 else 0)
     return total, idle
 
@@ -122,7 +125,7 @@ def compare_report(report: dict[str, Any], before: dict[str, Any], after: dict[s
 
     total_delta = after["cpu_total"] - before["cpu_total"]
     idle_delta = after["cpu_idle"] - before["cpu_idle"]
-    expected_cpu = (1 - idle_delta / total_delta) * 100 if total_delta > 0 else None
+    expected_cpu = (1 - idle_delta / total_delta) * 100 if total_delta > 0 and 0 <= idle_delta <= total_delta else None
     actual_cpu = report.get("cpu", {}).get("usage")
     if expected_cpu is None or not isinstance(actual_cpu, (int, float)):
         add("cpu", actual_cpu, expected_cpu, False, "NOT RUN: missing CPU interval or report value")

@@ -121,3 +121,30 @@ func TestHTTPProbeRecordsPhasesAndStatus(t *testing.T) {
 		t.Fatalf("status_aware availability = %+v", aware.obs)
 	}
 }
+
+func TestSelectPreferredIP(t *testing.T) {
+	addrs := []string{"2001:db8::1", "192.0.2.1"}
+	for _, tc := range []struct{ preference, want string }{{"4", "192.0.2.1"}, {"6", "2001:db8::1"}, {"auto", "2001:db8::1"}} {
+		if got := selectPreferredIP(addrs, tc.preference); got != tc.want {
+			t.Errorf("preference %q: got %q want %q", tc.preference, got, tc.want)
+		}
+	}
+	if got := selectPreferredIP(addrs[:1], "4"); got != addrs[0] {
+		t.Fatalf("fallback = %q", got)
+	}
+}
+
+func TestProbeCycleLocalFailureIsUnknown(t *testing.T) {
+	count := 0
+	cycle := runProbeCycle(func() (int64, string, error) {
+		count++
+		if count == 1 {
+			return 1000, "ipv4", nil
+		}
+		return -1, "", &probeUnavailableError{reason: "dns_failure", err: errors.New("no address")}
+	}, 2, 0)
+	stats := cycle.stats()
+	if stats.ProbeStatus != "unknown" || stats.ProbeReason != "dns_failure" || stats.LossPct != nil || stats.Attempts != nil {
+		t.Fatalf("unexpected stats: %+v", stats)
+	}
+}

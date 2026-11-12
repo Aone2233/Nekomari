@@ -21,7 +21,7 @@ cover:
 | Producer | Consumer | Contract |
 |---|---|---|
 | old Agent | new Panel | legacy fields decode; v1.8 pointers stay nil |
-| new Agent | old Panel | old decoder sees `task_id/ping_type/value/value_us/family` |
+| new Agent | old Panel | old decoder sees legacy fields but cannot interpret `probe_status=unknown`; it can treat an unknown as loss. Upgrade Panel first. |
 | new Agent | new Panel | multi-probe/HTTP fields decode |
 | old Agent | old Panel | unchanged pre-v1.8 shape |
 

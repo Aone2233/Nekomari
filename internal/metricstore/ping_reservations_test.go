@@ -295,6 +295,9 @@ func TestStoreTransitionsFenceDeletionAndDrainReservedQueue(t *testing.T) {
 				if err := WritePingRecord(t.Context(), rec); err != nil {
 					t.Fatal(err)
 				}
+				if err := WritePingRecord(t.Context(), models.PingRecord{TaskId: id, Client: "node", Time: time.Now().UTC(), Value: -1, ProbeStatus: "unknown", ProbeReason: "dns_failure"}); err != nil {
+					t.Fatal(err)
+				}
 			}
 
 			done := make(chan error, 1)

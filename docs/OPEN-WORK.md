@@ -14,6 +14,13 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
+**Current v1.8.1 candidate:** See [the short implementation and acceptance
+status](./V1.8.1-CURRENT-STATUS.md). v1.8.1 may fix existing probe correctness
+and visibility defects; the three field verification gates below remain open.
+The prepared release policy keeps Agent assets manual, GitHub Latest unchanged,
+and both Docker moving tags unchanged. This is not evidence of publication,
+deployment or Agent rollout.
+
 **Current v1.8.0 Probe Truth checkpoint (2026-11-09, Asia/Shanghai):** The formal
 [v1.8.0 release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.0)
 and its pinned panel image are live on OC424; the release record, image digest,
@@ -34,9 +41,9 @@ Remaining acceptance and operational limits:
 
 - The three v1.8.0 verification gates are still open: 64-theme
   browser/hydration/mobile, real external provider delivery, and LAN ICMP /
-  `tc netem` loss. **v1.8.1 is a formal patch release** scoped only to these
-  gates and no new features; release tag/OC424 deploy mechanics and the
-  defect-fix boundary remain TBD. See
+  `tc netem` loss. **v1.8.1 is a formal patch candidate** that also fixes existing probe
+  correctness and visibility defects. Publication remains gated on retained
+  acceptance evidence; production deployment is separately recorded. See
   [`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md) and
   [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md).
 - The owner should refresh the signed-in MegaBox and HK04 detail pages to
@@ -296,7 +303,7 @@ The next bounded releases and operational gates, in order:
    - LAN ICMP and `tc netem` loss. Loopback ICMP/TCP and HTTP TTFB calibration
      pass; LAN ICMP and 0/1/5/20% `tc netem` loss runs remain NOT RUN.
 
-   v1.8.1 contains no new features; v1.9.0 exec-result history and the other
+   v1.8.1 includes existing probe correctness fixes; v1.9.0 exec-result history and the other
    v1.9 slices are explicitly out of scope. Agent v1.8.0 staged rollout is
    **not started during v1.8.1**; it will be discussed only after all three
    gates close. Release tag/OC424 deploy mechanics and the defect-fix boundary

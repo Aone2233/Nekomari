@@ -156,7 +156,7 @@ it is not a claim that any item below is implemented yet.
 | ICMP RTT | loopback + LAN, against `ping` | loopback ±50 µs; LAN ±1 ms |
 | TCP RTT | loopback + LAN, against handshake capture | ±1 ms |
 | HTTP phases | local server with injected DNS/TCP/TLS/TTFB delays | each phase `max(5 ms, 2%)` |
-| Loss | `tc netem loss` 0/1/5/20% | ≤1 percentage point (N≥100) |
+| Loss | `tc netem loss` 0/1/5/20% | Agent sent/received counts agree with independent packet or counter evidence; compare observed loss with the configured random probability using a predeclared confidence interval and adequate sample size |
 | Clock | inject +2 min / -10 min | reject or mark `clock_skew`; no silent rewrite |
 | Restart | real reboot; second reboot within 5 min | exact count; unknown when undecidable |
 | Retention | boundary write + reopen after expiry | expired = unknown; no stale value |

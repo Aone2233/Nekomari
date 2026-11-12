@@ -4,6 +4,8 @@ import {
   type ForecastCycle,
   type ForecastRow,
 } from "@/components/forecast/TrafficForecastPage";
+import { Button, Flex, Text } from "@radix-ui/themes";
+import { useTranslation } from "react-i18next";
 import { useRPC2Call } from "@/contexts/RPC2Context";
 
 /**
@@ -19,6 +21,9 @@ import { useRPC2Call } from "@/contexts/RPC2Context";
  */
 const ForecastShell: React.FC = () => {
   const { call } = useRPC2Call();
+  const { t } = useTranslation();
+  const [error, setError] = useState<string | null>(null);
+  const [hasData, setHasData] = useState(false);
   const [rows, setRows] = useState<ForecastRow[]>([]);
   const [cycle, setCycle] = useState<ForecastCycle>({ start: "", end: "", reset_day: 1, location: "" });
   const [threshold, setThreshold] = useState(0.9);
@@ -32,8 +37,13 @@ const ForecastShell: React.FC = () => {
           { rows: ForecastRow[]; cycle: ForecastCycle; threshold: number }
         >("admin:getTrafficForecast", resetDay ? { reset_day: resetDay } : {});
         setRows(result?.rows ?? []);
+        setHasData(true);
+        setError(null);
         if (result?.cycle) setCycle(result.cycle);
         if (typeof result?.threshold === "number") setThreshold(result.threshold);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+        throw cause;
       } finally {
         setLoading(false);
       }
@@ -42,7 +52,7 @@ const ForecastShell: React.FC = () => {
   );
 
   useEffect(() => {
-    void load();
+    void load().catch(() => {});
   }, [load]);
 
   const onPreview = useCallback((day: number) => load(day), [load]);
@@ -56,14 +66,21 @@ const ForecastShell: React.FC = () => {
   );
 
   return (
-    <TrafficForecastPage
+    <>
+    {error && <Flex gap="2" align="center" p="4" role="alert">
+      <Text color="red">{t("forecast.error")}: {error}{hasData ? ` (${t("forecast.stale", "Showing previous data")})` : ""}</Text>
+      <Button variant="soft" onClick={() => void load().catch(() => {})}>{t("common.retry", "Retry")}</Button>
+    </Flex>}
+    {loading && !hasData && <Flex p="4"><Text>{t("forecast.loading")}</Text></Flex>}
+    {hasData && <TrafficForecastPage
       rows={rows}
       cycle={cycle}
       threshold={threshold}
       onPreview={onPreview}
       onSetCycleDay={onSetCycleDay}
       loading={loading}
-    />
+    />}
+    </>
   );
 };
 

@@ -79,3 +79,15 @@ func TestNewPingRecordWithStatsMapsHTTPObservation(t *testing.T) {
 		t.Fatalf("http observation = %+v", rec.HTTP)
 	}
 }
+
+func TestUnknownProbeStatusReachesRecord(t *testing.T) {
+	params := v2.PingResultParams{TaskID: 7, Value: -1, ProbeStatus: "unknown", ProbeReason: "dns_failure"}
+	stats := pingStatsFromParams(params)
+	if stats == nil {
+		t.Fatal("missing stats")
+	}
+	rec := newPingRecordWithStats("node", 7, "icmp", "", "", -1, -1, stats, time.Now())
+	if rec.ProbeStatus != "unknown" || rec.ProbeReason != "dns_failure" {
+		t.Fatalf("record: %+v", rec)
+	}
+}

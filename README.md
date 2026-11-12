@@ -73,11 +73,17 @@ release ships the server and the agent for `linux/amd64`, `linux/arm64` and
 
 ```bash
 ./nekomari-linux-amd64 server          # open http://localhost:25774 to install
-./komari-agent-linux-amd64 -e https://your-panel -t <token>
+./manual-komari-agent-linux-amd64 -e https://your-panel -t <token>
 ```
 
-The agent binary keeps the `komari-agent-` prefix because that is the filename
-its self-updater looks for — see [docs/RELEASING.md](./docs/RELEASING.md).
+The v1.7.30, v1.8.0 and planned v1.8.1 releases name Agent assets
+`manual-komari-agent-*`: verify the release checksums and explicitly install the
+binary after reviewing the node. The Agent self-updater searches for
+`komari-agent-*` and will not automatically install these manual assets. GitHub
+Latest remains on the previous installer release. For v1.8.1, Docker moving
+tags remain unchanged; use the versioned panel image after publication. Deploy
+the new panel before a new Agent so unknown probe results are not read as loss
+by an old panel. See [docs/RELEASING.md](./docs/RELEASING.md).
 
 ### Docker
 

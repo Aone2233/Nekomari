@@ -844,6 +844,12 @@
   },
   "page_not_found": "Server tidak dapat menemukan halaman yang Anda minta.",
   "ping": {
+    "legacyOptionsWarning": "Agent lama dapat mengabaikan pengaturan ini. Preferensi IP dan pelaporan kesalahan tidak diketahui memerlukan v1.8.1; versi saja tidak membuktikan kemampuan.",
+    "unknownDiagnostics": "Kesalahan probe terbaru",
+    "unknownDiagnosticsHint": "Siklus yang tidak dapat dimulai dalam satu jam terakhir. Agent lama mungkin tidak melaporkan kesalahan ini.",
+    "unknownDiagnosticsEmpty": "Tidak ada kesalahan probe yang dilaporkan pada periode ini.",
+    "unknownDiagnosticsLimited": "Hanya 100 hasil pertama yang ditampilkan.",
+    "pinnedOptionsUnsupported": "Tugas dengan keluarga alamat tetap tidak mendukung opsi probe lanjutan.",
     "schedule_pending": "Jadwal ping gagal dimuat ulang. Perubahan yang disimpan mungkin belum aktif; panel akan mencoba lagi. Hubungi administrator jika peringatan berlanjut.",
     "schedule_unknown": "Status pemuatan ulang jadwal ping tidak tersedia. Muat ulang halaman atau hubungi administrator.",
     "all_servers": "Semua server",
@@ -1864,6 +1870,7 @@
     "removalsNotDeleted": "{{count}} catatan ada di panel tetapi tidak ada di dokumen; semuanya dibiarkan."
   },
   "forecast": {
+    "stale": "Menampilkan data sebelumnya",
     "title": "Prakiraan trafik",
     "subtitle": "Ke arah mana trafik setiap node pada siklus ini, dan kapan batasnya akan tercapai. Proyeksi ditampilkan bersama datanya.",
     "cycleWindow": "Siklus ini",
@@ -1957,6 +1964,9 @@
     "uncertain": "Rotasi belum dapat dipastikan. Token lama mungkin sudah tidak berlaku. Jangan langsung mencoba ulang: pulihkan melalui operasi baca token terautentikasi dan SSH/konsol independen, lalu periksa pelaporan."
   },
   "probeQuality": {
+    "stale": "Menampilkan data sebelumnya",
+    "updated": "Diperbarui",
+    "empty": "Tidak ada node",
     "menu": "Kualitas probe",
     "title": "Kualitas data probe",
     "description": "Usia laporan terakhir, field tidak diketahui, interval sampel, dan detail host v1.8. Nilai tidak diketahui tidak pernah ditampilkan sebagai 0.",

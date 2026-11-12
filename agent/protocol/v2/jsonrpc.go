@@ -228,6 +228,8 @@ type PingProbeStats struct {
 	ResolvedIP     string           `json:"resolved_ip,omitempty"`
 	ResolvedFamily string           `json:"resolved_family,omitempty"`
 	ProbeMode      string           `json:"probe_mode,omitempty"`
+	ProbeStatus    string           `json:"probe_status,omitempty"`
+	ProbeReason    string           `json:"probe_reason,omitempty"`
 }
 
 func BuildPingResultPayload(taskID uint, pingType string, value int, finishedAt time.Time) interface{} {
@@ -326,6 +328,12 @@ func buildPingResultPayload(taskID uint, pingType, role, family string, value in
 	}
 	if stats.ResolvedFamily != "" {
 		params["resolved_family"] = stats.ResolvedFamily
+	}
+	if stats.ProbeStatus != "" {
+		params["probe_status"] = stats.ProbeStatus
+	}
+	if stats.ProbeReason != "" {
+		params["probe_reason"] = stats.ProbeReason
 	}
 	if stats.ProbeMode != "" {
 		params["probe_mode"] = stats.ProbeMode

@@ -41,6 +41,7 @@ const (
 	MetricPingLatency          = "ping.latency_ms"
 	MetricPingSuccessLatency   = "ping.success_latency_ms"
 	MetricPingLoss             = "ping.loss"
+	MetricPingUnknown          = "ping.unknown"
 	MetricPingAttempts         = "ping.attempts"
 	MetricPingSuccess          = "ping.success"
 	MetricPingLossPct          = "ping.loss_pct"
@@ -98,7 +99,7 @@ var recordMetricNames = joinMetricNames(loadRecordMetricNames, gpuDeviceRecordMe
 
 // Ping has an independent retention and cleanup boundary.
 var pingMetricNames = []string{
-	MetricPingLatency, MetricPingLoss, MetricPingSuccessLatency,
+	MetricPingLatency, MetricPingLoss, MetricPingSuccessLatency, MetricPingUnknown,
 	MetricPingAttempts, MetricPingSuccess, MetricPingLossPct,
 	MetricPingMin, MetricPingAvg, MetricPingMax, MetricPingJitter,
 	MetricHTTPDNS, MetricHTTPTCP, MetricHTTPTLS, MetricHTTPTTFB, MetricHTTPTotal,

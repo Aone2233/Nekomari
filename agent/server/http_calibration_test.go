@@ -37,3 +37,35 @@ func TestHTTPProbeTTFBCalibration(t *testing.T) {
 		t.Fatalf("total %d µs < ttfb %d µs", *out.obs.TotalUS, *out.obs.TTFBUS)
 	}
 }
+
+func TestHTTPProbeReachableWhenResponseTimesOut(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
+	defer server.Close()
+	out := httpProbe(server.URL, 100*time.Millisecond, "", true)
+	if out.err == nil || out.obs == nil || out.obs.Reachable == nil || !*out.obs.Reachable {
+		t.Fatalf("expected connected response timeout: %+v", out)
+	}
+	if out.obs.TTFBUS != nil {
+		t.Fatalf("unexpected TTFB without response: %v", *out.obs.TTFBUS)
+	}
+}
+
+func TestHTTPProbeTTFBExcludesRedirectHop(t *testing.T) {
+	const delay = 80 * time.Millisecond
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			time.Sleep(delay)
+			http.Redirect(w, r, "/final", http.StatusFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	out := httpProbe(server.URL, 2*time.Second, "", true)
+	if out.err != nil || out.obs == nil || out.obs.TTFBUS == nil || out.obs.TotalUS == nil {
+		t.Fatalf("outcome: %+v", out)
+	}
+	if *out.obs.TotalUS-*out.obs.TTFBUS < int64((delay-10*time.Millisecond)/time.Microsecond) {
+		t.Fatalf("redirect delay leaked into final TTFB: total=%d ttfb=%d", *out.obs.TotalUS, *out.obs.TTFBUS)
+	}
+}

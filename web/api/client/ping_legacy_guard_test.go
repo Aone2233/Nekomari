@@ -177,3 +177,59 @@ func TestPingDeletionAndLegacyResultLifecycle(t *testing.T) {
 		t.Fatalf("auto ID reused: old=%d new=%d err=%v", task.Id, next.Id, err)
 	}
 }
+
+func TestUnknownProbeThroughAuthenticatedReport(t *testing.T) {
+	const marker = "NEKOMARI_UNKNOWN_PROBE_CHILD"
+	if os.Getenv(marker) != "1" {
+		cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestUnknownProbeThroughAuthenticatedReport$")
+		cmd.Dir = t.TempDir()
+		cmd.Env = append(os.Environ(), marker+"=1")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("isolated probe: %v\n%s", err, out)
+		}
+		return
+	}
+	flags.DatabaseType = flags.DatabaseTypeSQLite
+	flags.DatabaseFile = "file:unknown-probe-main?mode=memory&cache=shared"
+	db := dbcore.GetDBInstance()
+	if err := config.Set(metricstore.MetricDBDSNKey, "file:unknown-probe-metrics?mode=memory&cache=shared"); err != nil {
+		t.Fatal(err)
+	}
+	if err := metricstore.InitializeStore(); err != nil {
+		t.Fatal(err)
+	}
+	defer metricstore.CloseStoreContext(context.Background())
+	node := models.Client{UUID: "unknown-probe-node", Token: "unknown-probe-fixture-token"}
+	if err := db.Create(&node).Error; err != nil {
+		t.Fatal(err)
+	}
+	task := models.PingTask{Name: "unknown", Type: "tcp", Target: "bad.invalid:80", Interval: 60, Clients: models.StringArray{node.UUID}}
+	if err := db.Create(&task).Error; err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(v2.Request{JSONRPC: v2.Version, ID: 1, Method: v2.MethodAgentPingResult, Params: v2.PingResultParams{TaskID: task.Id, PingType: "tcp", Value: -1, ProbeStatus: "unknown", ProbeReason: "dns_failure"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(api.IdentityMiddleware())
+	router.POST("/api/clients/v2/rpc", api.RequireRole(api.RoleClient), UploadV2RPC)
+	request := httptest.NewRequest(http.MethodPost, "/api/clients/v2/rpc", bytes.NewReader(body))
+	request.Header.Set("Authorization", "Bearer "+node.Token)
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("report: %d %s", recorder.Code, recorder.Body.String())
+	}
+	for _, check := range []struct {
+		name  string
+		count int
+	}{{metricstore.MetricPingUnknown, 1}, {metricstore.MetricPingLoss, 0}, {metricstore.MetricPingLatency, 0}} {
+		points, err := metricstore.GetStore().Query(t.Context(), metric.Query{MetricName: check.name, EntityID: node.UUID, Start: time.Now().Add(-time.Minute), End: time.Now().Add(time.Minute)})
+		if err != nil || len(points) != check.count {
+			t.Fatalf("%s: points=%+v err=%v", check.name, points, err)
+		}
+	}
+}

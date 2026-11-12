@@ -412,8 +412,8 @@ jobs:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          if [ "$RELEASE_TAG" != v1.7.30 ] && [ "$RELEASE_TAG" != v1.8.0 ]; then
-            echo '::error::this manual-only Agent publication policy is restricted to v1.7.30 and v1.8.0'
+          if [ "$RELEASE_TAG" != v1.7.30 ] && [ "$RELEASE_TAG" != v1.8.0 ] && [ "$RELEASE_TAG" != v1.8.1 ]; then
+            echo '::error::this manual-only Agent publication policy is restricted to v1.7.30, v1.8.0 and v1.8.1'
             exit 1
           fi
           shopt -s nullglob
