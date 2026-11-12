@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// Operator-provided isolated network only. Packet capture on the source veth is
-// the independent send/receive evidence; this test executes the production path.
+// Operator-provided isolated network only. This test executes the production
+// path; independent send and receive evidence must be collected separately.
 func TestNetemCalibrationLive(t *testing.T) {
 	target := os.Getenv("NEKOMARI_NETEM_TARGET")
 	if target == "" {
