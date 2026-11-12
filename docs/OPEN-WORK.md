@@ -41,7 +41,13 @@ Remaining acceptance and operational limits:
 
 - The three v1.8.0 verification gates are still open: 64-theme
   browser/hydration/mobile, real external provider delivery, and LAN ICMP /
-  `tc netem` loss. **v1.8.1 is a formal patch candidate** that also fixes existing probe
+  `tc netem` loss. An isolated 12-run netem experiment now has predeclared
+  loss intervals and independent send/reply counts, but physical LAN latency
+  remains open; see [`V1.8.1-NETEM-PRELIMINARY.md`](./V1.8.1-NETEM-PRELIMINARY.md).
+  The preliminary 64-theme browser scan identified errors and did not cover
+  every mobile interaction or authenticated route; see
+  [`V1.8.1-THEME-SMOKE.md`](./V1.8.1-THEME-SMOKE.md).
+  **v1.8.1 is a formal patch candidate** that also fixes existing probe
   correctness and visibility defects. Publication remains gated on retained
   acceptance evidence; production deployment is separately recorded. See
   [`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md) and
