@@ -55,6 +55,8 @@ Remaining acceptance and operational limits:
   The preliminary 64-theme browser scan identified errors and did not cover
   every mobile interaction or authenticated route; see
   [`V1.8.1-THEME-SMOKE.md`](./V1.8.1-THEME-SMOKE.md).
+  A further isolated scan clicked recognisable mobile menu controls in two
+  themes; the remaining interaction and authenticated-route coverage is open.
   **v1.8.1 is a formal patch candidate** that also fixes existing probe
   correctness and visibility defects. Publication remains gated on retained
   acceptance evidence; production deployment is separately recorded. See
