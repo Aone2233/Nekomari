@@ -50,13 +50,19 @@ Remaining acceptance and operational limits:
   [`V1.8.1-NETEM-PRELIMINARY.md`](./V1.8.1-NETEM-PRELIMINARY.md).
   A single test message sent directly from OC424 using the configured Telegram
   provider received HTTP 200 and Telegram `ok=true` at 09:03:28 Asia/Shanghai.
-  It did not use the Panel notification path, and recipient receipt has not
-  been confirmed, so the notification gate remains open.
+  The owner confirmed receiving it on 2026-11-13. A separate disposable Panel
+  on OC424, using the production v1.8.0 binary and the same configured sender,
+  successfully invoked `admin:testSendMessage` at 15:53:34 Asia/Shanghai. Its
+  database and account were temporary; the production Panel was not changed.
+  The owner confirmed receiving that second message. The production Panel's own
+  end-to-end path remains unconfirmed, so the notification gate remains open.
   The preliminary 64-theme browser scan identified errors and did not cover
   every mobile interaction or authenticated route; see
   [`V1.8.1-THEME-SMOKE.md`](./V1.8.1-THEME-SMOKE.md).
   A further isolated scan clicked recognisable mobile menu controls in two
-  themes; the remaining interaction and authenticated-route coverage is open.
+  themes. Authenticated `/admin/` returned nonempty content without page
+  exceptions at both viewports for all 64 archives; theme-specific private
+  routes and remaining interaction coverage are open.
   **v1.8.1 is a formal patch candidate** that also fixes existing probe
   correctness and visibility defects. Publication remains gated on retained
   acceptance evidence; production deployment is separately recorded. See
