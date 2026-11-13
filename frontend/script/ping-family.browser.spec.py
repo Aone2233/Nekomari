@@ -122,15 +122,23 @@ class PingFamilyBrowserTest(unittest.TestCase):
                         "body": {"name": "Tianjin IPv6", "type": "auto",
                                  "target": "tj-ct-v6.ip.zstaticcdn.com:80", "reference": "",
                                  "default_on": False, "clients": ["alpha", "beta", "gamma"],
-                                 "interval": 60, "target_family": "ipv6",
-                                 "probe_attempts": 3, "probe_spacing_ms": 200,
-                                 "http_mode": "legacy", "http_expected_status": "200-399",
-                                 "ip_version_preference": "auto"},
+                                 "interval": 60, "target_family": "ipv6"},
                     })
                     self.assertEqual(page.evaluate("window.pingFamilyFixture.refreshes()"), 1)
                     self.assertEqual(errors, [])
                 finally:
                     page.close()
+
+    def test_recent_unknown_probe_diagnostic(self):
+        page, errors = self.open_page({"width": 1200, "height": 900})
+        try:
+            page.get_by_role("button", name="Recent probe errors").click()
+            dialog = page.get_by_role("dialog", name="Recent probe errors")
+            expect(dialog.get_by_text("dns_failure", exact=False)).to_be_visible()
+            expect(dialog.get_by_text("Older agents may not report", exact=False)).to_be_visible()
+            self.assertEqual(errors, [])
+        finally:
+            page.close()
 
     def test_pinned_edits_keep_identity_and_membership_payload(self):
         page, errors = self.open_page({"width": 1200, "height": 900})
@@ -142,6 +150,7 @@ class PingFamilyBrowserTest(unittest.TestCase):
             expect(dialog.locator('input[value="example.test:80"]')).to_be_disabled()
             expect(dialog.locator('input[value="gateway"]')).to_be_disabled()
             expect(dialog.get_by_text("The target, protocol, reference and IPV6 family", exact=False)).to_be_visible()
+            expect(dialog.get_by_text("Advanced probe options are not supported", exact=False)).to_be_visible()
             dialog.locator('input[value="IPv6 fixture"]').fill("Renamed")
             page.evaluate("window.pingFamilyFixture.respond(200, {status:'error', message:'edit rejected'})")
             dialog.get_by_role("button", name="Save").click()
@@ -154,10 +163,7 @@ class PingFamilyBrowserTest(unittest.TestCase):
             edit = calls[-1]["body"]["tasks"][0]
             self.assertEqual(edit, {"id": 7, "name": "Renamed", "type": "auto", "target": "example.test:80",
                                     "reference": "gateway", "default_on": False,
-                                    "clients": ["alpha", "beta"], "interval": 60,
-                                    "probe_attempts": 0, "probe_spacing_ms": 200, "probe_timeout_ms": 0,
-                                    "http_mode": "legacy", "http_expected_status": "200-399",
-                                    "ip_version_preference": "auto"})
+                                    "clients": ["alpha", "beta"], "interval": 60})
 
             row = page.locator(".km-pingtask-server-list tr").filter(has_text="gamma")
             row.get_by_role("button", name="Select tasks").click()

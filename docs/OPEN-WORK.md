@@ -14,6 +14,13 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
+**Current v1.8.1 candidate:** See [the short implementation and acceptance
+status](./V1.8.1-CURRENT-STATUS.md). v1.8.1 may fix existing probe correctness
+and visibility defects; the three field verification gates below remain open.
+The prepared release policy keeps Agent assets manual, GitHub Latest unchanged,
+and both Docker moving tags unchanged. This is not evidence of publication,
+deployment or Agent rollout.
+
 **Current v1.8.0 Probe Truth checkpoint (2026-11-09, Asia/Shanghai):** The formal
 [v1.8.0 release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.0)
 and its pinned panel image are live on OC424; the release record, image digest,
@@ -32,11 +39,33 @@ but hidden in the patched detail chart when current type/role are known.
 
 Remaining acceptance and operational limits:
 
-- The three v1.8.0 verification gates are still open: 64-theme
-  browser/hydration/mobile, real external provider delivery, and LAN ICMP /
-  `tc netem` loss. **v1.8.1 is a formal patch release** scoped only to these
-  gates and no new features; release tag/OC424 deploy mechanics and the
-  defect-fix boundary remain TBD. See
+- The three v1.8.0 verification gates remain open: 64-theme
+  browser/hydration/mobile, end-to-end notification delivery, and LAN ICMP /
+  `tc netem` loss. The 12-run isolated netem experiment met predeclared
+  loss and independent-counter checks. On 2026-11-13, three predeclared runs
+  from OC424 to its cloud subnet gateway each received 30/30 Agent probes and
+  30/30 system pings; Agent-to-capture per-probe RTT differences were at most
+  0.264 ms, with no capture drops. The gateway's physical topology is unknown;
+  this does not establish physical LAN calibration. Details are in
+  [`V1.8.1-NETEM-PRELIMINARY.md`](./V1.8.1-NETEM-PRELIMINARY.md).
+  A single test message sent directly from OC424 using the configured Telegram
+  provider received HTTP 200 and Telegram `ok=true` at 09:03:28 Asia/Shanghai.
+  The owner confirmed receiving it on 2026-11-13. A separate disposable Panel
+  on OC424, using the production v1.8.0 binary and the same configured sender,
+  successfully invoked `admin:testSendMessage` at 15:53:34 Asia/Shanghai. Its
+  database and account were temporary; the production Panel was not changed.
+  The owner confirmed receiving that second message. The production Panel's own
+  end-to-end path remains unconfirmed, so the notification gate remains open.
+  The preliminary 64-theme browser scan identified errors and did not cover
+  every mobile interaction or authenticated route; see
+  [`V1.8.1-THEME-SMOKE.md`](./V1.8.1-THEME-SMOKE.md).
+  A further isolated scan clicked recognisable mobile menu controls in two
+  themes. Authenticated `/admin/` returned nonempty content without page
+  exceptions at both viewports for all 64 archives; theme-specific private
+  routes and remaining interaction coverage are open.
+  **v1.8.1 is a formal patch candidate** that also fixes existing probe
+  correctness and visibility defects. Publication remains gated on retained
+  acceptance evidence; production deployment is separately recorded. See
   [`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md) and
   [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md).
 - The owner should refresh the signed-in MegaBox and HK04 detail pages to
@@ -296,7 +325,7 @@ The next bounded releases and operational gates, in order:
    - LAN ICMP and `tc netem` loss. Loopback ICMP/TCP and HTTP TTFB calibration
      pass; LAN ICMP and 0/1/5/20% `tc netem` loss runs remain NOT RUN.
 
-   v1.8.1 contains no new features; v1.9.0 exec-result history and the other
+   v1.8.1 includes existing probe correctness fixes; v1.9.0 exec-result history and the other
    v1.9 slices are explicitly out of scope. Agent v1.8.0 staged rollout is
    **not started during v1.8.1**; it will be discussed only after all three
    gates close. Release tag/OC424 deploy mechanics and the defect-fix boundary

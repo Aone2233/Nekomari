@@ -844,6 +844,12 @@
   },
   "page_not_found": "真不巧，網頁被小鞠吃掉了。",
   "ping": {
+    "legacyOptionsWarning": "舊版 Agent 可能忽略這些設定。IP 偏好和未知錯誤回報需要 v1.8.1；僅憑版本號不能證明功能可用。",
+    "unknownDiagnostics": "近期探測錯誤",
+    "unknownDiagnosticsHint": "過去一小時內未能開始的探測週期。舊版 Agent 可能不會回報這些錯誤。",
+    "unknownDiagnosticsEmpty": "此期間沒有回報探測錯誤。",
+    "unknownDiagnosticsLimited": "僅顯示前 100 筆結果。",
+    "pinnedOptionsUnsupported": "固定地址族任務不支援進階探測選項。",
     "schedule_pending": "延遲任務排程未能重新載入，已儲存的變更可能尚未生效；面板將自動重試。如果警告持續，請聯絡管理員。",
     "schedule_unknown": "無法取得延遲任務排程的載入狀態，請重新整理頁面或聯絡管理員。",
     "all_servers": "全部伺服器",
@@ -1864,6 +1870,7 @@
     "removalsNotDeleted": "有 {{count}} 筆記錄存在於面板但不在文件中；它們未被更動。"
   },
   "forecast": {
+    "stale": "正在顯示上次資料",
     "title": "流量預測",
     "subtitle": "各節點本週期的流量走向，以及何時會達到上限。預測會連同其依據一併呈現。",
     "cycleWindow": "本週期",
@@ -1957,6 +1964,9 @@
     "uncertain": "無法確認輪替是否成功，舊 token 可能已失效。請勿盲目重試：透過已驗證身分的 token 讀取介面及獨立 SSH／主控台復原，再檢查回報。"
   },
   "probeQuality": {
+    "stale": "正在顯示上次資料",
+    "updated": "更新時間",
+    "empty": "沒有節點",
     "menu": "探針品質",
     "title": "探針資料品質",
     "description": "最近上報時間、未知欄位、取樣間隔與 v1.8 主機明細是否存在。未知不會顯示成 0。",

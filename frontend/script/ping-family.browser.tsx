@@ -28,6 +28,9 @@ window.fetch = async (input, init) => {
   if (String(input) === "/api/admin/ping/schedule-state") {
     return new Promise<Response>((resolve) => { scheduleRequests.push(resolve); });
   }
+  if (String(input) === "/api/admin/ping/unknowns") {
+    return new Response(JSON.stringify({status: "success", data: { items: [{ client: "alpha", reason: "dns_failure", time: "2026-11-12T12:00:00Z", count: 2, protocol: "tcp" }], limited: false }}), {status: 200});
+  }
   if (String(input) === "/api/admin/ping") {
     return new Response(JSON.stringify({ status: "success", data: [] }), { status: 200 });
   }

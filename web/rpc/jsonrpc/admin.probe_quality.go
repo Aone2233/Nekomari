@@ -3,7 +3,11 @@ package jsonrpc
 import (
 	"context"
 	"sort"
+	"strconv"
 	"time"
+
+	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/pkg/metric"
 
 	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/pkg/rpc"
@@ -30,6 +34,7 @@ type probeQualityNode struct {
 
 func init() {
 	reg("getProbeQuality", adminGetProbeQuality, "List per-node probe data quality")
+	reg("getProbeUnknowns", adminGetProbeUnknowns, "List recent probe cycles that could not start")
 }
 
 func adminGetProbeQuality(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
@@ -82,4 +87,41 @@ func adminGetProbeQuality(_ context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.J
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return map[string]any{"now": now, "nodes": out}, nil
+}
+
+type probeUnknownItem struct {
+	Client   string    `json:"client"`
+	Reason   string    `json:"reason"`
+	Time     time.Time `json:"time"`
+	Count    float64   `json:"count"`
+	Role     string    `json:"role,omitempty"`
+	Protocol string    `json:"protocol,omitempty"`
+}
+
+// Recent unknown results are explicitly time bounded and requested on demand.
+// This is historical evidence, not a statement about the current probe state.
+func adminGetProbeUnknowns(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	var params struct {
+		TaskID uint `json:"task_id"`
+	}
+	if err := req.BindParams(&params); err != nil || params.TaskID == 0 {
+		return nil, rpc.MakeError(rpc.InvalidParams, "task_id is required", nil)
+	}
+	store := metricstore.GetStore()
+	if store == nil {
+		return nil, rpc.MakeError(rpc.Unavailable, "metric store unavailable", nil)
+	}
+	now := time.Now().UTC()
+	points, err := store.Series(ctx, metric.AggregateQuery{Query: metric.Query{MetricName: metricstore.MetricPingUnknown, Tags: map[string]string{"task_id": strconv.FormatUint(uint64(params.TaskID), 10)}, Start: now.Add(-time.Hour), End: now, Order: metric.OrderDesc}, Aggregation: metric.AggSum, Interval: time.Minute, PreserveSeries: true}, now)
+	if err != nil {
+		return nil, rpc.MakeError(rpc.InternalError, "Failed to read probe diagnostics", nil)
+	}
+	result := make([]probeUnknownItem, 0, min(len(points), 100))
+	for _, point := range points {
+		if len(result) == 100 {
+			break
+		}
+		result = append(result, probeUnknownItem{Client: point.EntityID, Reason: point.Tags["reason"], Time: point.Bucket, Count: point.Value, Role: point.Tags["role"], Protocol: point.Tags["protocol"]})
+	}
+	return map[string]any{"since": now.Add(-time.Hour), "until": now, "items": result, "limited": len(points) > 100}, nil
 }

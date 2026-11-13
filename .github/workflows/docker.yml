@@ -285,9 +285,9 @@ jobs:
           # 而 "false" 正是非空字符串。
           tags: |
             type=raw,value=${{ steps.tag.outputs.tag }}
-            type=raw,value=latest,enable=${{ !contains(steps.tag.outputs.tag, '-') && steps.tag.outputs.release_verified == 'true' && matrix.package == 'nekomari' }}
+            type=raw,value=latest,enable=${{ !contains(steps.tag.outputs.tag, '-') && steps.tag.outputs.release_verified == 'true' && matrix.package == 'nekomari' && steps.tag.outputs.tag != 'v1.8.1' }}
             type=semver,pattern={{version}},value=${{ steps.tag.outputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }},enable=${{ matrix.package == 'nekomari' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }},enable=${{ matrix.package == 'nekomari' && steps.tag.outputs.tag != 'v1.8.1' }}
 
       # 冒烟测试：镜像必须真的能跑起来。
       #

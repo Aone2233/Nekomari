@@ -217,46 +217,61 @@ func pingRecordPoints(records []models.PingRecord) []metric.Point {
 		//
 		// 写入的指标/标签/序列完全不变（ping.latency_ms、ping.success_latency_ms、
 		// ping.loss），变化的只是延迟点的数值从整数毫秒变成小数毫秒。
-		latency := float64(rec.Value)
-		loss := 0.0
-		if rec.Value < 0 {
-			loss = 1
-		} else if rec.ValueUS > 0 {
-			latency = float64(rec.ValueUS) / 1000
-		}
-		points = append(points,
-			metric.Point{
-				MetricName: MetricPingLatency,
-				EntityID:   rec.Client,
-				Timestamp:  rec.Time,
-				Value:      latency,
-				Tags:       tags,
-			},
-			metric.Point{
-				MetricName: MetricPingLoss,
-				EntityID:   rec.Client,
-				Timestamp:  rec.Time,
-				Value:      loss,
-				Tags:       tags,
-			},
-		)
-		if rec.Value >= 0 {
-			points = append(points, metric.Point{MetricName: MetricPingSuccessLatency, EntityID: rec.Client, Timestamp: rec.Time, Value: latency, Tags: tags})
-		}
-		if rec.Attempts > 0 {
-			add := func(name string, value float64) {
-				points = append(points, metric.Point{MetricName: name, EntityID: rec.Client, Timestamp: rec.Time, Value: value, Tags: tags})
+		if rec.ProbeStatus == "unknown" {
+			reason := rec.ProbeReason
+			switch reason {
+			case "dns_failure", "permission_denied", "socket_unavailable", "unsupported":
+			default:
+				reason = "other"
 			}
-			add(MetricPingAttempts, float64(rec.Attempts))
-			add(MetricPingSuccess, float64(rec.Success))
-			add(MetricPingLossPct, rec.LossPct)
-			if rec.Success > 0 {
-				add(MetricPingMin, float64(rec.MinUS)/1000)
-				add(MetricPingAvg, float64(rec.AvgUS)/1000)
-				add(MetricPingMax, float64(rec.MaxUS)/1000)
+			unknownTags := make(map[string]string, len(tags)+1)
+			for key, value := range tags {
+				unknownTags[key] = value
 			}
-			if rec.JitterUS >= 0 && rec.Success >= 2 {
-				add(MetricPingJitter, float64(rec.JitterUS)/1000)
+			unknownTags["reason"] = reason
+			points = append(points, metric.Point{MetricName: MetricPingUnknown, EntityID: rec.Client, Timestamp: rec.Time, Value: 1, Tags: unknownTags})
+		} else {
+			latency := float64(rec.Value)
+			loss := 0.0
+			if rec.Value < 0 {
+				loss = 1
+			} else if rec.ValueUS > 0 {
+				latency = float64(rec.ValueUS) / 1000
+			}
+			points = append(points,
+				metric.Point{
+					MetricName: MetricPingLatency,
+					EntityID:   rec.Client,
+					Timestamp:  rec.Time,
+					Value:      latency,
+					Tags:       tags,
+				},
+				metric.Point{
+					MetricName: MetricPingLoss,
+					EntityID:   rec.Client,
+					Timestamp:  rec.Time,
+					Value:      loss,
+					Tags:       tags,
+				},
+			)
+			if rec.Value >= 0 {
+				points = append(points, metric.Point{MetricName: MetricPingSuccessLatency, EntityID: rec.Client, Timestamp: rec.Time, Value: latency, Tags: tags})
+			}
+			if rec.Attempts > 0 {
+				add := func(name string, value float64) {
+					points = append(points, metric.Point{MetricName: name, EntityID: rec.Client, Timestamp: rec.Time, Value: value, Tags: tags})
+				}
+				add(MetricPingAttempts, float64(rec.Attempts))
+				add(MetricPingSuccess, float64(rec.Success))
+				add(MetricPingLossPct, rec.LossPct)
+				if rec.Success > 0 {
+					add(MetricPingMin, float64(rec.MinUS)/1000)
+					add(MetricPingAvg, float64(rec.AvgUS)/1000)
+					add(MetricPingMax, float64(rec.MaxUS)/1000)
+				}
+				if rec.JitterUS >= 0 && rec.Success >= 2 {
+					add(MetricPingJitter, float64(rec.JitterUS)/1000)
+				}
 			}
 		}
 		if rec.HTTP != nil {

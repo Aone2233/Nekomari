@@ -81,7 +81,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27.3'
+          go-version: '1.27.4'
           cache: true
           cache-dependency-path: go.sum
       - uses: actions/setup-node@v7
@@ -227,7 +227,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27.3'
+          go-version: '1.27.4'
           cache: true
           cache-dependency-path: go.sum
       - name: Verify recovery bindings, sealed parents and aligned reads on both backends
@@ -267,6 +267,9 @@ jobs:
         run: python3 -W error::ResourceWarning deploy/capacity50_test.py
       - name: Test forecast fixture calendar boundaries (offline)
         run: python3 -W error::ResourceWarning deploy/forecast_direction_test.py
+      - name: Test independent CPU calibration reference (offline)
+        working-directory: deploy/calibrate
+        run: python3 -m unittest test_probe_calibrate.py
       - name: Test encrypted backups with throwaway identities (offline)
         run: |
           sudo apt-get update -qq
@@ -335,7 +338,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27.3'
+          go-version: '1.27.4'
           cache-dependency-path: |
             go.sum
             agent/go.sum
@@ -369,7 +372,7 @@ jobs:
         uses: actions/setup-go@v7
         with:
           # Pin the patched release compiler, independently of module minimums.
-          go-version: '1.27.3'
+          go-version: '1.27.4'
           cache: true
           # Both modules are built from this one job.
           cache-dependency-path: |

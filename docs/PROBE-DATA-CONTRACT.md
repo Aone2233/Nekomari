@@ -52,7 +52,8 @@ description of current production behavior for optional fields.
 | `connections.tcp/udp` | count | sockstat inuse+tw | last | collection failure → unknown |
 | `ping.attempts` | count | attempts in this cycle | sum | old Agent → unknown |
 | `ping.success` | count | successes in this cycle | sum | old Agent → unknown |
-| `ping.loss_pct` | % (0–100) | `(attempts-success)/attempts` | avg | attempts=0 → unknown |
+| `ping.loss_pct` | % (0–100) | `(attempts-success)/attempts` | avg | no attempt or any locally unavailable attempt → unknown |
+| `ping.unknown` | bool | cycle could not be measured; bounded `reason` tag identifies DNS, permission, socket or unsupported failure | sum | old Agent → unknown |
 | `ping.latency_ms` | ms | per-attempt latency; failure = -1 | existing | legacy semantics |
 | `ping.success_latency_ms` | ms | successful attempts only | avg/p50/p95 | no success → unknown |
 | `ping.min_ms/avg_ms/max_ms` | ms | successful-attempt statistics | last | no success → unknown |
@@ -62,7 +63,7 @@ description of current production behavior for optional fields.
 | `http.dns_ms` | ms | DNS phase | avg | no resolution → unknown |
 | `http.tcp_ms` | ms | TCP connect phase | avg | no connection attempt → unknown |
 | `http.tls_ms` | ms | TLS handshake; plain HTTP = 0 | avg | non-HTTPS → unknown/0 |
-| `http.ttfb_ms` | ms | request sent to first byte | avg | no response → unknown |
+| `http.ttfb_ms` | ms | final HTTP request fully written to first response byte (excluding prior DNS/TCP/TLS and redirect hops) | avg | no response → unknown |
 | `http.status_code` | code | final response status | last | no response → unknown |
 | `http.redirects` | count | redirect hops | last | no response → unknown |
 | `http.tls_expiry_days` | days | remaining days of final verified leaf | last | plain HTTP/no cert → unknown |
@@ -88,8 +89,10 @@ existing loss/latency behavior.
   the pre-v1.8 latency/loss fields and keeps the SYN-retransmit retry path.
 - A task with `http_mode` empty or `legacy` keeps 4xx/5xx as a failed probe,
   even though `http.status_code`, `reachable` and `available` are recorded.
-- `http_mode == status_aware` treats `loss = !reachable`; an HTTP 4xx/5xx is
-  reachable but unavailable, not packet loss.
+- `http_mode == status_aware` accepts an HTTP response regardless of status for
+  the legacy loss marker; 4xx/5xx is reachable but may be unavailable. A
+  response timeout remains a failed attempt even when the connection succeeded;
+  consult `http.reachable` to distinguish it from connection failure.
 - Old data with mixed latency/loss meanings keeps the `legacy` quality and may
   report unknown quantiles/minima.
 
@@ -100,3 +103,14 @@ existing loss/latency behavior.
 - Unknown-never-zero tests cover each collection/phase failure.
 - Four-way tests cover old/new Agent and old/new Panel.
 - No v1.x field is removed or renamed; no `CheckKomariVersion` change.
+
+A cycle with any local inability to start (DNS failure, missing ICMP permission,
+unavailable ICMP socket, or unsupported probe) reports `probe_status=unknown`
+and a bounded `probe_reason`. The Panel records `ping.unknown` and omits both
+legacy `ping.loss` and cycle loss/latency, so SLA sees a gap, not packet loss.
+Other errors such as connection refusal or timeout remain failed attempts.
+Old Agents retain legacy behavior. Old Panels ignore the new status and may
+still treat the legacy negative sentinel as loss; deploy the Panel before an
+Agent that emits this status. HTTP status-aware mode retains its existing
+response/error loss behavior; `http.reachable` separately records a completed
+connection even when no response arrives.

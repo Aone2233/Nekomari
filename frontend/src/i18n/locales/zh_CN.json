@@ -844,6 +844,12 @@
   },
   "page_not_found": "真不巧，网页被小鞠吃掉了。",
   "ping": {
+    "legacyOptionsWarning": "旧版 Agent 可能忽略这些设置。IP 偏好和未知错误上报需要 v1.8.1；仅凭版本号不能证明能力可用。",
+    "unknownDiagnostics": "近期探测错误",
+    "unknownDiagnosticsHint": "过去一小时内未能开始的探测周期。旧版 Agent 可能不会上报这些错误。",
+    "unknownDiagnosticsEmpty": "此期间没有上报探测错误。",
+    "unknownDiagnosticsLimited": "仅显示前 100 条结果。",
+    "pinnedOptionsUnsupported": "固定地址族任务不支持高级探测选项。",
     "schedule_pending": "延迟任务调度未能重新加载，已保存的更改可能尚未生效；面板将自动重试。如果警告持续，请联系管理员。",
     "schedule_unknown": "无法获取延迟任务调度的加载状态，请刷新页面或联系管理员。",
     "all_servers": "全部服务器",
@@ -1864,6 +1870,7 @@
     "removalsNotDeleted": "有 {{count}} 条记录在面板里但不在文档中；它们被保留了。"
   },
   "forecast": {
+    "stale": "正在显示上次的数据",
     "title": "流量预测",
     "subtitle": "本周期各节点的流量走向，以及何时会触顶。每个预测都会附上它依据的数据。",
     "cycleWindow": "本周期",
@@ -1957,6 +1964,9 @@
     "uncertain": "无法确认轮换是否成功，旧 token 可能已经失效。请勿盲目重试：通过经过身份验证的 token 读取接口及独立 SSH／控制台恢复，再检查上报。"
   },
   "probeQuality": {
+    "stale": "正在显示上次的数据",
+    "updated": "更新时间",
+    "empty": "没有节点",
     "menu": "探针质量",
     "title": "探针数据质量",
     "description": "最近上报时间、未知字段、采样间隔与 v1.8 主机明细是否存在。未知不会显示成 0。",

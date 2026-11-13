@@ -844,6 +844,12 @@
   },
   "page_not_found": "The server cannot find the specific page you're trying to access.",
   "ping": {
+    "legacyOptionsWarning": "Older Agents may ignore these settings. IP preference and unknown-error reporting require v1.8.1; Agent version alone does not prove capability.",
+    "unknownDiagnostics": "Recent probe errors",
+    "unknownDiagnosticsHint": "Cycles that could not start in the past hour. Older agents may not report these errors.",
+    "unknownDiagnosticsEmpty": "No reported probe errors in this period.",
+    "unknownDiagnosticsLimited": "Only the first 100 results are shown.",
+    "pinnedOptionsUnsupported": "Advanced probe options are not supported for family-pinned tasks.",
     "schedule_pending": "The ping schedule could not be reloaded. Saved changes may not be active; the panel will retry. Contact the administrator if this warning persists.",
     "schedule_unknown": "The ping schedule reload status is unavailable. Refresh this page or contact the administrator.",
     "all_servers": "All servers",
@@ -1864,6 +1870,7 @@
     "removalsNotDeleted": "{{count}} record(s) are in the panel and not in the document; they were left alone."
   },
   "forecast": {
+    "stale": "Showing previous data",
     "title": "Traffic forecast",
     "subtitle": "Where each node's traffic is heading this cycle, and when it would reach its limit. A projection is shown with the data behind it.",
     "cycleWindow": "This cycle",
@@ -1957,6 +1964,9 @@
     "uncertain": "Rotation could not be confirmed. The old token may already be invalid. Do not blindly retry: use the authenticated token-read operation and independent SSH/console to recover, then check reporting."
   },
   "probeQuality": {
+    "stale": "Showing previous data",
+    "updated": "Updated",
+    "empty": "No nodes",
     "menu": "Probe quality",
     "title": "Probe data quality",
     "description": "Last report age, unknown fields, sample interval and v1.8 host detail presence. Unknown is never shown as zero.",

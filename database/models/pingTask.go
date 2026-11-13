@@ -29,14 +29,16 @@ type PingRecord struct {
 	// Additive v1.8 multi-probe summary. These are not database columns; the
 	// metric store turns them into ping.attempts/success/loss_pct/min/avg/max/
 	// jitter points. Attempts == 0 means a legacy single-probe record.
-	Attempts int                  `json:"attempts,omitempty" gorm:"-"`
-	Success  int                  `json:"success,omitempty" gorm:"-"`
-	LossPct  float64              `json:"loss_pct,omitempty" gorm:"-"`
-	MinUS    int64                `json:"min_us,omitempty" gorm:"-"`
-	AvgUS    int64                `json:"avg_us,omitempty" gorm:"-"`
-	MaxUS    int64                `json:"max_us,omitempty" gorm:"-"`
-	JitterUS int64                `json:"jitter_us,omitempty" gorm:"-"`
-	HTTP     *PingHTTPObservation `json:"http,omitempty" gorm:"-"`
+	Attempts    int                  `json:"attempts,omitempty" gorm:"-"`
+	Success     int                  `json:"success,omitempty" gorm:"-"`
+	LossPct     float64              `json:"loss_pct,omitempty" gorm:"-"`
+	MinUS       int64                `json:"min_us,omitempty" gorm:"-"`
+	AvgUS       int64                `json:"avg_us,omitempty" gorm:"-"`
+	MaxUS       int64                `json:"max_us,omitempty" gorm:"-"`
+	JitterUS    int64                `json:"jitter_us,omitempty" gorm:"-"`
+	ProbeStatus string               `json:"probe_status,omitempty" gorm:"-"`
+	ProbeReason string               `json:"probe_reason,omitempty" gorm:"-"`
+	HTTP        *PingHTTPObservation `json:"http,omitempty" gorm:"-"`
 }
 
 // PingHTTPObservation is the additive HTTP phase breakdown carried from the

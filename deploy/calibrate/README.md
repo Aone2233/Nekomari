@@ -28,7 +28,8 @@ The report is written to `.runtest/probe-calibration-<UTC>/report.json`.
 - ICMP loopback ±50 µs / LAN ±1 ms
 - TCP ±1 ms
 - HTTP phases `max(5 ms, 2%)`
-- Loss ≤1 percentage point with `tc netem`
+- Loss under `tc netem`: compare Agent results with independent sent/received
+  counts, then assess the random injection rate against a predeclared confidence interval
 - Clock skew rejection
 - Boot-id restart count
 - Retention expiry unknown

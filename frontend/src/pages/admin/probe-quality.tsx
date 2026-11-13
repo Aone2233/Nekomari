@@ -1,5 +1,5 @@
 import React from "react";
-import { Badge, Card, Flex, Table, Text } from "@radix-ui/themes";
+import { Badge, Button, Card, Flex, Table, Text } from "@radix-ui/themes";
 import { useTranslation } from "react-i18next";
 import { useRPC2Call } from "@/contexts/RPC2Context";
 
@@ -30,7 +30,7 @@ function ageLabel(seconds?: number | null): string {
 function unknownKeys(node: QualityNode): string {
   const keys = Object.entries(node.quality ?? {})
     .filter(([, value]) => value !== "ok")
-    .map(([key]) => key);
+    .map(([key, value]) => `${key}: ${value}`);
   return keys.length ? keys.join(", ") : "-";
 }
 
@@ -40,22 +40,37 @@ export default function ProbeQualityPage() {
   const [data, setData] = React.useState<Response | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
+  const [receivedAt, setReceivedAt] = React.useState<number | null>(null);
+  const [now, setNow] = React.useState(0);
+  const [loading, setLoading] = React.useState(true);
+  const [retry, setRetry] = React.useState(0);
+
   React.useEffect(() => {
     let active = true;
-    call<unknown, Response>("admin:getProbeQuality")
-      .then((response) => {
-        if (active) {
-          setData(response);
-          setError(null);
-        }
-      })
-      .catch((err: unknown) => {
-        if (active) setError(err instanceof Error ? err.message : String(err));
-      });
-    return () => {
-      active = false;
+    const refresh = () => {
+      call<unknown, Response>("admin:getProbeQuality")
+        .then((response) => {
+          if (active) {
+            setData(response);
+            setReceivedAt(Date.now());
+            setNow(Date.now());
+            setError(null);
+          }
+        })
+        .catch((err: unknown) => {
+          if (active) setError(err instanceof Error ? err.message : String(err));
+        })
+        .finally(() => { if (active) setLoading(false); });
     };
-  }, [call]);
+    refresh();
+    const timer = window.setInterval(refresh, 30000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [call, retry]);
+
+  React.useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   return (
     <Flex direction="column" gap="4" className="km-admin-probe-quality w-full max-w-[1200px] p-4">
@@ -72,10 +87,16 @@ export default function ProbeQualityPage() {
       </div>
       {error ? (
         <Card>
-          <Text color="red">{error}</Text>
+          <Flex gap="2" align="center" role="alert">
+            <Text color="red">{error}{data ? ` (${t("probeQuality.stale", "Showing previous data")})` : ""}</Text>
+            <Button variant="soft" onClick={() => setRetry((value) => value + 1)}>{t("common.retry", "Retry")}</Button>
+          </Flex>
         </Card>
       ) : null}
-      <Card>
+      {loading && !data && <Text>{t("common.loading", "Loading...")}</Text>}
+      {data && <Text size="1" color="gray">{t("probeQuality.updated", "Updated")}: {new Date(data.now).toLocaleString()}</Text>}
+      {data && data.nodes.length === 0 && <Text>{t("probeQuality.empty", "No nodes")}</Text>}
+      {data && <Card>
         <Table.Root>
           <Table.Header>
             <Table.Row>
@@ -96,7 +117,7 @@ export default function ProbeQualityPage() {
                 <Table.Cell>
                   <Text weight="medium">{node.name || node.uuid}</Text>
                 </Table.Cell>
-                <Table.Cell>{ageLabel(node.last_report_age_seconds)}</Table.Cell>
+                <Table.Cell>{ageLabel(typeof node.last_report_age_seconds === "number" && receivedAt !== null ? node.last_report_age_seconds + Math.max(0, (now - receivedAt) / 1000) : node.last_report_age_seconds)}</Table.Cell>
                 <Table.Cell>
                   {typeof node.sample_interval_seconds === "number"
                     ? `${node.sample_interval_seconds}s`
@@ -137,7 +158,7 @@ export default function ProbeQualityPage() {
             ))}
           </Table.Body>
         </Table.Root>
-      </Card>
+      </Card>}
     </Flex>
   );
 }

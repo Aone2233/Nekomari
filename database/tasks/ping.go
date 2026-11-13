@@ -172,6 +172,10 @@ func addPinnedPingTask(ctx context.Context, db *gorm.DB, task *models.PingTask) 
 	if ctx == nil || db == nil || task == nil || task.Id != 0 || task.PinnedGeneration != "" {
 		return &PingTaskValidationError{Err: errors.New("invalid new pinned task")}
 	}
+	if task.ProbeAttempts != 0 || task.ProbeSpacingMS != 0 || task.ProbeTimeoutMS != 0 ||
+		task.HTTPMode != "" || task.HTTPExpectedStatus != "" || task.IPVersionPreference != "" {
+		return &PingTaskValidationError{Err: errors.New("family-pinned tasks do not support advanced probe options")}
+	}
 	if task.Name == "" || len(task.Name) > 255 || (!task.DefaultOn && len(task.Clients) == 0) || len(task.Reference) > 255 {
 		return &PingTaskValidationError{Err: errors.New("invalid pinned task configuration")}
 	}
@@ -271,6 +275,16 @@ func editPinnedPingTaskTx(tx *gorm.DB, current models.PingTask, edit PingTaskEdi
 		return errors.New("changing target family requires a new task")
 	}
 	task := edit.Task
+	// Older pinned rows may contain options that were never dispatched. An
+	// omitted (zero) field preserves those rows; changing an option is rejected.
+	if edit.AdvancedOptionsProvided || (task.ProbeAttempts != 0 && task.ProbeAttempts != current.ProbeAttempts) ||
+		(task.ProbeSpacingMS != 0 && task.ProbeSpacingMS != current.ProbeSpacingMS) ||
+		(task.ProbeTimeoutMS != 0 && task.ProbeTimeoutMS != current.ProbeTimeoutMS) ||
+		(task.HTTPMode != "" && task.HTTPMode != current.HTTPMode) ||
+		(task.HTTPExpectedStatus != "" && task.HTTPExpectedStatus != current.HTTPExpectedStatus) ||
+		(task.IPVersionPreference != "" && task.IPVersionPreference != current.IPVersionPreference) {
+		return &PingTaskValidationError{Err: errors.New("family-pinned tasks do not support advanced probe options")}
+	}
 	if task.Name == "" || len(task.Name) > 255 {
 		return errors.New("invalid pinned task configuration")
 	}
@@ -348,9 +362,10 @@ func DeletePingTask(id []uint) error {
 
 // PingTaskEdit distinguishes omitted optional fields from explicit clears.
 type PingTaskEdit struct {
-	Task      *models.PingTask
-	Reference *string
-	Family    *string
+	Task                    *models.PingTask
+	Reference               *string
+	Family                  *string
+	AdvancedOptionsProvided bool
 }
 
 var errPinnedPingTaskNotReady = errors.New("family-pinned task editing is not available yet")

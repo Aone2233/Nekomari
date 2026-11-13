@@ -8,6 +8,22 @@ Nekomari's own.
 
 ## [Unreleased]
 
+### v1.8.1 candidate — probe correctness
+
+- Build CI and release artifacts with Go 1.27.4 to address GO-2026-6859 in
+  `net/http`; the earlier 1.27.3 compiler is affected.
+
+- Correct Linux CPU guest accounting and reject counter-reset intervals; align
+  the independent calibration harness.
+- Honor ordinary probe IP preference; reject advanced options on pinned tasks,
+  whose separate protocol cannot execute them. Older Agents can ignore options.
+- Measure HTTP TTFB from request write and report completed connection status
+  separately from response success. Local probe setup failures report unknown
+  rather than packet loss on a compatible Panel; recent reasons are inspectable.
+- Refresh quality-page ages and expose failures; forecast read errors no longer
+  appear as empty zero-risk results. See `docs/V1.8.1-CURRENT-STATUS.md` for
+  pending real-world acceptance and release policy.
+
 ### v1.7.30 release candidate
 
 - Family-pinned hostname monitoring resolves on each compatible Agent and
