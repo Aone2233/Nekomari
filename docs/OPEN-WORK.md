@@ -39,11 +39,19 @@ but hidden in the patched detail chart when current type/role are known.
 
 Remaining acceptance and operational limits:
 
-- The three v1.8.0 verification gates are still open: 64-theme
-  browser/hydration/mobile, real external provider delivery, and LAN ICMP /
-  `tc netem` loss. An isolated 12-run netem experiment now has predeclared
-  loss intervals and independent send/reply counts, but physical LAN latency
-  remains open; see [`V1.8.1-NETEM-PRELIMINARY.md`](./V1.8.1-NETEM-PRELIMINARY.md).
+- The three v1.8.0 verification gates remain open: 64-theme
+  browser/hydration/mobile, end-to-end notification delivery, and LAN ICMP /
+  `tc netem` loss. The 12-run isolated netem experiment met predeclared
+  loss and independent-counter checks. On 2026-11-13, three predeclared runs
+  from OC424 to its cloud subnet gateway each received 30/30 Agent probes and
+  30/30 system pings; Agent-to-capture per-probe RTT differences were at most
+  0.264 ms, with no capture drops. The gateway's physical topology is unknown;
+  this does not establish physical LAN calibration. Details are in
+  [`V1.8.1-NETEM-PRELIMINARY.md`](./V1.8.1-NETEM-PRELIMINARY.md).
+  A single test message sent directly from OC424 using the configured Telegram
+  provider received HTTP 200 and Telegram `ok=true` at 09:03:28 Asia/Shanghai.
+  It did not use the Panel notification path, and recipient receipt has not
+  been confirmed, so the notification gate remains open.
   The preliminary 64-theme browser scan identified errors and did not cover
   every mobile interaction or authenticated route; see
   [`V1.8.1-THEME-SMOKE.md`](./V1.8.1-THEME-SMOKE.md).
