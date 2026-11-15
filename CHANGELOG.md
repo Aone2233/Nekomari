@@ -33,7 +33,8 @@ Nekomari's own.
   the last connection is plain HTTP or the handshake fails, and omit TTFB
   when only an informational response arrives before timeout. Local probe setup failures report
   unknown rather than packet loss on a compatible Panel; recent reasons are
-  inspectable.
+  inspectable. HTTP deadlines reached while DNS is still pending are also
+  classified as unknown, including after a redirect.
 - Refresh quality-page ages and expose failures; forecast read errors no longer
   appear as empty zero-risk results. See `docs/V1.8.1-CURRENT-STATUS.md` for
   pending real-world acceptance and release policy.

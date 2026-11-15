@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,6 +32,7 @@ import (
 	agentRuntime "github.com/Aone2233/nekomari/web/agent"
 	"github.com/Aone2233/nekomari/web/api"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 // Actual executable, scheduler, authenticated WebSocket and persistent metric
@@ -43,6 +46,20 @@ func TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage(t *testing.T) {
 	ordinaryAgentExecutableFixture(t, "dns")
 }
 
+func TestOrdinaryAgentExecutableCustomDNSFailure(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_CUSTOM_DNS_E2E") != "1" {
+		t.Skip("requires Linux network namespace privileges")
+	}
+	ordinaryAgentExecutableFixture(t, "custom-dns")
+}
+
+func TestOrdinaryAgentExecutableHTTPDNSDeadline(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_HTTP_DNS_E2E") != "1" {
+		t.Skip("requires Linux network namespace privileges")
+	}
+	ordinaryAgentExecutableFixture(t, "http-dns")
+}
+
 func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	t.Helper()
 	const marker = "NEKOMARI_ORDINARY_EXEC_CHILD"
@@ -51,6 +68,10 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 		runPattern = "^TestOrdinaryAgentExecutableTLSFailureMetric$"
 	} else if scenario == "1xx" {
 		runPattern = "^TestOrdinaryAgentExecutableInformationalTimeoutMetric$"
+	} else if scenario == "custom-dns" {
+		runPattern = "^TestOrdinaryAgentExecutableCustomDNSFailure$"
+	} else if scenario == "http-dns" {
+		runPattern = "^TestOrdinaryAgentExecutableHTTPDNSDeadline$"
 	}
 	if os.Getenv(marker) != "1" {
 		_, source, _, ok := runtime.Caller(0)
@@ -117,6 +138,40 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	panel := httptest.NewServer(router)
 	defer func() { panel.Close(); sockets.Wait() }()
 	cmd := exec.Command(os.Getenv("NEKOMARI_ORDINARY_EXEC_BINARY"), "--endpoint", panel.URL, "--disable-auto-update", "--disable-web-ssh", "--interval", "1")
+	var dnsQueries atomic.Int32
+	if scenario == "custom-dns" || scenario == "http-dns" {
+		listener, err := net.ListenPacket("udp4", net.JoinHostPort(net.IPv4(127, 0, 0, 1).String(), "0"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dnsDone := make(chan struct{})
+		go func() {
+			defer close(dnsDone)
+			buf := make([]byte, 4096)
+			for {
+				n, peer, err := listener.ReadFrom(buf)
+				if err != nil {
+					return
+				}
+				var request dnsmessage.Message
+				if request.Unpack(buf[:n]) != nil || len(request.Questions) != 1 {
+					continue
+				}
+				if request.Questions[0].Name.String() == "invalid.invalid." {
+					dnsQueries.Add(1)
+					if scenario == "http-dns" {
+						continue // The real HTTP deadline must expire during DNS.
+					}
+				}
+				answer := dnsmessage.Message{Header: dnsmessage.Header{ID: request.ID, Response: true, Authoritative: true, RecursionAvailable: true, RCode: dnsmessage.RCodeNameError}, Questions: request.Questions}
+				if encoded, err := answer.Pack(); err == nil {
+					_, _ = listener.WriteTo(encoded, peer)
+				}
+			}
+		}()
+		defer func() { _ = listener.Close(); <-dnsDone }()
+		cmd.Args = append(cmd.Args, "--custom-dns", listener.LocalAddr().String())
+	}
 	cmd.Dir = t.TempDir()
 	cmd.Env = append(os.Environ(), "AGENT_TOKEN="+token, "HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "NO_PROXY=*")
 	output := &bytes.Buffer{}
@@ -153,6 +208,9 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 		}))
 		defer target.Close()
 		task = models.PingTask{Name: "informational timeout fixture", Type: "http", Target: target.URL, Interval: 2, Clients: models.StringArray{id}, HTTPMode: "status_aware", ProbeTimeoutMS: 300}
+	}
+	if scenario == "http-dns" {
+		task = models.PingTask{Name: "HTTP DNS deadline fixture", Type: "http", Target: "http://invalid.invalid/", Interval: 2, Clients: models.StringArray{id}, HTTPMode: "status_aware", ProbeTimeoutMS: 300}
 	}
 	if err := db.Create(&task).Error; err != nil {
 		t.Fatal(err)
@@ -220,11 +278,21 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	if points := query(metricstore.MetricPingUnknown); len(points) == 0 || points[0].Tags["reason"] != "dns_failure" {
 		t.Fatalf("unknown points: %+v", points)
 	}
+	if (scenario == "custom-dns" || scenario == "http-dns") && dnsQueries.Load() == 0 {
+		t.Fatal("configured DNS did not receive the task hostname")
+	}
 	if points := query(metricstore.MetricPingLoss); len(points) != 0 {
 		t.Fatalf("unknown produced loss: %+v", points)
 	}
 	if points := query(metricstore.MetricPingLatency); len(points) != 0 {
 		t.Fatalf("unknown produced latency: %+v", points)
+	}
+	if scenario == "http-dns" {
+		for _, metricName := range []string{metricstore.MetricHTTPDNS, metricstore.MetricHTTPTCP, metricstore.MetricHTTPReachable} {
+			if points := query(metricName); len(points) != 0 {
+				t.Fatalf("DNS deadline unexpectedly produced %s: %+v", metricName, points)
+			}
+		}
 	}
 	now := time.Now().UTC()
 	report, err := sla.Build(t.Context(), sla.ReportRequest{Reader: store, EntityIDs: []string{id}, Start: now.Add(-time.Minute), End: now.Add(time.Minute), Interval: time.Minute, Now: now})

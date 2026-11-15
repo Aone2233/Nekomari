@@ -97,6 +97,28 @@ func TestHTTPProbeDNSTimeoutOnRedirectDoesNotReportPartialSum(t *testing.T) {
 	if out.err == nil || out.obs == nil || out.obs.DNSUS != nil {
 		t.Fatalf("redirect timeout reported a partial DNS sum: %+v", out)
 	}
+	if reason := unavailableReason(out.err); reason != "dns_failure" {
+		t.Fatalf("redirect DNS timeout reason = %q, outcome=%+v", reason, out)
+	}
+}
+
+func TestHTTPProbeInitialDNSTimeoutIsUnknown(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	out := httpProbeWithResolver("http://slow.example.invalid/", 100*time.Millisecond, "", true, "", func(_, _ string) (string, error) {
+		close(started)
+		<-release
+		return "", errors.New("resolution stopped")
+	})
+	select {
+	case <-started:
+	default:
+		t.Fatal("resolver was not invoked")
+	}
+	if reason := unavailableReason(out.err); reason != "dns_failure" || out.obs == nil || out.obs.DNSUS != nil || out.obs.TCPUS != nil {
+		t.Fatalf("initial DNS timeout reason=%q outcome=%+v", reason, out)
+	}
 }
 
 // HTTP TTFB calibration: a server that waits before writing the response

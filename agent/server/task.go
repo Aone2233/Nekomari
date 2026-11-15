@@ -545,6 +545,7 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 	family := firstFamily
 	tcpKnown := tcpSet
 	wasConnected := connected
+	dnsInProgress := dnsPending > 0
 	dnsValue, dnsKnown := dnsUS, dnsSet && !dnsFailed && dnsPending == 0
 	tcpValue, tlsValue, hasTLS, ttfbValue, hasTTFB := tcpUS, tlsUS, tlsSet, ttfbUS, ttfbSet
 	phaseMu.Unlock()
@@ -585,6 +586,12 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 	}
 	out.obs = obs
 	if err != nil {
+		// Client.Timeout may expire while the transport's resolver is still
+		// running. No probe was dispatched on that hop, even if a prior
+		// redirect completed a TCP connection.
+		if dnsInProgress && unavailableReason(err) == "" {
+			err = &probeUnavailableError{reason: "dns_failure", err: err}
+		}
 		out.err = err
 	}
 	return out
