@@ -161,7 +161,7 @@ func resolveIPPreference(target, preference string) (string, error) {
 		return target, nil
 	}
 	// 解析域名到 IP
-	addrs, err := net.LookupHost(target)
+	addrs, err := dnsresolver.GetCustomResolver().LookupHost(context.Background(), target)
 	if err != nil || len(addrs) == 0 {
 		if err == nil {
 			err = errors.New("no addresses")

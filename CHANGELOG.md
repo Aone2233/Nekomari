@@ -22,6 +22,11 @@ Nekomari's own.
 - Honor ordinary probe IP preference; reject advanced options on pinned tasks,
   whose separate protocol cannot execute them. Flag old pinned tasks whose
   saved options are ignored. Older Agents can ignore options.
+- Ordinary ICMP, TCP and HTTP hostname probes now use the Agent's configured
+  custom DNS resolver, as pinned probes already do. Previously they always
+  used the system resolver; upgrading an Agent can therefore change the
+  address and path probed when custom DNS is configured. Without custom DNS,
+  the system resolver remains in use.
 - Measure HTTP TTFB from request write and report completed connection status
   separately from response success. HTTP probes omit DNS phase timing when no
   hostname was resolved or a lookup failed, omit final TLS timing when
