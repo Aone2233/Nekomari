@@ -27,18 +27,19 @@ Two independent defects were reproduced with the disposable panel:
      mobile; `/admin/` was unaffected.
    - Fresh source rebuild in the panel: same #418; API block/delay removed it.
    - Fresh source rebuild on a plain static server: no #418.
-2. **`404 http://127.0.0.1:<port>/` console error.** Next.js `<Link href="/">`
-   prefetches an RSC payload; the panel does not serve the Next RSC response for
-   that request, so the prefetch is logged as a 404. It is local to the panel,
-   not an external dependency.
+2. **Home-page 404.** A later browser control identified the observed
+   request as `HEAD /`, which the Panel rejected; it did not establish an RSC
+   prefetch as the cause. The v1.8.1 candidate answers that HEAD request,
+   independently of the local theme patch. See `docs/V1.8.1-THEME-SMOKE.md`.
 
 ## Patch
 
 - `theme/src/components/providers.tsx`: do not mount the provider tree until
   after the first client effect. The server and the first client render both
   return `null`, so no data update can race hydration.
-- `theme/src/components/NavBar.tsx`: `<Link href="/" prefetch={false}>` to
-  avoid the unsupported RSC prefetch.
+- `theme/src/components/NavBar.tsx`: `<Link href="/" prefetch={false}>` was
+  part of the original local patch; its effect on the observed HEAD request
+  was not independently established.
 
 ## Build and release-artifact caveat
 

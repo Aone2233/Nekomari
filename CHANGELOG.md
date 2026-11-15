@@ -25,6 +25,8 @@ Nekomari's own.
 - Refresh quality-page ages and expose failures; forecast read errors no longer
   appear as empty zero-risk results. See `docs/V1.8.1-CURRENT-STATUS.md` for
   pending real-world acceptance and release policy.
+- Answer `HEAD /` with the same public theme shell headers as `GET /`, so
+  themes that check their home page no longer receive a misleading 404.
 
 ### v1.7.30 release candidate
 
