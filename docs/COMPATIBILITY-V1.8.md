@@ -40,14 +40,20 @@ fixtures). It validates manifest identity, catalog hashes, manifest rules and
 the `CheckKomariVersion` accept/refuse directions at `1.8.0`.
 
 With the hash-verified ZIPs supplied, `TestKomariMarketPluginArchives` installs
-26/26. `TestKomariMarketPluginLoadUnload` loads 25/26: all six notification
+26/26. On 2026-11-15 `TestKomariMarketPluginLoadUnload` loaded and unloaded
+26/26 in a disposable network-isolated namespace: all six notification
 plugins and the email plugin now load after the additive
 `server.registerNotificationChannel` API and the jsruntime TLS module.
-`komari-gfw` is skipped as a known synthetic-domain fixture limitation. The
-gate also verifies that each of the six notification plugins registers a
+An earlier `komari-gfw` load failed with a domain validation error and was
+skipped; attributing that failure to a synthetic domain was not established.
+The locked original now loads without the skip. Its default domain validation
+uses the global `URL`, which the current runtime injects; this observation
+does not prove the cause of the earlier failure. The gate also verifies that
+each of the six notification plugins registers a
 channel on load and removes it on unload. The admin channel-selection UI is
 present; `CallNotificationChannel` dispatch and unregister are covered by a real
-registry test. Real external provider delivery remains pending.
+registry test. Load/unload does not establish every plugin feature or external
+provider delivery.
 
 The theme side passes its offline gates: 64/64 manifests match the pinned
 catalog, 64/64 archives preflight, and 64/64 install + reinstall in separate

@@ -48,6 +48,11 @@ The prepared release policy keeps Agent assets manual, GitHub Latest unchanged,
 and both Docker moving tags unchanged. This is not evidence of publication,
 deployment or Agent rollout.
 
+The 2026-11-15 locked-plugin load/unload rerun now includes `komari-gfw` and
+passes 26/26 in a network-isolated namespace; the earlier skipped failure's
+cause was not established. This covers load/unload, not all plugin features.
+See [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md).
+
 **Current v1.8.0 Probe Truth checkpoint (2026-11-09, Asia/Shanghai):** The formal
 [v1.8.0 release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.0)
 and its pinned panel image are live on OC424; the release record, image digest,
