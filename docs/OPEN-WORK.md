@@ -24,6 +24,14 @@ cause, not a confirmed explanation of that failure; Linux repeated the test 25
 times and race-checked it three times. The candidate still needs its own
 complete Windows CI result.
 
+Windows run 43747130955 later failed `TestPanelPoolReadsRealSQLWaitCounters`:
+the SQL wait count incremented but the measured interval rounded to zero.
+The test cancelled as soon as it saw the queued request, leaving no minimum
+wait for the platform clock. It now holds the connection for 100 ms after
+observing the wait; 25 Linux repetitions passed. This is a plausible timing
+explanation, not proof of the original Windows failure. The changed test still
+requires exact-commit Windows CI.
+
 **Local ICMP follow-up (2026-11-15):** The Agent `server` and
 `monitoring/unit` suite failed `TestICMPLoopbackCalibration` once on the
 Linux x86-64 development host: Agent median 126 µs versus system-ping average

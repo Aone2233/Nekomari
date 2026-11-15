@@ -131,6 +131,10 @@ func TestPanelPoolReadsRealSQLWaitCounters(t *testing.T) {
 	if db.Stats().WaitCount != previous.main.WaitCount+1 {
 		t.Fatal("second SQL connection did not wait")
 	}
+	// WaitCount increments as soon as database/sql queues the request. Keep
+	// it queued long enough for coarse platform clocks to observe a nonzero
+	// duration before cancelling it (Windows can otherwise report zero).
+	time.Sleep(100 * time.Millisecond)
 	cancel()
 	if err := <-finished; err != context.Canceled {
 		t.Fatalf("waiting for SQL connection: %v", err)
