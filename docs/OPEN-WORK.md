@@ -119,7 +119,10 @@ Remaining acceptance and operational limits:
   isolation, including a failed TLS delay-only reference; [their record](./V1.8.1-HTTP-CALIBRATION.md)
   identifies the remaining configured-resolver, delayed/physical TCP and
   other redirect paths. A subsequent two-hop HTTPS loopback comparison also
-  passed within the limits in that record.
+  passed within the limits in that record. A delayed virtual-link TCP probe
+  comparison passed with a warm neighbor cache, while the cold run failed the
+  packet-only bound with ARP preceding the SYN; see the
+  [network record](./V1.8.1-NETEM-PRELIMINARY.md). Physical TCP remains untested.
   An [isolated mixed-Agent check](./V1.8.1-MIXED-AGENT.md) exercised the
   ordinary scheduler, actual v1.7.30 and candidate executables, authenticated
   WebSockets and metric storage with a dual-stack hostname and IPv4 preference.

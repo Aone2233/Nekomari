@@ -85,6 +85,12 @@ timestamp alone cannot distinguish a queue drop from a timestamping failure.
 Large realtime clock changes are rejected against the monotonic clock; smaller
 adjustments within the validation tolerance can still affect the interval.
 
+TCP probe latency measures the connection attempt after hostname resolution,
+not a packet-only RTT. It includes local dial overhead and, when needed,
+neighbor discovery (such as ARP) or handshake retransmission. Consequently a
+cold neighbor cache can produce a higher value than the SYN-to-ACK interval;
+see the [isolated delayed-link comparison](./V1.8.1-NETEM-PRELIMINARY.md).
+
 ## Wire identity
 
 Every `agent.pingResult` carries `task_id`, `ping_type`, `finished_at`,
