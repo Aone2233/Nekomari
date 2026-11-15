@@ -63,6 +63,7 @@ jobs:
           python script/maintenance.browser.spec.py
           python script/config-export.browser.spec.py
           python script/forecast.browser.spec.py
+          python script/probe-state.browser.spec.py
           python script/account-sso-2fa.browser.spec.py
           python script/api-keys.browser.spec.py
           python script/client-token.browser.spec.py
