@@ -313,6 +313,14 @@ These are hermetic (no network) unless noted:
 
 ## Known failures in unprivileged environments
 
+The opt-in `NEKOMARI_ORDINARY_EXEC_E2E=1 go test -race ./web/api/client
+-run '^TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage$' -count=1`
+builds an actual Agent and runs it with a disposable Panel in an isolated
+Linux network namespace. It needs permission to create that namespace and
+uses no production data or external network. Its DNS-failure case verifies
+the scheduler, authenticated WebSocket, metrics and SLA chain; it does not
+stand in for a production deployment or other local failure types.
+
 A full `go test ./...` reports two failures on a host where the test process cannot
 write its own temporary directory — observed on a systemd service with a confined
 `/tmp`. Both are in `pkg/jsruntime`:
