@@ -130,8 +130,10 @@ Remaining acceptance and operational limits:
   In another isolated real-Agent check, locked Light displayed the initial
   online and subsequent offline states on both Panels, but remained offline
   for 25 seconds after the Agent reconnected and a separate control confirmed
-  it online. A page reload restored online in a separate candidate run; the
-  cause and behavior beyond that observation remain unverified.
+  it online. A page reload restored online in a separate candidate run; a
+  manual `get` on the theme socket restored it on both Panels. The upstream
+  v1.1.1 source polls only while its last online list is nonempty, consistent
+  with this result. Longer-term behavior remains unverified.
   The candidate Agent also omits HTTP DNS duration for literal-only targets
   and failed lookups rather than recording resolution overhead as a successful
   DNS measurement. It also omits TLS duration for a failed final handshake or
