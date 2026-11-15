@@ -64,14 +64,21 @@ func TestLostDeleteAcknowledgementStopsPendingDataFromReturning(t *testing.T) {
 				t.Fatal(err)
 			}
 			at := time.Now().UTC().Truncate(time.Minute).Add(5 * time.Second)
-			if err := s.Write(ctx, Point{MetricName: "sample", EntityID: "node", Timestamp: at, Value: 7}); err != nil {
+			// Keep both writes in the same open minute even if the test process
+			// happens to cross a wall-clock boundary between them. Otherwise the
+			// second write can legitimately flush its now-closed hot bucket.
+			clock := func() time.Time { return at.Add(2 * time.Second) }
+			if err := s.writeBatch(ctx, []Point{{MetricName: "sample", EntityID: "node", Timestamp: at, Value: 7}}, clock); err != nil {
 				t.Fatal(err)
 			}
 			if err := s.PersistHotRollups(ctx); err != nil {
 				t.Fatal(err)
 			}
-			if err := s.Write(ctx, Point{MetricName: "sample", EntityID: "node", Timestamp: at.Add(time.Second), Value: 8}); err != nil {
+			if err := s.writeBatch(ctx, []Point{{MetricName: "sample", EntityID: "node", Timestamp: at.Add(time.Second), Value: 8}}, clock); err != nil {
 				t.Fatal(err)
+			}
+			if len(s.hot) == 0 {
+				t.Fatal("fixture has no pending hot data before deletion")
 			}
 			lost.Store(true)
 			if err := operation(ctx, s, at); !errors.Is(err, ErrCommitUncertain) {

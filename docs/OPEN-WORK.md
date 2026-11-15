@@ -14,6 +14,16 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
+**CI follow-up (2026-11-15):** Windows run 43714186713 failed the `series`
+case of `TestLostDeleteAcknowledgementStopsPendingDataFromReturning`: its two
+fixture writes used wall-clock time and could straddle a minute boundary, so
+the second write legitimately flushed the hot bucket before the deletion.
+The test now supplies a fixed clock to both writes and verifies pending hot
+data before injecting the lost commit acknowledgement. This explains the
+observed failure without changing store behavior; Linux repeated the test 25
+times and race-checked it three times. The candidate still needs its own
+complete Windows CI result.
+
 **Current v1.8.1 candidate:** See [the short implementation and acceptance
 status](./V1.8.1-CURRENT-STATUS.md). v1.8.1 may fix existing probe correctness
 and visibility defects; the remaining field verification gates are described below.
