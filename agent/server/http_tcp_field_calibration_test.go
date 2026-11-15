@@ -26,9 +26,6 @@ func TestHTTPTCPFieldCalibration(t *testing.T) {
 	if os.Getenv("NEKOMARI_HTTP_TCP_FIELD") != "1" {
 		t.Skip("requires raw packet capture privilege")
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
-	defer srv.Close()
-	port := srv.Listener.Addr().(*net.TCPAddr).Port
 	fd, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(htons(3)))
 	if err != nil {
 		t.Fatal(err)
@@ -72,12 +69,32 @@ func TestHTTPTCPFieldCalibration(t *testing.T) {
 	}()
 	defer func() { close(stop); <-done }()
 	for run := 1; run <= 3; run++ {
+		remotePorts := make(chan uint16, 1)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, remotePort, err := net.SplitHostPort(r.RemoteAddr)
+			if err != nil {
+				return
+			}
+			var port uint16
+			if _, err := fmt.Sscanf(remotePort, "%d", &port); err == nil {
+				remotePorts <- port
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+		port := srv.Listener.Addr().(*net.TCPAddr).Port
+		started := time.Now()
 		out := httpProbe(srv.URL, 2*time.Second, "", true)
+		srv.Close()
 		if out.err != nil || out.obs == nil || out.obs.TCPUS == nil {
 			t.Fatalf("run=%d outcome=%+v", run, out)
 		}
-		var syn, ack time.Time
 		var src uint16
+		select {
+		case src = <-remotePorts:
+		case <-time.After(time.Second):
+			t.Fatalf("run=%d missing accepted client port", run)
+		}
+		var syn, ack time.Time
 		deadline := time.After(2 * time.Second)
 	loop:
 		for {
@@ -95,12 +112,11 @@ func TestHTTPTCPFieldCalibration(t *testing.T) {
 				sport := binary.BigEndian.Uint16(d[off:])
 				dport := binary.BigEndian.Uint16(d[off+2:])
 				flags := d[off+13]
-				if int(dport) != port {
+				if int(dport) != port || sport != src || p.at.Before(started) {
 					continue
 				}
 				if flags&0x12 == 0x02 && syn.IsZero() {
 					syn = p.at
-					src = sport
 				}
 				if !syn.IsZero() && sport == src && flags&0x12 == 0x10 && p.at.After(syn) {
 					ack = p.at
