@@ -30,3 +30,18 @@ pixels with scroll snap enabled. A separate manual extraction of the same ZIP
 passed keyboard activation at those sizes and desktop hover/link checks. These
 are bounded controls, not real-device, assistive-technology, all-browser or
 full theme acceptance. See `docs/V1.8.1-THEME-SMOKE.md`.
+
+To repeat the focused check, install the repository's Playwright browser test
+dependencies, then run against a disposable local Panel binary:
+
+```sh
+python3 deploy/theme-patches/luminacustom-v3.1.2/check.py \
+  --panel-binary /path/to/nekomari --archive local-luminacustom.zip --output /tmp/lumina-check.json
+```
+
+The checker starts a temporary Panel, uploads the given ZIP, supplies a synthetic
+node and checks touch and keyboard navigation at three widths. It blocks external
+browser requests and exits nonzero on a failed check. It does not inspect the
+complete 64-theme gate, swipe behavior, all page errors outside the observation
+window, or real devices. Running it on the original ZIP is expected to expose
+the observed failure, not to pass.
