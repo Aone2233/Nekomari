@@ -9,7 +9,7 @@ new theme. Upstream baseline:
   `e557a5fe89eab5ec0b553f631511e499a01b611481e13771e8c5d3f8268b50ba`
 - Manifest version stays `2.0.0`; this is a local bundle, not an official release.
 
-## Root cause
+## Observed triggers
 
 Two independent defects were reproduced with the disposable panel:
 
@@ -18,10 +18,10 @@ Two independent defects were reproduced with the disposable panel:
    static server still produced #418 with no API at all. Rebuilding v2.0.0
    from source produced a clean static page. The clean rebuild still produced
    #418 when the panel answered APIs quickly; blocking any one API endpoint or
-   delaying `/api/**` by 1.5 s removed it. The remaining trigger is that data
-   providers (`/api/public`, `/api/rpc2`, `/api/me`, ...) start fetching in
-   effects immediately after the first commit, and their state updates can
-   commit while React is still hydrating the large client tree.
+   delaying `/api/**` by 1.5 s removed it. Updates from data providers during
+   hydration are a plausible explanation, rather than a proven cause. A
+   separate diagnostic identified a concrete footer mismatch in the original
+   market archive; see `docs/V1.8.1-THEME-SMOKE.md` for the controls and limits.
    Evidence:
    - Market ZIP: `pageerror: Minified React error #418` on public desktop and
      mobile; `/admin/` was unaffected.
