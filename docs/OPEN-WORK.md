@@ -39,9 +39,9 @@ but hidden in the patched detail chart when current type/role are known.
 
 Remaining acceptance and operational limits:
 
-- The three v1.8.0 verification gates remain open: 64-theme
-  browser/hydration/mobile, end-to-end notification delivery, and LAN ICMP /
-  `tc netem` loss. The 12-run isolated netem experiment met predeclared
+- The remaining v1.8.0 verification gates are 64-theme
+  browser/hydration/mobile and LAN ICMP / `tc netem` loss. The configured
+  Telegram delivery gate is verified as described below. The 12-run isolated netem experiment met predeclared
   loss and independent-counter checks. On 2026-11-13, three predeclared runs
   from OC424 to its cloud subnet gateway each received 30/30 Agent probes and
   30/30 system pings; Agent-to-capture per-probe RTT differences were at most
@@ -54,8 +54,15 @@ Remaining acceptance and operational limits:
   on OC424, using the production v1.8.0 binary and the same configured sender,
   successfully invoked `admin:testSendMessage` at 15:53:34 Asia/Shanghai. Its
   database and account were temporary; the production Panel was not changed.
-  The owner confirmed receiving that second message. The production Panel's own
-  end-to-end path remains unconfirmed, so the notification gate remains open.
+  The owner confirmed receiving that second message. On 2026-11-15 the owner
+  also tested the production Panel notification and confirmed receipt. The
+  configured Telegram delivery gate is therefore verified for that channel.
+  On the same date, MAC-WAN reached AONE over SSH but three ICMP requests to
+  that Windows workstation received no replies; no workstation settings were
+  changed. The physical local router did reply, but the Agent test on MAC-WAN
+  could not open an ICMP socket under its unprivileged account. A separate
+  privileged-container calibration could not be completed after MAC-WAN SSH
+  became intermittent. Physical-LAN calibration remains open.
   The preliminary 64-theme browser scan identified errors and did not cover
   every mobile interaction or authenticated route; see
   [`V1.8.1-THEME-SMOKE.md`](./V1.8.1-THEME-SMOKE.md).
