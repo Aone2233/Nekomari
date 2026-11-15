@@ -144,6 +144,8 @@ class PingFamilyBrowserTest(unittest.TestCase):
         page, errors = self.open_page({"width": 1200, "height": 900})
         try:
             expect(page.get_by_text("example.test:80 (IPV6)")).to_be_visible()
+            expect(page.get_by_text("This task has saved advanced probe options", exact=False)).to_be_visible()
+            expect(page.locator("#legacy-task").get_by_text("This task has saved advanced probe options", exact=False)).to_have_count(0)
             page.get_by_role("button", name="Edit", exact=True).first.click()
             dialog = page.get_by_role("dialog", name="Edit")
             expect(dialog.get_by_role("combobox")).to_be_disabled()

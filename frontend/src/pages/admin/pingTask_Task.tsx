@@ -253,6 +253,11 @@ const Row = ({
     ip_version_preference: task.ip_version_preference || "auto",
   });
   const [probe, setProbe] = React.useState<ProbeState | null>(null);
+  const hasIgnoredPinnedOptions = !!task.target_family && (
+    (task.probe_attempts ?? 0) !== 0 || (task.probe_spacing_ms ?? 0) !== 0 ||
+    (task.probe_timeout_ms ?? 0) !== 0 || !!task.http_mode ||
+    !!task.http_expected_status || !!task.ip_version_preference
+  );
 
   // 目标预检：在保存前先探测目标，避免选了目标不答应的协议
   // （监测任务类型是每个任务一个，选错会恒定 100% 丢包）
@@ -439,6 +444,7 @@ const Row = ({
         {task.target_family && <div className="mt-1"><PingFamilyDiagnostic
           key={JSON.stringify([task.id, task.target_family, task.type, task.target, task.reference, task.clients])}
           task={task} /></div>}
+        {hasIgnoredPinnedOptions && <div role="note" className="mt-1 text-xs text-amber-11">{t("ping.pinnedSavedOptionsIgnored")}</div>}
         {!task.target_family && task.id && <div className="mt-1"><PingUnknownDiagnostic taskID={task.id} /></div>}
       </TableCell>
       <TableCell>{task.type}</TableCell>

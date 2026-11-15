@@ -850,6 +850,7 @@
     "unknownDiagnosticsEmpty": "No reported probe errors in this period.",
     "unknownDiagnosticsLimited": "Only the first 100 results are shown.",
     "pinnedOptionsUnsupported": "Advanced probe options are not supported for family-pinned tasks.",
+    "pinnedSavedOptionsIgnored": "This task has saved advanced probe options that are ignored for family-pinned probes. Results do not use those settings.",
     "schedule_pending": "The ping schedule could not be reloaded. Saved changes may not be active; the panel will retry. Contact the administrator if this warning persists.",
     "schedule_unknown": "The ping schedule reload status is unavailable. Refresh this page or contact the administrator.",
     "all_servers": "All servers",

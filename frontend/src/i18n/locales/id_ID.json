@@ -850,6 +850,7 @@
     "unknownDiagnosticsEmpty": "Tidak ada kesalahan probe yang dilaporkan pada periode ini.",
     "unknownDiagnosticsLimited": "Hanya 100 hasil pertama yang ditampilkan.",
     "pinnedOptionsUnsupported": "Tugas dengan keluarga alamat tetap tidak mendukung opsi probe lanjutan.",
+    "pinnedSavedOptionsIgnored": "Opsi probe lanjutan yang tersimpan pada tugas ini diabaikan untuk probe dengan keluarga alamat tetap.",
     "schedule_pending": "Jadwal ping gagal dimuat ulang. Perubahan yang disimpan mungkin belum aktif; panel akan mencoba lagi. Hubungi administrator jika peringatan berlanjut.",
     "schedule_unknown": "Status pemuatan ulang jadwal ping tidak tersedia. Muat ulang halaman atau hubungi administrator.",
     "all_servers": "Semua server",

@@ -850,6 +850,7 @@
     "unknownDiagnosticsEmpty": "此期間沒有回報探測錯誤。",
     "unknownDiagnosticsLimited": "僅顯示前 100 筆結果。",
     "pinnedOptionsUnsupported": "固定地址族任務不支援進階探測選項。",
+    "pinnedSavedOptionsIgnored": "此任務儲存了固定地址族探測不會使用的進階選項；實際結果不採用這些設定。",
     "schedule_pending": "延遲任務排程未能重新載入，已儲存的變更可能尚未生效；面板將自動重試。如果警告持續，請聯絡管理員。",
     "schedule_unknown": "無法取得延遲任務排程的載入狀態，請重新整理頁面或聯絡管理員。",
     "all_servers": "全部伺服器",

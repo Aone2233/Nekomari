@@ -15,7 +15,7 @@ import "@radix-ui/themes/styles.css";
 const i18n = i18next.createInstance();
 await i18n.init({ lng: "en", resources: { en: { translation: translations } } });
 const nodes = ["alpha", "beta", "gamma"].map((uuid, weight) => ({ uuid, name: uuid, weight })) as NodeDetail[];
-const task = { id: 7, name: "IPv6 fixture", type: "auto", target: "example.test:80", reference: "gateway", target_family: "ipv6" as const, interval: 60, clients: ["alpha", "beta"] };
+const task = { id: 7, name: "IPv6 fixture", type: "auto", target: "example.test:80", reference: "gateway", target_family: "ipv6" as const, interval: 60, clients: ["alpha", "beta"], probe_attempts: 3, probe_spacing_ms: 200 };
 const legacyTask = { id: 8, name: "Legacy fixture", type: "tcp", target: "legacy.example.test:80", interval: 60, clients: ["alpha"] };
 const calls: unknown[] = [];
 let status = 200;

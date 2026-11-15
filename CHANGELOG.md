@@ -16,7 +16,8 @@ Nekomari's own.
 - Correct Linux CPU guest accounting and reject counter-reset intervals; align
   the independent calibration harness.
 - Honor ordinary probe IP preference; reject advanced options on pinned tasks,
-  whose separate protocol cannot execute them. Older Agents can ignore options.
+  whose separate protocol cannot execute them. Flag old pinned tasks whose
+  saved options are ignored. Older Agents can ignore options.
 - Measure HTTP TTFB from request write and report completed connection status
   separately from response success. HTTP probes omit DNS phase timing when no
   hostname was resolved or a lookup failed. Local probe setup failures report

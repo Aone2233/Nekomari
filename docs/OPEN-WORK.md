@@ -83,6 +83,12 @@ Remaining acceptance and operational limits:
   the ordinary scheduler and authenticated WebSocket: a reserved invalid
   hostname produced `dns_failure`, no loss or latency point, and no SLA outage.
   This is not evidence of a production fleet rollout or every failure type.
+  A read-only OC424 audit on 2026-11-15 found two pinned tasks: task 30 has no
+  advanced options, while task 31 retains attempts 3, spacing 200 ms and
+  legacy HTTP/default address options that its pinned dispatcher never sends.
+  The candidate marks such saved options as ignored in the task list. No task
+  configuration or history was modified; the warning does not make those
+  options effective or reconstruct earlier probe results.
   **v1.8.1 is a formal patch candidate** that also fixes existing probe
   correctness and visibility defects. Publication remains gated on retained
   acceptance evidence; production deployment is separately recorded. See

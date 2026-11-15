@@ -850,6 +850,7 @@
     "unknownDiagnosticsEmpty": "此期间没有上报探测错误。",
     "unknownDiagnosticsLimited": "仅显示前 100 条结果。",
     "pinnedOptionsUnsupported": "固定地址族任务不支持高级探测选项。",
+    "pinnedSavedOptionsIgnored": "此任务保存了固定地址族探测不会使用的高级选项；实际结果不采用这些设置。",
     "schedule_pending": "延迟任务调度未能重新加载，已保存的更改可能尚未生效；面板将自动重试。如果警告持续，请联系管理员。",
     "schedule_unknown": "无法获取延迟任务调度的加载状态，请刷新页面或联系管理员。",
     "all_servers": "全部服务器",

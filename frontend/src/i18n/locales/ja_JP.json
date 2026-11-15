@@ -850,6 +850,7 @@
     "unknownDiagnosticsEmpty": "この期間に報告されたエラーはありません。",
     "unknownDiagnosticsLimited": "先頭100件のみ表示します。",
     "pinnedOptionsUnsupported": "アドレスファミリー固定タスクは詳細設定に対応していません。",
+    "pinnedSavedOptionsIgnored": "このタスクに保存された詳細オプションは、アドレスファミリー固定の探測では使用されません。",
     "schedule_pending": "Ping スケジュールを再読み込みできませんでした。保存した変更がまだ反映されていない可能性があります。自動的に再試行します。警告が続く場合は管理者に連絡してください。",
     "schedule_unknown": "Ping スケジュールの再読み込み状態を取得できません。ページを更新するか管理者に連絡してください。",
     "all_servers": "すべてのサーバー",
