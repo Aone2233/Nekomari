@@ -96,6 +96,9 @@ Remaining acceptance and operational limits:
   Three 60-second function-level CPU comparisons on OC424 met the predeclared
   two-percentage-point limit; the [field record](./V1.8.1-CPU-CALIBRATION.md)
   describes their scope and the remaining reporting-path and other-host checks.
+  A local injected-delay comparison covered DNS accounting and final-hop TTFB
+  in isolation; [its record](./V1.8.1-HTTP-CALIBRATION.md) identifies the
+  remaining actual-DNS, TCP, TLS and redirect calibration work.
   A read-only OC424 audit on 2026-11-15 found two pinned tasks: task 30 has no
   advanced options, while task 31 retains attempts 3, spacing 200 ms and
   legacy HTTP/default address options that its pinned dispatcher never sends.
