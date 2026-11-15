@@ -96,9 +96,9 @@ Remaining acceptance and operational limits:
   Three 60-second function-level CPU comparisons on OC424 met the predeclared
   two-percentage-point limit; the [field record](./V1.8.1-CPU-CALIBRATION.md)
   describes their scope and the remaining reporting-path and other-host checks.
-  A local injected-delay comparison covered DNS accounting and final-hop TTFB
-  in isolation; [its record](./V1.8.1-HTTP-CALIBRATION.md) identifies the
-  remaining actual-DNS, TCP, TLS and redirect calibration work.
+  Local injected-delay comparisons covered DNS accounting, a UDP DNS server
+  and final-hop TTFB in isolation; [their record](./V1.8.1-HTTP-CALIBRATION.md)
+  identifies the remaining configured-resolver, TCP, TLS and redirect work.
   An [isolated mixed-Agent check](./V1.8.1-MIXED-AGENT.md) exercised the
   ordinary scheduler, actual v1.7.30 and candidate executables, authenticated
   WebSockets and metric storage with a dual-stack hostname and IPv4 preference.
