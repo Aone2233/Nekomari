@@ -5,6 +5,8 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/http/httptest"
 	"os"
@@ -84,7 +86,12 @@ func TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage(t *testing.T) {
 		}
 	}()
 	const id = "ordinary-fixture-node"
-	token := "ordinary-fixture-token"
+	// This credential exists only inside the disposable database and process.
+	var randomToken [24]byte
+	if _, err := rand.Read(randomToken[:]); err != nil {
+		t.Fatal(err)
+	}
+	token := hex.EncodeToString(randomToken[:])
 	if err := db.Create(&models.Client{UUID: id, Token: token, Name: id}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -132,11 +139,19 @@ func TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	mgr := utils.NewPingTaskManagerWithScheduler(scheduler.NewManager(), nil)
+	schedule := scheduler.NewManager()
+	mgr := utils.NewPingTaskManagerWithScheduler(schedule, nil)
 	if err := mgr.Reload([]models.PingTask{task}); err != nil {
 		t.Fatal(err)
 	}
-	defer mgr.Stop()
+	defer func() {
+		mgr.Stop()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := schedule.StopAndWait(ctx); err != nil {
+			t.Errorf("drain scheduler: %v", err)
+		}
+	}()
 	store := metricstore.GetStore()
 	query := func(name string) []metric.Point {
 		t.Helper()
