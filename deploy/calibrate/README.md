@@ -30,6 +30,29 @@ aggregate matches it; other mount scopes require a separate reference.
 
 The report is written to `.runtest/probe-calibration-<UTC>/report.json`.
 
+## Locked btop-terminal live-status check
+
+`btop_terminal_live_check.py` starts a disposable Panel and real Agent, checks
+the locked archive hash, and compares the theme's online count against a
+separate `/api/clients` request at 320 and 390 pixels. It writes only binary
+hashes, boolean results and counts. Exit 1 means failed or incomplete; it is
+not a full theme compatibility test. Install Python Playwright and its
+Chromium browser first. Run in an isolated network namespace because the
+Agent can make its own external requests; the browser's requests are already
+restricted to the disposable Panel. For example, on a Linux host where
+network namespace creation is available:
+
+```bash
+unshare -n sh -c 'ip link set lo up && python3 deploy/calibrate/btop_terminal_live_check.py \
+  --panel-binary /path/to/panel --agent-binary /path/to/agent \
+  --archive /path/to/btop-terminal.zip --output /tmp/btop-check.json'
+```
+
+The original 1.0.3 archive currently fails: the independent control reports
+the Agent online while the theme reports zero online nodes. See
+[`V1.8.1-THEME-SMOKE.md`](../../docs/V1.8.1-THEME-SMOKE.md) for controls,
+baseline comparison and limitations.
+
 ## Not yet wired (must not be claimed as pass)
 
 - ICMP loopback ±50 µs / LAN ±1 ms
