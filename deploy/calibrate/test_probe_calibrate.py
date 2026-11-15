@@ -64,6 +64,21 @@ class CPUCalibrationTest(unittest.TestCase):
         self.assertFalse(ram["pass"])
         self.assertIn("NOT RUN", ram["detail"])
 
+    def test_disk_requires_root_only_scope(self):
+        before = {"cpu_total": 100, "cpu_idle": 80}
+        after = {"cpu_total": 200, "cpu_idle": 180, "mem_total": 100,
+                 "mem_available": 100, "disk_used": 50}
+        report = {"quality": {"disk": "ok"}, "disk": {"total": 100, "used": 50}}
+        def disk():
+            return next(item for item in compare_report(report, before, after, 1) if item["item"] == "disk_used")
+        self.assertFalse(disk()["pass"])
+        report["disk"]["mounts"] = [{"mountpoint": "/data", "total": 100, "used": 50}]
+        self.assertFalse(disk()["pass"])
+        report["disk"]["mounts"][0]["mountpoint"] = "/"
+        self.assertTrue(disk()["pass"])
+        report["disk"]["mounts"].append({"mountpoint": "/data", "total": 1, "used": 0})
+        self.assertFalse(disk()["pass"])
+
 
 if __name__ == "__main__":
     unittest.main()

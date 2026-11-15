@@ -175,11 +175,15 @@ def compare_report(report: dict[str, Any], before: dict[str, Any], after: dict[s
         add("ram_used", actual_ram, expected_ram, False, "NOT RUN: report has no valid RAM used")
 
     actual_disk = report.get("disk", {}).get("used")
-    if is_measurement(actual_disk) and isinstance(quality, dict) and quality.get("disk") == "ok":
+    mounts = report.get("disk", {}).get("mounts")
+    root_only = (isinstance(mounts, list) and len(mounts) == 1 and isinstance(mounts[0], dict)
+                 and mounts[0].get("mountpoint") == "/" and mounts[0].get("used") == actual_disk
+                 and mounts[0].get("total") == report.get("disk", {}).get("total"))
+    if root_only and is_measurement(actual_disk) and isinstance(quality, dict) and quality.get("disk") == "ok":
         ok = relative_error(actual_disk, after["disk_used"]) <= TOLERANCES["disk_relative"]
         add("disk_used", actual_disk, after["disk_used"], ok, "±0.5% relative to df /")
     else:
-        add("disk_used", actual_disk, after["disk_used"], False, "NOT RUN: report has no valid disk used")
+        add("disk_used", actual_disk, after["disk_used"], False, "NOT RUN: valid single-root mount aggregate required")
 
     # totalUp/totalDown are lifetime counters, not interval deltas. A single
     # supplied report cannot establish the Agent's start counter, elapsed

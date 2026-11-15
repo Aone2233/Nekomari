@@ -16,8 +16,9 @@ unknown or absent quality is `NOT RUN`. The report still has to be captured
 over the same window as the reference: this script does not establish that
 alignment on its own. RAM uses the reported `gopsutil`, `includeCache` or
 `htoplike` mode and matching `/proc/meminfo` fields; an unrecognised mode or
-missing reference field is `NOT RUN`. Disk compares the Agent's aggregate to `/`, so a
-multi-mount host needs a separate per-mount reference before interpreting it.
+missing reference field is `NOT RUN`. Disk compares the Agent's aggregate to
+`/` only when the report proves it contains exactly that mount and its
+aggregate matches it; other mount scopes require a separate reference.
 
 | Item | Tolerance |
 |---|---|
