@@ -251,3 +251,42 @@ func TestHTTPProbeRedirectTLSPhaseBelongsToFinalHop(t *testing.T) {
 		t.Logf("%s", output)
 	}
 }
+
+// An interim response is not a completed final HTTP response. Retain no
+// final-hop TTFB if the server never sends its final status.
+func TestHTTPProbeInformationalResponseThenTimeoutHasNoTTFB(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusEarlyHints)
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	out := httpProbe(server.URL, 150*time.Millisecond, "", true)
+	if out.err == nil || out.obs == nil {
+		t.Fatalf("expected timeout: %+v", out)
+	}
+	if out.obs.TTFBUS != nil {
+		t.Fatalf("interim response produced TTFB without final response: %d µs", *out.obs.TTFBUS)
+	}
+	if out.obs.Reachable == nil || !*out.obs.Reachable {
+		t.Fatalf("connected server marked unreachable: %+v", out.obs)
+	}
+}
+
+// The established TTFB meaning is the first response byte of the final hop,
+// including an informational response when a final response follows.
+func TestHTTPProbeInformationalResponseThenFinalKeepsFirstByte(t *testing.T) {
+	const delay = 100 * time.Millisecond
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusEarlyHints)
+		time.Sleep(delay)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	out := httpProbe(server.URL, 2*time.Second, "", true)
+	if out.err != nil || out.obs == nil || out.obs.TTFBUS == nil || out.obs.TotalUS == nil || out.obs.StatusCode == nil || *out.obs.StatusCode != http.StatusOK {
+		t.Fatalf("outcome: %+v", out)
+	}
+	if *out.obs.TotalUS-*out.obs.TTFBUS < (delay - 15*time.Millisecond).Microseconds() {
+		t.Fatalf("informational first byte missing: total=%d ttfb=%d", *out.obs.TotalUS, *out.obs.TTFBUS)
+	}
+}

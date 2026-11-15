@@ -106,7 +106,8 @@ Remaining acceptance and operational limits:
   The candidate Agent also omits HTTP DNS duration for literal-only targets
   and failed lookups rather than recording resolution overhead as a successful
   DNS measurement. It also omits TLS duration for a failed final handshake or
-  a plain-HTTP final redirect; neither change rewrites historical samples.
+  a plain-HTTP final redirect, and omits TTFB when only a 1xx response arrives
+  before timeout; these changes do not rewrite historical samples.
   An isolated Linux network-namespace test ran a real Agent executable through
   the ordinary scheduler and authenticated WebSocket: a reserved invalid
   hostname produced `dns_failure`, no loss or latency point, and no SLA outage.

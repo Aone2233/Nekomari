@@ -561,7 +561,9 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 	if hasTLS {
 		obs.TLSUS = &tlsValue
 	}
-	if hasTTFB {
+	// A 1xx response can trigger GotFirstResponseByte even if no final
+	// response ever arrives. Do not present that as a completed response.
+	if hasTTFB && resp != nil {
 		obs.TTFBUS = &ttfbValue
 	}
 	if resp != nil {

@@ -40,18 +40,17 @@ func TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage(t *testing.T) {
 	if os.Getenv("NEKOMARI_ORDINARY_EXEC_E2E") != "1" {
 		t.Skip("requires Linux network namespace privileges")
 	}
-	ordinaryAgentExecutableFixture(t, false)
+	ordinaryAgentExecutableFixture(t, "dns")
 }
 
-func ordinaryAgentExecutableFixture(t *testing.T, tlsFailure bool) {
+func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	t.Helper()
-	if os.Getenv("NEKOMARI_ORDINARY_EXEC_E2E") != "1" && os.Getenv("NEKOMARI_ORDINARY_TLS_E2E") != "1" {
-		t.Skip("requires Linux network namespace privileges")
-	}
 	const marker = "NEKOMARI_ORDINARY_EXEC_CHILD"
 	runPattern := "^TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage$"
-	if tlsFailure {
+	if scenario == "tls" {
 		runPattern = "^TestOrdinaryAgentExecutableTLSFailureMetric$"
+	} else if scenario == "1xx" {
+		runPattern = "^TestOrdinaryAgentExecutableInformationalTimeoutMetric$"
 	}
 	if os.Getenv(marker) != "1" {
 		_, source, _, ok := runtime.Caller(0)
@@ -142,10 +141,18 @@ func ordinaryAgentExecutableFixture(t *testing.T, tlsFailure bool) {
 		}
 	}()
 	task := models.PingTask{Name: "unknown fixture", Type: "tcp", Target: "invalid.invalid:80", Interval: 2, Clients: models.StringArray{id}}
-	if tlsFailure {
+	if scenario == "tls" {
 		tlsTarget := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
 		defer tlsTarget.Close()
 		task = models.PingTask{Name: "TLS failure fixture", Type: "http", Target: tlsTarget.URL, Interval: 2, Clients: models.StringArray{id}, HTTPMode: "status_aware"}
+	}
+	if scenario == "1xx" {
+		target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusEarlyHints)
+			<-r.Context().Done()
+		}))
+		defer target.Close()
+		task = models.PingTask{Name: "informational timeout fixture", Type: "http", Target: target.URL, Interval: 2, Clients: models.StringArray{id}, HTTPMode: "status_aware", ProbeTimeoutMS: 300}
 	}
 	if err := db.Create(&task).Error; err != nil {
 		t.Fatal(err)
@@ -179,18 +186,25 @@ func ordinaryAgentExecutableFixture(t *testing.T, tlsFailure bool) {
 		}
 		return p
 	}
-	if tlsFailure {
+	if scenario == "tls" || scenario == "1xx" {
 		for len(query(metricstore.MetricHTTPReachable)) == 0 {
 			if time.Now().After(deadline) {
-				t.Fatal("TLS failure result not received")
+				t.Fatalf("%s result not received", scenario)
 			}
 			time.Sleep(100 * time.Millisecond)
 		}
-		if points := query(metricstore.MetricHTTPReachable); len(points) == 0 || points[0].Value != 0 {
-			t.Fatalf("TLS failure reachability: %+v", points)
+		wantReachable := float64(0)
+		if scenario == "1xx" {
+			wantReachable = 1
+		}
+		if points := query(metricstore.MetricHTTPReachable); len(points) == 0 || points[0].Value != wantReachable {
+			t.Fatalf("%s reachability: %+v", scenario, points)
+		}
+		if points := query(metricstore.MetricHTTPTTFB); scenario == "1xx" && len(points) != 0 {
+			t.Fatalf("informational-only response produced TTFB: %+v", points)
 		}
 		if points := query(metricstore.MetricHTTPTLS); len(points) != 0 {
-			t.Fatalf("failed TLS produced timing: %+v", points)
+			t.Fatalf("%s unexpectedly produced TLS timing: %+v", scenario, points)
 		}
 		if points := query(metricstore.MetricHTTPTCP); len(points) == 0 {
 			t.Fatal("completed TCP attempt missing")
@@ -225,5 +239,13 @@ func TestOrdinaryAgentExecutableTLSFailureMetric(t *testing.T) {
 	if os.Getenv("NEKOMARI_ORDINARY_TLS_E2E") != "1" {
 		t.Skip("requires Linux network namespace privileges")
 	}
-	ordinaryAgentExecutableFixture(t, true)
+	ordinaryAgentExecutableFixture(t, "tls")
+}
+
+// An interim HTTP response followed by timeout must not persist TTFB.
+func TestOrdinaryAgentExecutableInformationalTimeoutMetric(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_1XX_E2E") != "1" {
+		t.Skip("requires Linux network namespace privileges")
+	}
+	ordinaryAgentExecutableFixture(t, "1xx")
 }
