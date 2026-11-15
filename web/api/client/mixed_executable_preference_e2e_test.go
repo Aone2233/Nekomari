@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,11 +30,20 @@ import (
 	agentRuntime "github.com/Aone2233/nekomari/web/agent"
 	"github.com/Aone2233/nekomari/web/api"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 // Actual legacy and candidate Agents, ordinary scheduler and authenticated WebSockets.
 // The caller supplies trusted binaries built from the two source revisions.
 func TestMixedExecutablePreference(t *testing.T) {
+	testMixedExecutablePreference(t, false)
+}
+
+func TestMixedExecutableCustomDNS(t *testing.T) {
+	testMixedExecutablePreference(t, true)
+}
+
+func testMixedExecutablePreference(t *testing.T, customDNS bool) {
 	if os.Getenv("NEKOMARI_MIXED_EXEC_E2E") != "1" {
 		t.Skip("requires supplied Agent binaries and isolated namespaces")
 	}
@@ -44,7 +54,7 @@ func TestMixedExecutablePreference(t *testing.T) {
 				t.Fatalf("%s must be an absolute binary path", key)
 			}
 		}
-		cmd := exec.CommandContext(t.Context(), "unshare", "--net", "--mount", "--", os.Args[0], "-test.run=^TestMixedExecutablePreference$", "-test.v", "-test.timeout=60s")
+		cmd := exec.CommandContext(t.Context(), "unshare", "--net", "--mount", "--", os.Args[0], "-test.run=^"+t.Name()+"$", "-test.v", "-test.timeout=60s")
 		cmd.Dir = t.TempDir()
 		cmd.Env = append(os.Environ(), marker+"=1")
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -58,7 +68,11 @@ func TestMixedExecutablePreference(t *testing.T) {
 		t.Fatalf("private mounts: %v %s", err, out)
 	}
 	hosts := filepath.Join(t.TempDir(), "hosts")
-	if err := os.WriteFile(hosts, []byte("127.0.0.1 localhost\n::1 localhost\n::1 mixed.fixture\n127.0.0.1 mixed.fixture\n"), 0600); err != nil {
+	hostContents := "127.0.0.1 localhost\n::1 localhost\n::1 mixed.fixture\n127.0.0.1 mixed.fixture\n"
+	if customDNS {
+		hostContents = "127.0.0.1 localhost\n::1 localhost\n"
+	}
+	if err := os.WriteFile(hosts, []byte(hostContents), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if out, err := exec.Command("mount", "--bind", hosts, "/etc/hosts").CombinedOutput(); err != nil {
@@ -66,6 +80,81 @@ func TestMixedExecutablePreference(t *testing.T) {
 	}
 	if out, err := exec.Command("ip", "link", "set", "lo", "up").CombinedOutput(); err != nil {
 		t.Fatalf("loopback: %v %s", err, out)
+	}
+	var dnsQueries atomic.Int32
+	var dnsAddr string
+	if customDNS {
+		resolv := filepath.Join(t.TempDir(), "resolv.conf")
+		if err := os.WriteFile(resolv, []byte("nameserver 127.0.0.1\noptions timeout:1 attempts:1\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command("mount", "--bind", resolv, "/etc/resolv.conf").CombinedOutput(); err != nil {
+			t.Fatalf("isolated resolver: %v %s", err, out)
+		}
+		systemDNS, err := net.ListenPacket("udp4", net.JoinHostPort(net.IPv4(127, 0, 0, 1).String(), "53"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		systemDone := make(chan struct{})
+		go func() {
+			defer close(systemDone)
+			buf := make([]byte, 4096)
+			for {
+				n, peer, err := systemDNS.ReadFrom(buf)
+				if err != nil {
+					return
+				}
+				var request dnsmessage.Message
+				if request.Unpack(buf[:n]) != nil || len(request.Questions) != 1 {
+					continue
+				}
+				q := request.Questions[0]
+				answer := dnsmessage.Message{Header: dnsmessage.Header{ID: request.ID, Response: true, Authoritative: true, RecursionAvailable: true}, Questions: request.Questions}
+				if q.Name.String() == "mixed.fixture." && q.Type == dnsmessage.TypeAAAA {
+					answer.Answers = []dnsmessage.Resource{{Header: dnsmessage.ResourceHeader{Name: q.Name, Type: dnsmessage.TypeAAAA, Class: dnsmessage.ClassINET, TTL: 1}, Body: &dnsmessage.AAAAResource{AAAA: [16]byte{15: 1}}}}
+				} else if q.Name.String() != "mixed.fixture." {
+					answer.RCode = dnsmessage.RCodeNameError
+				}
+				if encoded, err := answer.Pack(); err == nil {
+					_, _ = systemDNS.WriteTo(encoded, peer)
+				}
+			}
+		}()
+		defer func() { _ = systemDNS.Close(); <-systemDone }()
+		dns, err := net.ListenPacket("udp4", net.JoinHostPort(net.IPv4(127, 0, 0, 1).String(), "0"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dnsAddr = dns.LocalAddr().String()
+		dnsDone := make(chan struct{})
+		go func() {
+			defer close(dnsDone)
+			buf := make([]byte, 4096)
+			for {
+				n, peer, err := dns.ReadFrom(buf)
+				if err != nil {
+					return
+				}
+				var request dnsmessage.Message
+				if request.Unpack(buf[:n]) != nil || len(request.Questions) != 1 {
+					continue
+				}
+				question := request.Questions[0]
+				answer := dnsmessage.Message{Header: dnsmessage.Header{ID: request.ID, Response: true, Authoritative: true, RecursionAvailable: true}, Questions: request.Questions}
+				if question.Name.String() != "mixed.fixture." {
+					answer.RCode = dnsmessage.RCodeNameError
+				} else if question.Type == dnsmessage.TypeA {
+					dnsQueries.Add(1)
+					answer.Answers = []dnsmessage.Resource{{Header: dnsmessage.ResourceHeader{Name: question.Name, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET, TTL: 1}, Body: &dnsmessage.AResource{A: [4]byte{127, 0, 0, 1}}}}
+				} else {
+					dnsQueries.Add(1)
+				}
+				if encoded, err := answer.Pack(); err == nil {
+					_, _ = dns.WriteTo(encoded, peer)
+				}
+			}
+		}()
+		defer func() { _ = dns.Close(); <-dnsDone }()
 	}
 	flags.DatabaseType = flags.DatabaseTypeSQLite
 	flags.DatabaseFile = filepath.Join("data", "komari.db")
@@ -128,6 +217,9 @@ func TestMixedExecutablePreference(t *testing.T) {
 			t.Fatal(err)
 		}
 		cmd := exec.Command(os.Getenv(info.env), "--endpoint", panel.URL, "--disable-auto-update", "--disable-web-ssh", "--interval", "1")
+		if customDNS {
+			cmd.Args = append(cmd.Args, "--custom-dns", dnsAddr)
+		}
 		cmd.Dir = t.TempDir()
 		cmd.Env = append(os.Environ(), "AGENT_TOKEN="+token, "GODEBUG=netdns=go", "HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "NO_PROXY=*")
 		output := &bytes.Buffer{}
@@ -166,6 +258,9 @@ func TestMixedExecutablePreference(t *testing.T) {
 	}
 
 	task := models.PingTask{Name: "mixed fixture", Type: "tcp", Target: fmt.Sprintf("mixed.fixture:%d", port), IPVersionPreference: "4", Interval: 2, Clients: models.StringArray{"old", "new"}}
+	if customDNS {
+		task.IPVersionPreference = ""
+	}
 	if err := db.Create(&task).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -211,5 +306,8 @@ func TestMixedExecutablePreference(t *testing.T) {
 			}
 		}
 		t.Logf("%s family=%s", test.id, test.family)
+	}
+	if customDNS && dnsQueries.Load() == 0 {
+		t.Fatal("configured DNS received no probe query")
 	}
 }
