@@ -28,9 +28,11 @@ complete Windows CI result.
 `monitoring/unit` suite failed `TestICMPLoopbackCalibration` once on the
 Linux x86-64 development host: Agent median 126 µs versus system-ping average
 65 µs, a 61 µs difference against the 50 µs tolerance. The test uses two
-sequential groups and different summary statistics, so this alone does not
-identify a code defect or explain the excess. This result is retained; a
-same-probe independent comparison and exact-commit CI remain to be assessed.
+sequential groups and different summary statistics. A subsequent predeclared
+same-probe loopback capture found all 90 Agent RTT values more than 50 µs
+above their captured intervals; details and timing-boundary limitations are
+in [the calibration record](./V1.8.1-NETEM-PRELIMINARY.md). The loopback
+target remains open, as does exact-commit CI.
 
 **Current v1.8.1 candidate:** See [the short implementation and acceptance
 status](./V1.8.1-CURRENT-STATUS.md). v1.8.1 may fix existing probe correctness
