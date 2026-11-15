@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -101,6 +102,37 @@ func TestRecoveryStartupProbe(t *testing.T) {
 		shape.metrics, shape.metrics*shape.series, inserted, float64(dbSize)/(1<<20), len(blob), pending, analyze, elapsed.Milliseconds(), err)
 	for _, line := range plan {
 		fmt.Printf("PROBE_PLAN %s\n", line)
+	}
+
+	// Keeping the fixture lets the released binary be measured against the same
+	// data on another host; the A/B statement timing is local evidence and is
+	// skipped when only the fixture is wanted.
+	if keep := os.Getenv("PROBE_KEEP_DIR"); keep != "" {
+		if err := os.MkdirAll(keep, 0o755); err != nil {
+			t.Fatalf("create keep dir: %v", err)
+		}
+		source, err := os.Open(path)
+		if err != nil {
+			t.Fatalf("open fixture: %v", err)
+		}
+		defer source.Close()
+		target, err := os.Create(filepath.Join(keep, "metrics.db"))
+		if err != nil {
+			t.Fatalf("create kept fixture: %v", err)
+		}
+		if _, err := io.Copy(target, source); err != nil {
+			target.Close()
+			t.Fatalf("copy fixture: %v", err)
+		}
+		if err := target.Close(); err != nil {
+			t.Fatalf("close kept fixture: %v", err)
+		}
+		fmt.Printf("PROBE_KEPT %s\n", filepath.Join(keep, "metrics.db"))
+	}
+
+	if os.Getenv("PROBE_SKIP_AB") != "" {
+		t.Logf("plan=%v", plan)
+		return
 	}
 
 	// The same fixture, the same scan, both statements. Each is run twice so
