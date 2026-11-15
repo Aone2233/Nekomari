@@ -105,7 +105,8 @@ Remaining acceptance and operational limits:
   identify the underlying mismatch or make the original archive pass.
   The candidate Agent also omits HTTP DNS duration for literal-only targets
   and failed lookups rather than recording resolution overhead as a successful
-  DNS measurement; it does not retroactively change historical samples.
+  DNS measurement. It also omits TLS duration for a failed final handshake or
+  a plain-HTTP final redirect; neither change rewrites historical samples.
   An isolated Linux network-namespace test ran a real Agent executable through
   the ordinary scheduler and authenticated WebSocket: a reserved invalid
   hostname produced `dns_failure`, no loss or latency point, and no SLA outage.

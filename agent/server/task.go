@@ -479,6 +479,7 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 
 	var tlsStart time.Time
 	var tlsUS int64
+	var tlsSet bool
 	var ttfbUS int64
 	var ttfbSet bool
 	var requestWritten time.Time
@@ -487,16 +488,19 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 	start := time.Now()
 	trace := &httptrace.ClientTrace{
 		TLSHandshakeStart: func() { phaseMu.Lock(); tlsStart = time.Now(); phaseMu.Unlock() },
-		TLSHandshakeDone: func(_ tls.ConnectionState, _ error) {
+		TLSHandshakeDone: func(_ tls.ConnectionState, err error) {
 			phaseMu.Lock()
-			if !tlsStart.IsZero() {
+			if err == nil && !tlsStart.IsZero() {
 				tlsUS = time.Since(tlsStart).Microseconds()
+				tlsSet = true
 			}
 			phaseMu.Unlock()
 		},
 		GetConn: func(string) {
 			phaseMu.Lock()
 			connected = false
+			tlsStart = time.Time{}
+			tlsSet = false
 			requestWritten = time.Time{}
 			ttfbSet = false
 			phaseMu.Unlock()
@@ -542,7 +546,7 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 	tcpKnown := tcpSet
 	wasConnected := connected
 	dnsValue, dnsKnown := dnsUS, dnsSet && !dnsFailed && dnsPending == 0
-	tcpValue, tlsValue, ttfbValue, hasTTFB := tcpUS, tlsUS, ttfbUS, ttfbSet
+	tcpValue, tlsValue, hasTLS, ttfbValue, hasTTFB := tcpUS, tlsUS, tlsSet, ttfbUS, ttfbSet
 	phaseMu.Unlock()
 	out := httpProbeOutcome{totalUS: totalUS, family: family, reachable: wasConnected}
 	obs := &v2.HTTPProbeReport{
@@ -554,7 +558,7 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 	if tcpKnown {
 		obs.TCPUS = &tcpValue
 	}
-	if tlsValue > 0 {
+	if hasTLS {
 		obs.TLSUS = &tlsValue
 	}
 	if hasTTFB {

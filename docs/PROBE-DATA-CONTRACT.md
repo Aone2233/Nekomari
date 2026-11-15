@@ -62,7 +62,7 @@ description of current production behavior for optional fields.
 | `http.total_ms` | ms | whole HTTP attempt | avg | no response → unknown |
 | `http.dns_ms` | ms | sum of completed hostname resolutions across HTTP hops | avg | literal-only target or failed resolution → unknown |
 | `http.tcp_ms` | ms | TCP connect phase | avg | no connection attempt → unknown |
-| `http.tls_ms` | ms | TLS handshake; plain HTTP = 0 | avg | non-HTTPS → unknown/0 |
+| `http.tls_ms` | ms | completed TLS handshake for the final HTTP connection | avg | plain HTTP, failed or unfinished handshake → unknown |
 | `http.ttfb_ms` | ms | final HTTP request fully written to first response byte (excluding prior DNS/TCP/TLS and redirect hops) | avg | no response → unknown |
 | `http.status_code` | code | final response status | last | no response → unknown |
 | `http.redirects` | count | redirect hops | last | no response → unknown |

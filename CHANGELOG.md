@@ -24,7 +24,8 @@ Nekomari's own.
   saved options are ignored. Older Agents can ignore options.
 - Measure HTTP TTFB from request write and report completed connection status
   separately from response success. HTTP probes omit DNS phase timing when no
-  hostname was resolved or a lookup failed. Local probe setup failures report
+  hostname was resolved or a lookup failed, and omit final TLS timing when
+  the last connection is plain HTTP or the handshake fails. Local probe setup failures report
   unknown rather than packet loss on a compatible Panel; recent reasons are
   inspectable.
 - Refresh quality-page ages and expose failures; forecast read errors no longer
