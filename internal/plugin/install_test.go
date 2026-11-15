@@ -111,6 +111,12 @@ func TestInstallZipValidatesPageTypesAndVisibility(t *testing.T) {
 	if _, err := InstallZip(zipPath); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := InstallZip(writePluginZip(t, map[string]string{
+		"komari-plugin.json": `{"name":"Pages","short":"pages4","pages":[{"title":"Go","type":"redirect","url":"/admin/settings","file":"missing.html"}]}`,
+		"script.js":          `function load() {}`,
+	})); err != nil {
+		t.Fatalf("redirect pages do not require a local file: %v", err)
+	}
 
 	// public iframe 页面合法。
 	zipPath = writePluginZip(t, map[string]string{

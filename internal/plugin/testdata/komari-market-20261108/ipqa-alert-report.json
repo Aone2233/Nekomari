@@ -1,0 +1,135 @@
+{
+  "$schema": "https://komari-monitor.github.io/plugin-sdk/komari-plugin.schema.json",
+  "name": {
+    "zh-CN": "IPQA 告警报告",
+    "zh_CN": "IPQA 告警报告",
+    "en": "IPQA Alert Report"
+  },
+  "short": "ipqa-alert-report",
+  "description": {
+    "zh-CN": "将服务器 IP Quality 的流媒体/AI 解锁情况、风控评分变动等直接汇总并同步到 Komari 支持的通知渠道。本项目基于开源项目 IP-Quality-Archive，必须在被监控 VPS 安装该项目方可使用；强烈推荐搭配 Komari Emerald Insights 主题以在前端查阅完整图表与历史档案。",
+    "zh_CN": "将服务器 IP Quality 的流媒体/AI 解锁情况、风控评分变动等直接汇总并同步到 Komari 支持的通知渠道。本项目基于开源项目 IP-Quality-Archive，必须在被监控 VPS 安装该项目方可使用；强烈推荐搭配 Komari Emerald Insights 主题以在前端查阅完整图表与历史档案。",
+    "en": "Syncs server IP Quality streaming/AI unlock status and risk score changes directly to Komari-supported notification channels. Built upon the open-source project IP-Quality-Archive (required on monitored VPS nodes); strongly recommended to pair with Komari Emerald Insights theme for rich frontend dashboards and historical archives."
+  },
+  "version": "0.2.5",
+  "komari": ">=1.4.3",
+  "entry": "script.js",
+  "icon": "assets/icon.svg",
+  "author": "Chen017",
+  "permissions": {
+    "node": true,
+    "allowSystemRPC": true,
+    "allowRoutes": true,
+    "timeout": 120
+  },
+  "configuration": {
+    "type": "managed",
+    "name": "IPQA 告警报告设置",
+    "data": [
+      {
+        "name": {
+          "zh-CN": "<div style=\"margin: 0 0 12px 0; padding: 12px 16px; background: rgba(239, 68, 68, 0.08); border-left: 4px solid #dc2626; border-radius: 4px;\"><div style=\"color: #dc2626; font-weight: 700; font-size: 14px; margin-bottom: 6px;\">⚠️ 前置要求与强烈推荐搭配提示</div><div style=\"font-size: 13px; color: #475569; line-height: 1.6;\">• <b>VPS 前置要求</b>：本插件仅适用于被监控 VPS 已经安装并运行了 <a href=\"https://github.com/Chen017/IP-Quality-Archive\" target=\"_blank\" style=\"color: #dc2626; font-weight: 700; text-decoration: underline;\">IP-Quality-Archive</a> 的环境。若目标 VPS 尚未安装 IPQA，将无法同步历史归档及告警日志，请先前往安装。<br>• <b>强烈推荐搭配主题</b>：本插件主要负责后台数据归档同步与通知渠道告警；若需在前端直观查阅集群 IP 质量概览大盘、多引擎风控评分矩阵、流媒体/AI 解锁详情及逐日历史快照，<b>强烈推荐安装配套主题 <a href=\"https://github.com/Chen017/komari-theme-emerald-insights\" target=\"_blank\" style=\"color: #dc2626; font-weight: 700; text-decoration: underline;\">Komari Emerald Insights（翡翠洞察）</a></b>！<br>• <b>节点增删同步说明</b>：在 Komari 中删除或新增服务器时，插件与配套主题会自动实时联动并剔除已删除节点。如遇极端缓存或未及时更新，可在插件管理列表中点击<b>「重载插件」</b>立即强制全量刷新节点索引。<br>• <b>相关链接</b>：<a href=\"https://github.com/Chen017/IP-Quality-Archive\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">IPQA 项目与安装指南</a> ｜ <a href=\"https://github.com/Chen017/komari-theme-emerald-insights\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">Emerald Insights 翡翠洞察主题</a> ｜ <a href=\"https://github.com/Chen017/komari-emerald-suite\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">Emerald 生态总览</a></div></div><div style=\"margin: 4px 0 12px 0; padding: 12px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 8px;\"><div style=\"font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #1d4ed8;\">🧪 手动测试运行</div><div style=\"font-size: 13px; color: #64748b; margin-bottom: 10px;\">读取已同步的 IPQA 归档语义变化，并合并 alerts.log 补充告警，按当前告警规则生成汇总报告。</div><button type=\"button\" id=\"ipqa-quick-test-btn\" style=\"padding: 7px 16px; background-color: #2563eb; color: #ffffff; border: none; border-radius: 6px; font-weight: 500; font-size: 13px; cursor: pointer; transition: all 0.2s;\" onclick=\"(function(btn){ const tip = document.getElementById('ipqa-quick-test-tip'); btn.disabled=true; btn.style.opacity='0.7'; btn.innerText='⏳ 正在获取VPS日志...'; if(tip){ tip.style.color='#2563eb'; tip.innerText='正在向节点下发任务，请稍候（约需 5-15 秒）...'; } fetch('/api/plugin/ipqa-alert-report/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ window: 'today_now' }) }).then(async res => { const data = await res.json().catch(() => ({})); btn.disabled=false; btn.style.opacity='1'; btn.innerText='⚡ 立即测试运行'; if (res.ok && data.success) { if(tip){ tip.style.color='#16a34a'; tip.innerText='✅ ' + (data.message || '测试完成'); } } else { if(tip){ tip.style.color='#dc2626'; tip.innerText='❌ ' + (data.message || data.error || '测试失败'); } } }).catch(err => { btn.disabled=false; btn.style.opacity='1'; btn.innerText='⚡ 立即测试运行'; if(tip){ tip.style.color='#dc2626'; tip.innerText='❌ 请求失败: ' + err.message; } }); })(this)\">⚡ 立即测试运行</button><div id=\"ipqa-quick-test-tip\" style=\"margin-top: 8px; font-size: 13px; font-weight: 500;\"></div></div>",
+          "zh_CN": "<div style=\"margin: 0 0 12px 0; padding: 12px 16px; background: rgba(239, 68, 68, 0.08); border-left: 4px solid #dc2626; border-radius: 4px;\"><div style=\"color: #dc2626; font-weight: 700; font-size: 14px; margin-bottom: 6px;\">⚠️ 前置要求与强烈推荐搭配提示</div><div style=\"font-size: 13px; color: #475569; line-height: 1.6;\">• <b>VPS 前置要求</b>：本插件仅适用于被监控 VPS 已经安装并运行了 <a href=\"https://github.com/Chen017/IP-Quality-Archive\" target=\"_blank\" style=\"color: #dc2626; font-weight: 700; text-decoration: underline;\">IP-Quality-Archive</a> 的环境。若目标 VPS 尚未安装 IPQA，将无法同步历史归档及告警日志，请先前往安装。<br>• <b>强烈推荐搭配主题</b>：本插件主要负责后台数据归档同步与通知渠道告警；若需在前端直观查阅集群 IP 质量概览大盘、多引擎风控评分矩阵、流媒体/AI 解锁详情及逐日历史快照，<b>强烈推荐安装配套主题 <a href=\"https://github.com/Chen017/komari-theme-emerald-insights\" target=\"_blank\" style=\"color: #dc2626; font-weight: 700; text-decoration: underline;\">Komari Emerald Insights（翡翠洞察）</a></b>！<br>• <b>节点增删同步说明</b>：在 Komari 中删除或新增服务器时，插件与配套主题会自动实时联动并剔除已删除节点。如遇极端缓存或未及时更新，可在插件管理列表中点击<b>「重载插件」</b>立即强制全量刷新节点索引。<br>• <b>相关链接</b>：<a href=\"https://github.com/Chen017/IP-Quality-Archive\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">IPQA 项目与安装指南</a> ｜ <a href=\"https://github.com/Chen017/komari-theme-emerald-insights\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">Emerald Insights 翡翠洞察主题</a> ｜ <a href=\"https://github.com/Chen017/komari-emerald-suite\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">Emerald 生态总览</a></div></div><div style=\"margin: 4px 0 12px 0; padding: 12px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 8px;\"><div style=\"font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #1d4ed8;\">🧪 手动测试运行</div><div style=\"font-size: 13px; color: #64748b; margin-bottom: 10px;\">读取已同步的 IPQA 归档语义变化，并合并 alerts.log 补充告警，按当前告警规则生成汇总报告。</div><button type=\"button\" id=\"ipqa-quick-test-btn\" style=\"padding: 7px 16px; background-color: #2563eb; color: #ffffff; border: none; border-radius: 6px; font-weight: 500; font-size: 13px; cursor: pointer; transition: all 0.2s;\" onclick=\"(function(btn){ const tip = document.getElementById('ipqa-quick-test-tip'); btn.disabled=true; btn.style.opacity='0.7'; btn.innerText='⏳ 正在获取VPS日志...'; if(tip){ tip.style.color='#2563eb'; tip.innerText='正在向节点下发任务，请稍候（约需 5-15 秒）...'; } fetch('/api/plugin/ipqa-alert-report/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ window: 'today_now' }) }).then(async res => { const data = await res.json().catch(() => ({})); btn.disabled=false; btn.style.opacity='1'; btn.innerText='⚡ 立即测试运行'; if (res.ok && data.success) { if(tip){ tip.style.color='#16a34a'; tip.innerText='✅ ' + (data.message || '测试完成'); } } else { if(tip){ tip.style.color='#dc2626'; tip.innerText='❌ ' + (data.message || data.error || '测试失败'); } } }).catch(err => { btn.disabled=false; btn.style.opacity='1'; btn.innerText='⚡ 立即测试运行'; if(tip){ tip.style.color='#dc2626'; tip.innerText='❌ 请求失败: ' + err.message; } }); })(this)\">⚡ 立即测试运行</button><div id=\"ipqa-quick-test-tip\" style=\"margin-top: 8px; font-size: 13px; font-weight: 500;\"></div></div>",
+          "en": "<div style=\"margin: 0 0 12px 0; padding: 12px 16px; background: rgba(239, 68, 68, 0.08); border-left: 4px solid #dc2626; border-radius: 4px;\"><div style=\"color: #dc2626; font-weight: 700; font-size: 14px; margin-bottom: 6px;\">⚠️ Prerequisites & Strongly Recommended Theme</div><div style=\"font-size: 13px; color: #475569; line-height: 1.6;\">• <b>VPS Prerequisite</b>: This plugin ONLY works for VPS nodes where <a href=\"https://github.com/Chen017/IP-Quality-Archive\" target=\"_blank\" style=\"color: #dc2626; font-weight: 700; text-decoration: underline;\">IP-Quality-Archive</a> is installed. If target VPS nodes do not have IPQA installed, no archive or alert logs can be collected. Please install it first.<br>• <b>Strongly Recommended Theme</b>: This plugin synchronizes backend archives and sends channel notifications. To visually inspect fleet IP quality overview, multi-engine risk score matrix, streaming/AI unlocks, and historical archive snapshots in the web UI, it is <b>strongly recommended to install the companion theme <a href=\"https://github.com/Chen017/komari-theme-emerald-insights\" target=\"_blank\" style=\"color: #dc2626; font-weight: 700; text-decoration: underline;\">Komari Emerald Insights</a></b>!<br>• <b>Server Sync & Pruning</b>: When adding or deleting servers in Komari, the plugin and companion theme automatically synchronize live node states and prune deleted cards. If any cache persists, simply click <b>Reload Plugin</b> in Plugin Management to force a full re-index.<br>• <b>Links</b>: <a href=\"https://github.com/Chen017/IP-Quality-Archive\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">IPQA Repo & Installation</a> | <a href=\"https://github.com/Chen017/komari-theme-emerald-insights\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">Emerald Insights Theme</a> | <a href=\"https://github.com/Chen017/komari-emerald-suite\" target=\"_blank\" style=\"color: #2563eb; text-decoration: underline;\">Emerald Suite Overview</a></div></div><div style=\"margin: 4px 0 12px 0; padding: 12px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 8px;\"><div style=\"font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #1d4ed8;\">🧪 Manual Test Run</div><div style=\"font-size: 13px; color: #64748b; margin-bottom: 10px;\">Reads already-synced IPQA archive semantic changes, merges alerts.log supplemental events, and generates aggregated reports according to alert rules.</div><button type=\"button\" id=\"ipqa-quick-test-btn\" style=\"padding: 7px 16px; background-color: #2563eb; color: #ffffff; border: none; border-radius: 6px; font-weight: 500; font-size: 13px; cursor: pointer; transition: all 0.2s;\" onclick=\"(function(btn){ const tip = document.getElementById('ipqa-quick-test-tip'); btn.disabled=true; btn.style.opacity='0.7'; btn.innerText='⏳ Fetching logs...'; if(tip){ tip.style.color='#2563eb'; tip.innerText='Running remote tasks, please wait (approx. 5-15s)...'; } fetch('/api/plugin/ipqa-alert-report/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ window: 'today_now' }) }).then(async res => { const data = await res.json().catch(() => ({})); btn.disabled=false; btn.style.opacity='1'; btn.innerText='⚡ Run Test Now'; if (res.ok && data.success) { if(tip){ tip.style.color='#16a34a'; tip.innerText='✅ ' + (data.message || 'Test finished'); } } else { if(tip){ tip.style.color='#dc2626'; tip.innerText='❌ ' + (data.message || data.error || 'Test failed'); } } }).catch(err => { btn.disabled=false; btn.style.opacity='1'; btn.innerText='⚡ Run Test Now'; if(tip){ tip.style.color='#dc2626'; tip.innerText='❌ Request error: ' + err.message; } }); })(this)\">⚡ Run Test Now</button><div id=\"ipqa-quick-test-tip\" style=\"margin-top: 8px; font-size: 13px; font-weight: 500;\"></div></div>"
+        },
+        "type": "textbox"
+      },
+      {
+        "key": "enabled",
+        "name": {
+          "zh-CN": "启用 IPQA 告警报告",
+          "zh_CN": "启用 IPQA 告警报告",
+          "en": "Enable IPQA alert report"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "all_nodes",
+        "name": {
+          "zh-CN": "为全部节点启用",
+          "zh_CN": "为全部节点启用",
+          "en": "Enable for all nodes"
+        },
+        "type": "switch",
+        "default": false,
+        "help": "开启后忽略下方节点选择，将所有 Komari 节点纳入 IPQA 告警检查。仅建议所有节点都安装了 IPQA 时开启。"
+      },
+      {
+        "key": "nodes",
+        "name": {
+          "zh-CN": "选择节点",
+          "zh_CN": "选择节点",
+          "en": "Select nodes"
+        },
+        "type": "nodes",
+        "default": "[]",
+        "help": "选择安装了 IP-Quality-Archive 的 VPS。"
+      },
+      {
+        "name": {
+          "zh-CN": "固定每天北京时间 07:00 汇总当天 00:00–07:00 的 IPQA 告警。IPQA 应已在北京时间 04:00 完成自动检测。",
+          "zh_CN": "固定每天北京时间 07:00 汇总当天 00:00–07:00 的 IPQA 告警。IPQA 应已在北京时间 04:00 完成自动检测。",
+          "en": "Runs daily at 07:00 Asia/Shanghai and summarizes IPQA alerts from 00:00 to 07:00. IPQA is expected to finish its scheduled check at 04:00 Asia/Shanghai."
+        },
+        "type": "textbox"
+      },
+      {
+        "key": "sync_archives",
+        "name": {
+          "zh-CN": "同步 IPQA 历史归档",
+          "zh_CN": "同步 IPQA 历史归档",
+          "en": "Sync IPQA archives"
+        },
+        "type": "switch",
+        "default": true,
+        "help": "自动同步 IPQA 历史归档，供 Emerald Insights 展示，并作为 Telegram 语义变化告警的主要数据来源。关闭后 Telegram 回退为 alerts.log-only 模式。"
+      },
+      {
+        "key": "min_severity",
+        "name": {
+          "zh-CN": "最低通知等级",
+          "zh_CN": "最低通知等级",
+          "en": "Minimum severity"
+        },
+        "type": "select",
+        "default": "INFO",
+        "options": "INFO,WARNING,CRITICAL",
+        "help": "最低通知严重等级：INFO 包含所有级别；WARNING 仅通知警告和严重；CRITICAL 仅通知严重告警。"
+      },
+      {
+        "key": "ignore_initial_archive",
+        "name": {
+          "zh-CN": "忽略首次建档记录",
+          "zh_CN": "忽略首次建档记录",
+          "en": "Ignore initial archive event"
+        },
+        "type": "switch",
+        "default": true,
+        "help": "开启后自动过滤 IPQA 首次建档记录「首次完成数据存档监测」。"
+      },
+      {
+        "key": "notify_collection_failures",
+        "name": {
+          "zh-CN": "采集失败时通知",
+          "zh_CN": "采集失败时通知",
+          "en": "Notify on collection failures"
+        },
+        "type": "switch",
+        "default": true,
+        "help": "当无可用语义归档且回退采集失败（如节点离线、Agent 超时或找不到日志）时，是否发送采集异常通知。若语义归档正常可用，则不视为采集异常。"
+      },
+      {
+        "key": "template",
+        "name": {
+          "zh-CN": "通知模板",
+          "zh_CN": "通知模板",
+          "en": "Notification template"
+        },
+        "type": "richtext",
+        "default": "",
+        "help": "留空使用默认报告正文。支持占位符: {{date}}, {{time}}, {{message}}, {{alert_count}}, {{alert_nodes}}, {{critical_count}}, {{warning_count}}, {{info_count}}, {{failed_nodes}}, {{nodes}}。"
+      }
+    ]
+  }
+}

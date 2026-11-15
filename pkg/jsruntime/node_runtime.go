@@ -5,11 +5,12 @@ import (
 	stdos "os"
 	"path/filepath"
 
-	"github.com/dop251/goja_nodejs/buffer"
-	"github.com/dop251/goja_nodejs/require"
 	"github.com/Aone2233/nekomari/pkg/jsruntime/events"
 	osmodule "github.com/Aone2233/nekomari/pkg/jsruntime/os"
 	streammodule "github.com/Aone2233/nekomari/pkg/jsruntime/stream"
+	tlsmodule "github.com/Aone2233/nekomari/pkg/jsruntime/tls"
+	"github.com/dop251/goja_nodejs/buffer"
+	"github.com/dop251/goja_nodejs/require"
 )
 
 type nodeFileHandle struct {
@@ -25,6 +26,7 @@ func (r *Runtime) registerNodeModules(registry *require.Registry) {
 	r.registerNodeModule(registry, "fs", r.fsModule.Load)
 	r.registerNodeModule(registry, "child_process", r.childProcessModule.Load)
 	r.registerNodeModule(registry, "net", r.netModule.Load)
+	r.registerNodeModule(registry, "tls", tlsmodule.New(r.host, r.netModule).Load)
 	r.registerNodeModule(registry, "http", r.httpModule.Load)
 	r.registerNodeModule(registry, "stream", streammodule.Load)
 	r.registerNodeModule(registry, "stream/promises", streammodule.LoadPromises)

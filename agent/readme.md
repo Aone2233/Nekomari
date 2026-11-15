@@ -55,6 +55,8 @@ export AGENT_TOKEN="your-token"
 | `exclude_nics` | `AGENT_EXCLUDE_NICS` | `--exclude-nics` | 排除指定网卡，逗号分隔 | `0.0.22` |
 | `include_mountpoints` | `AGENT_INCLUDE_MOUNTPOINTS` | `--include-mountpoint` | 仅统计指定挂载点，分号分隔 | `0.1.0` |
 | `month_rotate` | `AGENT_MONTH_ROTATE` | `--month-rotate` | 流量统计每月重置日期，`0` 为禁用 | `0.1.0` |
+| `month_rotate_minute` | `AGENT_MONTH_ROTATE_MINUTE` | `--month-rotate-minute` | 重置日当地零点后的分钟数（0–1439），默认 0 | |
+| `month_rotate_timezone` | `AGENT_MONTH_ROTATE_TIMEZONE` | `--month-rotate-timezone` | 周期重置专用 IANA 时区，如 `Asia/Shanghai`；默认使用系统时区 | |
 | `auto_discovery_key` | `AGENT_AUTO_DISCOVERY_KEY` | `--auto-discovery` | 自动发现密钥 | `1.0.40` |
 | `custom_dns` | `AGENT_CUSTOM_DNS` | `--custom-dns` | 自定义 DNS 服务器 | `1.0.80` |
 | `enable_gpu` | `AGENT_ENABLE_GPU` | `--gpu` | 启用详细 GPU 监控 | `1.0.80` |

@@ -1,6 +1,7 @@
 package messageSender
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	logger "github.com/Aone2233/nekomari/utils/log"
@@ -65,6 +66,9 @@ func Initialize() {
 		}
 	})
 	NotificationMethod, _ := config.GetAs[string](config.NotificationMethodKey, "none")
+	if strings.HasPrefix(NotificationMethod, "plugin:") {
+		return
+	}
 
 	if NotificationMethod == "" || NotificationMethod == "none" {
 		LoadProvider("empty", "{}")
@@ -89,6 +93,16 @@ func SendTextMessage(message string, title string) error {
 	}
 	if !NotificationEnabled {
 		return nil
+	}
+	method, err := config.GetAs[string](config.NotificationMethodKey, "none")
+	if err != nil {
+		return err
+	}
+	if found, err := CallNotificationChannel(context.Background(), method, Notification{Title: title, Message: message}); found {
+		return err
+	}
+	if strings.HasPrefix(method, "plugin:") {
+		return fmt.Errorf("configured plugin notification channel is unavailable")
 	}
 	mu.Lock()
 	defer mu.Unlock()
@@ -144,6 +158,17 @@ func SendEvent(event models.EventMessage) error {
 	if !cfg[config.NotificationEnabledKey].(bool) {
 		return nil
 	}
+	method, err := config.GetAs[string](config.NotificationMethodKey, "none")
+	if err != nil {
+		return err
+	}
+	messageTemplate := parseTemplate(cfg[config.NotificationTemplateKey].(string), event)
+	if found, err := CallNotificationChannel(context.Background(), method, Notification{Event: event, Title: fmt.Sprint(event.Event), Message: messageTemplate}); found {
+		return err
+	}
+	if strings.HasPrefix(method, "plugin:") {
+		return fmt.Errorf("configured plugin notification channel is unavailable")
+	}
 	mu.Lock()
 	defer mu.Unlock()
 	if currentProvider == nil {
@@ -165,10 +190,6 @@ func SendEvent(event models.EventMessage) error {
 	}
 
 	// 如果没有实现,使用模板格式化为文本消息
-	messageTemplate := cfg[config.NotificationTemplateKey].(string)
-
-	messageTemplate = parseTemplate(messageTemplate, event)
-
 	for i := 0; i < 3; i++ {
 		err = currentProvider.SendTextMessage(messageTemplate, fmt.Sprint(event.Event))
 		if err == nil || err.Error() == "short response: \x00\x00\x00\x1a\x00\x00\x00" { // QQ 会返回这个错误，但实际上消息是发送成功的

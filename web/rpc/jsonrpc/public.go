@@ -363,9 +363,6 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		Hours  string `json:"hours"`
 	}
 	req.BindParams(&params)
-	if params.UUID == "" && params.TaskID == "" {
-		return nil, rpc.MakeError(rpc.InvalidParams, "UUID or task_id is required", nil)
-	}
 	isLogin := isLoginFromCtx(ctx)
 
 	type recordsResp struct {
@@ -472,12 +469,16 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 		}
 	}
 
-	if params.UUID != "" || taskId != -1 {
+	{
 		pingTasks, err := tasks.GetAllPingTasks()
 		if err != nil {
 			return nil, rpc.MakeError(rpc.InternalError, "Failed to fetch ping tasks: "+err.Error(), nil)
 		}
 		tasksList := make([]map[string]any, 0, len(pingTasks))
+		byTask := make(map[uint][]models.PingRecord)
+		for _, record := range visible {
+			byTask[record.TaskId] = append(byTask[record.TaskId], record)
+		}
 		for _, t := range pingTasks {
 			if taskId != -1 && t.Id != uint(taskId) {
 				continue
@@ -485,17 +486,7 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 			if params.UUID != "" && !t.AppliesToClient(params.UUID) {
 				continue
 			}
-			taskRecords := make([]models.PingRecord, 0, len(visible))
-			for _, r := range visible {
-				if r.TaskId != t.Id {
-					continue
-				}
-				if params.UUID != "" && r.Client != params.UUID {
-					continue
-				}
-				taskRecords = append(taskRecords, r)
-			}
-			summary := summarizePingLatency(taskRecords)
+			summary := summarizePingLatency(byTask[t.Id])
 			lossRate := float64(0)
 			if summary.Total > 0 {
 				lossRate = float64(summary.Loss) / float64(summary.Total) * 100
@@ -506,7 +497,7 @@ func publicGetPingRecords(ctx context.Context, req *rpc.JsonRpcRequest) (any, *r
 				"max": summary.Max, "avg": summary.Avg, "total": summary.Total,
 			}
 			if params.UUID == "" && taskId != -1 {
-				taskInfo["clients"] = t.Clients
+				taskInfo["clients"] = visibleClientUUIDs(t.Clients, hidden, isLogin)
 			}
 			tasksList = append(tasksList, taskInfo)
 		}

@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
+	_ "time/tzdata"
 
 	"github.com/Aone2233/nekomari/agent/dnsresolver"
 	"github.com/Aone2233/nekomari/agent/monitoring/netstatic"
@@ -181,6 +183,14 @@ var RootCmd = &cobra.Command{
 		if flags.PreferIPVersion != "" && flags.PreferIPVersion != "4" && flags.PreferIPVersion != "6" {
 			return fmt.Errorf("invalid --prefer-ip-version value %q: expected 4 or 6", flags.PreferIPVersion)
 		}
+		if flags.MonthRotateMinute < 0 || flags.MonthRotateMinute >= 24*60 {
+			return fmt.Errorf("invalid --month-rotate-minute value %d: expected 0 to 1439", flags.MonthRotateMinute)
+		}
+		if flags.MonthRotateTimezone != "" {
+			if _, err := time.LoadLocation(flags.MonthRotateTimezone); err != nil {
+				return fmt.Errorf("invalid --month-rotate-timezone: %w", err)
+			}
+		}
 		// 捕获中止信号，优雅退出
 		stopCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
@@ -220,7 +230,9 @@ var RootCmd = &cobra.Command{
 				// "对账本里还在的样本求和"，于是保留期一过累计值就会变小 —— 而下游把"变小"解读为
 				// 计数器重置，把整个累计当成一次增量记下来（现场：41 GB 的单点幻影）。
 				// 采样路径知道重置日之后，累计就与样本是否还在账本里无关。
-				MonthRotate: flags.MonthRotate,
+				MonthRotate:         flags.MonthRotate,
+				MonthRotateMinute:   flags.MonthRotateMinute,
+				MonthRotateTimezone: flags.MonthRotateTimezone,
 			})
 			if err != nil {
 				log.Println("Failed to set netstatic config:", err)
@@ -339,6 +351,8 @@ func init() {
 	RootCmd.PersistentFlags().StringVar(&flags.ExcludeNics, "exclude-nics", "", "Comma-separated list of network interfaces to exclude")
 	RootCmd.PersistentFlags().StringVar(&flags.IncludeMountpoints, "include-mountpoint", "", "Semicolon-separated list of mount points to include for disk statistics")
 	RootCmd.PersistentFlags().IntVar(&flags.MonthRotate, "month-rotate", 0, "Month reset for network statistics (0 to disable)")
+	RootCmd.PersistentFlags().IntVar(&flags.MonthRotateMinute, "month-rotate-minute", 0, "Minutes after midnight to reset monthly network statistics (0-1439, local time)")
+	RootCmd.PersistentFlags().StringVar(&flags.MonthRotateTimezone, "month-rotate-timezone", "", "IANA timezone for monthly network reset (default: system timezone)")
 	RootCmd.PersistentFlags().BoolVar(&flags.MemoryIncludeCache, "memory-include-cache", false, "Include cache/buffer in memory usage")
 	RootCmd.PersistentFlags().BoolVar(&flags.MemoryReportRawUsed, "memory-exclude-bcf", false, "Use \"raminfo.Used = v.Total - v.Free - v.Buffers - v.Cached\" calculation for memory usage")
 	RootCmd.PersistentFlags().StringVar(&flags.CustomDNS, "custom-dns", "", "Custom DNS server to use (e.g. 8.8.8.8, 114.114.114.114). By default, the program uses the system DNS resolver.")

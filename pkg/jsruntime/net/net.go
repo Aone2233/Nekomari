@@ -12,16 +12,26 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dop251/goja"
-	"github.com/dop251/goja_nodejs/buffer"
 	"github.com/Aone2233/nekomari/pkg/jsruntime/events"
 	"github.com/Aone2233/nekomari/pkg/jsruntime/internal/bridge"
 	"github.com/Aone2233/nekomari/pkg/jsruntime/internal/writequeue"
+	"github.com/dop251/goja"
+	"github.com/dop251/goja_nodejs/buffer"
 )
 
 type Module struct {
 	runtime     *bridge.Runtime
 	allowListen bool
+	sockets     sync.Map
+}
+
+type socketState struct {
+	connection net.Conn
+	resourceID uint64
+	readerDone chan struct{}
+	detaching  atomic.Bool
+	closed     atomic.Bool
+	writes     writequeue.Queue
 }
 
 func New(runtime *bridge.Runtime, allowListen bool) *Module {
@@ -335,6 +345,63 @@ func (m *Module) newNetSocket(vm *goja.Runtime, connection net.Conn, onClose fun
 	return socket
 }
 
+func (m *Module) AttachSocket(vm *goja.Runtime, socket *goja.Object, connection net.Conn) bool {
+	return m.configureNetSocket(vm, socket, connection, nil)
+}
+
+// PrepareDetachSocket runs on the event loop so that no subsequent writes can
+// enter the plaintext queue after the upgrade has been requested.
+func (m *Module) PrepareDetachSocket(socket *goja.Object) error {
+	value, ok := m.sockets.Load(socket)
+	if !ok {
+		return errors.New("socket is not connected")
+	}
+	state := value.(*socketState)
+	if !state.detaching.CompareAndSwap(false, true) {
+		return errors.New("socket is already being upgraded")
+	}
+	return nil
+}
+
+func (m *Module) DetachSocket(ctx context.Context, socket *goja.Object) (net.Conn, error) {
+	value, ok := m.sockets.Load(socket)
+	if !ok {
+		return nil, errors.New("socket is not connected")
+	}
+	state := value.(*socketState)
+	if !state.detaching.Load() {
+		return nil, errors.New("socket upgrade was not prepared")
+	}
+	drained := make(chan struct{})
+	state.writes.Submit(func() { close(drained) })
+	select {
+	case <-drained:
+	case <-ctx.Done():
+		_ = state.connection.Close()
+		return nil, ctx.Err()
+	}
+	if err := state.connection.SetReadDeadline(time.Now()); err != nil {
+		_ = state.connection.Close()
+		return nil, err
+	}
+	select {
+	case <-state.readerDone:
+	case <-ctx.Done():
+		_ = state.connection.Close()
+		return nil, ctx.Err()
+	}
+	if state.closed.Load() {
+		return nil, errors.New("socket closed during upgrade")
+	}
+	m.sockets.Delete(socket)
+	m.runtime.RemoveResource(state.resourceID)
+	if err := state.connection.SetDeadline(time.Time{}); err != nil {
+		_ = state.connection.Close()
+		return nil, err
+	}
+	return state.connection, nil
+}
+
 func (m *Module) configureNetSocket(vm *goja.Runtime, socket *goja.Object, connection net.Conn, onClose func()) bool {
 	localHost, localPort := splitNetAddress(connection.LocalAddr())
 	remoteHost, remotePort := splitNetAddress(connection.RemoteAddr())
@@ -358,10 +425,11 @@ func (m *Module) configureNetSocket(vm *goja.Runtime, socket *goja.Object, conne
 	}
 	var encoding atomic.Value
 	encoding.Store("")
-	var closed atomic.Bool
-	var writes writequeue.Queue
+	state := &socketState{connection: connection, resourceID: resourceID, readerDone: make(chan struct{})}
+	m.sockets.Store(socket, state)
 	closeSocket := func() {
-		if closed.CompareAndSwap(false, true) {
+		if state.closed.CompareAndSwap(false, true) {
+			m.sockets.Delete(socket)
 			m.runtime.RemoveResource(resourceID)
 			_ = connection.Close()
 			if onClose != nil {
@@ -370,9 +438,12 @@ func (m *Module) configureNetSocket(vm *goja.Runtime, socket *goja.Object, conne
 		}
 	}
 	_ = socket.Set("write", func(call goja.FunctionCall) goja.Value {
+		if state.detaching.Load() {
+			panic(vm.NewGoError(errors.New("socket is being upgraded")))
+		}
 		data := append([]byte(nil), buffer.Bytes(vm, call.Argument(0))...)
 		callback := netCallback(call)
-		writes.Submit(func() {
+		state.writes.Submit(func() {
 			_, err := connection.Write(data)
 			if callback != nil {
 				m.runtime.RunOnLoop(func(vm *goja.Runtime) {
@@ -390,13 +461,16 @@ func (m *Module) configureNetSocket(vm *goja.Runtime, socket *goja.Object, conne
 		return vm.ToValue(true)
 	})
 	_ = socket.Set("end", func(call goja.FunctionCall) goja.Value {
+		if state.detaching.Load() {
+			panic(vm.NewGoError(errors.New("socket is being upgraded")))
+		}
 		var data []byte
 		_, firstArgumentIsCallback := goja.AssertFunction(call.Argument(0))
 		if len(call.Arguments) > 0 && !firstArgumentIsCallback && !goja.IsUndefined(call.Argument(0)) && !goja.IsNull(call.Argument(0)) {
 			data = append([]byte(nil), buffer.Bytes(vm, call.Argument(0))...)
 		}
 		callback := netCallback(call)
-		writes.Submit(func() {
+		state.writes.Submit(func() {
 			var err error
 			if len(data) > 0 {
 				_, err = connection.Write(data)
@@ -426,9 +500,17 @@ func (m *Module) configureNetSocket(vm *goja.Runtime, socket *goja.Object, conne
 		})
 		return socket
 	})
-	_ = socket.Set("destroy", func() *goja.Object { closeSocket(); return socket })
+	_ = socket.Set("destroy", func() *goja.Object {
+		if !state.detaching.Load() {
+			closeSocket()
+		}
+		return socket
+	})
 	_ = socket.Set("setEncoding", func(value string) *goja.Object { encoding.Store(value); return socket })
 	_ = socket.Set("setTimeout", func(milliseconds int64, callback goja.Value) *goja.Object {
+		if state.detaching.Load() {
+			return socket
+		}
 		if milliseconds <= 0 {
 			_ = connection.SetDeadline(time.Time{})
 		} else {
@@ -468,6 +550,7 @@ func (m *Module) configureNetSocket(vm *goja.Runtime, socket *goja.Object, conne
 		panic(vm.NewGoError(fmt.Errorf("net.Socket.unref is not supported by jsruntime; the event loop is host-driven")))
 	})
 	go func() {
+		defer close(state.readerDone)
 		data := make([]byte, 32*1024)
 		for {
 			count, err := connection.Read(data)
@@ -490,6 +573,9 @@ func (m *Module) configureNetSocket(vm *goja.Runtime, socket *goja.Object, conne
 				<-delivered
 			}
 			if err != nil {
+				if state.detaching.Load() {
+					return
+				}
 				closeSocket()
 				m.runtime.RunOnLoop(func(vm *goja.Runtime) {
 					_ = m.runtime.RunJob(vm, "net.Socket close", func() error {

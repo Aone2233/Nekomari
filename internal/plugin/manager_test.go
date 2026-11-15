@@ -7,11 +7,49 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/pkg/rpc"
+	"github.com/gin-gonic/gin"
 )
+
+func TestPluginRPCWaitsForAsyncHandlers(t *testing.T) {
+	withTempDataDir(t)
+	Init(gin.New())
+	zipPath := writePluginZip(t, map[string]string{
+		"komari-plugin.json": `{"name":"Async","short":"async-rpc","permissions":{"node":true,"timeout":1}}`,
+		"script.js": `const server = require("server");
+		function load() {
+		  server.registerRPC("plugin:asyncSuccess", async p => { await new Promise(r => setTimeout(r, 20)); return {value:p.value}; });
+		  server.registerRPC("plugin:asyncFailure", async () => { await Promise.resolve(); const e = new Error("failed asynchronously"); e.code = -32001; e.data = {why:"test"}; throw e; });
+		  server.registerRPC("plugin:asyncPending", () => new Promise(() => {}));
+		}`,
+	})
+	if _, err := InstallZip(zipPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetEnabled("async-rpc", true, true); err != nil {
+		t.Fatal(err)
+	}
+	resp := rpc.CallWithContext(context.Background(), nil, "plugin:asyncSuccess", map[string]any{"value": "ok"})
+	if resp.Error != nil {
+		t.Fatal(resp.Error)
+	}
+	if got, ok := resp.Result.(map[string]any); !ok || got["value"] != "ok" {
+		t.Fatalf("async result: %#v", resp.Result)
+	}
+	resp = rpc.CallWithContext(context.Background(), nil, "plugin:asyncFailure", nil)
+	if resp.Error == nil || resp.Error.Message != "failed asynchronously" || resp.Error.Code != -32001 {
+		t.Fatalf("async error: %#v", resp.Error)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	resp = rpc.CallWithContext(ctx, nil, "plugin:asyncPending", nil)
+	if resp.Error == nil || resp.Error.Code != rpc.DeadlineExceeded {
+		t.Fatalf("pending error: %#v", resp.Error)
+	}
+}
 
 const demoManifest = `{"name":"Demo","short":"demo","version":"1.0.0","komari":">=0.0.1","permissions":{"node":true,"timeout":5,"allowRoutes":true,"allowSystemRPC":true}}`
 

@@ -3,6 +3,56 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## HKHKT traffic reset (2026-11-09 Asia/Shanghai)
+
+The provider shows its next reset as 2026-12-09 00:05. The HKHKT agent was
+running in UTC with `--month-rotate 11`; it now uses the tested manual agent
+with `--month-rotate 9 --month-rotate-minute 5 --month-rotate-timezone
+Asia/Shanghai`. The host remains in UTC and agent auto-update stays disabled.
+The current boundary is 2026-11-08 16:05 UTC (2026-11-09 00:05 UTC+8), and
+the next is 2026-12-08 16:05 UTC. Source supports this independently of the
+system timezone; the deployed binary SHA-256 is
+`3bf1925a5d66ae900e8dddafa012a69198f0a08bd364e9b012570f7f9ea3c388`.
+The prior binary, OpenRC service and stopped ledger are retained on HKHKT in
+`/root/nekomari-agent/cycle-utc8-20261109-q7gh77`. The agent reconnected and
+the panel received reconstructed cycle traffic. The ledger retains the boundary,
+but its persisted samples are ten-minute aggregates, so the first bucket can
+include several minutes from before the boundary. It is not an exact provider
+invoice and the 30-second live sampler can straddle the boundary as well.
+After a controlled graceful stop, the durable accumulator was verified on disk
+with the new 2026-11-08 16:05 UTC boundary; the agent was started again. Do not
+replace the current ledger with the backup.
+
+## Theme staging cleanup (2026-11-08)
+
+Three hidden Emerald deployment staging directories were mistakenly included by
+the installed-theme listing. They were moved intact to
+`/opt/nekomari/rollbacks/theme-staging-cleanup-20261108T120500Z`; the installed
+`emerald-insights` directory and its settings were untouched. At the time of
+cleanup the configured theme was `SAO-Nekomari`. The source fix to exclude
+invalid or mismatched theme directory names still requires a panel release.
+
+## MegaBox and Frankfurt traffic cycles (2026-11-08)
+
+The provider screenshot gives MegaBox's next reset as 2026-11-09. Its Agent
+unit was changed from `--month-rotate 7` to `9`, with the unit and stopped
+ledger retained under `/opt/nekomari-agent/cycle-day7-backup-20261108-HK8Yi9`
+on MegaBox. It runs in UTC, has resumed reporting, and reconstructed about
+630 GB from the retained ledger since 2026-10-09 UTC. The provider screenshot
+shows 698.65 GB; accounting boundaries and interface scope are not verified,
+so these numbers are not equivalent. The jump in the cycle cumulative is a
+change of period, not interval traffic; recent interval samples remain small.
+
+The Frankfurt NoSLA screenshot states 2026-11-27 00:00, and the owner
+confirmed that the provider uses UTC+8. Its Agent retains `--month-rotate 27`
+and now has `TZ=Asia/Shanghai` in a systemd drop-in; the host timezone was not
+changed. The Agent was restarted and is active with the new environment. The
+next boundary is therefore 2026-11-26 16:00 UTC. The persisted ledger now
+confirms the current boundary as 2026-10-26 16:00 UTC. The saved previous Agent state
+is under `/root/nekomari-agent/cycle-timezone-20261108-i6v7qo`. The retained
+ledger starts later than the beginning of the current UTC+8 billing period,
+so reconstructed usage can be lower than the provider's counter.
+
 ## Education IPv6 ICMP-only (2026-11-08 19:36 Asia/Shanghai)
 
 The owner chose one ICMP probe rather than the two `dual` primary legs. After

@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/dop251/goja"
 	"github.com/Aone2233/nekomari/pkg/rpc"
+	"github.com/dop251/goja"
 )
 
 // registerRPC registers a plugin-owned RPC method. The handler is a
@@ -61,27 +62,56 @@ func (m *Manager) rpcHandler(short, method string) rpc.Handler {
 			return nil, &rpc.JsonRpcError{Code: rpc.MethodNotFound, Message: "method not found", Data: method}
 		}
 
-		resultCh := make(chan any, 1)
-		errCh := make(chan *rpc.JsonRpcError, 1)
+		type outcome struct {
+			result any
+			err    *rpc.JsonRpcError
+		}
+		done := make(chan outcome, 1)
+		var once sync.Once
+		finish := func(result any, err *rpc.JsonRpcError) { once.Do(func() { done <- outcome{result, err} }) }
 		queued := host.RunOnLoop(func(vm *goja.Runtime) {
-			_ = host.RunJob(vm, "plugin rpc "+method, func() error {
+			runErr := host.RunJob(vm, "plugin rpc "+method, func() error {
 				params := vm.ToValue(req.Params)
 				if params == nil {
 					params = goja.Null()
 				}
 				value, callErr := handler(goja.Undefined(), params)
 				if callErr != nil {
-					errCh <- jsErrorToRPCError(vm, callErr)
+					finish(nil, jsErrorToRPCError(vm, callErr))
 					return nil // error is captured, do not double-report
 				}
-				exported, exportErr := exportJSValue(value)
-				if exportErr != nil {
-					errCh <- &rpc.JsonRpcError{Code: rpc.InternalError, Message: exportErr.Error()}
-					return nil
+				resolve := func(value goja.Value) {
+					exported, exportErr := exportJSValue(value)
+					if exportErr != nil {
+						finish(nil, &rpc.JsonRpcError{Code: rpc.InternalError, Message: exportErr.Error()})
+					} else {
+						finish(exported, nil)
+					}
 				}
-				resultCh <- exported
+				if _, ok := value.Export().(*goja.Promise); ok {
+					then, callable := goja.AssertFunction(value.ToObject(vm).Get("then"))
+					if !callable {
+						finish(nil, &rpc.JsonRpcError{Code: rpc.InternalError, Message: "plugin Promise has no then method"})
+						return nil
+					}
+					_, thenErr := then(value, vm.ToValue(func(call goja.FunctionCall) goja.Value {
+						resolve(call.Argument(0))
+						return goja.Undefined()
+					}), vm.ToValue(func(call goja.FunctionCall) goja.Value {
+						finish(nil, jsValueToRPCError(call.Argument(0)))
+						return goja.Undefined()
+					}))
+					if thenErr != nil {
+						finish(nil, jsErrorToRPCError(vm, thenErr))
+					}
+				} else {
+					resolve(value)
+				}
 				return nil
 			})
+			if runErr != nil {
+				finish(nil, jsErrorToRPCError(vm, runErr))
+			}
 		})
 		if !queued {
 			return nil, &rpc.JsonRpcError{Code: rpc.Unavailable, Message: "plugin runtime is closed"}
@@ -89,10 +119,10 @@ func (m *Manager) rpcHandler(short, method string) rpc.Handler {
 		timer := time.NewTimer(host.Timeout())
 		defer timer.Stop()
 		select {
-		case result := <-resultCh:
-			return result, nil
-		case rpcErr := <-errCh:
-			return nil, rpcErr
+		case result := <-done:
+			return result.result, result.err
+		case <-ctx.Done():
+			return nil, &rpc.JsonRpcError{Code: rpc.DeadlineExceeded, Message: "plugin RPC request canceled"}
 		case <-timer.C:
 			return nil, &rpc.JsonRpcError{Code: rpc.DeadlineExceeded, Message: "plugin RPC handler timed out"}
 		}
@@ -115,24 +145,29 @@ func exportJSValue(value goja.Value) (result any, err error) {
 // jsErrorToRPCError converts a thrown JavaScript error into a JSON-RPC error,
 // honoring optional code/data properties.
 func jsErrorToRPCError(vm *goja.Runtime, err error) *rpc.JsonRpcError {
-	code := rpc.InternalError
-	message := err.Error()
-	var data any
 	var exception *goja.Exception
 	if errors.As(err, &exception) {
-		if obj, ok := exception.Value().(*goja.Object); ok {
-			if value := obj.Get("code"); value != nil && !goja.IsUndefined(value) {
-				if n := value.ToInteger(); n != 0 {
-					code = int(n)
-				}
+		return jsValueToRPCError(exception.Value())
+	}
+	return &rpc.JsonRpcError{Code: rpc.InternalError, Message: err.Error()}
+}
+
+func jsValueToRPCError(value goja.Value) *rpc.JsonRpcError {
+	code := rpc.InternalError
+	message := value.String()
+	var data any
+	if obj, ok := value.(*goja.Object); ok {
+		if value := obj.Get("code"); value != nil && !goja.IsUndefined(value) {
+			if n := value.ToInteger(); n != 0 {
+				code = int(n)
 			}
-			if value := obj.Get("message"); value != nil && !goja.IsUndefined(value) && value.String() != "" {
-				message = value.String()
-			}
-			if value := obj.Get("data"); value != nil && !goja.IsUndefined(value) {
-				if exported, exportErr := exportJSValue(value); exportErr == nil {
-					data = exported
-				}
+		}
+		if value := obj.Get("message"); value != nil && !goja.IsUndefined(value) && value.String() != "" {
+			message = value.String()
+		}
+		if value := obj.Get("data"); value != nil && !goja.IsUndefined(value) {
+			if exported, exportErr := exportJSValue(value); exportErr == nil {
+				data = exported
 			}
 		}
 	}

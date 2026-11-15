@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/@komari-monitor/plugin-sdk/schema/komari-plugin.schema.json",
+  "name": "Cloudflare Tunnel",
+  "short": "cloudflare-tunnel",
+  "description": {
+    "zh-CN": "在 Komari 中使用 Tunnel 或 TryCloudflare 管理 Cloudflare Tunnel。",
+    "en": "Manage Cloudflare Tunnel with Tunnel or TryCloudflare mode from Komari."
+  },
+  "author": "Akizon77",
+  "version": "1.1.0",
+  "komari": ">=1.4.0",
+  "icon": "cloudflare-favicon.png",
+  "entry": "script.js",
+  "permissions": {
+    "node": true,
+    "allowRoutes": true,
+    "allowExec": true,
+    "maxHTTPBodyBytes": 134217728,
+    "maxChildOutputBytes": 4194304,
+    "timeout": 120
+  },
+  "pages": [
+    {
+      "file": "panel/index.html",
+      "title": {
+        "zh-CN": "Cloudflare Tunnel",
+        "en": "Cloudflare Tunnel"
+      },
+      "icon": "cloudflare-favicon.png",
+      "visibility": "admin"
+    }
+  ]
+}

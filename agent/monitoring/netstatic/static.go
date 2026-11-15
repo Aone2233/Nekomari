@@ -91,7 +91,7 @@ type NetStatic struct {
 type CycleTraffic struct {
 	Tx uint64 `json:"tx"`
 	Rx uint64 `json:"rx"`
-	// ResetDay 是这份累计所对应的重置日（unix 秒，当天 00:00）。它与当前的期望重置日不一致时，
+	// ResetDay 是这份累计所对应的重置时刻（unix 秒）。它与当前的期望重置时刻不一致时，
 	// 说明跨过了计费周期，累计要从零重新开始 —— 这个判断放在采样路径上做，因为它必须发生在
 	// 任何读取之前，否则跨周期后的第一次读取会看到上一个周期的旧值。
 	ResetDay uint64 `json:"reset_day"`
@@ -106,6 +106,10 @@ type CycleTraffic struct {
 //
 // 与 `utils.GetLastResetDate` 同一语义，但这里只需要一个可比较的日期戳，所以不引入依赖。
 func cycleResetDay(monthRotate int, at time.Time) uint64 {
+	return cycleResetTime(monthRotate, 0, at)
+}
+
+func cycleResetTime(monthRotate, minute int, at time.Time) uint64 {
 	if monthRotate <= 0 {
 		return 0
 	}
@@ -116,10 +120,10 @@ func cycleResetDay(monthRotate int, at time.Time) uint64 {
 		// 与 utils.GetLastResetDate 的边界处理保持一致。
 		day = 28
 	}
-	candidate := time.Date(year, month, day, 0, 0, 0, 0, at.Location())
+	candidate := time.Date(year, month, day, minute/60, minute%60, 0, 0, at.Location())
 	if candidate.After(at) {
 		// 本月的重置日还没到，用上个月的
-		candidate = time.Date(year, month-1, day, 0, 0, 0, 0, at.Location())
+		candidate = time.Date(year, month-1, day, minute/60, minute%60, 0, 0, at.Location())
 	}
 	return uint64(candidate.Unix())
 }
@@ -143,7 +147,18 @@ type NetStaticConfig struct {
 	// 它必须在这里，而不是只由调用方按 `GetTotalTrafficBetween(重置日, 现在)` 使用：重置日决定了
 	// 周期账本何时归零（见 accumulateCycleLocked），而那件事必须发生在采样路径上。由调用方传日期的
 	// 做法还让累计依赖账本保留期，这是错误的来源之一。
-	MonthRotate int `json:"month_rotate,omitempty"`
+	MonthRotate         int    `json:"month_rotate,omitempty"`
+	MonthRotateMinute   int    `json:"month_rotate_minute,omitempty"`
+	MonthRotateTimezone string `json:"month_rotate_timezone,omitempty"`
+}
+
+func configuredCycleReset(at time.Time) uint64 {
+	if config.MonthRotateTimezone != "" {
+		if zone, err := time.LoadLocation(config.MonthRotateTimezone); err == nil {
+			at = at.In(zone)
+		}
+	}
+	return cycleResetTime(config.MonthRotate, config.MonthRotateMinute, at)
 }
 
 type TrafficData struct {
@@ -529,7 +544,7 @@ func sampleOnceLocked() {
 // 第一个采样，它携带的增量有一部分属于上一个周期，无法切分，所以计入新周期 —— 这是刻意的取舍，
 // 误差上限是一个采样间隔（默认 30 秒），而另一种做法（计入旧周期）会让新周期的累计从负数开始。
 func accumulateCycleLocked(name string, dtx, drx uint64, sampledAt uint64) {
-	resetDay := cycleResetDay(config.MonthRotate, time.Unix(int64(sampledAt), 0))
+	resetDay := configuredCycleReset(time.Unix(int64(sampledAt), 0))
 	if resetDay == 0 {
 		// 没有配置计费周期：不记账，也不留下 ResetDay=0 的条目 —— 后者会让「本周期累计」
 		// 与「没有周期」两种情况在读取时无法区分。
@@ -737,7 +752,7 @@ func GetCycleTraffic() (map[string]CycleTraffic, uint64, error) {
 	defer mu.RUnlock()
 	ensureInitLocked()
 
-	expected := cycleResetDay(config.MonthRotate, time.Now())
+	expected := configuredCycleReset(time.Now())
 	res := make(map[string]CycleTraffic, len(store.Cycles))
 
 	names := map[string]struct{}{}
@@ -857,6 +872,14 @@ func GetTotalTrafficBetween(start, end uint64) (map[string]TrafficData, error) {
 
 // SetNewConfig 设置新的配置，config中的值如果为0则表示不修改对应的配置项
 func SetNewConfig(newCfg NetStaticConfig) error {
+	if newCfg.MonthRotateMinute < 0 || newCfg.MonthRotateMinute >= 24*60 {
+		return fmt.Errorf("month rotate minute must be between 0 and 1439")
+	}
+	if newCfg.MonthRotateTimezone != "" {
+		if _, err := time.LoadLocation(newCfg.MonthRotateTimezone); err != nil {
+			return fmt.Errorf("invalid month rotate timezone: %w", err)
+		}
+	}
 	mu.Lock()
 	defer mu.Unlock()
 	ensureInitLocked()
@@ -875,6 +898,9 @@ func SetNewConfig(newCfg NetStaticConfig) error {
 	// netstatic 根本不会启动。
 	if newCfg.MonthRotate != 0 {
 		store.Config.MonthRotate = newCfg.MonthRotate
+		// Zero is meaningful: removing the flag must restore midnight.
+		store.Config.MonthRotateMinute = newCfg.MonthRotateMinute
+		store.Config.MonthRotateTimezone = newCfg.MonthRotateTimezone
 	}
 	// Nics: nil 表示不修改；非 nil 则更新（空切片表示监控所有网卡）
 	if newCfg.Nics != nil {

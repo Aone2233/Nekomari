@@ -1,0 +1,48 @@
+{
+  "name": {
+    "zh_CN": "开放 API",
+    "en": "Open API"
+  },
+  "short": "api",
+  "description": {
+    "zh_CN": "把控制台里的节点状态变成规范的 REST API：节点列表、实时状态、历史负载、Ping 记录一站查全，供机器人插件、脚本与自建面板调用。",
+    "en": "Expose console-visible server metrics as a clean REST API for bots, scripts and custom dashboards."
+  },
+  "author": "MimoKit",
+  "version": "1.0.3",
+  "url": "https://github.com/MimoKit/komari-api",
+  "icon": "https://github.com/MimoKit.png",
+  "komari": ">=1.4.0",
+  "entry": "script.js",
+  "permissions": {
+    "allowRoutes": true,
+    "allowSystemRPC": true
+  },
+  "configuration": {
+    "type": "managed",
+    "data": [
+      {
+        "key": "tokens",
+        "type": "string",
+        "name": { "zh_CN": "访问令牌", "en": "API Tokens" },
+        "required": false,
+        "default": "",
+        "help": {
+          "zh_CN": "多个令牌用逗号分隔。请求带上令牌（Authorization: Bearer / ?token=）即可查看隐藏节点与完整信息；留空时 API 以访客视角工作。",
+          "en": "Comma-separated tokens. Requests with a token see hidden nodes and full details; without tokens the API works in guest view."
+        }
+      },
+      {
+        "key": "allow_cors",
+        "type": "switch",
+        "name": { "zh_CN": "允许浏览器跨域调用", "en": "Allow CORS" },
+        "required": false,
+        "default": true,
+        "help": {
+          "zh_CN": "开启后响应携带 Access-Control-Allow-Origin: *，网页端可以直接调用。",
+          "en": "Adds Access-Control-Allow-Origin: * so browser apps can call the API directly."
+        }
+      }
+    ]
+  }
+}

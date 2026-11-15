@@ -124,15 +124,16 @@ type Manager struct {
 
 // Instance is one loaded plugin runtime plus its host bindings.
 type Instance struct {
-	mu         sync.RWMutex
-	info       models.Plugin
-	dir        string
-	runtime    *jsruntime.Runtime
-	host       *jsruntime.Host
-	handlers   map[string]goja.Callable // "METHOD path" -> current route handler
-	statics    map[string]*staticConfig // mount path -> static folder config
-	rpcMethods map[string]goja.Callable // registered RPC method -> JS handler
-	cronJobs   []string                 // scheduler job names, removed on unload
+	mu                   sync.RWMutex
+	info                 models.Plugin
+	dir                  string
+	runtime              *jsruntime.Runtime
+	host                 *jsruntime.Host
+	handlers             map[string]goja.Callable // "METHOD path" -> current route handler
+	statics              map[string]*staticConfig // mount path -> static folder config
+	rpcMethods           map[string]goja.Callable // registered RPC method -> JS handler
+	cronJobs             []string                 // scheduler job names, removed on unload
+	notificationChannels map[string]*pluginNotificationChannel
 }
 
 // global is the process-wide plugin manager.
@@ -372,6 +373,7 @@ func (m *Manager) load(short string) error {
 // hooks. Gin route slots from the failed load stay inert, mirroring the
 // unload behavior. The caller must not hold any Manager lock.
 func (m *Manager) dropInstance(short string, inst *Instance) {
+	m.unregisterNotificationChannels(inst)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.instances[short] != inst {
@@ -418,6 +420,7 @@ func (m *Manager) unload(short string) error {
 	}
 	delete(m.instances, short)
 	m.mu.Unlock()
+	m.unregisterNotificationChannels(inst)
 
 	inst.mu.RLock()
 	rt := inst.runtime

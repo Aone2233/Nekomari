@@ -1,0 +1,31 @@
+{
+  "name": {
+    "zh_CN": "Server酱³ 通知",
+    "zh_TW": "Server醬³ 通知",
+    "en": "ServerChan3 Notification",
+    "ja_JP": "Server酱³ 通知",
+    "id_ID": "Notifikasi ServerChan3"
+  },
+  "short": "serverchan3-notification-plugin",
+  "description": {
+    "zh_CN": "通过 Server酱³ 发送 Komari 通知",
+    "zh_TW": "透過 Server醬³ 傳送 Komari 通知",
+    "en": "Send Komari notifications through ServerChan3",
+    "ja_JP": "Server酱³ で Komari 通知を送信します",
+    "id_ID": "Kirim notifikasi Komari melalui ServerChan3"
+  },
+  "author": {
+    "zh_CN": "Akizon77",
+    "zh_TW": "Akizon77",
+    "en": "Akizon77",
+    "ja_JP": "Akizon77",
+    "id_ID": "Akizon77"
+  },
+  "version": "1.0.0",
+  "komari": ">=1.6.0",
+  "entry": "script.js",
+  "icon": "icon.webp",
+  "permissions": {
+    "timeout": 30
+  }
+}
