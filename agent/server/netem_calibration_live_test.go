@@ -21,8 +21,10 @@ func TestNetemCalibrationLive(t *testing.T) {
 		if err == nil {
 			ok++
 		} else if reason := unavailableReason(err); reason != "" {
-			t.Fatalf("probe unavailable: %s", reason)
+			t.Fatalf("probe unavailable: %s: %v", reason, err)
 		}
+		// Leave time for packet-capture buffers to drain even on a lossless link.
+		time.Sleep(5 * time.Millisecond)
 	}
 	fmt.Printf("NETEM_RESULT attempts=%d received=%d loss=%d\n", attempts, ok, attempts-ok)
 }

@@ -15,6 +15,10 @@ Nekomari's own.
 
 - Correct Linux CPU guest accounting and reject counter-reset intervals; align
   the independent calibration harness.
+- On Linux amd64/arm64, measure ICMP round-trip time between kernel software
+  transmit and receive timestamps when available, avoiding userspace scheduling
+  in the measured interval. Other platforms and unsupported sockets retain the
+  existing measurement. A reply without usable timing is unknown, not retried.
 - Honor ordinary probe IP preference; reject advanced options on pinned tasks,
   whose separate protocol cannot execute them. Flag old pinned tasks whose
   saved options are ignored. Older Agents can ignore options.

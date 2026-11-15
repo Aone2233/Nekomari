@@ -31,12 +31,15 @@ Linux x86-64 development host: Agent median 126 µs versus system-ping average
 sequential groups and different summary statistics. A subsequent predeclared
 same-probe loopback capture found all 90 Agent RTT values more than 50 µs
 above their captured intervals; details and timing-boundary limitations are
-in [the calibration record](./V1.8.1-NETEM-PRELIMINARY.md). The loopback
-target remains open, as does exact-commit CI.
-An isolated Linux receive-only timestamp prototype still exceeded the bound.
-Separate transmit-and-receive timestamp prototypes met it for IPv4 and IPv6
-loopback in both raw and ping socket modes, but are not integrated and lack
-clock, error, cancellation and cross-platform semantics; see the same record.
+in [the calibration record](./V1.8.1-NETEM-PRELIMINARY.md). A receive-only
+prototype also exceeded the bound. The candidate now uses Linux software TX
+and RX timestamps on amd64/arm64, with legacy fallback before sending when
+unavailable. Integrated same-packet loopback and physical LAN comparisons
+passed within their stated scope; clock changes within the tolerance and
+platforms using the legacy path remain limitations. The separate-packet
+system-ping test subsequently failed once and is now an explicit field check,
+not a substitute for the same-packet comparison. Exact-commit CI and remaining
+release acceptance still need completion; see the calibration record.
 
 **Current v1.8.1 candidate:** See [the short implementation and acceptance
 status](./V1.8.1-CURRENT-STATUS.md). v1.8.1 may fix existing probe correctness

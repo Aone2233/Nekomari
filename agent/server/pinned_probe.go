@@ -108,6 +108,9 @@ func pinnedHTTPAuthorityAllowed(u *url.URL, family string) bool {
 }
 
 func runPinnedICMP(ctx context.Context, ip string, timeout time.Duration, privileged bool) (int64, bool, error) {
+	if latency, replied, err, handled := preciseICMP(ctx, ip, timeout, privileged); handled {
+		return latency, replied, err
+	}
 	pinger, err := ping.NewPinger(ip)
 	if err != nil {
 		return -1, false, err
@@ -158,6 +161,10 @@ func (r pinnedProbeRunner) probeICMP(ctx context.Context, target, family string,
 		return pinnedProbeOutcome{err: ctx.Err()}
 	}
 	if err != nil {
+		var timingErr *timestampProbeError
+		if errors.As(err, &timingErr) {
+			return pinnedProbeOutcome{err: errors.Join(errPinnedLocalSocket, err)}
+		}
 		if ctx.Err() != nil {
 			return pinnedProbeOutcome{err: ctx.Err()}
 		}
@@ -175,6 +182,9 @@ func (r pinnedProbeRunner) probeICMP(ctx context.Context, target, family string,
 			return pinnedProbeOutcome{err: ctx.Err()}
 		}
 		if err != nil {
+			if errors.As(err, &timingErr) {
+				return pinnedProbeOutcome{err: errors.Join(errPinnedLocalSocket, err)}
+			}
 			return pinnedProbeOutcome{err: errors.Join(errPinnedNoICMPSocket, err)}
 		}
 	}

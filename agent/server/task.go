@@ -244,6 +244,10 @@ func icmpPingPreference(target string, timeout time.Duration, preference string)
 	// 就不会为了少用一个已经在手的权限，去动几年的历史可比性。
 	latency, replied, err := runICMP(ip, timeout, true)
 	if err != nil {
+		var timingErr *timestampProbeError
+		if errors.As(err, &timingErr) {
+			return -1, family, &probeUnavailableError{reason: "socket_unavailable", err: err}
+		}
 		// 裸 socket 连开都没开起来（权限、或平台不支持）。这才值得再试一次 —— 目标
 		// 不回包时 Run 不返回错误，所以这里不会把一次超时变成两次探测。
 		latency, replied, err = runICMP(ip, timeout, false)
@@ -266,6 +270,9 @@ func icmpPingPreference(target string, timeout time.Duration, preference string)
 // 表示 socket 正常、目标没回包。上层要靠这个区别决定要不要换一种 socket 再试一次 ——
 // 把「目标不回」也当成「本地没权限」会让每次丢包都多探一轮。
 func runICMP(ip string, timeout time.Duration, privileged bool) (latency int64, replied bool, err error) {
+	if latency, replied, err, handled := preciseICMP(context.Background(), ip, timeout, privileged); handled {
+		return latency, replied, err
+	}
 	pinger, err := ping.NewPinger(ip)
 	if err != nil {
 		return -1, false, err

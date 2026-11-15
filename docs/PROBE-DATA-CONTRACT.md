@@ -72,6 +72,19 @@ description of current production behavior for optional fields.
 | `backup.age_seconds` | s | time since last successful backup | last | no status file → unknown |
 | `backup.ok` | 0/1 | last backup success | last | no status file → unknown |
 
+On Linux amd64/arm64, when the socket supports software `SO_TIMESTAMPING`,
+ICMP latency is the interval from the kernel transmit timestamp to the kernel
+receive timestamp, truncated to microseconds before transport. This boundary
+excludes userspace scheduling and can differ from historical values. Software
+timestamps are not hardware wire timestamps. Other platforms and sockets that
+cannot enable timestamping before sending retain the legacy measurement.
+An echo received without usable timing is locally unavailable (unknown); it is
+not sent again on another socket. No echo before the deadline remains loss:
+a queue drop may suppress the transmit timestamp as well, so a missing transmit
+timestamp alone cannot distinguish a queue drop from a timestamping failure.
+Large realtime clock changes are rejected against the monotonic clock; smaller
+adjustments within the validation tolerance can still affect the interval.
+
 ## Wire identity
 
 Every `agent.pingResult` carries `task_id`, `ping_type`, `finished_at`,

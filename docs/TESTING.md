@@ -173,6 +173,18 @@ a regression. Run them as root on a host with IPv6:
 sudo env "PATH=$PATH" go test -run 'TestICMPPing|TestTCPPing|TestHTTPPing' ./server/
 ```
 
+`TestICMPLoopbackCalibration` is an opt-in field comparison:
+`(cd agent && NEKOMARI_ICMP_SEPARATE_REFERENCE=1 go test ./server -run '^TestICMPLoopbackCalibration$' -count=1 -v)`.
+It requires an available ICMP socket and system `ping`. It compares an Agent
+median with a system-ping average from a separate group of packets, so the
+result can change with scheduling and cannot establish per-packet accuracy.
+It failed once after the timestamp change (1 µs versus 73 µs, exceeding the
+50 µs tolerance); that failure is retained in the calibration record. The
+same-packet capture comparison described there checks the measurement boundary
+more directly but shares the kernel software clock and is not a hardware
+reference. Live netem and physical-LAN tests additionally require an isolated
+network and independent capture/counters; they are not run by the normal suite.
+
 ### Why the three GeoIP ones are skipped in CI, and how they fail
 
 They are not broken — each passes on its own, from a machine that can reach the
