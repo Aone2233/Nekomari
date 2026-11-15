@@ -97,9 +97,12 @@ def host_sample() -> dict[str, Any]:
         "cpu_total": total,
         "cpu_idle": idle,
         "mem_total": mem.get("MemTotal"),
+        "mem_free": mem.get("MemFree"),
         "mem_available": mem.get("MemAvailable"),
-        "mem_cached": mem.get("Cached", 0),
-        "mem_buffers": mem.get("Buffers", 0),
+        "mem_cached": mem.get("Cached"),
+        "mem_buffers": mem.get("Buffers"),
+        "mem_sreclaimable": mem.get("SReclaimable"),
+        "mem_shmem": mem.get("Shmem"),
         "disk_total": disk.total,
         "disk_used": disk.used,
         "net_up": up,
@@ -122,6 +125,27 @@ def is_measurement(value: Any) -> bool:
     return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
 
 
+def expected_ram_used(sample: dict[str, Any], mode: str) -> float | None:
+    total = sample.get("mem_total")
+    if not is_measurement(total) or total <= 0:
+        return None
+    if mode == "gopsutil":
+        available = sample.get("mem_available")
+        return total - available if is_measurement(available) and 0 <= available <= total else None
+    if mode == "includeCache":
+        free = sample.get("mem_free")
+        return total - free if is_measurement(free) and 0 <= free <= total else None
+    if mode == "htoplike":
+        values = [sample.get(key) for key in ("mem_free", "mem_cached", "mem_sreclaimable", "mem_buffers", "mem_shmem")]
+        if not all(is_measurement(value) and 0 <= value <= total for value in values):
+            return None
+        free, cached, reclaimable, buffers, shmem = values
+        deductions = free + cached + reclaimable + buffers
+        used = total - deductions if deductions <= total else total - free
+        return used + shmem if shmem <= total - used else None
+    return None
+
+
 def compare_report(report: dict[str, Any], before: dict[str, Any], after: dict[str, Any], elapsed: float) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
 
@@ -141,12 +165,12 @@ def compare_report(report: dict[str, Any], before: dict[str, Any], after: dict[s
         add("cpu", actual_cpu, round(expected_cpu, 4), ok, "±2 percentage points absolute")
 
     actual_ram = report.get("ram", {}).get("used")
-    mem_total, mem_available = after.get("mem_total"), after.get("mem_available")
-    expected_ram = mem_total - mem_available if is_measurement(mem_total) and is_measurement(mem_available) and 0 <= mem_available <= mem_total and mem_total > 0 else None
+    ram_mode = report.get("ram", {}).get("mode")
+    expected_ram = expected_ram_used(after, ram_mode)
     if expected_ram is not None and is_measurement(actual_ram) and isinstance(quality, dict) and quality.get("ram") == "ok":
         tolerance = max(after["mem_total"] * 0.01, 4096)
         ok = abs(actual_ram - expected_ram) <= tolerance
-        add("ram_used", actual_ram, expected_ram, ok, "max(1% of total, 4 KiB); definition differences are reported, not hidden")
+        add("ram_used", actual_ram, expected_ram, ok, f"mode {ram_mode}; max(1% of total, 4 KiB)")
     else:
         add("ram_used", actual_ram, expected_ram, False, "NOT RUN: report has no valid RAM used")
 

@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import mock_open, patch
 
-from probe_calibrate import read_proc_stat, compare_report
+from probe_calibrate import read_proc_stat, compare_report, expected_ram_used
 
 
 class CPUCalibrationTest(unittest.TestCase):
@@ -43,6 +43,26 @@ class CPUCalibrationTest(unittest.TestCase):
         for name in ("cpu", "ram_used", "disk_used"):
             self.assertFalse(results[name]["pass"], name)
             self.assertIn("NOT RUN", results[name]["detail"])
+
+    def test_ram_reference_matches_reported_mode(self):
+        sample = {"mem_total": 1000, "mem_free": 100, "mem_available": 400,
+                  "mem_cached": 200, "mem_sreclaimable": 50,
+                  "mem_buffers": 50, "mem_shmem": 20}
+        self.assertEqual(expected_ram_used(sample, "gopsutil"), 600)
+        self.assertEqual(expected_ram_used(sample, "includeCache"), 900)
+        self.assertEqual(expected_ram_used(sample, "htoplike"), 620)
+        self.assertIsNone(expected_ram_used(sample, "unknown"))
+        del sample["mem_sreclaimable"]
+        self.assertIsNone(expected_ram_used(sample, "htoplike"))
+
+    def test_missing_ram_mode_cannot_pass_by_coincidence(self):
+        before = {"cpu_total": 100, "cpu_idle": 80}
+        after = {"cpu_total": 200, "cpu_idle": 180, "mem_total": 100,
+                 "mem_available": 100, "disk_used": 0}
+        report = {"quality": {"ram": "ok"}, "ram": {"used": 0}}
+        ram = next(item for item in compare_report(report, before, after, 1) if item["item"] == "ram_used")
+        self.assertFalse(ram["pass"])
+        self.assertIn("NOT RUN", ram["detail"])
 
 
 if __name__ == "__main__":
