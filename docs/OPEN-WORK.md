@@ -24,6 +24,14 @@ cause, not a confirmed explanation of that failure; Linux repeated the test 25
 times and race-checked it three times. The candidate still needs its own
 complete Windows CI result.
 
+**Local ICMP follow-up (2026-11-15):** The Agent `server` and
+`monitoring/unit` suite failed `TestICMPLoopbackCalibration` once on the
+Linux x86-64 development host: Agent median 126 µs versus system-ping average
+65 µs, a 61 µs difference against the 50 µs tolerance. The test uses two
+sequential groups and different summary statistics, so this alone does not
+identify a code defect or explain the excess. This result is retained; a
+same-probe independent comparison and exact-commit CI remain to be assessed.
+
 **Current v1.8.1 candidate:** See [the short implementation and acceptance
 status](./V1.8.1-CURRENT-STATUS.md). v1.8.1 may fix existing probe correctness
 and visibility defects; the remaining field verification gates are described below.
