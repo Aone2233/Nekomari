@@ -21,6 +21,29 @@ class CPUCalibrationTest(unittest.TestCase):
         self.assertIsNone(cpu["expected"])
         self.assertIn("NOT RUN", cpu["detail"])
 
+    def test_unknown_quality_and_lifetime_network_counters_never_pass(self):
+        before = {"cpu_total": 100, "cpu_idle": 80, "net_up": 0, "net_down": 0}
+        after = {"cpu_total": 200, "cpu_idle": 180, "mem_total": 100,
+                 "mem_available": 100, "disk_used": 0, "net_up": 100, "net_down": 200}
+        report = {"quality": {"cpu": "unknown", "ram": "unknown", "disk": "unknown"},
+                  "cpu": {"usage": 0}, "ram": {"used": 0}, "disk": {"used": 0},
+                  "network": {"totalUp": 100, "totalDown": 200}}
+        results = {item["item"]: item for item in compare_report(report, before, after, 1)}
+        for name in ("cpu", "ram_used", "disk_used", "network_delta"):
+            self.assertFalse(results[name]["pass"], name)
+            self.assertIn("NOT RUN", results[name]["detail"])
+
+    def test_missing_memory_reference_and_boolean_values_never_pass(self):
+        before = {"cpu_total": 100, "cpu_idle": 80}
+        after = {"cpu_total": 200, "cpu_idle": 180, "mem_total": 100,
+                 "mem_available": None, "disk_used": 0}
+        report = {"quality": {"cpu": "ok", "ram": "ok", "disk": "ok"},
+                  "cpu": {"usage": False}, "ram": {"used": 100}, "disk": {"used": False}}
+        results = {item["item"]: item for item in compare_report(report, before, after, 1)}
+        for name in ("cpu", "ram_used", "disk_used"):
+            self.assertFalse(results[name]["pass"], name)
+            self.assertIn("NOT RUN", results[name]["detail"])
+
 
 if __name__ == "__main__":
     unittest.main()

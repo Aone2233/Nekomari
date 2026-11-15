@@ -11,15 +11,19 @@ never reported as a pass.
 python3 deploy/calibrate/probe_calibrate.py --report-json /tmp/agent-report.json --interval 10
 ```
 
-The host checks compare:
+The report must carry `quality: ok` for a measured CPU, RAM or disk value;
+unknown or absent quality is `NOT RUN`. The report still has to be captured
+over the same window as the reference: this script does not establish that
+alignment on its own. Disk compares the Agent's aggregate to `/`, so a
+multi-mount host needs a separate per-mount reference before interpreting it.
 
 | Item | Tolerance |
 |---|---|
 | CPU | ±2 percentage points absolute |
 | RAM used | `max(1% of total, 4 KiB)`; definition differences are reported |
 | Disk used | ±0.5% relative to `df /` |
-| Network counter delta | ±0.5% or 4 KiB |
-| Traffic interval | exactly 0 bytes; gaps must be unknown |
+| Network counter delta | NOT RUN: an aligned pair of Agent counters and interface scope is required |
+| Traffic interval | NOT RUN: a validated gap-free window is required |
 
 The report is written to `.runtest/probe-calibration-<UTC>/report.json`.
 
