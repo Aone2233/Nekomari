@@ -73,6 +73,9 @@ Remaining acceptance and operational limits:
   themes. Authenticated `/admin/` returned nonempty content without page
   exceptions at both viewports for all 64 archives; theme-specific private
   routes and remaining interaction coverage are open.
+  The original Next Pro archive's hydration exception also reproduces when
+  served by a standalone static server without a Panel; this control does not
+  identify the underlying mismatch or make the original archive pass.
   **v1.8.1 is a formal patch candidate** that also fixes existing probe
   correctness and visibility defects. Publication remains gated on retained
   acceptance evidence; production deployment is separately recorded. See
