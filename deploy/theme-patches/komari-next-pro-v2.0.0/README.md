@@ -50,6 +50,24 @@ features. The verified fixed artifact re-injects them from the original market
 ZIP after `npm ci && npm run build`; that build passed the same gate with them
 present.
 
+A repeatable builder now checks the market archive SHA-256 and upstream tag
+commit, applies `nekomari.patch`, runs `npm ci` and `npm run build` in a
+temporary checkout, and copies the original archive's extra scripts back into
+the rebuilt page. It requires Git, Node/npm and network access:
+
+```sh
+python3 deploy/theme-patches/komari-next-pro-v2.0.0/build.py original.zip local-next-pro.zip
+```
+
+The output is a local variant; build metadata can change the output hash. One
+independent builder run produced
+`e0de4b035c724009ef390c049871feb2203b67d12d64d2d8faec715d8f0c8424`.
+Its synthetic-node public-root check at desktop/mobile showed CPU, RAM and disk,
+retained all three integrity scripts and attribution, and observed no page
+exception for 11 seconds. That run extracted the archive directly into an
+isolated Panel; it did not test the upload API or all interactions. The older
+local artifact has broader checks below. Neither is the original market ZIP.
+
 The fixed archive used for this verification is:
 
 ```text
