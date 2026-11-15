@@ -121,6 +121,41 @@ func TestHTTPProbeInitialDNSTimeoutIsUnknown(t *testing.T) {
 	}
 }
 
+func TestHTTPProbeDoesNotDialAfterDNSDeadline(t *testing.T) {
+	listener, err := net.Listen("tcp", net.JoinHostPort(net.IPv4(127, 0, 0, 1).String(), "0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	_, port, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	finished := make(chan struct{})
+	out := httpProbeWithResolver("http://late.example.invalid:"+port, 100*time.Millisecond, "", true, "", func(_, _ string) (string, error) {
+		<-release
+		defer close(finished)
+		return net.IPv4(127, 0, 0, 1).String(), nil
+	})
+	close(release)
+	<-finished
+	if unavailableReason(out.err) != "dns_failure" {
+		t.Fatalf("DNS deadline outcome=%+v", out)
+	}
+	if err := listener.(*net.TCPListener).SetDeadline(time.Now().Add(500 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	conn, err := listener.Accept()
+	if err == nil {
+		conn.Close()
+		t.Fatal("probe opened a TCP connection after the request deadline")
+	}
+	if timeout, ok := err.(net.Error); !ok || !timeout.Timeout() {
+		t.Fatalf("accept: %v", err)
+	}
+}
+
 // HTTP TTFB calibration: a server that waits before writing the response
 // should be observed within the v1.8 phase tolerance. This catches a phase
 // that is present but measured from the wrong start point.

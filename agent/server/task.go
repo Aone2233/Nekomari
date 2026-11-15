@@ -429,6 +429,8 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 	var dnsPending int
 	var tcpSet bool
 	var firstFamily string
+	probeCtx, cancelProbe := context.WithTimeout(context.Background(), timeout)
+	defer cancelProbe()
 	transport := &http.Transport{
 		DisableKeepAlives: true,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -462,8 +464,12 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 			if err != nil {
 				return nil, err
 			}
+			if err := probeCtx.Err(); err != nil {
+				return nil, err
+			}
 			tcpStart := time.Now()
-			conn, err := net.DialTimeout(network, net.JoinHostPort(ip, port), timeout)
+			var dialer net.Dialer
+			conn, err := dialer.DialContext(probeCtx, network, net.JoinHostPort(ip, port))
 			if err != nil && isPermissionErr(err) {
 				err = &probeUnavailableError{reason: "permission_denied", err: err}
 			}
@@ -538,7 +544,7 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 	if err != nil {
 		return httpProbeOutcome{err: err}
 	}
-	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+	req = req.WithContext(httptrace.WithClientTrace(probeCtx, trace))
 	resp, err := client.Do(req)
 	totalUS := time.Since(start).Microseconds()
 	phaseMu.Lock()
