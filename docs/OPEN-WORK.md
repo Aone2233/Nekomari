@@ -33,10 +33,10 @@ same-probe loopback capture found all 90 Agent RTT values more than 50 µs
 above their captured intervals; details and timing-boundary limitations are
 in [the calibration record](./V1.8.1-NETEM-PRELIMINARY.md). The loopback
 target remains open, as does exact-commit CI.
-An isolated Linux kernel receive-timestamp prototype reduced some overhead
-but still exceeded the 50 µs bound in both raw and ping socket modes; see
-the same record. Send-side timestamping and clock/fallback semantics remain
-to be investigated before changing the production ICMP path.
+An isolated Linux receive-only timestamp prototype still exceeded the bound.
+Separate transmit-and-receive timestamp prototypes met it for IPv4 and IPv6
+loopback in both raw and ping socket modes, but are not integrated and lack
+clock, error, cancellation and cross-platform semantics; see the same record.
 
 **Current v1.8.1 candidate:** See [the short implementation and acceptance
 status](./V1.8.1-CURRENT-STATUS.md). v1.8.1 may fix existing probe correctness
