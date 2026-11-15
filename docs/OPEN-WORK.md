@@ -98,10 +98,10 @@ Remaining acceptance and operational limits:
   describes their scope and the remaining reporting-path and other-host checks.
   Three default-memory function comparisons on OC424 also passed; the
   [record](./V1.8.1-MEMORY-CALIBRATION.md) limits the claim to that mode.
-  Local comparisons covered DNS, TCP, TTFB and TLS in isolation, including a
-  failed TLS delay-only reference; [their record](./V1.8.1-HTTP-CALIBRATION.md)
+  Local comparisons covered DNS, TCP, TTFB, TLS and one HTTP redirect in
+  isolation, including a failed TLS delay-only reference; [their record](./V1.8.1-HTTP-CALIBRATION.md)
   identifies the remaining configured-resolver, delayed/physical TCP and
-  redirect work.
+  HTTPS redirect work.
   An [isolated mixed-Agent check](./V1.8.1-MIXED-AGENT.md) exercised the
   ordinary scheduler, actual v1.7.30 and candidate executables, authenticated
   WebSockets and metric storage with a dual-stack hostname and IPv4 preference.
