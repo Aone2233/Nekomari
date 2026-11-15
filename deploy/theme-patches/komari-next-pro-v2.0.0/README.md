@@ -62,11 +62,13 @@ python3 deploy/theme-patches/komari-next-pro-v2.0.0/build.py original.zip local-
 The output is a local variant; build metadata can change the output hash. One
 independent builder run produced
 `e0de4b035c724009ef390c049871feb2203b67d12d64d2d8faec715d8f0c8424`.
-Its synthetic-node public-root check at desktop/mobile showed CPU, RAM and disk,
-retained all three integrity scripts and attribution, and observed no page
-exception for 11 seconds. That run extracted the archive directly into an
-isolated Panel; it did not test the upload API or all interactions. The older
-local artifact has broader checks below. Neither is the original market ZIP.
+A disposable Panel accepted that ZIP through its chunked upload and theme
+switch APIs. With one synthetic node, desktop and mobile runs under 100 ms
+emulated latency and 250,000 bytes/second throughput showed CPU, RAM and disk,
+retained the three integrity scripts and attribution, switched table/grid and
+opened the node detail without observed page exceptions. These are limited
+Chromium checks, not all theme interactions or real-device acceptance. Neither
+local build is the original market ZIP.
 
 The fixed archive used for this verification is:
 
