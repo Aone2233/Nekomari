@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -39,7 +40,19 @@ func TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage(t *testing.T) {
 	if os.Getenv("NEKOMARI_ORDINARY_EXEC_E2E") != "1" {
 		t.Skip("requires Linux network namespace privileges")
 	}
+	ordinaryAgentExecutableFixture(t, false)
+}
+
+func ordinaryAgentExecutableFixture(t *testing.T, tlsFailure bool) {
+	t.Helper()
+	if os.Getenv("NEKOMARI_ORDINARY_EXEC_E2E") != "1" && os.Getenv("NEKOMARI_ORDINARY_TLS_E2E") != "1" {
+		t.Skip("requires Linux network namespace privileges")
+	}
 	const marker = "NEKOMARI_ORDINARY_EXEC_CHILD"
+	runPattern := "^TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage$"
+	if tlsFailure {
+		runPattern = "^TestOrdinaryAgentExecutableTLSFailureMetric$"
+	}
 	if os.Getenv(marker) != "1" {
 		_, source, _, ok := runtime.Caller(0)
 		if !ok {
@@ -52,7 +65,7 @@ func TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage(t *testing.T) {
 		if out, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("build Agent: %v\n%s", err, out)
 		}
-		cmd := exec.CommandContext(t.Context(), "unshare", "--net", "--", os.Args[0], "-test.run=^TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage$", "-test.v", "-test.timeout=60s")
+		cmd := exec.CommandContext(t.Context(), "unshare", "--net", "--", os.Args[0], "-test.run="+runPattern, "-test.v", "-test.timeout=60s")
 		cmd.Dir = t.TempDir()
 		cmd.Env = append(os.Environ(), marker+"=1", "NEKOMARI_ORDINARY_EXEC_BINARY="+binary)
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -129,6 +142,11 @@ func TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage(t *testing.T) {
 		}
 	}()
 	task := models.PingTask{Name: "unknown fixture", Type: "tcp", Target: "invalid.invalid:80", Interval: 2, Clients: models.StringArray{id}}
+	if tlsFailure {
+		tlsTarget := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+		defer tlsTarget.Close()
+		task = models.PingTask{Name: "TLS failure fixture", Type: "http", Target: tlsTarget.URL, Interval: 2, Clients: models.StringArray{id}, HTTPMode: "status_aware"}
+	}
 	if err := db.Create(&task).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -161,6 +179,24 @@ func TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage(t *testing.T) {
 		}
 		return p
 	}
+	if tlsFailure {
+		for len(query(metricstore.MetricHTTPReachable)) == 0 {
+			if time.Now().After(deadline) {
+				t.Fatal("TLS failure result not received")
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if points := query(metricstore.MetricHTTPReachable); len(points) == 0 || points[0].Value != 0 {
+			t.Fatalf("TLS failure reachability: %+v", points)
+		}
+		if points := query(metricstore.MetricHTTPTLS); len(points) != 0 {
+			t.Fatalf("failed TLS produced timing: %+v", points)
+		}
+		if points := query(metricstore.MetricHTTPTCP); len(points) == 0 {
+			t.Fatal("completed TCP attempt missing")
+		}
+		return
+	}
 	for len(query(metricstore.MetricPingUnknown)) == 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("unknown result not received")
@@ -181,4 +217,13 @@ func TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage(t *testing.T) {
 	if err != nil || len(report.Nodes) != 1 || report.Nodes[0].HasReport || len(report.Nodes[0].Tasks) != 0 {
 		t.Fatalf("unknown became SLA outage: %+v err=%v", report, err)
 	}
+}
+
+// Reuse the isolated actual-Agent fixture for an untrusted TLS endpoint and
+// assert the final metrics, not just the Agent's in-process observation.
+func TestOrdinaryAgentExecutableTLSFailureMetric(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_TLS_E2E") != "1" {
+		t.Skip("requires Linux network namespace privileges")
+	}
+	ordinaryAgentExecutableFixture(t, true)
 }
