@@ -96,6 +96,8 @@ Remaining acceptance and operational limits:
   Three 60-second function-level CPU comparisons on OC424 met the predeclared
   two-percentage-point limit; the [field record](./V1.8.1-CPU-CALIBRATION.md)
   describes their scope and the remaining reporting-path and other-host checks.
+  Three default-memory function comparisons on OC424 also passed; the
+  [record](./V1.8.1-MEMORY-CALIBRATION.md) limits the claim to that mode.
   Local comparisons covered DNS, TCP, TTFB and TLS in isolation, including a
   failed TLS delay-only reference; [their record](./V1.8.1-HTTP-CALIBRATION.md)
   identifies the remaining configured-resolver, delayed/physical TCP and
