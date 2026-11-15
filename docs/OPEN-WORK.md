@@ -99,6 +99,9 @@ Remaining acceptance and operational limits:
   A local injected-delay comparison covered DNS accounting and final-hop TTFB
   in isolation; [its record](./V1.8.1-HTTP-CALIBRATION.md) identifies the
   remaining actual-DNS, TCP, TLS and redirect calibration work.
+  An [isolated mixed-Agent check](./V1.8.1-MIXED-AGENT.md) exercised the
+  ordinary scheduler, actual v1.7.30 and candidate executables, authenticated
+  WebSockets and metric storage with a dual-stack hostname and IPv4 preference.
   A read-only OC424 audit on 2026-11-15 found two pinned tasks: task 30 has no
   advanced options, while task 31 retains attempts 3, spacing 200 ms and
   legacy HTTP/default address options that its pinned dispatcher never sends.
