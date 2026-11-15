@@ -60,6 +60,13 @@ func TestOrdinaryAgentExecutableHTTPDNSDeadline(t *testing.T) {
 	ordinaryAgentExecutableFixture(t, "http-dns")
 }
 
+func TestOrdinaryAgentExecutableRedirectDNSDeadline(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_REDIRECT_DNS_E2E") != "1" {
+		t.Skip("requires Linux network namespace privileges")
+	}
+	ordinaryAgentExecutableFixture(t, "redirect-dns")
+}
+
 func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	t.Helper()
 	const marker = "NEKOMARI_ORDINARY_EXEC_CHILD"
@@ -72,6 +79,8 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 		runPattern = "^TestOrdinaryAgentExecutableCustomDNSFailure$"
 	} else if scenario == "http-dns" {
 		runPattern = "^TestOrdinaryAgentExecutableHTTPDNSDeadline$"
+	} else if scenario == "redirect-dns" {
+		runPattern = "^TestOrdinaryAgentExecutableRedirectDNSDeadline$"
 	}
 	if os.Getenv(marker) != "1" {
 		_, source, _, ok := runtime.Caller(0)
@@ -139,7 +148,7 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	defer func() { panel.Close(); sockets.Wait() }()
 	cmd := exec.Command(os.Getenv("NEKOMARI_ORDINARY_EXEC_BINARY"), "--endpoint", panel.URL, "--disable-auto-update", "--disable-web-ssh", "--interval", "1")
 	var dnsQueries atomic.Int32
-	if scenario == "custom-dns" || scenario == "http-dns" {
+	if scenario == "custom-dns" || scenario == "http-dns" || scenario == "redirect-dns" {
 		listener, err := net.ListenPacket("udp4", net.JoinHostPort(net.IPv4(127, 0, 0, 1).String(), "0"))
 		if err != nil {
 			t.Fatal(err)
@@ -159,7 +168,7 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 				}
 				if request.Questions[0].Name.String() == "invalid.invalid." {
 					dnsQueries.Add(1)
-					if scenario == "http-dns" {
+					if scenario == "http-dns" || scenario == "redirect-dns" {
 						continue // The real HTTP deadline must expire during DNS.
 					}
 				}
@@ -211,6 +220,15 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	}
 	if scenario == "http-dns" {
 		task = models.PingTask{Name: "HTTP DNS deadline fixture", Type: "http", Target: "http://invalid.invalid/", Interval: 2, Clients: models.StringArray{id}, HTTPMode: "status_aware", ProbeTimeoutMS: 300}
+	}
+	var redirects atomic.Int32
+	if scenario == "redirect-dns" {
+		target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			redirects.Add(1)
+			http.Redirect(w, r, "http://invalid.invalid/", http.StatusFound)
+		}))
+		defer target.Close()
+		task = models.PingTask{Name: "redirect DNS deadline fixture", Type: "http", Target: target.URL, Interval: 2, Clients: models.StringArray{id}, HTTPMode: "status_aware", ProbeTimeoutMS: 300}
 	}
 	if err := db.Create(&task).Error; err != nil {
 		t.Fatal(err)
@@ -278,7 +296,7 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	if points := query(metricstore.MetricPingUnknown); len(points) == 0 || points[0].Tags["reason"] != "dns_failure" {
 		t.Fatalf("unknown points: %+v", points)
 	}
-	if (scenario == "custom-dns" || scenario == "http-dns") && dnsQueries.Load() == 0 {
+	if (scenario == "custom-dns" || scenario == "http-dns" || scenario == "redirect-dns") && dnsQueries.Load() == 0 {
 		t.Fatal("configured DNS did not receive the task hostname")
 	}
 	if points := query(metricstore.MetricPingLoss); len(points) != 0 {
@@ -287,8 +305,15 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	if points := query(metricstore.MetricPingLatency); len(points) != 0 {
 		t.Fatalf("unknown produced latency: %+v", points)
 	}
-	if scenario == "http-dns" {
-		for _, metricName := range []string{metricstore.MetricHTTPDNS, metricstore.MetricHTTPTCP, metricstore.MetricHTTPReachable} {
+	if scenario == "http-dns" || scenario == "redirect-dns" {
+		if scenario == "redirect-dns" {
+			if redirects.Load() == 0 || len(query(metricstore.MetricHTTPTCP)) == 0 {
+				t.Fatal("first redirect hop did not connect")
+			}
+		} else if points := query(metricstore.MetricHTTPTCP); len(points) != 0 {
+			t.Fatalf("initial DNS deadline produced TCP timing: %+v", points)
+		}
+		for _, metricName := range []string{metricstore.MetricHTTPDNS, metricstore.MetricHTTPReachable} {
 			if points := query(metricName); len(points) != 0 {
 				t.Fatalf("DNS deadline unexpectedly produced %s: %+v", metricName, points)
 			}
