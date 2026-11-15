@@ -6,8 +6,8 @@ has SHA-256 `56784c204656a6310867ca6671f210dfcbaef935c1d41c537765fa882cbdd001` (
 
 With a synthetic node, the original theme's mobile connections link can miss
 pointer/touch activation as its horizontal scroll-snap strip moves between
-pointer-down and pointer-up. `mobile-tooltip.css` is a **diagnostic candidate**
-for the existing archive: load it after the theme's own stylesheet. It hides
+pointer-down and pointer-up. `mobile-tooltip.css` is a **local compatibility candidate**
+for the existing archive. It hides
 only the TOP 3 hover popup at widths up to 560px; scroll snapping and cards stay
 in place. Desktop retains the popup. This intentionally removes the popup on
 narrow screens, including narrow devices with a mouse. It is not an upstream
@@ -15,9 +15,18 @@ release, has not been applied to a production installation, and an online theme
 reinstall may overwrite local modifications. It does not make the locked original
 archive pass the acceptance gate.
 
-In a disposable Panel, injecting the candidate into the original theme let
-simulated touch and keyboard activation reach `/connections` at 320, 390 and
-560 CSS pixels. Chromium CDP touch-drag moved the strip at those widths with
-scroll snap still enabled; a desktop hover retained the popup and its link
-worked. These are bounded controls, not real-device, assistive-technology,
-all-browser or full theme acceptance. See `docs/V1.8.1-THEME-SMOKE.md`.
+Build a local ZIP from the hash-verified original, using a new output path:
+
+```sh
+python3 deploy/theme-patches/luminacustom-v3.1.2/build.py original.zip local-luminacustom.zip
+```
+
+The builder rejects other inputs and existing output paths; it preserves every
+archive entry except appending this CSS to the pinned stylesheet. One build
+produced SHA-256 `ebb1fe63f8d6f69539881dceed1784fc81777c37820d2fff3b8a6d03125d3cf5`.
+A disposable Panel accepted that ZIP through its chunked upload and theme
+switch APIs; simulated touch and CDP touch-drag worked at 320, 390 and 560 CSS
+pixels with scroll snap enabled. A separate manual extraction of the same ZIP
+passed keyboard activation at those sizes and desktop hover/link checks. These
+are bounded controls, not real-device, assistive-technology, all-browser or
+full theme acceptance. See `docs/V1.8.1-THEME-SMOKE.md`.
