@@ -22,8 +22,15 @@ through CGO, so `CGO_ENABLED=0` will not build it.
 Run the hermetic tests the way CI does:
 
 ```bash
-go test ./... -run 'TestIpInfo[A-Z]|TestDecide|TestRun|TestWritePing|TestPercentile|TestComputeBaseline|TestCheckMetric|TestLoadNotification|TestReportMetric|TestSplitPublic|TestGetPingRecords|TestDefaultRollup|TestBuildMetric|TestCreateMetric|TestPingTarget|TestClientCanReach|TestFilterClients'
+go test ./... -count=1 -skip '^TestIpInfo$'
+(cd agent && go test ./... -count=1 -skip 'TestICMPPing|TestTCPPing|TestHTTPPing')
 ```
+
+It is a denylist, not an allowlist. An allowlist was in use here until 2026-10-13 and
+silently stopped running every test written after the list was made — 552 root tests down
+to 79, which hid two `agent/unlock` tests that had been failing since the commit that
+added them. The anchors in the patterns matter: `^TestIpInfo$` skips only the one test that
+calls ipinfo.io, while the thirty-plus hermetic `TestIpInfo*` cases keep running.
 
 [`docs/TESTING.md`](./docs/TESTING.md) explains which tests are hermetic, which need
 a privileged or IPv6-capable host, and which two fail in unprivileged environments
@@ -50,8 +57,13 @@ favicon that silently kept the old icon, a version banner that silently compared
 against the wrong repository, a container that built green and could not start.
 
 **When a check cannot be automated, write down what it ruled out.** The IP-panel
-investigation in [`docs/IP-INFO-API.md`](./docs/IP-INFO-API.md) records two
+investigation in [`docs/IP-INFO-API.md`](./docs/IP-INFO-API.md) records four
 eliminated hypotheses so the next person does not spend the same time on them.
+
+**An approach you drop goes in [`docs/REJECTED.md`](./docs/REJECTED.md).** That file is the
+register of paths already closed, with the best case each one had and why it lost — so a
+plausible-sounding idea that already failed does not get proposed again. It is not the only
+place a decision is recorded, but it is the only place they are all listed.
 
 ## House rules
 
