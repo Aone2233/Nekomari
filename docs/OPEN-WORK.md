@@ -122,7 +122,9 @@ Remaining acceptance and operational limits:
   passed within the limits in that record. A delayed virtual-link TCP probe
   comparison passed with a warm neighbor cache, while the cold run failed the
   packet-only bound with ARP preceding the SYN; see the
-  [network record](./V1.8.1-NETEM-PRELIMINARY.md). Physical TCP remains untested.
+  [network record](./V1.8.1-NETEM-PRELIMINARY.md). A later warm-neighbor TCP
+  comparison on MAC-WAN's physical wired LAN passed nine same-connection
+  checks within 1 ms; other LAN paths and cold-neighbor behavior remain distinct.
   An [isolated mixed-Agent check](./V1.8.1-MIXED-AGENT.md) exercised the
   ordinary scheduler, actual v1.7.30 and candidate executables, authenticated
   WebSockets and metric storage with a dual-stack hostname and IPv4 preference.
