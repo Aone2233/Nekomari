@@ -109,7 +109,7 @@ func TestHTTPProbeRecordsPhasesAndStatus(t *testing.T) {
 	if legacy.obs.Available == nil || *legacy.obs.Available {
 		t.Fatalf("404 must be unavailable: %+v", legacy.obs.Available)
 	}
-	if legacy.obs.DNSUS == nil || legacy.obs.TCPUS == nil || legacy.obs.TotalUS == nil || legacy.obs.TTFBUS == nil {
+	if legacy.obs.DNSUS != nil || legacy.obs.TCPUS == nil || legacy.obs.TotalUS == nil || legacy.obs.TTFBUS == nil {
 		t.Fatalf("missing phase observations: %+v", legacy.obs)
 	}
 

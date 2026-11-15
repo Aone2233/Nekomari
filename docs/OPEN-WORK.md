@@ -76,6 +76,9 @@ Remaining acceptance and operational limits:
   The original Next Pro archive's hydration exception also reproduces when
   served by a standalone static server without a Panel; this control does not
   identify the underlying mismatch or make the original archive pass.
+  The candidate Agent also omits HTTP DNS duration for literal-only targets
+  and failed lookups rather than recording resolution overhead as a successful
+  DNS measurement; it does not retroactively change historical samples.
   **v1.8.1 is a formal patch candidate** that also fixes existing probe
   correctness and visibility defects. Publication remains gated on retained
   acceptance evidence; production deployment is separately recorded. See

@@ -60,7 +60,7 @@ description of current production behavior for optional fields.
 | `ping.jitter_ms` | ms | RFC 3550 instantaneous jitter | last | fewer than 2 successes → unknown |
 | `ping.loss` | 0/1 | legacy per-attempt failure marker | avg | legacy compatibility |
 | `http.total_ms` | ms | whole HTTP attempt | avg | no response → unknown |
-| `http.dns_ms` | ms | DNS phase | avg | no resolution → unknown |
+| `http.dns_ms` | ms | sum of completed hostname resolutions across HTTP hops | avg | literal-only target or failed resolution → unknown |
 | `http.tcp_ms` | ms | TCP connect phase | avg | no connection attempt → unknown |
 | `http.tls_ms` | ms | TLS handshake; plain HTTP = 0 | avg | non-HTTPS → unknown/0 |
 | `http.ttfb_ms` | ms | final HTTP request fully written to first response byte (excluding prior DNS/TCP/TLS and redirect hops) | avg | no response → unknown |

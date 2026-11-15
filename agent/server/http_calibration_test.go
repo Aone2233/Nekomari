@@ -1,11 +1,69 @@
 package server
 
 import (
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 )
+
+func TestHTTPProbeDNSPhaseRequiresSuccessfulResolution(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolve := func(host, _ string) (string, error) {
+		time.Sleep(30 * time.Millisecond)
+		return "127.0.0.1", nil
+	}
+	out := httpProbeWithResolver("http://example.test:"+port, time.Second, "", true, "", resolve)
+	if out.err != nil || out.obs == nil || out.obs.DNSUS == nil || *out.obs.DNSUS < 25000 {
+		t.Fatalf("successful delayed resolution not measured: %+v", out)
+	}
+	failed := httpProbeWithResolver("http://example.test:"+port, time.Second, "", true, "", func(string, string) (string, error) {
+		return "", errors.New("resolution failed")
+	})
+	if failed.err == nil || failed.obs == nil || failed.obs.DNSUS != nil || failed.obs.TCPUS != nil {
+		t.Fatalf("failed resolution reported a phase duration: %+v", failed)
+	}
+}
+
+func TestHTTPProbeLiteralAddressHasNoDNSPhase(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	out := httpProbe(server.URL, time.Second, "", true)
+	if out.err != nil || out.obs == nil || out.obs.DNSUS != nil || out.obs.TCPUS == nil {
+		t.Fatalf("literal address has unexpected phases: %+v", out)
+	}
+}
+
+func TestHTTPProbeDNSFailureOnRedirectDoesNotReportPartialSum(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://missing.test/", http.StatusFound)
+	}))
+	defer server.Close()
+	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := httpProbeWithResolver("http://first.test:"+port, time.Second, "", true, "", func(host, _ string) (string, error) {
+		if host == "first.test" {
+			return "127.0.0.1", nil
+		}
+		return "", errors.New("resolution failed")
+	})
+	if out.err == nil || out.obs == nil || out.obs.DNSUS != nil {
+		t.Fatalf("redirect failure reported a partial DNS sum: %+v", out)
+	}
+}
 
 // HTTP TTFB calibration: a server that waits before writing the response
 // should be observed within the v1.8 phase tolerance. This catches a phase

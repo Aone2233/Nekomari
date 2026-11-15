@@ -403,6 +403,10 @@ func httpProbe(target string, timeout time.Duration, expectedStatus string, stat
 }
 
 func httpProbePreference(target string, timeout time.Duration, expectedStatus string, statusAware bool, preference string) httpProbeOutcome {
+	return httpProbeWithResolver(target, timeout, expectedStatus, statusAware, preference, resolveIPPreference)
+}
+
+func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus string, statusAware bool, preference string, resolve func(string, string) (string, error)) httpProbeOutcome {
 	if strings.Contains(target, ":") && !strings.Contains(target, "[") {
 		if ip := net.ParseIP(target); ip != nil && ip.To4() == nil {
 			target = "[" + target + "]"
@@ -414,6 +418,7 @@ func httpProbePreference(target string, timeout time.Duration, expectedStatus st
 
 	var phaseMu sync.Mutex
 	var dnsUS, tcpUS int64
+	var dnsSet, dnsFailed bool
 	var tcpSet bool
 	var firstFamily string
 	transport := &http.Transport{
@@ -424,10 +429,17 @@ func httpProbePreference(target string, timeout time.Duration, expectedStatus st
 				return nil, err
 			}
 			dnsStart := time.Now()
-			ip, err := resolveIPPreference(host, preference)
+			ip, err := resolve(host, preference)
 			dnsElapsed := time.Since(dnsStart).Microseconds()
 			phaseMu.Lock()
-			dnsUS += dnsElapsed
+			if net.ParseIP(host) == nil {
+				if err != nil {
+					dnsFailed = true
+				} else {
+					dnsUS += dnsElapsed
+					dnsSet = true
+				}
+			}
 			if firstFamily == "" {
 				firstFamily = addressFamilyOf(ip)
 			}
@@ -514,11 +526,15 @@ func httpProbePreference(target string, timeout time.Duration, expectedStatus st
 	family := firstFamily
 	tcpKnown := tcpSet
 	wasConnected := connected
-	dnsValue, tcpValue, tlsValue, ttfbValue, hasTTFB := dnsUS, tcpUS, tlsUS, ttfbUS, ttfbSet
+	dnsValue, dnsKnown := dnsUS, dnsSet && !dnsFailed
+	tcpValue, tlsValue, ttfbValue, hasTTFB := tcpUS, tlsUS, ttfbUS, ttfbSet
 	phaseMu.Unlock()
 	out := httpProbeOutcome{totalUS: totalUS, family: family, reachable: wasConnected}
 	obs := &v2.HTTPProbeReport{
-		DNSUS: &dnsValue, TotalUS: &totalUS, Redirects: &redirects,
+		TotalUS: &totalUS, Redirects: &redirects,
+	}
+	if dnsKnown {
+		obs.DNSUS = &dnsValue
 	}
 	if tcpKnown {
 		obs.TCPUS = &tcpValue

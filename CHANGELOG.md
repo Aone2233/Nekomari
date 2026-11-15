@@ -18,8 +18,10 @@ Nekomari's own.
 - Honor ordinary probe IP preference; reject advanced options on pinned tasks,
   whose separate protocol cannot execute them. Older Agents can ignore options.
 - Measure HTTP TTFB from request write and report completed connection status
-  separately from response success. Local probe setup failures report unknown
-  rather than packet loss on a compatible Panel; recent reasons are inspectable.
+  separately from response success. HTTP probes omit DNS phase timing when no
+  hostname was resolved or a lookup failed. Local probe setup failures report
+  unknown rather than packet loss on a compatible Panel; recent reasons are
+  inspectable.
 - Refresh quality-page ages and expose failures; forecast read errors no longer
   appear as empty zero-risk results. See `docs/V1.8.1-CURRENT-STATUS.md` for
   pending real-world acceptance and release policy.
