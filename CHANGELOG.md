@@ -35,7 +35,9 @@ Nekomari's own.
   unknown rather than packet loss on a compatible Panel; recent reasons are
   inspectable. HTTP deadlines reached while DNS is still pending are also
   classified as unknown, including after a redirect; a late DNS answer no
-  longer starts a new TCP connection after the request has ended.
+  longer starts a new TCP connection after the request has ended. If the
+  final redirect target cannot resolve, an earlier TCP connection no longer
+  fabricates a final-hop reachability result.
 - Refresh quality-page ages and expose failures; forecast read errors no longer
   appear as empty zero-risk results. See `docs/V1.8.1-CURRENT-STATUS.md` for
   pending real-world acceptance and release policy.

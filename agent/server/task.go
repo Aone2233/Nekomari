@@ -428,6 +428,7 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 	var dnsSet, dnsFailed bool
 	var dnsPending int
 	var tcpSet bool
+	var currentTCPSet bool
 	var firstFamily string
 	probeCtx, cancelProbe := context.WithTimeout(context.Background(), timeout)
 	defer cancelProbe()
@@ -477,6 +478,7 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 			phaseMu.Lock()
 			tcpUS += tcpElapsed
 			tcpSet = true
+			currentTCPSet = true
 			phaseMu.Unlock()
 			return conn, err
 		},
@@ -505,6 +507,7 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 		GetConn: func(string) {
 			phaseMu.Lock()
 			connected = false
+			currentTCPSet = false
 			tlsStart = time.Time{}
 			tlsSet = false
 			requestWritten = time.Time{}
@@ -550,6 +553,7 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 	phaseMu.Lock()
 	family := firstFamily
 	tcpKnown := tcpSet
+	currentTCPKnown := currentTCPSet
 	wasConnected := connected
 	dnsInProgress := dnsPending > 0
 	dnsValue, dnsKnown := dnsUS, dnsSet && !dnsFailed && dnsPending == 0
@@ -587,7 +591,7 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 		if !statusAware && !available {
 			out.err = errors.New("http status not ok")
 		}
-	} else if tcpKnown {
+	} else if currentTCPKnown {
 		obs.Reachable = &out.reachable
 	}
 	out.obs = obs

@@ -74,6 +74,9 @@ func TestHTTPProbeDNSFailureOnRedirectDoesNotReportPartialSum(t *testing.T) {
 	if out.err == nil || out.obs == nil || out.obs.DNSUS != nil {
 		t.Fatalf("redirect failure reported a partial DNS sum: %+v", out)
 	}
+	if out.obs.Reachable != nil {
+		t.Fatalf("redirect DNS failure attributed earlier connection to final reachability: %+v", out.obs)
+	}
 }
 
 func TestHTTPProbeDNSTimeoutOnRedirectDoesNotReportPartialSum(t *testing.T) {
@@ -99,6 +102,9 @@ func TestHTTPProbeDNSTimeoutOnRedirectDoesNotReportPartialSum(t *testing.T) {
 	}
 	if reason := unavailableReason(out.err); reason != "dns_failure" {
 		t.Fatalf("redirect DNS timeout reason = %q, outcome=%+v", reason, out)
+	}
+	if out.obs.Reachable != nil {
+		t.Fatalf("redirect DNS timeout attributed earlier connection to final reachability: %+v", out.obs)
 	}
 }
 
