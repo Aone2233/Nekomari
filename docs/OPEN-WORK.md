@@ -123,8 +123,10 @@ Remaining acceptance and operational limits:
   [theme record](./V1.8.1-THEME-SMOKE.md).
   The locked btop-terminal theme displayed the synthetic node offline and
   zero-valued on both Panels. Its `/api/clients` socket sent no request in a
-  focused capture, while a separate `get` control returned the fixture report;
-  further protocol controls and limitations are in the same theme record.
+  focused capture, while a separate `get` control returned the fixture report.
+  The offline display also reproduced with a continuously reporting real Agent
+  while a separate request reported it online on both Panels; further protocol
+  controls and limitations are in the same theme record.
   The candidate Agent also omits HTTP DNS duration for literal-only targets
   and failed lookups rather than recording resolution overhead as a successful
   DNS measurement. It also omits TLS duration for a failed final handshake or
