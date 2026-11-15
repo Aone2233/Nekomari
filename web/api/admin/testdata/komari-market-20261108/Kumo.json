@@ -1,0 +1,169 @@
+{
+  "name": "Kumo for Komari",
+  "short": "Kumo",
+  "description": "一个基于 Cloudflare Kumo 设计系统构建的简洁响应式 Komari 监控主题。",
+  "author": "Yuanhhs",
+  "url": "https://github.com/yuanhhs/komari-theme-kumo",
+  "preview": "preview.png",
+  "configuration": {
+    "type": "managed",
+    "icon": "Settings",
+    "name": {
+      "zh-CN": "Kumo 主题设置",
+      "en": "Kumo Theme"
+    },
+    "data": [
+      {
+        "type": "title",
+        "name": {
+          "zh-CN": "外观",
+          "en": "Appearance"
+        }
+      },
+      {
+        "key": "defaultAppearance",
+        "type": "select",
+        "options": "system,light,dark",
+        "default": "system",
+        "name": {
+          "zh-CN": "默认外观",
+          "en": "Default appearance"
+        },
+        "help": {
+          "zh-CN": "访客首次访问时的明暗模式",
+          "en": "Light/dark mode for first-time visitors"
+        }
+      },
+      {
+        "key": "defaultView",
+        "type": "select",
+        "options": "grid,list",
+        "default": "grid",
+        "name": {
+          "zh-CN": "默认视图",
+          "en": "Default view"
+        }
+      },
+      {
+        "key": "defaultColumns",
+        "type": "select",
+        "options": "4,5",
+        "default": "4",
+        "name": {
+          "zh-CN": "默认每行列数",
+          "en": "Default columns"
+        },
+        "help": {
+          "zh-CN": "网格视图宽屏下每行卡片数",
+          "en": "Cards per row in grid view on wide screens"
+        }
+      },
+      {
+        "key": "cardStyle",
+        "type": "select",
+        "options": "solid,glass",
+        "default": "solid",
+        "name": {
+          "zh-CN": "界面质感",
+          "en": "Surface style"
+        },
+        "help": {
+          "zh-CN": "实心或毛玻璃主题（卡片、页头、弹窗、控件半透明 + 背景模糊）",
+          "en": "Solid or glass theme for cards, header, dialogs, and controls"
+        }
+      },
+      {
+        "key": "defaultAccent",
+        "type": "select",
+        "options": "default,blue,violet,emerald,rose,cyan",
+        "default": "default",
+        "name": {
+          "zh-CN": "主题色",
+          "en": "Accent color"
+        }
+      },
+      {
+        "key": "defaultLang",
+        "type": "select",
+        "options": "zh-CN,en",
+        "default": "zh-CN",
+        "name": {
+          "zh-CN": "默认语言",
+          "en": "Default language"
+        }
+      },
+      {
+        "type": "title",
+        "name": {
+          "zh-CN": "显示",
+          "en": "Display"
+        }
+      },
+      {
+        "key": "enableGroupTabs",
+        "type": "switch",
+        "default": true,
+        "name": {
+          "zh-CN": "显示分组筛选",
+          "en": "Show group filter"
+        }
+      },
+      {
+        "key": "overviewVisibility",
+        "type": "select",
+        "options": "show,hide",
+        "default": "show",
+        "name": {
+          "zh-CN": "总览信息",
+          "en": "Overview info"
+        }
+      },
+      {
+        "key": "backgroundUrl",
+        "type": "string",
+        "default": "",
+        "name": {
+          "zh-CN": "背景图 URL",
+          "en": "Background image URL"
+        }
+      },
+      {
+        "key": "backgroundVideoUrl",
+        "type": "string",
+        "default": "",
+        "name": {
+          "zh-CN": "动态壁纸 URL",
+          "en": "Video wallpaper URL"
+        },
+        "help": {
+          "zh-CN": "支持 mp4、webm、ogg 视频直链；留空则使用背景图",
+          "en": "Supports direct mp4, webm, or ogg video links; leave empty to use the image background"
+        }
+      },
+      {
+        "key": "backgroundBrightness",
+        "type": "select",
+        "options": "20,40,60,80,100",
+        "default": "100",
+        "name": {
+          "zh-CN": "背景亮度",
+          "en": "Background brightness"
+        }
+      },
+      {
+        "key": "footerNote",
+        "type": "richtext",
+        "default": "",
+        "name": {
+          "zh-CN": "页脚备注 (HTML)",
+          "en": "Footer note (HTML)"
+        },
+        "help": {
+          "zh-CN": "显示在“Powered by Komari Monitor.”上方",
+          "en": "Shown above the Powered-by line"
+        }
+      }
+    ]
+  },
+  "version": "1.3.2"
+}

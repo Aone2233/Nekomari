@@ -1,0 +1,9 @@
+{
+  "name": "ServerSentry Komari",
+  "short": "ServerSentry",
+  "description": "基于 Next.js 的现代化服务器监控主题",
+  "version": "1.0.4",
+  "author": "Asahina1096",
+  "url": "https://github.com/Asahina1096/ServerSentry-Komari",
+  "preview": "preview.png"
+}

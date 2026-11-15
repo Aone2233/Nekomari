@@ -1,0 +1,225 @@
+{
+  "name": "StatusWall 状态墙",
+  "short": "StatusWall",
+  "description": "为小机群设计的 Komari 状态墙：Solarized 玻璃卡片，一屏看全每台机器的 CPU / 内存 / 硬盘、流量与配额、三网延迟丢包状态条、价格与剩余价值，没有地图和地球。A Solarized glass status wall for small Komari fleets: every metric on the card, three-network ping status strips, no maps.",
+  "version": "2.6.3",
+  "author": "0xoo",
+  "url": "https://github.com/Tron521/komari-theme-statuswall",
+  "preview": "preview.png",
+  "configuration": {
+    "type": "managed",
+    "icon": "/themes/StatusWall/dist/assets/favicon.svg",
+    "name": {
+      "zh-CN": "状态墙设置",
+      "en": "StatusWall settings"
+    },
+    "data": [
+      {
+        "type": "title",
+        "name": {
+          "zh-CN": "实时与历史",
+          "en": "Live & history"
+        }
+      },
+      {
+        "key": "refreshInterval",
+        "name": {
+          "zh-CN": "实时刷新间隔（秒）",
+          "en": "Live refresh interval (s)"
+        },
+        "type": "number",
+        "default": 3,
+        "help": {
+          "zh-CN": "通过 /api/clients WebSocket 拉取实时数据的间隔，2–30 秒。",
+          "en": "Interval for pulling live data over the /api/clients WebSocket, 2–30s."
+        }
+      },
+      {
+        "key": "historyHours",
+        "name": {
+          "zh-CN": "波形历史窗口（小时）",
+          "en": "Trace history window (hours)"
+        },
+        "type": "select",
+        "options": "1,2,3,6",
+        "default": "2",
+        "help": {
+          "zh-CN": "波形带与三网走势覆盖的时间范围，窗口越长单次请求的数据量越大。",
+          "en": "Time span of the trace band and ping trend; longer windows fetch more data."
+        }
+      },
+      {
+        "key": "showTrace",
+        "name": {
+          "zh-CN": "显示详情趋势图",
+          "en": "Show detail trend charts"
+        },
+        "type": "switch",
+        "default": true,
+        "help": {
+          "zh-CN": "展开卡片后的四张逐小时趋势图（CPU、内存、硬盘、网络）。关闭后详情只列数字。",
+          "en": "The four hourly charts (CPU, memory, disk, network) in the expanded card. Turn off to list numbers only."
+        }
+      },
+      {
+        "key": "warnThreshold",
+        "name": {
+          "zh-CN": "高负载预警阈值（%）",
+          "en": "High-load warning threshold (%)"
+        },
+        "type": "number",
+        "default": 85,
+        "help": {
+          "zh-CN": "CPU、内存、硬盘或流量使用率达到该值时标黄，达到 95% 标红。",
+          "en": "CPU, memory, disk or traffic turns amber at this value and red at 95%."
+        }
+      },
+      {
+        "type": "title",
+        "name": {
+          "zh-CN": "显示范围",
+          "en": "What to show"
+        }
+      },
+      {
+        "key": "hiddenNodes",
+        "name": {
+          "zh-CN": "隐藏的机器",
+          "en": "Hidden nodes"
+        },
+        "type": "string",
+        "default": "",
+        "help": {
+          "zh-CN": "填机器名或 UUID，多个用逗号 / 空格 / 分号分隔，例如 node-a, 8acf。UUID 可以只写前 4 位（后台机器列表里能看到），大小写不敏感；名字里带空格时请用逗号分隔（如 my server, node-a），只写名字会把同名的都隐藏。被隐藏的机器不显示卡片，也不计入汇总、提醒与页脚统计。",
+          "en": "Node name or UUID, separated by comma / space / semicolon, e.g. node-a, 8acf. A 4-char UUID prefix is enough (see the UUID in the admin node list); case-insensitive. Separate names that contain spaces with commas (e.g. my server, node-a); a plain name hides every node with that name. Hidden nodes show no card and are excluded from totals, alerts and the footer."
+        }
+      },
+      {
+        "key": "offlineLast",
+        "name": {
+          "zh-CN": "离线机器排最后",
+          "en": "Offline nodes last"
+        },
+        "type": "switch",
+        "default": false,
+        "help": {
+          "zh-CN": "开启后，离线机器永远排在在线机器后面（置顶的机器仍最前）；离线状态变化时卡片会平滑换位。",
+          "en": "When on, offline nodes always sort after online ones (pinned nodes still come first); cards reorder smoothly when a node goes offline."
+        }
+      },
+      {
+        "type": "title",
+        "name": {
+          "zh-CN": "页脚",
+          "en": "Footer"
+        }
+      },
+      {
+        "key": "icpText",
+        "name": {
+          "zh-CN": "备案号 / 页脚文字",
+          "en": "ICP / footer text"
+        },
+        "type": "string",
+        "default": "",
+        "help": {
+          "zh-CN": "显示在页脚最后，适合放 ICP 备案号或一行说明（最多 80 字）。留空就不显示。",
+          "en": "Shown at the end of the footer, e.g. an ICP filing number or a short note (max 80 chars). Leave empty to hide."
+        }
+      },
+      {
+        "key": "icpUrl",
+        "name": {
+          "zh-CN": "备案链接（可选）",
+          "en": "ICP link (optional)"
+        },
+        "type": "string",
+        "default": "",
+        "help": {
+          "zh-CN": "只接受 http(s) 链接；填写后备案文字变成新标签页打开的链接，留空则只显示纯文字。",
+          "en": "http(s) only. When set, the footer text becomes a link that opens in a new tab; empty renders plain text."
+        }
+      },
+      {
+        "type": "title",
+        "name": {
+          "zh-CN": "外观",
+          "en": "Appearance"
+        }
+      },
+      {
+        "key": "colorMode",
+        "name": {
+          "zh-CN": "配色模式",
+          "en": "Colour mode"
+        },
+        "type": "select",
+        "options": "auto,light,dark",
+        "default": "auto",
+        "help": {
+          "zh-CN": "auto 跟随系统；light 为 Solarized Light 暖色；dark 为 Solarized Dark。页面右上角也有切换按钮。",
+          "en": "auto follows the system; light is Solarized Light; dark is Solarized Dark. A toggle also sits in the top-right corner."
+        }
+      },
+      {
+        "key": "showAdmin",
+        "name": {
+          "zh-CN": "显示后台入口",
+          "en": "Show admin button"
+        },
+        "type": "switch",
+        "default": true,
+        "help": {
+          "zh-CN": "顶栏右侧的「登录 / 后台」按钮，指向 /admin。关闭后访客看不到入口，直接访问 /admin 仍可登录。",
+          "en": "The Login / Admin button in the header, linking to /admin. Turning it off only hides the button; /admin still works."
+        }
+      },
+      {
+        "type": "title",
+        "name": {
+          "zh-CN": "财务换算",
+          "en": "Currency"
+        }
+      },
+      {
+        "key": "showFinance",
+        "name": {
+          "zh-CN": "显示价格、成本与剩余价值",
+          "en": "Show price, cost and remaining value"
+        },
+        "type": "switch",
+        "default": true,
+        "help": {
+          "zh-CN": "关闭后页面不出现任何金额，适合公开站点。",
+          "en": "Hide all amounts, useful for a public site."
+        }
+      },
+      {
+        "key": "usdCny",
+        "name": {
+          "zh-CN": "美元汇率（1 美元 = ? 人民币）",
+          "en": "USD rate (1 USD = ? CNY)"
+        },
+        "type": "number",
+        "default": 7.1,
+        "help": {
+          "zh-CN": "汇总月成本与剩余价值时把美元价格折算成人民币，行内仍显示原币种。",
+          "en": "Used to convert USD prices for the CNY totals; rows keep their original currency."
+        }
+      },
+      {
+        "key": "eurCny",
+        "name": {
+          "zh-CN": "欧元汇率（1 欧元 = ? 人民币）",
+          "en": "EUR rate (1 EUR = ? CNY)"
+        },
+        "type": "number",
+        "default": 8.0,
+        "help": {
+          "zh-CN": "汇总时把欧元价格折算成人民币。",
+          "en": "Used to convert EUR prices for the CNY totals."
+        }
+      }
+    ]
+  }
+}

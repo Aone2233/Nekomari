@@ -185,13 +185,14 @@ registry.RegisterNativeModule("node:path", loader)
 | timers | `部分实现` | timeout、interval、immediate 及 clear。 |
 | Fetch API | `部分实现` | `fetch` 及常用请求、响应、body、表单和取消对象。全部 body 都在内存中缓冲。 |
 | XHR | `部分实现` | 异步与同步请求、状态、响应头、超时、取消和常用响应类型。 |
+| `URL`、`URLSearchParams` | `可用` | 与 `url` 模块使用相同的构造函数。 |
 | `buffer`、`url`、`util` 模块 | `部分实现` | 来自固定版本的 `goja_nodejs`。 |
 
 ### `NodeJS: true` 时额外注入
 
 全局变量：`Buffer`、`process`、`global`、`__dirname`、`__filename`。
 
-模块：`events`、`path`、`os`、`process`、`fs`、`child_process`、`net`、`http`、`stream`（含 `stream/promises`）、`crypto`。
+模块：`events`、`path`、`os`、`process`、`fs`、`child_process`、`net`、`tls`、`http`、`stream`（含 `stream/promises`）、`crypto`。
 这些模块同时支持 `require("name")` 和 `require("node:name")`。
 
 `__filename` 是合成的 `<runtime cwd>/script.js`，顶层脚本本身不是 CommonJS wrapper，
@@ -365,7 +366,7 @@ const value = Buffer.from("komari").toString("hex");
 | `domainToASCII/domainToUnicode` | `可用` |
 | 旧式 `parse/format/resolve/resolveObject/urlToHttpOptions` | `未实现` |
 
-`URL` 和 `URLSearchParams` 不会自动成为全局变量，应从模块取得：
+`URL` 和 `URLSearchParams` 作为全局变量提供，也可从模块取得：
 
 ```js
 const { URL, URLSearchParams } = require("node:url");
@@ -734,9 +735,16 @@ function runCommand() {
 }
 ```
 
+### `tls`
+
+`tls` 和 `node:tls` 提供客户端 `connect/createConnection`，支持直接 TLS 和
+已有 TCP socket 上的 STARTTLS，使用系统证书根及主机名验证，也可通过 `ca`
+传入 PEM 根证书。实现限于 options 对象形式和常用 socket 事件与方法；不是完整
+Node TLS API，不提供 TLS server 或关闭证书验证的选项。升级后不能再使用原 socket。
+
 ### `net`
 
-只实现 TCP；不支持 Unix socket、Windows named pipe、UDP 或 TLS。
+只实现 TCP；不支持 Unix socket、Windows named pipe 或 UDP。TLS 客户端见下文。
 
 | 对象 | 可用成员 | 状态 |
 | --- | --- | --- |
@@ -1026,7 +1034,7 @@ const valid = crypto.createVerify("sha256").update(data).verify(publicKeyPem, si
 | 浏览器 DOM | `window`、`document`、DOM node、`navigator`、`location`、storage、canvas。 |
 | 浏览器网络 | `WebSocket`、`EventSource`、Service Worker、完整 Streams、WebRTC、WebCrypto。 |
 | 模块系统 | ESM `import/export`、动态 `import()`、顶层 CommonJS `module/exports`，以及 `require.resolve/cache/extensions/main`。 |
-| Node 核心模块 | `https`、`tls`、`dns`、`dgram`、`zlib`、`worker_threads`、`cluster`、`readline`、`assert` 等。 |
+| Node 核心模块 | `https`、`dns`、`dgram`、`zlib`、`worker_threads`、`cluster`、`readline`、`assert` 等。 |
 | 完整 fs | watcher、opendir、cp、link、statfs 和完整 FileHandle。 |
 | 完整 net/http | Unix/pipe/TLS、构造器族、真实 backpressure、Agent 池、upgrade/trailer。 |
 | timer handle | `ref/unref/refresh/hasRef`。 |

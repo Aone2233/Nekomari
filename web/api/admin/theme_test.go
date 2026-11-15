@@ -2,12 +2,59 @@ package admin
 
 import (
 	"archive/zip"
+	"encoding/json"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/Aone2233/nekomari/database/models"
+	"github.com/gin-gonic/gin"
 )
+
+func TestListThemesOnlyListsInstalledDirectories(t *testing.T) {
+	workDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(workDir) })
+
+	for dir, short := range map[string]string{
+		"emerald-insights": "emerald-insights",
+		".emerald-stage":   "emerald-insights",
+		"renamed-copy":     "emerald-insights",
+		"SAO-Nekomari":     "SAO-Nekomari",
+	} {
+		path := filepath.Join("data", "theme", dir)
+		if err := os.MkdirAll(path, 0755); err != nil {
+			t.Fatal(err)
+		}
+		manifest, _ := json.Marshal(map[string]string{"name": dir, "short": short})
+		if err := os.WriteFile(filepath.Join(path, "komari-theme.json"), manifest, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	response := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(response)
+	ListThemes(ctx)
+	var result struct {
+		Data []models.Theme `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]int{}
+	for _, theme := range result.Data {
+		seen[theme.Short]++
+	}
+	if response.Code != 200 || seen["emerald-insights"] != 1 || seen["SAO-Nekomari"] != 1 || seen["renamed-copy"] != 0 {
+		t.Fatalf("unexpected theme list: status=%d shorts=%v", response.Code, seen)
+	}
+}
 
 // TestIsValidThemeShort_PathTraversal 防止 DeleteTheme/UpdateTheme/SetTheme
 // 的路径穿越漏洞：req.Short 直接进入 filepath.Join("./data/theme", short)，
@@ -129,5 +176,103 @@ func TestPeekThemeFromZipAcceptsLocalizedMetadata(t *testing.T) {
 	}
 	if installed.Short != "localized-theme" {
 		t.Fatalf("installed short = %q, want localized-theme", installed.Short)
+	}
+}
+
+// Some marketplace archives have no Unix permission metadata. Their files
+// must still be readable and writable by the panel on subsequent installs.
+func TestThemeInstallWithoutUnixModes(t *testing.T) {
+	zipPath := filepath.Join(t.TempDir(), "theme.zip")
+	f, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(f)
+	for name, value := range map[string]string{"komari-theme.json": `{"name":"Mode test","short":"mode-test","version":"1.0.0"}`, "dist/index.html": "hello"} {
+		h := &zip.FileHeader{Name: name, Method: zip.Deflate}
+		h.CreatorVersion = 0
+		entry, err := w.CreateHeader(h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = entry.Write([]byte(value)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
+	if _, err = extractAndValidateTheme(zipPath); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat("data/theme/mode-test/dist/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0600 != 0600 {
+		t.Fatalf("installed file mode %v", info.Mode())
+	}
+	if _, err = extractAndValidateTheme(zipPath); err != nil {
+		t.Fatalf("reinstall: %v", err)
+	}
+}
+
+func TestThemeInstallFailurePreservesExistingTheme(t *testing.T) {
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(old) })
+	if err := os.MkdirAll("data/theme/example", 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("data/theme/example/index.html", []byte("original"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	zipPath := filepath.Join(t.TempDir(), "bad.zip")
+	f, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(f)
+	for _, item := range [][2]string{{"komari-theme.json", `{"name":"Example","short":"example"}`}, {"index.html", "replacement"}, {"../escape", "bad"}} {
+		entry, err := w.Create(item[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := entry.Write([]byte(item[1])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := extractAndValidateTheme(zipPath); err == nil {
+		t.Fatal("expected invalid archive to fail")
+	}
+	data, err := os.ReadFile("data/theme/example/index.html")
+	if err != nil || string(data) != "original" {
+		t.Fatalf("existing theme changed after failure: %q, %v", data, err)
+	}
+	entries, err := os.ReadDir("data/theme")
+	if err != nil || len(entries) != 1 || entries[0].Name() != "example" {
+		t.Fatalf("temporary install files remain: %v, %v", entries, err)
 	}
 }

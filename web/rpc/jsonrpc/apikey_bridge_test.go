@@ -31,3 +31,17 @@ func TestLocalizedAPIKeyBridgePreservesLegacyErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestBridgeOnlyExposesTypedCommittedMutation(t *testing.T) {
+	for _, render := range []renderKind{renderStandard, renderFlat, renderRaw} {
+		writer := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(writer)
+		jerr := rpc.MakeCommittedError(rpc.Unavailable, "saved", "ping_create_schedule_pending", 27)
+		renderResponse(c, &bindConfig{render: render}, jerr.Response())
+		var body map[string]any
+		if json.Unmarshal(writer.Body.Bytes(), &body) != nil || writer.Code != http.StatusServiceUnavailable ||
+			body["committed"] != true || body["task_id"] != float64(27) || body["error_key"] != "ping_create_schedule_pending" || body["data"] != nil {
+			t.Fatalf("committed outcome not preserved: %d %s", writer.Code, writer.Body)
+		}
+	}
+}

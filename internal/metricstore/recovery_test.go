@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/pkg/metric"
 	"gorm.io/driver/sqlite"
@@ -20,6 +21,9 @@ func prepareRecoveryTest(t *testing.T) {
 		t.Fatalf("open config db: %v", err)
 	}
 	config.SetDb(configDB)
+	if err := configDB.AutoMigrate(&models.PingTask{}, &models.PingTaskDeletion{}); err != nil {
+		t.Fatal(err)
+	}
 
 	storeInitMu.Lock()
 	storeMigMu.Lock()
@@ -44,6 +48,19 @@ func prepareRecoveryTest(t *testing.T) {
 		storeFingerprint = previousFingerprint
 		storeMu.Unlock()
 	})
+}
+
+// Register store cleanup after TempDir's cleanup so Windows can remove the
+// SQLite file after its connections have actually closed.
+func recoveryStorePath(t *testing.T, name string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	t.Cleanup(func() {
+		if err := CloseStoreContext(context.Background()); err != nil {
+			t.Errorf("close recovery test store: %v", err)
+		}
+	})
+	return path
 }
 
 func TestRecoverStoreFailureKeepsCurrentConfig(t *testing.T) {

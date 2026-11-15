@@ -9,7 +9,9 @@ import (
 	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/internal/configxport"
+	"github.com/Aone2233/nekomari/internal/metricstore"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
@@ -161,8 +163,86 @@ func TestExportCarriesNoCredentialByDefault(t *testing.T) {
 	}
 }
 
+func TestConfigurationExportTreatsUnreviewedSettingsAsSensitive(t *testing.T) {
+	db := isolatedImportDB(t)
+	const (
+		dsn         = "postgres://fixture-user:fixture-db-password@localhost/metrics"
+		discovery   = "fixture-autodiscovery-secret"
+		unreviewed  = "fixture-unreviewed-secret"
+		malformed   = "fixture-nested-secret"
+		safeName    = "fixture-panel"
+		safeComment = "safe-ordinary-description"
+	)
+	values := map[string]any{
+		metricstore.MetricDBDSNKey:     dsn,
+		metricstore.MigrationTargetKey: "postgresql|" + dsn,
+		config.AutoDiscoveryKeyKey:     discovery,
+		"unreviewed_setting":           map[string]any{"credential": unreviewed},
+		config.SitenameKey:             safeName,
+		config.DescriptionKey:          safeComment,
+		// Even a reviewed key must have the expected scalar type.
+		config.ThemeKey: map[string]any{"credential": malformed},
+	}
+	for key, value := range values {
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Create(&config.ConfigItem{Key: key, Value: string(encoded)}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, includeSecrets := range []bool{false, true} {
+		document, err := configxport.Export(exportStore{db: db}, includeSecrets, "test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(document)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, secret := range []string{dsn, discovery, unreviewed, malformed} {
+			if strings.Contains(string(encoded), secret) != includeSecrets {
+				t.Errorf("sensitive value presence differs from secrets_included=%v", includeSecrets)
+			}
+		}
+		if document.Settings[config.SitenameKey] != safeName || document.Settings[config.DescriptionKey] != safeComment {
+			t.Fatal("ordinary settings were lost")
+		}
+		for _, key := range []string{metricstore.MetricDBDSNKey, metricstore.MigrationTargetKey, config.AutoDiscoveryKeyKey, "unreviewed_setting", config.ThemeKey} {
+			_, present := document.Settings[key]
+			if present != includeSecrets {
+				t.Errorf("key %q presence=%v, secrets_included=%v", key, present, includeSecrets)
+			}
+		}
+	}
+}
+
+func TestImportAndPreviewRejectRequestsWithoutOriginalJSON(t *testing.T) {
+	seedConfig(t)
+	db := dbcore.GetDBInstance()
+	var original models.Client
+	if err := db.First(&original).Error; err != nil {
+		t.Fatal(err)
+	}
+	document := map[string]any{"schema_version": 1,
+		"clients":    []map[string]any{{"uuid": original.UUID, "name": "must-not-apply"}},
+		"ping_tasks": []map[string]any{{"id": 123, "target_family": "ipv6"}}}
+	for _, handler := range []rpc.Handler{adminPlanConfigImport, adminImportConfig} {
+		result, err := handler(t.Context(), &rpc.JsonRpcRequest{Params: map[string]any{"document": document}})
+		if result != nil || err == nil || err.Code != rpc.InvalidParams {
+			t.Fatalf("unexpected import response: %#v %+v", result, err)
+		}
+	}
+	var after models.Client
+	if err := db.Take(&after, "uuid = ?", original.UUID).Error; err != nil || after.Name != original.Name || after.Token != original.Token {
+		t.Fatalf("disabled import changed node: %+v, %v", after, err)
+	}
+}
+
 // The three criteria in one pass, because they are the same operation seen three ways.
 func TestDryRunMatchesTheImportAndASecondImportChangesNothing(t *testing.T) {
+	t.Skip("configuration import and preview are disabled pending a safe transactional importer")
 	seedConfig(t)
 	document := exportConfig(t, false)
 
@@ -194,6 +274,7 @@ func TestDryRunMatchesTheImportAndASecondImportChangesNothing(t *testing.T) {
 
 // An edit is applied: a document whose group differs from the panel's updates it, and only it.
 func TestAnImportAppliesAChange(t *testing.T) {
+	t.Skip("configuration import and preview are disabled pending a safe transactional importer")
 	seedConfig(t)
 	document := exportConfig(t, false)
 
@@ -264,6 +345,7 @@ func TestAFutureSchemaIsRefusedByTheRPC(t *testing.T) {
 
 // A node the panel has and the document does not mention is reported and survives the import.
 func TestAnImportDoesNotDeleteANodeTheDocumentOmits(t *testing.T) {
+	t.Skip("configuration import and preview are disabled pending a safe transactional importer")
 	seedConfig(t)
 	document := exportConfig(t, false)
 

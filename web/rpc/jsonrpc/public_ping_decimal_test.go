@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/internal/metricstore"
@@ -162,4 +163,101 @@ func TestPublicPingRecordsReportFractionalMilliseconds(t *testing.T) {
 			t.Fatalf("records %v do not include %v", seen, want)
 		}
 	}
+}
+
+// Marketplace themes request an aggregate without a UUID or task ID. The
+// result must not expose hidden or deleted clients through records or stats.
+func TestPublicPingRecordsAggregateFiltersHiddenClients(t *testing.T) {
+	fixture := seedCommonRecordsFixture(t)
+	result, rpcErr := publicGetPingRecords(guestContext(), &rpc.JsonRpcRequest{Params: map[string]any{"hours": "1"}})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	var response struct {
+		Count   int `json:"count"`
+		Records []struct {
+			Client string `json:"client"`
+		} `json:"records"`
+		Tasks []struct {
+			ID uint `json:"id"`
+		} `json:"tasks"`
+	}
+	if err := json.Unmarshal([]byte(mustMarshalJSON(t, result)), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Count != 2 || len(response.Records) != 2 {
+		t.Fatalf("unexpected aggregate: %s", mustMarshalJSON(t, result))
+	}
+	for _, r := range response.Records {
+		if r.Client != fixture.visible {
+			t.Fatalf("hidden or deleted record leaked: %q", r.Client)
+		}
+	}
+	found := false
+	for _, task := range response.Tasks {
+		if task.ID == fixture.taskID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("task missing from aggregate: %s", mustMarshalJSON(t, result))
+	}
+}
+
+func TestPublicPingRecordsAggregatePreservesSeriesAndTaskStatistics(t *testing.T) {
+	fixture := seedCommonRecordsFixture(t)
+	task := models.PingTask{Name: "second fixture", Clients: models.StringArray{fixture.visible, fixture.hidden}, Type: "tcp", Target: "example.test:80", Interval: 60}
+	db := dbcore.GetDBInstance()
+	if err := db.Create(&task).Error; err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Delete(&models.PingTask{}, task.Id).Error })
+	at := fixture.end.Truncate(time.Minute).Add(-time.Minute)
+	for _, record := range []models.PingRecord{
+		{Client: fixture.visible, TaskId: task.Id, Time: at, Value: 10, PingType: "tcp", Family: "ipv4"},
+		{Client: fixture.visible, TaskId: task.Id, Time: at, Value: 30, PingType: "tcp", Family: "ipv6"},
+		{Client: fixture.visible, TaskId: task.Id, Time: at, Value: -1, PingType: "icmp", Family: "ipv4"},
+		{Client: fixture.hidden, TaskId: task.Id, Time: at, Value: 999, PingType: "tcp", Family: "ipv4"},
+	} {
+		if err := metricstore.WritePingRecord(context.Background(), record); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, rpcErr := publicGetPingRecords(guestContext(), &rpc.JsonRpcRequest{Params: map[string]any{"hours": "1"}})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	var response struct {
+		Records []struct {
+			TaskID   uint   `json:"task_id"`
+			PingType string `json:"ping_type"`
+			Family   string `json:"family"`
+		} `json:"records"`
+		Tasks []struct {
+			ID                  uint `json:"id"`
+			Total               int  `json:"total"`
+			Loss, Min, Max, Avg float64
+		} `json:"tasks"`
+	}
+	if err := json.Unmarshal([]byte(mustMarshalJSON(t, result)), &response); err != nil {
+		t.Fatal(err)
+	}
+	series := map[string]bool{}
+	for _, record := range response.Records {
+		if record.TaskID == task.Id {
+			series[record.PingType+"/"+record.Family] = true
+		}
+	}
+	if len(series) != 3 || !series["tcp/ipv4"] || !series["tcp/ipv6"] || !series["icmp/ipv4"] {
+		t.Fatalf("series lost or merged: %s", mustMarshalJSON(t, result))
+	}
+	for _, got := range response.Tasks {
+		if got.ID == task.Id {
+			if got.Total != 3 || !floatClose(got.Loss, 100.0/3) || got.Min != 10 || got.Max != 30 || got.Avg != 20 {
+				t.Fatalf("wrong task summary: %+v", got)
+			}
+			return
+		}
+	}
+	t.Fatal("second task missing")
 }

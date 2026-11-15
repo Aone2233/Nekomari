@@ -1,0 +1,9 @@
+[Unit]
+Description=Restart system Nekomari Agent if its TLS connection is dead
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PATH=/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/local/sbin/nekomari-agent-watchdog.sh
+TimeoutStartSec=120

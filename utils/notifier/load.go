@@ -1,6 +1,7 @@
 package notifier
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"reflect"
@@ -64,7 +65,7 @@ func (m *LoadNotificationService) Reload(loadNotifications []models.LoadNotifica
 		m.tasks[interval] = tasks
 		if err := scheduler.AddFunc(fmt.Sprintf("load-notification:%d", interval), scheduler.Every(time.Duration(interval)*time.Minute), func() {
 			for _, task := range tasks {
-				go executeLoadNotificationTask(task)
+				StartBackground(func(context.Context) { executeLoadNotificationTask(task) })
 			}
 		}); err != nil {
 			return err
@@ -377,7 +378,7 @@ func sendLoadNotification(clientUUIDs []string, task models.LoadNotification) {
 	for _, uuid := range clientUUIDs {
 		eventClients = append(eventClients, models.Client{UUID: uuid})
 	}
-	go func() {
+	StartBackground(func(context.Context) {
 		if err := messageSender.SendNotification(models.EventMessage{
 			Event:   messageevent.Alert,
 			Clients: eventClients,
@@ -387,7 +388,7 @@ func sendLoadNotification(clientUUIDs []string, task models.LoadNotification) {
 		}); err != nil {
 			logger.Errorf("notifier", "Failed to send load notification for task %d: %v", task.Id, err)
 		}
-	}()
+	})
 }
 
 // updateLastNotified 更新最后通知时间

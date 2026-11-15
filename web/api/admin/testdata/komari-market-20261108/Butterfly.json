@@ -1,0 +1,244 @@
+{
+  "name": "Komari Butterfly",
+  "short": "Butterfly",
+  "description": "A clean WinUI 3 and Mica-inspired Komari monitoring theme with a tonal dark interface, a touch-optimized mobile layout, an interactive node globe, latency distribution, live traffic, favorites, and node details.",
+  "version": "1.5.0",
+  "author": "TomorrowX6",
+  "url": "https://github.com/TomorrowX6/Komari-Butterfly",
+  "preview": "preview.png",
+  "configuration": {
+    "type": "managed",
+    "name": {
+      "zh-CN": "Butterfly 主题设置",
+      "en": "Butterfly Theme Settings",
+      "ja": "Butterfly テーマ設定"
+    },
+    "data": [
+      {
+        "name": {
+          "zh-CN": "外观",
+          "en": "Appearance",
+          "ja": "外観"
+        },
+        "type": "title"
+      },
+      {
+        "key": "color_scheme",
+        "name": {
+          "zh-CN": "默认配色模式",
+          "en": "Default color scheme",
+          "ja": "既定のカラーモード"
+        },
+        "type": "select",
+        "options": "system,light,dark",
+        "default": "system",
+        "help": {
+          "zh-CN": "首次访问时使用的配色。访客仍可在页面内切换。",
+          "en": "Color scheme used on first visit. Visitors can still switch it in the page.",
+          "ja": "初回アクセス時の配色です。ページ上でも切り替えられます。"
+        }
+      },
+      {
+        "key": "accent_color",
+        "name": {
+          "zh-CN": "强调色",
+          "en": "Accent color",
+          "ja": "アクセントカラー"
+        },
+        "type": "select",
+        "options": "indigo,blue,teal,violet,rose",
+        "default": "indigo"
+      },
+      {
+        "key": "density",
+        "name": {
+          "zh-CN": "信息密度",
+          "en": "Information density",
+          "ja": "情報密度"
+        },
+        "type": "select",
+        "options": "comfortable,compact",
+        "default": "comfortable"
+      },
+      {
+        "key": "corner_style",
+        "name": {
+          "zh-CN": "圆角风格",
+          "en": "Corner style",
+          "ja": "角丸スタイル"
+        },
+        "type": "select",
+        "options": "soft,rounded",
+        "default": "soft"
+      },
+      {
+        "key": "background_image",
+        "name": {
+          "zh-CN": "自定义背景图片 URL",
+          "en": "Custom background image URL",
+          "ja": "背景画像 URL"
+        },
+        "type": "string",
+        "default": "",
+        "help": {
+          "zh-CN": "留空时使用内置 Mica 渐变背景。仅接受 HTTP(S) 地址。",
+          "en": "Leave empty to use the built-in Mica gradient. Only HTTP(S) URLs are accepted.",
+          "ja": "空欄の場合は内蔵 Mica グラデーションを使用します。HTTP(S) URL のみ利用できます。"
+        }
+      },
+      {
+        "key": "background_opacity",
+        "name": {
+          "zh-CN": "背景图片可见度",
+          "en": "Background image visibility",
+          "ja": "背景画像の表示度"
+        },
+        "type": "number",
+        "default": 16,
+        "help": {
+          "zh-CN": "0 至 100。数值越高，背景图片越明显。",
+          "en": "0 to 100. Higher values make the image more visible.",
+          "ja": "0〜100。値が大きいほど背景画像が明瞭になります。"
+        }
+      },
+      {
+        "name": {
+          "zh-CN": "面板",
+          "en": "Dashboard",
+          "ja": "ダッシュボード"
+        },
+        "type": "title"
+      },
+      {
+        "key": "show_network_hero",
+        "name": {
+          "zh-CN": "显示全球网络主视觉",
+          "en": "Show global network hero",
+          "ja": "グローバルネットワーク表示"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "show_latency_panel",
+        "name": {
+          "zh-CN": "显示延迟分布",
+          "en": "Show latency distribution",
+          "ja": "遅延分布を表示"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "show_ip_tags",
+        "name": {
+          "zh-CN": "在节点卡片显示 IP 标签",
+          "en": "Show IP tags on node cards",
+          "ja": "ノードカードに IP を表示"
+        },
+        "type": "switch",
+        "default": false,
+        "help": {
+          "zh-CN": "只有 Komari 已向访客公开相应 IP 字段时才会显示。",
+          "en": "Shown only when Komari exposes the corresponding IP fields to visitors.",
+          "ja": "Komari が訪問者に IP 情報を公開している場合のみ表示されます。"
+        }
+      },
+      {
+        "key": "poll_interval",
+        "name": {
+          "zh-CN": "状态刷新间隔（秒）",
+          "en": "Status refresh interval (seconds)",
+          "ja": "状態更新間隔（秒）"
+        },
+        "type": "number",
+        "default": 5,
+        "help": {
+          "zh-CN": "实际值会限制在 3 至 60 秒。",
+          "en": "The effective value is clamped between 3 and 60 seconds.",
+          "ja": "実際の値は 3〜60 秒に制限されます。"
+        }
+      },
+      {
+        "key": "default_sort",
+        "name": {
+          "zh-CN": "默认节点排序",
+          "en": "Default node sorting",
+          "ja": "既定のノード並び順"
+        },
+        "type": "select",
+        "options": "weight,name,latency,traffic",
+        "default": "weight"
+      },
+      {
+        "key": "offline_position",
+        "name": {
+          "zh-CN": "离线节点位置",
+          "en": "Offline node position",
+          "ja": "オフラインノードの位置"
+        },
+        "type": "select",
+        "options": "last,first,keep",
+        "default": "last"
+      },
+      {
+        "name": {
+          "zh-CN": "文字与页脚",
+          "en": "Copy and footer",
+          "ja": "テキストとフッター"
+        },
+        "type": "title"
+      },
+      {
+        "key": "brand_text",
+        "name": {
+          "zh-CN": "品牌文字",
+          "en": "Brand text",
+          "ja": "ブランド名"
+        },
+        "type": "string",
+        "default": "",
+        "help": {
+          "zh-CN": "留空时使用 Komari 站点名称。",
+          "en": "Leave empty to use the Komari site name.",
+          "ja": "空欄の場合は Komari のサイト名を使用します。"
+        }
+      },
+      {
+        "key": "hero_title",
+        "name": {
+          "zh-CN": "主视觉标题",
+          "en": "Hero title",
+          "ja": "ヒーロータイトル"
+        },
+        "type": "string",
+        "default": "Global Network"
+      },
+      {
+        "key": "hero_subtitle",
+        "name": {
+          "zh-CN": "主视觉副标题",
+          "en": "Hero subtitle",
+          "ja": "ヒーローサブタイトル"
+        },
+        "type": "string",
+        "default": "Real-time status at a glance"
+      },
+      {
+        "key": "custom_footer_html",
+        "name": {
+          "zh-CN": "自定义页脚 HTML",
+          "en": "Custom footer HTML",
+          "ja": "カスタムフッター HTML"
+        },
+        "type": "richtext",
+        "default": "",
+        "help": {
+          "zh-CN": "留空时显示 Komari 与 Butterfly 版本信息。",
+          "en": "Leave empty to show Komari and Butterfly version information.",
+          "ja": "空欄の場合は Komari と Butterfly のバージョンを表示します。"
+        }
+      }
+    ]
+  }
+}

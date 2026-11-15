@@ -7,6 +7,7 @@ import { PingTaskProvider } from "@/contexts/PingTaskProvider";
 import {
   Box,
   Button,
+  Callout,
   Checkbox,
   Dialog,
   Flex,
@@ -19,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { TaskView } from "./pingTask_Task";
 import { ServerView } from "./pingTask_Server";
+import { ApiResponseError, requireApiSuccess } from "@/lib/apiResponse";
 
 const PingTask = () => {
   return (
@@ -31,7 +33,7 @@ const PingTask = () => {
 };
 
 const InnerLayout = () => {
-  const { pingTasks, isLoading, error } = usePingTask();
+  const { pingTasks, isLoading, error, schedulePending } = usePingTask();
   const { isLoading: nodeDetailLoading, error: nodeDetailError } =
     useNodeDetails();
   const { t } = useTranslation();
@@ -46,8 +48,10 @@ const InnerLayout = () => {
     <Flex direction="column" gap="4" className="km-page-admin-pingtask p-4">
       <div className="flex justify-between items-center">
         <label className="text-2xl font-bold">{t("ping.title")}</label>
-        <AddButton />
+        <AddButton pinnedFamilyAvailable />
       </div>
+      {schedulePending === true && <Callout.Root color="red" role="alert"><Callout.Text>{t("ping.schedule_pending")}</Callout.Text></Callout.Root>}
+      {schedulePending === null && <Callout.Root color="amber" role="status"><Callout.Text>{t("ping.schedule_unknown")}</Callout.Text></Callout.Root>}
       <Tabs.Root defaultValue="task" className="km-pingtask-nav">
         <Tabs.List>
           <Tabs.Trigger value="task">{t("ping.task_view")}</Tabs.Trigger>
@@ -66,15 +70,16 @@ const InnerLayout = () => {
   );
 };
 
-const AddButton: React.FC = () => {
+export const AddButton: React.FC<{ pinnedFamilyAvailable?: boolean }> = ({ pinnedFamilyAvailable = false }) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = React.useState(false);
   const [selected, setSelected] = React.useState<string[]>([]);
   const [defaultOn, setDefaultOn] = React.useState(false);
   const { refresh } = usePingTask();
   const [selectedType, setSelectedType] = React.useState<
-    "icmp" | "tcp" | "http"
+    "icmp" | "tcp" | "http" | "auto" | "dual"
   >("icmp");
+  const [targetFamily, setTargetFamily] = React.useState<"legacy" | "ipv4" | "ipv6">("legacy");
   const [saving, setSaving] = React.useState(false);
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -90,6 +95,7 @@ const AddButton: React.FC = () => {
       default_on: defaultOn,
       clients: selected,
       interval: parseInt(e.currentTarget.interval.value, 10),
+      ...(pinnedFamilyAvailable && targetFamily !== "legacy" ? { target_family: targetFamily } : {}),
     };
     setSaving(true);
     fetch("/api/admin/ping/add", {
@@ -99,31 +105,32 @@ const AddButton: React.FC = () => {
       },
       body: JSON.stringify(payload),
     })
-      .then((response) => {
-        if (response.ok) {
+      .then((response) => requireApiSuccess(response, t("common.error")))
+      .then(() => {
+        setIsOpen(false);
+        setSelected([]);
+        setDefaultOn(false);
+        setSelectedType("icmp");
+        setTargetFamily("legacy");
+        toast.success(t("common.success"));
+        refresh();
+      })
+      .catch((error) => {
+        console.error("Error adding ping task:", error);
+        if (error instanceof ApiResponseError && error.committed) {
           setIsOpen(false);
           setSelected([]);
           setDefaultOn(false);
           setSelectedType("icmp");
-          toast.success(t("common.success"));
+          setTargetFamily("legacy");
+          refresh();
+          toast.error(error.taskId ? `${error.message} (ID: ${error.taskId})` : error.message, { duration: 15000 });
         } else {
-          response
-            .json()
-            .then((data) => {
-              toast.error(data?.message || t("common.error"));
-            })
-            .catch((error) => {
-              toast.error(error.message);
-            });
+          toast.error(error.message);
         }
-      })
-      .catch((error) => {
-        console.error("Error adding ping task:", error);
-        toast.error(error.message);
       })
       .finally(() => {
         setSaving(false);
-        refresh();
       });
   };
   return (
@@ -141,7 +148,7 @@ const AddButton: React.FC = () => {
             <Select.Root
               value={selectedType}
               onValueChange={(value) =>
-                setSelectedType(value as "icmp" | "tcp" | "http")
+                setSelectedType(value as "icmp" | "tcp" | "http" | "auto" | "dual")
               }
             >
               <Select.Trigger id="type" name="type" />
@@ -163,6 +170,20 @@ const AddButton: React.FC = () => {
               name="ping_target"
               placeholder="1.1.1.1 | 1.1.1.1:80 | https://1.1.1.1"
             />
+            {pinnedFamilyAvailable && (
+              <>
+                <label htmlFor="target_family">{t("ping.target_family")}</label>
+                <Select.Root value={targetFamily} onValueChange={(value) => setTargetFamily(value as "legacy" | "ipv4" | "ipv6")}>
+                  <Select.Trigger id="target_family" />
+                  <Select.Content>
+                    <Select.Item value="legacy">{t("ping.family_legacy")}</Select.Item>
+                    <Select.Item value="ipv4">IPv4</Select.Item>
+                    <Select.Item value="ipv6">IPv6</Select.Item>
+                  </Select.Content>
+                </Select.Root>
+                <label className="text-sm font-normal text-gray-500">{t("ping.family_hint")}</label>
+              </>
+            )}
             <label htmlFor="ping_reference">
               {t("ping.reference", "Reference target (optional)")}
             </label>

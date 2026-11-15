@@ -8,6 +8,7 @@ import (
 
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
+	"gorm.io/gorm"
 )
 
 // loadClientAddresses 一次性取出所有节点的地址族信息。
@@ -217,9 +218,23 @@ func clientTargetFamily(client models.Client) targetAddressFamily {
 // 只查一次表：任务的探针数量是个位数，而这里只需要 uuid / name / ipv4 / ipv6 四列。
 // 规则与理由见 checkPingTaskTargetFamily。
 func ValidatePingTaskTargetFamily(target string, defaultOn bool, clientUUIDs []string) error {
-	byUUID, err := loadClientAddresses()
-	if err != nil {
+	return ValidatePingTaskTargetFamilyWithDB(dbcore.GetDBInstance(), target, defaultOn, clientUUIDs)
+}
+
+// ValidatePingTaskTargetFamilyWithDB lets task mutations validate within the
+// same transaction that reads the current task. It deliberately does not
+// resolve hostnames on the panel.
+func ValidatePingTaskTargetFamilyWithDB(db *gorm.DB, target string, defaultOn bool, clientUUIDs []string) error {
+	if db == nil {
+		return fmt.Errorf("database unavailable")
+	}
+	var rows []models.Client
+	if err := db.Model(&models.Client{}).Select("uuid", "name", "ipv4", "ipv6").Find(&rows).Error; err != nil {
 		return err
+	}
+	byUUID := make(map[string]models.Client, len(rows))
+	for _, client := range rows {
+		byUUID[client.UUID] = client
 	}
 	return checkPingTaskTargetFamily(target, defaultOn, clientUUIDs, byUUID)
 }

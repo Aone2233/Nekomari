@@ -1,6 +1,7 @@
 package accounts
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -13,6 +14,7 @@ import (
 	"github.com/Aone2233/nekomari/utils"
 	"github.com/Aone2233/nekomari/utils/geoip"
 	"github.com/Aone2233/nekomari/utils/messageSender"
+	"github.com/Aone2233/nekomari/utils/notifier"
 )
 
 // GetAllSessions 获取所有会话
@@ -44,7 +46,7 @@ func CreateSession(uuid string, expires int, userAgent, ip, login_method string)
 	}
 	loginNotification, _ := config.GetAs[bool](config.LoginNotificationKey, false)
 	if loginNotification {
-		go func() {
+		notifier.StartBackground(func(context.Context) {
 			ipAddr := net.ParseIP(ip)
 			ipinfo, _ := geoip.GetGeoInfo(ipAddr)
 			loc := "unknown"
@@ -57,7 +59,7 @@ func CreateSession(uuid string, expires int, userAgent, ip, login_method string)
 				Message: fmt.Sprintf("%s: %s (%s)\n%s", login_method, ip, loc, userAgent),
 				Emoji:   "🔑",
 			})
-		}()
+		})
 	}
 	return session, nil
 }

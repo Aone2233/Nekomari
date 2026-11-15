@@ -1,6 +1,7 @@
 import type {
   JSONRPC2Request,
   JSONRPC2Response,
+  JSONRPC2Error,
   JSONRPC2BatchRequest,
   JSONRPC2BatchResponse,
   RPC2ConnectionStateType,
@@ -10,6 +11,26 @@ import type {
 } from "../types/rpc2";
 import { RPC2ConnectionState } from "../types/rpc2";
 import i18n from "../i18n/config";
+
+/** Preserve explicit server outcomes; transport errors have no commit proof. */
+export class RPC2Error extends Error {
+  readonly code: number;
+  readonly data: unknown;
+  readonly committed: boolean;
+  readonly errorKey?: string;
+
+  constructor(error: JSONRPC2Error) {
+    super(`RPC Error ${error.code}: ${error.message}`);
+    this.name = "RPC2Error";
+    this.code = error.code;
+    this.data = error.data;
+    const data = error.data && typeof error.data === "object" && !Array.isArray(error.data)
+      ? error.data as Record<string, unknown> : undefined;
+    this.committed = data?.committed === true;
+    const key = data?.error_key;
+    this.errorKey = typeof key === "string" && /^[a-z][a-z0-9_]{0,63}$/.test(key) ? key : undefined;
+  }
+}
 
 /**
  * Whether another reconnect should be scheduled.
@@ -337,7 +358,7 @@ export class RPC2Client {
       const jsonResponse: JSONRPC2Response<TResult> = await response.json();
 
       if ("error" in jsonResponse) {
-        throw new Error(`RPC Error ${jsonResponse.error.code}: ${jsonResponse.error.message}`);
+        throw new RPC2Error(jsonResponse.error);
       }
 
       return jsonResponse.result;
@@ -383,7 +404,7 @@ export class RPC2Client {
 
       return jsonResponse.map(res => {
         if ("error" in res) {
-          throw new Error(`RPC Error ${res.error.code}: ${res.error.message}`);
+          throw new RPC2Error(res.error);
         }
         return res.result;
       });
@@ -522,7 +543,7 @@ export class RPC2Client {
     }
 
     if ("error" in data) {
-      pending.reject(new Error(`RPC Error ${data.error.code}: ${data.error.message}`));
+      pending.reject(new RPC2Error(data.error));
     } else {
       pending.resolve(data.result);
     }

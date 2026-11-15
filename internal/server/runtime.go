@@ -28,6 +28,8 @@ import (
 	"github.com/Aone2233/nekomari/utils/notifier"
 	agentruntime "github.com/Aone2233/nekomari/web/agent"
 	"github.com/Aone2233/nekomari/web/api"
+	"github.com/Aone2233/nekomari/web/api/terminal"
+	"github.com/Aone2233/nekomari/web/filemanager"
 	"github.com/Aone2233/nekomari/web/oauth"
 	recoveryweb "github.com/Aone2233/nekomari/web/recovery"
 	"github.com/Aone2233/nekomari/web/router"
@@ -59,12 +61,8 @@ const (
 
 // StartBackground starts scheduled work after all stores are ready.
 func (a *App) StartBackground() error {
-	registerScheduledWork()
-	a.addCleanup("scheduler", func(context.Context) error {
-		scheduler.StopAll()
-		return nil
-	})
-	return nil
+	a.addCriticalCleanup("scheduler", scheduler.StopAndWait)
+	return registerScheduledWork()
 }
 
 func (a *App) registerReloadHandlers(cors *security.CorsController) {
@@ -89,7 +87,7 @@ func (a *App) registerReloadHandlers(cors *security.CorsController) {
 	})
 	a.reload.Register("message-sender", func(event config.ConfigEvent) {
 		if event.IsChanged(config.NotificationMethodKey) {
-			go messageSender.Initialize()
+			messageSender.Initialize()
 		}
 	})
 	a.reload.Register("cors", func(event config.ConfigEvent) { cors.Update(event) })
@@ -97,7 +95,7 @@ func (a *App) registerReloadHandlers(cors *security.CorsController) {
 
 func reloadGeoIP(event config.ConfigEvent, initialize func()) {
 	if event.IsChanged(config.GeoIpProviderKey) || event.IsChanged(config.GeoIpEnabledKey) {
-		go initialize()
+		initialize()
 	}
 }
 
@@ -122,7 +120,7 @@ func configureTrustedProxies(engine *gin.Engine) {
 func (a *App) BuildRouter() error {
 	r := gin.New()
 	configureTrustedProxies(r)
-	r.Use(logger.GinLogger(), logger.GinRecovery())
+	r.Use(api.TrackWebSocketHandlers(), logger.GinLogger(), logger.GinRecovery())
 	cors := security.NewCorsController(a.settings.CorsOriginCheckEnabled, a.settings.CorsAllowedOrigins)
 	r.Use(cors.Middleware(), api.ControlBodyLimit(), api.IdentityMiddleware(), api.PrivateSiteMiddleware(), noStoreAPIResponses())
 
@@ -138,7 +136,11 @@ func (a *App) BuildRouter() error {
 	if err := plugin.LoadAll(); err != nil {
 		logger.ErrorArgs("server", "Failed to load some plugins:", err)
 	}
-	a.addCleanup("plugins", func(context.Context) error { return plugin.CloseAll() })
+	// Plugins may create scheduled work; stop that work before unloading their
+	// runtimes and closing the stores they can access.
+	a.addCriticalCleanup("plugins", func(ctx context.Context) error {
+		return plugin.CloseAllContext(ctx)
+	})
 
 	a.registerReloadHandlers(cors)
 	a.reload.Start()
@@ -182,7 +184,7 @@ func (a *App) Run() error {
 	case reason := <-lifecycle.RestartRequests():
 		logger.Infof("server", "Restarting service for %s", reason)
 		if err := a.Shutdown(); err != nil {
-			logger.Errorf("server", "Cleanup before restart failed: %v", err)
+			return fmt.Errorf("cleanup before restart failed: %w", err)
 		}
 		return fmt.Errorf("%w: %s", ErrRestartRequested, reason)
 	case <-quit:
@@ -191,7 +193,14 @@ func (a *App) Run() error {
 }
 
 // Shutdown stops HTTP first, then releases registered resources in LIFO order.
+// Its outcome is terminal: a retry must not mistake a partially completed
+// cleanup for a clean boundary and publish a staged restore.
 func (a *App) Shutdown() error {
+	a.shutdownOnce.Do(func() { a.shutdownErr = a.shutdown() })
+	return a.shutdownErr
+}
+
+func (a *App) shutdown() error {
 	if a.dbReady {
 		auditlog.Log("", "", "server is shutting down", "info")
 	}
@@ -199,39 +208,83 @@ func (a *App) Shutdown() error {
 	defer cancelHTTP()
 	if a.server != nil {
 		if err := a.server.Shutdown(httpCtx); err != nil {
-			logger.Infof("server", "HTTP server forced to shutdown: %v", err)
+			_ = a.server.Close()
+			return fmt.Errorf("HTTP server did not drain before shutdown: %w", err)
 		}
 	}
 
 	cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), resourceCleanupTimeout)
 	defer cancelCleanup()
-	return a.runCleanups(cleanupCtx)
+	if err := a.quiesceGuide(cleanupCtx); err != nil {
+		return fmt.Errorf("stop guide work before resource cleanup: %w", err)
+	}
+	if err := a.reload.StopAndWait(cleanupCtx); err != nil {
+		return fmt.Errorf("stop configuration reloads before resource cleanup: %w", err)
+	}
+	if err := filemanager.QuiesceRemoteUploadCleanup(cleanupCtx); err != nil {
+		return fmt.Errorf("stop remote upload cleanup before resource cleanup: %w", err)
+	}
+	if err := api.QuiesceWebSockets(cleanupCtx); err != nil {
+		return fmt.Errorf("stop websocket handlers before resource cleanup: %w", err)
+	}
+	if err := terminal.QuiesceTerminals(cleanupCtx); err != nil {
+		return fmt.Errorf("stop terminal forwarding before resource cleanup: %w", err)
+	}
+	if err := scheduler.StopAndWait(cleanupCtx); err != nil {
+		return fmt.Errorf("stop scheduler before resource cleanup: %w", err)
+	}
+	if err := notifier.QuiesceBackground(cleanupCtx); err != nil {
+		return fmt.Errorf("stop notifier work before resource cleanup: %w", err)
+	}
+	return a.runCleanupsAfter(cleanupCtx, a.handoffFailure())
+}
+
+func (a *App) quiesceGuide(ctx context.Context) error {
+	if a.guideWorker == nil {
+		return nil
+	}
+	if err := a.guideWorker.Quiesce(ctx); err != nil {
+		return err
+	}
+	a.guideWorker = nil
+	return nil
 }
 
 func (a *App) onFatal(err error) {
 	if a.dbReady {
 		auditlog.Log("", "", "server encountered a fatal error: "+err.Error(), "error")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), resourceCleanupTimeout)
-	defer cancel()
-	if cleanupErr := a.runCleanups(ctx); cleanupErr != nil {
+	if cleanupErr := a.Shutdown(); cleanupErr != nil {
 		logger.Errorf("server", "Cleanup after fatal server error failed: %v", cleanupErr)
 	}
 }
 
 func (a *App) runCleanups(ctx context.Context) error {
+	return a.runCleanupsAfter(ctx, nil)
+}
+
+func (a *App) runCleanupsAfter(ctx context.Context, priorErr error) error {
 	var cleanupErrors []error
+	if priorErr != nil {
+		cleanupErrors = append(cleanupErrors, priorErr)
+	}
 	for i := len(a.cleanups) - 1; i >= 0; i-- {
 		cleanup := a.cleanups[i]
+		if cleanup.requireAllClean && len(cleanupErrors) != 0 {
+			break
+		}
 		if err := cleanup.fn(ctx); err != nil {
 			logger.Errorf("server", "cleanup %q failed: %v", cleanup.name, err)
 			cleanupErrors = append(cleanupErrors, fmt.Errorf("cleanup %q: %w", cleanup.name, err))
+			if cleanup.critical {
+				break
+			}
 		}
 	}
 	return errors.Join(cleanupErrors...)
 }
 
-func registerScheduledWork() {
+func registerScheduledWork() error {
 	registerBackupHealthWatch()
 	sampler := &panelhistory.Sampler{}
 	if err := scheduler.AddContextFunc("metrics:panelSelf", "@every 1m", true, func(ctx context.Context) {
@@ -245,6 +298,9 @@ func registerScheduledWork() {
 	}
 	if err := tasks.ReloadPingSchedule(); err != nil {
 		logger.ErrorArgs("server", "Failed to reload ping schedule:", err)
+	}
+	if err := registerPingReconciliation(scheduler.AddFunc); err != nil {
+		return err
 	}
 	if err := d_notification.ReloadLoadNotificationSchedule(); err != nil {
 		logger.ErrorArgs("server", "Failed to reload load notification schedule:", err)
@@ -294,6 +350,30 @@ func registerScheduledWork() {
 	// 同样每日一次、同样不立即执行（第一次在注册 24 小时后），也同样是纯文件操作、不碰库。
 	if err := scheduler.AddFunc("backup:pruneUpgradeArchives", scheduler.Every(upgradeArchivePruneInterval), pruneUpgradeArchivesCheck); err != nil {
 		logger.ErrorArgs("server", "Failed to add upgrade archive prune scheduled task:", err)
+	}
+	return nil
+}
+
+func registerPingReconciliation(add func(string, string, func()) error) error {
+	if err := add("ping-reconcile", "@every 30s", reconcilePingSchedule); err != nil {
+		return fmt.Errorf("schedule ping reconciliation: %w", err)
+	}
+	return nil
+}
+
+func reconcilePingSchedule() {
+	attempted, err := tasks.ReconcilePingSchedule()
+	if err == nil && attempted {
+		logger.Infof("server", "Ping schedule reconciliation succeeded")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cleaned, err := tasks.ReconcilePingDeletions(ctx)
+	if cleaned != 0 {
+		logger.Infof("server", "Ping deletion cleanup completed for %d task(s)", cleaned)
+	}
+	if err != nil {
+		logger.Errorf("server", "Ping deletion cleanup remains pending: %v", err)
 	}
 }
 

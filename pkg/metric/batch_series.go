@@ -42,6 +42,19 @@ type rollupRateSample struct {
 	value     float64
 }
 
+type rollupRateSourceKey struct {
+	entityID   string
+	tagsHash   string
+	labelsHash string
+	bucket     int64
+}
+
+type rollupRateSource struct {
+	meta   *seriesReadMeta
+	lastTS int64
+	value  float64
+}
+
 type rollupAggregateState struct {
 	summary     *rollupBucket
 	rateSamples []rollupRateSample
@@ -85,6 +98,22 @@ func (s *Store) GetMetrics(ctx context.Context, metricNames []string) (map[strin
 }
 
 func (s *Store) seriesBatchAt(ctx context.Context, query BatchSeriesQuery, now time.Time, forcedResolutions map[string]time.Duration) (BatchSeriesResult, error) {
+	// Destructive transitions change SQLite and the in-memory buckets in
+	// separate steps. Keep one process-local view across the dictionaries,
+	// persisted scans and memory scans, including with a separate read pool.
+	s.retentionMu.RLock()
+	defer s.retentionMu.RUnlock()
+	if err := s.ensureOpen(); err != nil {
+		return BatchSeriesResult{}, err
+	}
+	s.rollupViewMu.RLock()
+	defer s.rollupViewMu.RUnlock()
+	if err := ctx.Err(); err != nil {
+		return BatchSeriesResult{}, err
+	}
+	if s.hotCommitErr != nil {
+		return BatchSeriesResult{}, s.hotCommitErr
+	}
 	metricNames := make([]string, 0, len(query.Specs))
 	for _, spec := range query.Specs {
 		metricNames = append(metricNames, spec.MetricName)
@@ -187,8 +216,6 @@ func (s *Store) seriesBatchAt(ctx context.Context, query BatchSeriesQuery, now t
 		}
 		return !orderedGroups[i].key.needDigest && orderedGroups[j].key.needDigest
 	})
-	s.rollupViewMu.RLock()
-	defer s.rollupViewMu.RUnlock()
 	for _, group := range orderedGroups {
 		if err := s.scanPersistedRollupGroup(ctx, query, group, seriesByID, accumulators); err != nil {
 			return BatchSeriesResult{}, err
@@ -284,9 +311,14 @@ func (s *Store) scanPersistedRollupGroup(ctx context.Context, query BatchSeriesQ
 	}
 	defer rows.Close()
 	var seriesID, bucket, count, firstTS, lastTS int64
+	var labelsHash string
 	var sum, sumSq, min, max, firstVal, lastVal float64
 	var digestBlob []byte
 	destinations := []any{&seriesID, &bucket, &count}
+	labels := group.key.resolution == time.Minute && len(s.hotReplace) > 0
+	if labels {
+		destinations = append(destinations, &labelsHash)
+	}
 	if group.fields&rollupReadSum != 0 {
 		destinations = append(destinations, &sum)
 	}
@@ -315,6 +347,12 @@ func (s *Store) scanPersistedRollupGroup(ctx context.Context, query BatchSeriesQ
 			return err
 		}
 		meta := seriesByID[seriesID]
+		if labels {
+			key := hotRollupKey{metricName: meta.metricName, entityID: meta.entityID, tagsHash: meta.tagsHash, labelsHash: labelsHash, bucket: bucket}
+			if _, replaced := s.hotReplace[key]; replaced {
+				continue
+			}
+		}
 		accumulator := accumulators[meta.metricName]
 		state := accumulator.consume(meta, bucket, count, sum, sumSq, min, max, firstVal, firstTS, lastVal, lastTS, nil)
 		if accumulator.needDigest {
@@ -346,6 +384,7 @@ func (s *Store) renderPersistedRollupRead(ctx context.Context, query BatchSeries
 		StartMilli:   start,
 		EndMilli:     query.End.UnixMilli(),
 		Fields:       group.fields,
+		Labels:       group.key.resolution == time.Minute && len(s.hotReplace) > 0,
 	}), true, nil
 }
 
@@ -476,11 +515,26 @@ func (s *Store) scanCoarseRollupGroup(ctx context.Context, query BatchSeriesQuer
 	entityIDs := stringSet(query.EntityIDs)
 	s.coarseMu.RLock()
 	defer s.coarseMu.RUnlock()
+	var tx *sql.Tx
+	defer func() {
+		if tx != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	checked := make(map[coarseRollupKey]struct{})
+	rates := make(map[string]map[rollupRateSourceKey]rollupRateSource)
+	// A staged finer parent has not yet propagated to the requested tier.
+	// Fold disjoint pending levels together, but refuse durable ancestors that
+	// could otherwise be counted twice. Probe costs use the request budget.
 	for key, parent := range s.coarse {
 		if err := spendReadBudget(ctx, 0); err != nil {
 			return err
 		}
-		if key.interval != group.key.resolution || key.bucket < start || key.bucket > end {
+		if key.interval > group.key.resolution || (key.interval < group.key.resolution && !containsRollupInterval(parent.higher, group.key.resolution)) {
+			continue
+		}
+		ancestorBucket := bucketStartMillis(key.bucket, group.key.resolution.Milliseconds())
+		if ancestorBucket < start || ancestorBucket > end {
 			continue
 		}
 		if _, ok := group.metricNames[key.metricName]; !ok {
@@ -491,15 +545,15 @@ func (s *Store) scanCoarseRollupGroup(ctx context.Context, query BatchSeriesQuer
 				continue
 			}
 		}
-		childKeys := make([]rollupKey, 0, len(parent.children))
+		if len(parent.children) == 0 {
+			continue
+		}
 		if err := spendReadBudget(ctx, len(parent.children)); err != nil {
 			return err
 		}
+		childKeys := make([]rollupKey, 0, len(parent.children))
 		for childKey := range parent.children {
 			childKeys = append(childKeys, childKey)
-		}
-		if len(childKeys) == 0 {
-			continue
 		}
 		sortRollupKeys(childKeys)
 		firstChild := parent.children[childKeys[0]]
@@ -510,14 +564,70 @@ func (s *Store) scanCoarseRollupGroup(ctx context.Context, query BatchSeriesQuer
 		if !matched {
 			continue
 		}
+		if tx == nil {
+			tx, err = s.reader().BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+			if err != nil {
+				return err
+			}
+		}
+		if err := s.rejectPersistedCoarseAncestorsTx(ctx, tx, key, parent.higher, group.key.resolution, checked, true); err != nil {
+			return err
+		}
 		summary := newRollupBucketWithDigest(s.cfg.RollupPolicy.compression(), group.key.needDigest)
 		for _, childKey := range childKeys {
 			child := parent.children[childKey]
 			mergeRollupValues(summary, child.count, child.sum, child.sumSq, child.min, child.max, child.firstVal, child.firstTS, child.lastVal, child.lastTS, child.digest, group.key.needDigest)
 		}
-		accumulators[key.metricName].consume(meta, key.bucket, summary.count, summary.sum, summary.sumSq, summary.min, summary.max, summary.firstVal, summary.firstTS, summary.lastVal, summary.lastTS, summary.digest)
+		accumulator := accumulators[key.metricName]
+		accumulator.consumeMemorySummary(meta, ancestorBucket, summary)
+		if accumulator.needRate {
+			bySource := rates[key.metricName]
+			if bySource == nil {
+				bySource = make(map[rollupRateSourceKey]rollupRateSource)
+				rates[key.metricName] = bySource
+			}
+			sourceKey := rollupRateSourceKey{entityID: key.entityID, tagsHash: key.tagsHash, labelsHash: key.labelsHash, bucket: ancestorBucket}
+			old, exists := bySource[sourceKey]
+			if !exists || summary.lastTS > old.lastTS {
+				bySource[sourceKey] = rollupRateSource{meta: meta, lastTS: summary.lastTS, value: summary.lastVal}
+			}
+		}
+	}
+	for metricName, bySource := range rates {
+		keys := make([]rollupRateSourceKey, 0, len(bySource))
+		for key := range bySource {
+			keys = append(keys, key)
+		}
+		sort.Slice(keys, func(i, j int) bool {
+			if keys[i].bucket != keys[j].bucket {
+				return keys[i].bucket < keys[j].bucket
+			}
+			if keys[i].entityID != keys[j].entityID {
+				return keys[i].entityID < keys[j].entityID
+			}
+			if keys[i].tagsHash != keys[j].tagsHash {
+				return keys[i].tagsHash < keys[j].tagsHash
+			}
+			return keys[i].labelsHash < keys[j].labelsHash
+		})
+		for _, key := range keys {
+			if err := spendReadBudget(ctx, 0); err != nil {
+				return err
+			}
+			value := bySource[key]
+			accumulators[metricName].consumeRate(value.meta, key.bucket, value.value, value.lastTS)
+		}
 	}
 	return nil
+}
+
+func containsRollupInterval(intervals []time.Duration, interval time.Duration) bool {
+	for _, candidate := range intervals {
+		if candidate == interval {
+			return true
+		}
+	}
+	return false
 }
 
 func memorySeriesMeta(seriesByIdentity map[seriesIdentity]*seriesReadMeta, metricName, entityID, tagsHash, tagsJSON string, filter map[string]string) (*seriesReadMeta, bool, error) {
@@ -548,6 +658,19 @@ func stringSet(values []string) map[string]struct{} {
 }
 
 func (a *metricSeriesAccumulator) consume(meta *seriesReadMeta, sourceBucket, count int64, sum, sumSq, min, max, firstVal float64, firstTS int64, lastVal float64, lastTS int64, digest *TDigest) *rollupAggregateState {
+	key := a.outputKey(meta, sourceBucket)
+	var state *rollupAggregateState
+	if a.needSummary {
+		state = a.summaryState(meta, key)
+		mergeRollupValues(state.summary, count, sum, sumSq, min, max, firstVal, firstTS, lastVal, lastTS, digest, a.needDigest)
+	}
+	if a.needRate {
+		a.consumeRate(meta, sourceBucket, lastVal, lastTS)
+	}
+	return state
+}
+
+func (a *metricSeriesAccumulator) outputKey(meta *seriesReadMeta, sourceBucket int64) rollupKey {
 	key := rollupKey{bucket: bucketStartMillis(sourceBucket, a.spec.Interval.Milliseconds())}
 	if a.alignedStart && key.bucket < a.windowStart {
 		key.bucket = a.windowStart
@@ -559,34 +682,39 @@ func (a *metricSeriesAccumulator) consume(meta *seriesReadMeta, sourceBucket, co
 		key.entityID = meta.entityID
 		key.tagsHash = meta.tagsHash
 	}
-	if a.needSummary {
-		state := a.groups[key]
-		if state == nil {
-			state = &rollupAggregateState{summary: newRollupBucketWithDigest(a.compression, a.needDigest)}
-			if a.spec.PreserveSeries {
-				state.tags = meta.tags
-			}
-			a.groups[key] = state
+	return key
+}
+
+func (a *metricSeriesAccumulator) summaryState(meta *seriesReadMeta, key rollupKey) *rollupAggregateState {
+	state := a.groups[key]
+	if state == nil {
+		state = &rollupAggregateState{summary: newRollupBucketWithDigest(a.compression, a.needDigest)}
+		if a.spec.PreserveSeries {
+			state.tags = meta.tags
 		}
-		mergeRollupValues(state.summary, count, sum, sumSq, min, max, firstVal, firstTS, lastVal, lastTS, digest, a.needDigest)
-		if !a.needRate {
-			return state
-		}
+		a.groups[key] = state
 	}
-	if a.needRate {
-		rateKey := rollupKey{
-			bucket:   key.bucket,
-			entityID: meta.entityID,
-			tagsHash: meta.tagsHash,
-		}
-		state := a.rateGroups[rateKey]
-		if state == nil {
-			state = &rollupAggregateState{tags: meta.tags}
-			a.rateGroups[rateKey] = state
-		}
-		state.rateSamples = append(state.rateSamples, rollupRateSample{timestamp: lastTS, value: lastVal})
+	return state
+}
+
+func (a *metricSeriesAccumulator) consumeMemorySummary(meta *seriesReadMeta, sourceBucket int64, summary *rollupBucket) {
+	if !a.needSummary {
+		return
 	}
-	return a.groups[key]
+	state := a.summaryState(meta, a.outputKey(meta, sourceBucket))
+	mergeRollupValues(state.summary, summary.count, summary.sum, summary.sumSq, summary.min, summary.max,
+		summary.firstVal, summary.firstTS, summary.lastVal, summary.lastTS, summary.digest, a.needDigest)
+}
+
+func (a *metricSeriesAccumulator) consumeRate(meta *seriesReadMeta, sourceBucket int64, value float64, timestamp int64) {
+	key := a.outputKey(meta, sourceBucket)
+	rateKey := rollupKey{bucket: key.bucket, entityID: meta.entityID, tagsHash: meta.tagsHash}
+	state := a.rateGroups[rateKey]
+	if state == nil {
+		state = &rollupAggregateState{tags: meta.tags}
+		a.rateGroups[rateKey] = state
+	}
+	state.rateSamples = append(state.rateSamples, rollupRateSample{timestamp: timestamp, value: value})
 }
 
 func mergeEncodedRollupDigest(target *TDigest, count int64, min, max float64, blob []byte) error {

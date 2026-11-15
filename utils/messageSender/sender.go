@@ -1,6 +1,7 @@
 package messageSender
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	logger "github.com/Aone2233/nekomari/utils/log"
@@ -42,31 +43,32 @@ func Shutdown() error {
 }
 
 func Initialize() {
-	go func() {
-		once.Do(func() {
-			all := factory.GetAllMessageSenders()
-			for _, provider := range all {
-				if _, err := database.GetMessageSenderConfigByName(provider.GetName()); err == nil {
-					continue
-				}
-				// 如果数据库中没有该提供者的配置，则保存默认配置
-				config := provider.GetConfiguration()
-				configBytes, err := json.Marshal(config)
-				if err != nil {
-					logger.Errorf("message-sender", "Failed to marshal config for provider %s: %v", provider.GetName(), err)
-					return
-				}
-				if err := database.SaveMessageSenderConfig(&models.MessageSenderProvider{
-					Name:     provider.GetName(),
-					Addition: string(configBytes),
-				}); err != nil {
-					logger.Errorf("message-sender", "Failed to save default config for provider %s: %v", provider.GetName(), err)
-					return
-				}
+	once.Do(func() {
+		all := factory.GetAllMessageSenders()
+		for _, provider := range all {
+			if _, err := database.GetMessageSenderConfigByName(provider.GetName()); err == nil {
+				continue
 			}
-		})
-	}()
+			// 如果数据库中没有该提供者的配置，则保存默认配置
+			config := provider.GetConfiguration()
+			configBytes, err := json.Marshal(config)
+			if err != nil {
+				logger.Errorf("message-sender", "Failed to marshal config for provider %s: %v", provider.GetName(), err)
+				return
+			}
+			if err := database.SaveMessageSenderConfig(&models.MessageSenderProvider{
+				Name:     provider.GetName(),
+				Addition: string(configBytes),
+			}); err != nil {
+				logger.Errorf("message-sender", "Failed to save default config for provider %s: %v", provider.GetName(), err)
+				return
+			}
+		}
+	})
 	NotificationMethod, _ := config.GetAs[string](config.NotificationMethodKey, "none")
+	if strings.HasPrefix(NotificationMethod, "plugin:") {
+		return
+	}
 
 	if NotificationMethod == "" || NotificationMethod == "none" {
 		LoadProvider("empty", "{}")
@@ -84,9 +86,6 @@ func Initialize() {
 }
 
 func SendTextMessage(message string, title string) error {
-	if CurrentProvider() == nil {
-		return fmt.Errorf("message sender provider is not initialized")
-	}
 	var err error
 	NotificationEnabled, err := config.GetAs[bool](config.NotificationEnabledKey, false)
 	if err != nil {
@@ -95,8 +94,23 @@ func SendTextMessage(message string, title string) error {
 	if !NotificationEnabled {
 		return nil
 	}
+	method, err := config.GetAs[string](config.NotificationMethodKey, "none")
+	if err != nil {
+		return err
+	}
+	if found, err := CallNotificationChannel(context.Background(), method, Notification{Title: title, Message: message}); found {
+		return err
+	}
+	if strings.HasPrefix(method, "plugin:") {
+		return fmt.Errorf("configured plugin notification channel is unavailable")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if currentProvider == nil {
+		return fmt.Errorf("message sender provider is not initialized")
+	}
 	for i := 0; i < 3; i++ {
-		err = CurrentProvider().SendTextMessage(message, title)
+		err = currentProvider.SendTextMessage(message, title)
 		if err == nil {
 			auditlog.Log("", "", "Message sent: "+title, "info")
 			return nil
@@ -128,9 +142,6 @@ func SendNotification(event models.EventMessage) error {
 }
 
 func SendEvent(event models.EventMessage) error {
-	if CurrentProvider() == nil {
-		return fmt.Errorf("message sender provider is not initialized")
-	}
 	if event.Time.IsZero() {
 		event.Time = time.Now().UTC()
 	} else {
@@ -147,9 +158,25 @@ func SendEvent(event models.EventMessage) error {
 	if !cfg[config.NotificationEnabledKey].(bool) {
 		return nil
 	}
+	method, err := config.GetAs[string](config.NotificationMethodKey, "none")
+	if err != nil {
+		return err
+	}
+	messageTemplate := parseTemplate(cfg[config.NotificationTemplateKey].(string), event)
+	if found, err := CallNotificationChannel(context.Background(), method, Notification{Event: event, Title: fmt.Sprint(event.Event), Message: messageTemplate}); found {
+		return err
+	}
+	if strings.HasPrefix(method, "plugin:") {
+		return fmt.Errorf("configured plugin notification channel is unavailable")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if currentProvider == nil {
+		return fmt.Errorf("message sender provider is not initialized")
+	}
 
 	// 检查提供者是否实现了 IEventMessageSender 接口
-	if eventSender, ok := CurrentProvider().(factory.IEventMessageSender); ok {
+	if eventSender, ok := currentProvider.(factory.IEventMessageSender); ok {
 		// 如果实现了,直接调用 SendEvent
 		for i := 0; i < 3; i++ {
 			err = eventSender.SendEvent(event)
@@ -163,12 +190,8 @@ func SendEvent(event models.EventMessage) error {
 	}
 
 	// 如果没有实现,使用模板格式化为文本消息
-	messageTemplate := cfg[config.NotificationTemplateKey].(string)
-
-	messageTemplate = parseTemplate(messageTemplate, event)
-
 	for i := 0; i < 3; i++ {
-		err = CurrentProvider().SendTextMessage(messageTemplate, fmt.Sprint(event.Event))
+		err = currentProvider.SendTextMessage(messageTemplate, fmt.Sprint(event.Event))
 		if err == nil || err.Error() == "short response: \x00\x00\x00\x1a\x00\x00\x00" { // QQ 会返回这个错误，但实际上消息是发送成功的
 			auditlog.Log("", "", "Event message sent: "+fmt.Sprint(event.Event), "info")
 			return nil

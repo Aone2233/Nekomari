@@ -1,0 +1,21 @@
+{
+  "name": {
+    "zh-CN": "MJPEG 实时状态",
+    "en": "MJPEG Live Status"
+  },
+  "short": "mjpeg",
+  "description": {
+    "zh-CN": "将 Komari 节点状态渲染为实时 MJPEG 表格流。",
+    "en": "Renders Komari node status as a live MJPEG table stream."
+  },
+  "author": "Komari Monitor",
+  "version": "1.1.0",
+  "url": "https://github.com/komari-monitor/komari",
+  "entry": "script.js",
+  "permissions": {
+    "node": true,
+    "allowSystemRPC": true,
+    "allowRoutes": true,
+    "timeout": 30
+  }
+}

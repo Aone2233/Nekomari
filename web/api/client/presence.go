@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -28,11 +29,13 @@ var (
 // ResetClientState runs inside credential retirement, before new admissions.
 func ResetClientState(uuid string) {
 	postPresenceMu.Lock()
-	defer postPresenceMu.Unlock()
 	if entry := postPresenceStates[uuid]; entry != nil {
 		entry.timer.Stop()
 		delete(postPresenceStates, uuid)
 	}
+	// The caller holds this node's credential admission. Do not hold the
+	// fleet-wide POST presence lock while waiting for its session to retire.
+	postPresenceMu.Unlock()
 	agent_runtime.ResetClient(uuid)
 }
 
@@ -55,7 +58,7 @@ func refreshPostPresence(uuid string) {
 	connID := time.Now().UnixNano()
 	agent_runtime.KeepAlivePresence(uuid, connID, postPresenceTTL)
 	agent_runtime.MarkV2Client(uuid)
-	go notifier.OnlineNotification(uuid, connID)
+	notifier.StartBackground(func(context.Context) { notifier.OnlineNotification(uuid, connID) })
 
 	defaultGeneration := uint64(0)
 	entry := &postPresenceEntry{connID: connID, generation: defaultGeneration}
@@ -66,6 +69,12 @@ func refreshPostPresence(uuid string) {
 }
 
 func postPresenceExpired(uuid string, connID int64, gen uint64) {
+	// The timer can fire after HTTP shutdown, so admit its entire transition
+	// before it accesses presence state or the database.
+	notifier.StartBackground(func(context.Context) { expirePostPresence(uuid, connID, gen) })
+}
+
+func expirePostPresence(uuid string, connID int64, gen uint64) {
 	postPresenceMu.Lock()
 	e, ok := postPresenceStates[uuid]
 	if !ok || e.connID != connID || e.generation != gen {

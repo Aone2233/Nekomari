@@ -1,0 +1,17 @@
+{
+  "name": "Cloudflare DDNS",
+  "short": "cloudflare-ddns",
+  "description": "使用 Cloudflare 邮箱和 Global API Key，将 Komari 服务器 IP 定时同步到多个域名。",
+  "author": "Kristen",
+  "version": "1.0.1",
+  "entry": "script.js",
+  "icon": "icon.svg",
+  "permissions": {
+    "node": true,
+    "allowSystemRPC": true,
+    "allowRoutes": true,
+    "maxHTTPBodyBytes": 2097152,
+    "timeout": 30
+  },
+  "pages": [{ "file": "web/index.html", "title": "Cloudflare DDNS", "icon": "icon.svg", "type": "iframe", "visibility": "admin" }]
+}

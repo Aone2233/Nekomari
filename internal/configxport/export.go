@@ -49,9 +49,24 @@ func identityField(entity string) string {
 	switch entity {
 	case "settings":
 		return "key"
+	case "ping_tasks", "maintenance_windows":
+		return "id"
+	case "notification_configs":
+		return "client"
 	default:
 		return "uuid"
 	}
+}
+
+func documentIdentityField(entity string, schema int) string {
+	if schema >= IdentitySchemaVersion && (entity == "ping_tasks" || entity == "maintenance_windows") {
+		return "config_uid"
+	}
+	return identityField(entity)
+}
+
+func documentIdentityOf(entity string, schema int, record map[string]any) string {
+	return fmt.Sprint(record[documentIdentityField(entity, schema)])
 }
 
 // Export reads the whole configuration into one document.
@@ -64,7 +79,7 @@ func Export(store Store, includeSecrets bool, sourceVersion string) (Document, e
 		return Document{}, fmt.Errorf("no store")
 	}
 	document := Document{
-		SchemaVersion:   SchemaVersion,
+		SchemaVersion:   IdentitySchemaVersion,
 		ExportedAt:      time.Now().UTC(),
 		SecretsIncluded: includeSecrets,
 		SourceVersion:   sourceVersion,
@@ -77,8 +92,34 @@ func Export(store Store, includeSecrets bool, sourceVersion string) (Document, e
 	if document.PingTasks, err = store.ExportPingTasks(); err != nil {
 		return Document{}, fmt.Errorf("export ping tasks: %w", err)
 	}
+	// Lightweight stores may still provide legacy numeric-only records. The
+	// real panel always includes stable identities after its startup backfill.
+	document.SchemaVersion = SchemaVersion
+	allIdentified := true
+	for _, task := range document.PingTasks {
+		if _, ok := task["config_uid"].(string); !ok {
+			allIdentified = false
+		}
+		if value, exists := task["target_family"]; exists {
+			family, ok := value.(string)
+			if !ok || (family != "" && family != "ipv4" && family != "ipv6") {
+				return Document{}, fmt.Errorf("export ping tasks: invalid target family")
+			}
+			if family != "" {
+				document.SchemaVersion = PinnedSchemaVersion
+			}
+		}
+	}
 	if document.MaintenanceWindows, err = store.ExportMaintenanceWindows(); err != nil {
 		return Document{}, fmt.Errorf("export maintenance windows: %w", err)
+	}
+	for _, window := range document.MaintenanceWindows {
+		if _, ok := window["config_uid"].(string); !ok {
+			allIdentified = false
+		}
+	}
+	if allIdentified {
+		document.SchemaVersion = IdentitySchemaVersion
 	}
 	if document.Settings, err = store.ExportSettings(includeSecrets); err != nil {
 		return Document{}, fmt.Errorf("export settings: %w", err)
@@ -117,10 +158,7 @@ func recordsFor(document Document, entity string) []map[string]any {
 
 // identityOf reads a record's identifier.
 func identityOf(entity string, record map[string]any) string {
-	if entity == "settings" {
-		return fmt.Sprint(record["key"])
-	}
-	return fmt.Sprint(record["uuid"])
+	return fmt.Sprint(record[identityField(entity)])
 }
 
 // nameOf reads a record's display name, for the report.
@@ -138,11 +176,27 @@ func nameOf(record map[string]any) string {
 // Only fields the document mentions are compared. A stored record has columns the export does not
 // carry — a client's hardware facts, its token, timestamps — and treating those as differences would
 // make every import report an update it should not.
-func differs(entity string, wanted, stored map[string]any) []string {
+func differs(entity string, schema int, wanted, stored map[string]any) []string {
 	fields := make([]string, 0, len(wanted))
 	for key, want := range wanted {
-		if key == identityField(entity) {
+		if key == documentIdentityField(entity, schema) ||
+			(schema >= IdentitySchemaVersion && (entity == "ping_tasks" || entity == "maintenance_windows") && key == "id") {
 			continue
+		}
+		// A credential export includes the existing token for recovery. It is
+		// validated by the importer, not compared to the deliberately secret-free
+		// Store.Existing view.
+		if entity == "clients" && key == "token" {
+			continue
+		}
+		// Empty family is the legacy representation and is omitted by exports.
+		// Treating that omission as different from an explicit empty field would
+		// turn an unchanged task into a write with side effects.
+		if entity == "ping_tasks" && key == "target_family" {
+			family, isString := want.(string)
+			if _, exists := stored[key]; isString && family == "" && !exists {
+				continue
+			}
 		}
 		// Settings compare on their value, which is nested rather than flat.
 		if entity == "settings" && key == "value" {
@@ -191,7 +245,7 @@ func Plan(store Store, document Document) (ImportPlan, error) {
 
 	if !document.SecretsIncluded {
 		plan.Warnings = append(plan.Warnings,
-			"the document does not carry credentials, so agent tokens and notification credentials are not restored by it")
+			"the document omits agent tokens and unreviewed settings; notification provider credentials are never exported")
 	}
 
 	for _, entity := range Entities {
@@ -201,17 +255,20 @@ func Plan(store Store, document Document) (ImportPlan, error) {
 		}
 		byIdentity := make(map[string]map[string]any, len(stored))
 		for _, record := range stored {
-			byIdentity[identityOf(entity, record)] = record
+			byIdentity[documentIdentityOf(entity, document.SchemaVersion, record)] = record
 		}
 
 		wanted := recordsFor(document, entity)
 		seen := make(map[string]bool, len(wanted))
 		for _, record := range wanted {
-			identity := identityOf(entity, record)
+			identity := documentIdentityOf(entity, document.SchemaVersion, record)
 			if identity == "" || identity == "<nil>" {
 				plan.Warnings = append(plan.Warnings,
-					fmt.Sprintf("%s: a record has no %s and cannot be applied", entity, identityField(entity)))
+					fmt.Sprintf("%s: a record has no %s and cannot be applied", entity, documentIdentityField(entity, document.SchemaVersion)))
 				continue
+			}
+			if seen[identity] {
+				return ImportPlan{}, fmt.Errorf("%s: duplicate %s %q", entity, documentIdentityField(entity, document.SchemaVersion), identity)
 			}
 			seen[identity] = true
 			existing, ok := byIdentity[identity]
@@ -222,7 +279,7 @@ func Plan(store Store, document Document) (ImportPlan, error) {
 				})
 				continue
 			}
-			fields := differs(entity, record, existing)
+			fields := differs(entity, document.SchemaVersion, record, existing)
 			if len(fields) == 0 {
 				plan.Unchanged++
 				plan.Changes = append(plan.Changes, Change{
@@ -300,7 +357,7 @@ func Apply(applier Applier, document Document) (ImportPlan, error) {
 // findRecord locates one record in the document.
 func findRecord(document Document, entity, identity string) (map[string]any, bool) {
 	for _, record := range recordsFor(document, entity) {
-		if identityOf(entity, record) == identity {
+		if documentIdentityOf(entity, document.SchemaVersion, record) == identity {
 			return record, true
 		}
 	}

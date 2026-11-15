@@ -8,6 +8,18 @@ export type ApiSuccess<T = unknown> = {
   [key: string]: unknown;
 };
 
+export class ApiResponseError extends Error {
+  readonly committed: boolean;
+  readonly taskId?: number;
+
+  constructor(message: string, committed: boolean, taskId?: number) {
+    super(message);
+    this.name = "ApiResponseError";
+    this.committed = committed;
+    this.taskId = taskId;
+  }
+}
+
 /** REST envelopes only: HTTP success cannot turn a business refusal into a save. */
 export async function requireApiSuccess<T = unknown>(
   response: Response,
@@ -32,5 +44,10 @@ export function assertApiSuccess<T = unknown>(
     !Array.isArray(payload) && "message" in payload &&
     typeof payload.message === "string" && payload.message.trim()
       ? payload.message : response.ok ? invalidMessage : `HTTP ${response.status}`;
-  throw new Error(localizeServerError(payload, message, i18n));
+  const record = payload !== null && typeof payload === "object" && !Array.isArray(payload)
+    ? payload as Record<string, unknown> : null;
+  const committed = record?.committed === true;
+  const id = record?.task_id;
+  const taskId = committed && typeof id === "number" && Number.isSafeInteger(id) && id > 0 ? id : undefined;
+  throw new ApiResponseError(localizeServerError(payload, message, i18n), committed, taskId);
 }

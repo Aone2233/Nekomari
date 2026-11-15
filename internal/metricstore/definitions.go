@@ -135,5 +135,9 @@ func createMetricDefinitionsWithDefaultRetention(ctx context.Context, s *metric.
 			return fmt.Errorf("failed to create metric %s: %w", def.Name, err)
 		}
 	}
-	return nil
+	// Warm the immutable snapshot before a nonblocking admitted write can use
+	// it. Later definition edits invalidate it as usual; ordinary reads/writes
+	// repopulate it without making a fenced result wait on SQL.
+	_, err := s.ListMetrics(ctx)
+	return err
 }

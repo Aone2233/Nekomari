@@ -8,6 +8,32 @@ Nekomari's own.
 
 ## [Unreleased]
 
+### v1.7.30 release candidate
+
+- Family-pinned hostname monitoring resolves on each compatible Agent and
+  records IPv4/IPv6 separately; unsupported or POST-only Agents are skipped,
+  not counted as packet loss. Existing legacy tasks retain their history and
+  must not be converted in place. On OC424, owner-created task 30 has produced
+  real IPv6 TCP latency and loss samples on MegaBox and Riven; the older
+  Frankfurt Agent remains unsupported. Owner chart acceptance is pending.
+- A bounded, target-free retirement hint lets a compatible Agent establish a
+  new challenge promptly after an authenticated HTTP POST. The hint itself
+  grants no capability, and a lost hint falls back to normal renewal. Brief
+  synchronous retries tolerate transient metric-store lock contention while
+  the same task, credential and session fences remain held; samples can still
+  be skipped, not interpreted as loss, under disconnection or saturation.
+- Configuration imports now use transactional review. Schema 1/2 documents with
+  tasks or maintenance windows are refused, and only site name and description
+  are mutable settings. This is an intentional compatibility restriction.
+- The candidate has a non-destructive recovery boundary: do not boot an older
+  panel on databases containing pinned tasks or overwrite live data with an
+  older backup. Restore drills and their limitations are documented in
+  `docs/MAC-WAN-BACKUP.md` and `docs/PING-FAMILY-ROLLBACK-DRAFT.md`.
+- The `v1.7.30` release policy publishes checksum-verified Agent binaries under
+  `manual-komari-agent-*` only. It does not move GitHub's latest release or the
+  Agent image's moving aliases; nodes need an explicitly staged Agent upgrade.
+  Other releases must review their own policy before publication.
+
 ## [v1.7.29] - 2026-11-05
 
 - **CSV correctness patch, published and deployed on OC424 at approximately

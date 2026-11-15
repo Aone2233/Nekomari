@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -247,4 +247,42 @@ func TestStaticAssetConditionalAndRangeRequests(t *testing.T) {
 			t.Fatalf("conditional embedded asset status = %d, want 304", recorder.Code)
 		}
 	})
+}
+
+// Next.js serializes the same description inside its hydration payload. Only
+// the actual meta attribute may be rewritten; mutating its script corrupts the
+// serialized document and React rejects hydration.
+func TestThemeDescriptionDoesNotRewriteHydrationScript(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Chdir(t.TempDir())
+	dir := filepath.Join("data", "theme", "fixture", "dist")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	fixture := `<!doctype html><html><head><meta name="description" content="A simple server monitor tool."/></head><body><script>window.payload="A simple server monitor tool."</script></body></html>`
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte(fixture), 0644); err != nil {
+		t.Fatal(err)
+	}
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.SetDb(db)
+	if err = config.Set(config.ThemeKey, "fixture"); err != nil {
+		t.Fatal(err)
+	}
+	if err = config.Set(config.DescriptionKey, `A "quoted" description`); err != nil {
+		t.Fatal(err)
+	}
+	router := gin.New()
+	Static(router.Group("/"), func(h ...gin.HandlerFunc) { router.NoRoute(h...) })
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	body := rec.Body.String()
+	if !strings.Contains(body, `content="A &#34;quoted&#34; description"`) {
+		t.Fatalf("description not escaped: %s", body)
+	}
+	if !strings.Contains(body, `window.payload="A simple server monitor tool."`) {
+		t.Fatalf("hydration script changed: %s", body)
+	}
 }

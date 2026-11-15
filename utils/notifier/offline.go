@@ -1,6 +1,7 @@
 package notifier
 
 import (
+	"context"
 	logger "github.com/Aone2233/nekomari/utils/log"
 	"sync"
 	"time"
@@ -108,24 +109,30 @@ func OfflineNotification(clientID string, endedConnectionID int64) {
 	state.mu.Unlock()
 
 	// 新建协程，等待宽限期后判断是否需要发送通知。
-	go func(expectedConnectionID int64) {
-		time.Sleep(gracePeriod)
+	StartBackground(func(ctx context.Context) {
+		timer := time.NewTimer(gracePeriod)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			return
+		}
 
 		state.mu.Lock()
 
 		// 检查离线状态是否仍为本次协程启动时的状态。
 		// 若为零值，说明客户端已重连。
 		// 当前的 connectionID 是否还是我们触发离线时的那个ID。如果不是，说明客户端重连过，本次离线通知已失效。
-		if state.pendingOfflineSince.IsZero() || state.connectionID != expectedConnectionID {
+		if state.pendingOfflineSince.IsZero() || state.connectionID != endedConnectionID {
 			currentConnectionID := state.connectionID
 			state.mu.Unlock()
-			logger.Infof("notifier", "%s is reconnected new connID: %d, old connID: %d", clientID, currentConnectionID, expectedConnectionID)
+			logger.Infof("notifier", "%s is reconnected new connID: %d, old connID: %d", clientID, currentConnectionID, endedConnectionID)
 			return
 		}
 
 		// A window may have started while the grace timer was running.
 		if decision := For(time.Now().UTC(), clientID); decision.Suppress && !decision.DeliverAt.IsZero() {
-			deferOfflineAlert(clientID, decision.DeliverAt, expectedConnectionID)
+			deferOfflineAlert(clientID, decision.DeliverAt, endedConnectionID)
 			state.mu.Unlock()
 			logger.Infof("notifier", "%s is inside a %s; the offline alert is deferred to %s",
 				clientID, decision.Reason, decision.DeliverAt.Format(time.RFC3339))
@@ -138,7 +145,7 @@ func OfflineNotification(clientID string, endedConnectionID int64) {
 		state.mu.Unlock()
 
 		// Send notification
-		go func() {
+		StartBackground(func(context.Context) {
 			if err := messageSender.SendNotification(models.EventMessage{
 				Event:   messageevent.Offline,
 				Clients: []models.Client{client},
@@ -147,14 +154,14 @@ func OfflineNotification(clientID string, endedConnectionID int64) {
 			}); err != nil {
 				logger.ErrorArgs("notifier", "Failed to send offline notification:", err)
 			}
-		}()
+		})
 
 		// 更新数据库中的最后通知时间
 		db := dbcore.GetDBInstance()
 		if err := db.Model(&models.OfflineNotification{}).Where("client = ?", clientID).Update("last_notified", now.UTC()).Error; err != nil {
 			logger.Errorf("notifier", "Failed to update last_notified for client %s: %v", clientID, err)
 		}
-	}(endedConnectionID)
+	})
 }
 
 // updateOnlineState records a connection before notification configuration is checked.
@@ -214,7 +221,7 @@ func OnlineNotification(clientID string, connectionID int64) {
 	}
 
 	// 规则4：客户端离线足够久已通知（或未待离线），现在重新上线，发送上线通知。
-	go func() {
+	StartBackground(func(context.Context) {
 		if err := messageSender.SendNotification(models.EventMessage{
 			Event:   messageevent.Online,
 			Clients: []models.Client{client},
@@ -223,5 +230,5 @@ func OnlineNotification(clientID string, connectionID int64) {
 		}); err != nil {
 			logger.ErrorArgs("notifier", "Failed to send online notification:", err)
 		}
-	}()
+	})
 }

@@ -11,14 +11,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/web/api"
 	"github.com/Aone2233/nekomari/web/public"
+	"github.com/gin-gonic/gin"
 )
+
+// Serialize replacement so two installs cannot move each other's backup.
+var themeInstallMu sync.Mutex
 
 const (
 	maxThemeArchiveFiles  = 10000
@@ -54,9 +58,9 @@ func ListThemes(c *gin.Context) {
 
 	}
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if entry.IsDir() && isValidMarketShort(entry.Name()) {
 			themeConfigPath := filepath.Join(dataDir, entry.Name(), "komari-theme.json")
-			if themeInfo, err := loadThemeConfig(themeConfigPath); err == nil {
+			if themeInfo, err := loadThemeConfig(themeConfigPath); err == nil && themeInfo.Short == entry.Name() {
 				themes = append(themes, themeInfo)
 			}
 		}
@@ -187,31 +191,34 @@ func extractAndValidateTheme(zipPath string) (models.Theme, error) {
 		return themeInfo, err
 	}
 
-	// 创建主题目录
-	themeDir := filepath.Join("./data/theme", themeInfo.Short)
-
-	// 如果目录已存在，先删除
-	if _, err := os.Stat(themeDir); err == nil {
-		if err := os.RemoveAll(themeDir); err != nil {
-			return themeInfo, fmt.Errorf("删除原有主题失败: %v", err)
-		}
-	}
-
-	if err := os.MkdirAll(themeDir, 0755); err != nil {
+	themeRoot := "./data/theme"
+	if err := os.MkdirAll(themeRoot, 0755); err != nil {
 		return themeInfo, fmt.Errorf("创建主题目录失败: %v", err)
+	}
+	// Extract completely before touching the installed copy. Dot-prefixed
+	// directories are deliberately excluded from the theme list.
+	stage, err := os.MkdirTemp(themeRoot, ".theme-stage-")
+	if err != nil {
+		return themeInfo, fmt.Errorf("创建临时主题目录失败: %v", err)
+	}
+	defer os.RemoveAll(stage)
+	if err := os.Chmod(stage, 0755); err != nil {
+		return themeInfo, fmt.Errorf("设置主题目录权限失败: %v", err)
 	}
 
 	// 解压文件到主题目录
 	for _, f := range r.File {
-		path := filepath.Join(themeDir, f.Name)
+		path := filepath.Join(stage, f.Name)
 
 		// 安全检查，防止路径遍历攻击
-		if !strings.HasPrefix(path, filepath.Clean(themeDir)+string(os.PathSeparator)) {
-			continue
+		if !strings.HasPrefix(path, filepath.Clean(stage)+string(os.PathSeparator)) {
+			return themeInfo, fmt.Errorf("主题包含无效路径: %s", f.Name)
 		}
 
 		if f.FileInfo().IsDir() {
-			os.MkdirAll(path, f.FileInfo().Mode())
+			if err := os.MkdirAll(path, 0755); err != nil {
+				return themeInfo, fmt.Errorf("创建目录失败: %v", err)
+			}
 			continue
 		}
 
@@ -226,19 +233,53 @@ func extractAndValidateTheme(zipPath string) (models.Theme, error) {
 			return themeInfo, fmt.Errorf("打开压缩文件失败: %v", err)
 		}
 
-		outFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.FileInfo().Mode())
+		outFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 		if err != nil {
 			rc.Close()
 			return themeInfo, fmt.Errorf("创建文件失败: %v", err)
 		}
 
 		_, err = io.Copy(outFile, rc)
-		outFile.Close()
+		closeErr := outFile.Close()
 		rc.Close()
 
 		if err != nil {
 			return themeInfo, fmt.Errorf("解压文件失败: %v", err)
 		}
+		if closeErr != nil {
+			return themeInfo, fmt.Errorf("写入主题文件失败: %v", closeErr)
+		}
+	}
+
+	themeInstallMu.Lock()
+	defer themeInstallMu.Unlock()
+	themeDir := filepath.Join(themeRoot, themeInfo.Short)
+	backup := ""
+	if _, err := os.Lstat(themeDir); err == nil {
+		backup, err = os.MkdirTemp(themeRoot, ".theme-backup-")
+		if err != nil {
+			return themeInfo, fmt.Errorf("创建主题备份失败: %v", err)
+		}
+		if err = os.Remove(backup); err != nil {
+			return themeInfo, fmt.Errorf("准备主题备份失败: %v", err)
+		}
+		if err = os.Rename(themeDir, backup); err != nil {
+			return themeInfo, fmt.Errorf("备份原有主题失败: %v", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return themeInfo, fmt.Errorf("检查原有主题失败: %v", err)
+	}
+	if err := os.Rename(stage, themeDir); err != nil {
+		if backup != "" {
+			if restoreErr := os.Rename(backup, themeDir); restoreErr != nil {
+				return themeInfo, fmt.Errorf("安装主题失败: %v；恢复失败，原主题保存在 %s: %v", err, backup, restoreErr)
+			}
+		}
+		return themeInfo, fmt.Errorf("安装主题失败: %v", err)
+	}
+	if backup != "" {
+		// Failure to remove a backup must not invalidate a successful install.
+		_ = os.RemoveAll(backup)
 	}
 
 	return themeInfo, nil
@@ -557,13 +598,21 @@ func UpdateTheme(c *gin.Context) {
 	// 3. 用户提供的新URL下载
 	// 4. 用户提供的GitHub仓库信息，获取最新release下载
 
-	// 临时文件名
-	tempFile := filepath.Join(os.TempDir(), "downloaded_theme.zip")
-	if err := os.WriteFile(tempFile, themeData, 0644); err != nil {
+	tempFile, err := writeThemeTempFile(themeData)
+	if err != nil {
 		api.RespondError(c, http.StatusInternalServerError, "保存文件失败: "+err.Error())
 		return
 	}
 	defer os.Remove(tempFile)
+	newTheme, err := peekThemeFromZip(tempFile)
+	if err != nil {
+		api.RespondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if newTheme.Short != req.Short {
+		api.RespondError(c, http.StatusBadRequest, "下载的主题名称与要更新的主题不一致")
+		return
+	}
 
 	// 解压ZIP文件并验证
 	updatedThemeInfo, err := extractAndValidateTheme(tempFile)
@@ -678,9 +727,8 @@ func ImportTheme(c *gin.Context) {
 		return
 	}
 
-	// 保存到临时文件
-	tempFile := filepath.Join(os.TempDir(), "import_theme.zip")
-	if err := os.WriteFile(tempFile, themeData, 0644); err != nil {
+	tempFile, err := writeThemeTempFile(themeData)
+	if err != nil {
 		api.RespondError(c, http.StatusInternalServerError, "保存文件失败: "+err.Error())
 		return
 	}
@@ -736,6 +784,25 @@ func ImportTheme(c *gin.Context) {
 	}
 
 	api.RespondSuccessMessage(c, msg, installedTheme)
+}
+
+func writeThemeTempFile(data []byte) (string, error) {
+	f, err := os.CreateTemp("", "nekomari-theme-*.zip")
+	if err != nil {
+		return "", err
+	}
+	name := f.Name()
+	_, writeErr := f.Write(data)
+	closeErr := f.Close()
+	if writeErr != nil {
+		_ = os.Remove(name)
+		return "", writeErr
+	}
+	if closeErr != nil {
+		_ = os.Remove(name)
+		return "", closeErr
+	}
+	return name, nil
 }
 
 func UpdateThemeSettings(c *gin.Context) {

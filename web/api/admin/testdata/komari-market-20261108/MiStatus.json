@@ -1,0 +1,64 @@
+{
+  "name": "MiStatus Komari",
+  "short": "MiStatus",
+  "description": "基于 Next.js 的现代化服务器监控主题",
+  "version": "2.6.0",
+  "author": "imzyb",
+  "url": "https://github.com/imzyb/MiStatus-Komari",
+  "preview": "preview.png",
+  "configuration": {
+    "type": "managed",
+    "icon": "Settings",
+    "name": {
+      "zh-CN": "主题设置",
+      "en": "Theme Settings"
+    },
+    "data": [
+      { "name": { "zh-CN": "页面显示", "en": "Display" }, "type": "title" },
+      {
+        "key": "show_dashboard",
+        "name": { "zh-CN": "监控概览", "en": "Dashboard" },
+        "type": "switch",
+        "default": true,
+        "help": { "zh-CN": "显示/隐藏首页顶部的监控统计卡片", "en": "Show/hide the dashboard stats on the homepage" }
+      },
+      {
+        "key": "show_details",
+        "name": { "zh-CN": "详情页功能", "en": "Details Page" },
+        "type": "switch",
+        "default": true,
+        "help": { "zh-CN": "开启/关闭首页服务器点击后的详情页功能", "en": "Enable/disable the server details page on the homepage" }
+      },
+      {
+        "key": "show_admin_link",
+        "name": { "zh-CN": "登录按钮", "en": "Login Button" },
+        "type": "switch",
+        "default": true,
+        "help": { "zh-CN": "显示/隐藏导航栏的管理后台入口按钮", "en": "Show/hide the admin login button in the navigation bar" }
+      },
+      {
+        "key": "card_columns",
+        "name": { "zh-CN": "每行卡片数", "en": "Cards Per Row" },
+        "type": "number",
+        "default": 4,
+        "min": 1,
+        "max": 8,
+        "help": { "zh-CN": "设置首页卡片视图每行显示的服务器数量（1-8）", "en": "Number of server cards per row on the homepage (1-8)" }
+      },
+      {
+        "key": "show_footer",
+        "name": { "zh-CN": "显示页脚", "en": "Show Footer" },
+        "type": "switch",
+        "default": true,
+        "help": { "zh-CN": "显示/隐藏页面底部的页脚", "en": "Show/hide the footer at the bottom of the page" }
+      },
+      {
+        "key": "footer_content",
+        "name": { "zh-CN": "自定义页脚", "en": "Custom Footer" },
+        "type": "text",
+        "default": "",
+        "help": { "zh-CN": "自定义页脚内容，留空则显示默认页脚", "en": "Custom footer text, leave empty for default footer" }
+      }
+    ]
+  }
+}

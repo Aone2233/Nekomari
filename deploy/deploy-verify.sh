@@ -43,6 +43,11 @@ case "$ARCH" in
 esac
 SRV_ASSET="nekomari-linux-${ARCH}"
 AG_ASSET="komari-agent-linux-${ARCH}"
+# Opt-in builds keep the updater's exact filename off the public release. The
+# smoke test downloads the actual renamed asset rather than manufacturing one.
+if [ "${NEKOMARI_MANUAL_AGENT_ASSET:-0}" = 1 ]; then
+  AG_ASSET="manual-${AG_ASSET}"
+fi
 
 SRV=""; AG=""; WORK=""; OWN_WORK=0
 cleanup() {

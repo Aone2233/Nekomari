@@ -268,6 +268,10 @@ func tcpPing(target string, timeout time.Duration) (int64, string, error) {
 }
 
 func httpPing(target string, timeout time.Duration) (int64, string, error) {
+	return httpPingWith(target, timeout, resolveIP, net.DialTimeout)
+}
+
+func httpPingWith(target string, timeout time.Duration, resolve func(string) (string, error), dial func(string, string, time.Duration) (net.Conn, error)) (int64, string, error) {
 	// Handle raw IPv6 address for URL
 	if strings.Contains(target, ":") && !strings.Contains(target, "[") {
 		// check if it's a valid IP to avoid wrapping hostnames
@@ -280,8 +284,9 @@ func httpPing(target string, timeout time.Duration) (int64, string, error) {
 		target = "http://" + target
 	}
 
-	// dialedFamily 由 DialContext 写入：它是本次请求真正连上的那个地址的族。
-	// transport 每次调用都新建，所以这里没有并发共享。
+	// The transport can finish a dial after Client.Timeout returns. Protect the
+	// snapshot read at return even though each probe owns its own transport.
+	var familyMu sync.Mutex
 	var dialedFamily string
 	transport := &http.Transport{
 		DisableKeepAlives: true,
@@ -291,12 +296,14 @@ func httpPing(target string, timeout time.Duration) (int64, string, error) {
 			if err != nil {
 				return nil, err
 			}
-			ip, err := resolveIP(host)
+			ip, err := resolve(host)
 			if err != nil {
 				return nil, err
 			}
+			familyMu.Lock()
 			dialedFamily = addressFamilyOf(ip)
-			return net.DialTimeout(network, net.JoinHostPort(ip, port), timeout)
+			familyMu.Unlock()
+			return dial(network, net.JoinHostPort(ip, port), timeout)
 		},
 	}
 	defer transport.CloseIdleConnections()
@@ -308,14 +315,17 @@ func httpPing(target string, timeout time.Duration) (int64, string, error) {
 	start := time.Now()
 	resp, err := client.Get(target)
 	latency := time.Since(start).Microseconds()
+	familyMu.Lock()
+	family := dialedFamily
+	familyMu.Unlock()
 	if err != nil {
-		return -1, dialedFamily, err
+		return -1, family, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
-		return latency, dialedFamily, nil
+		return latency, family, nil
 	}
-	return latency, dialedFamily, errors.New("http status not ok")
+	return latency, family, errors.New("http status not ok")
 }
 
 // auto 类型的协议解析（新增）

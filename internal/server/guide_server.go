@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Aone2233/nekomari/internal/lifecycle"
 	logger "github.com/Aone2233/nekomari/utils/log"
 	"github.com/Aone2233/nekomari/web/api"
 	frontendpublic "github.com/Aone2233/nekomari/web/public"
@@ -39,6 +40,9 @@ type guideServerConfig struct {
 func (a *App) runGuideServer(controller guideController, cfg guideServerConfig) (bool, error) {
 	controller.Activate()
 	defer controller.Deactivate()
+	if worker, ok := controller.(interface{ Quiesce(context.Context) error }); ok {
+		a.guideWorker = worker
+	}
 
 	r := gin.New()
 	configureTrustedProxies(r)
@@ -77,11 +81,23 @@ func (a *App) runGuideServer(controller guideController, cfg guideServerConfig) 
 		return false, fmt.Errorf("listen in guide mode: %w", err)
 	case <-quit:
 		return false, a.Shutdown()
+	case reason := <-lifecycle.RestartRequests():
+		if err := a.Shutdown(); err != nil {
+			return false, fmt.Errorf("cleanup before guide restart failed: %w", err)
+		}
+		return false, fmt.Errorf("%w: %s", ErrRestartRequested, reason)
 	case <-controller.Done():
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(ctx); err != nil {
+			a.failHandoff(fmt.Errorf("guide HTTP shutdown was incomplete: %w", err))
 			return false, fmt.Errorf("stop guide server: %w", err)
+		}
+		workerCtx, cancelWorker := context.WithTimeout(context.Background(), resourceCleanupTimeout)
+		defer cancelWorker()
+		if err := a.quiesceGuide(workerCtx); err != nil {
+			a.failHandoff(fmt.Errorf("guide worker shutdown was incomplete: %w", err))
+			return false, fmt.Errorf("stop guide work: %w", err)
 		}
 		a.server = nil
 		a.engine = nil

@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const defaultRollupTransferBatchSize = 500
@@ -130,14 +131,45 @@ func (s *Store) ExportRollups(ctx context.Context, metricName string, batchSize 
 // not synthesize raw samples or rebuild tiers, so source counts and percentile
 // sketches retain their original semantics.
 func (s *Store) ImportRollups(ctx context.Context, rollups []PersistedRollup) error {
+	return s.importRollups(ctx, rollups, false)
+}
+
+// ImportRollupsPreservingExisting imports absent rows but refuses to overwrite
+// a differing durable row. This is intended for store-to-store migration into
+// a destination that may already contain live observations. It does not fence
+// other Store instances or make several batches one transaction.
+func (s *Store) ImportRollupsPreservingExisting(ctx context.Context, rollups []PersistedRollup) error {
+	return s.importRollups(ctx, rollups, true)
+}
+
+func (s *Store) importRollups(ctx context.Context, rollups []PersistedRollup, preserveExisting bool) error {
 	if err := s.ensureOpen(); err != nil {
 		return err
 	}
 	if len(rollups) == 0 {
 		return nil
 	}
-	s.retentionMu.RLock()
-	defer s.retentionMu.RUnlock()
+	// A failed COMMIT may have replaced durable history, so exclude other
+	// mutations until the outcome is known or this Store is fenced.
+	s.retentionMu.Lock()
+	defer s.retentionMu.Unlock()
+	if err := s.ensureOpen(); err != nil {
+		return err
+	}
+	if err := s.pendingCommitError(); err != nil {
+		return err
+	}
+	// An import cannot replace a durable row while matching observations are
+	// still buffered; the caller must first coordinate a successful flush.
+	s.ingestMu.Lock()
+	defer s.ingestMu.Unlock()
+	importWindows, err := importedRawWindows(rollups)
+	if err != nil {
+		return err
+	}
+	if err := s.checkImportPending(importWindows); err != nil {
+		return err
+	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -146,6 +178,12 @@ func (s *Store) ImportRollups(ctx context.Context, rollups []PersistedRollup) er
 	defer func() { _ = tx.Rollback() }()
 	cache := newRollupDictionaryCache()
 	rows := make([]normalizedRollupRow, 0, len(rollups))
+	type importKey struct {
+		metricName string
+		interval   time.Duration
+		rollupKey
+	}
+	seen := make(map[importKey]struct{}, len(rollups))
 	for i, rollup := range rollups {
 		if err := validatePersistedRollup(rollup); err != nil {
 			return fmt.Errorf("rollup %d: %w", i, err)
@@ -159,6 +197,11 @@ func (s *Store) ImportRollups(ctx context.Context, rollups []PersistedRollup) er
 			return err
 		}
 		key := rollupKey{entityID: rollup.EntityID, tagsHash: tagsHash, labelsHash: labelsHash, bucket: rollup.Bucket.UTC().UnixMilli()}
+		identity := importKey{metricName: rollup.MetricName, interval: rollup.Resolution, rollupKey: key}
+		if _, duplicate := seen[identity]; duplicate && preserveExisting {
+			return fmt.Errorf("%w: duplicate rollup in import batch", ErrImportConflict)
+		}
+		seen[identity] = struct{}{}
 		seriesID, err := cache.seriesID(ctx, s, tx, rollup.MetricName, key, tagsJSON)
 		if err != nil {
 			return err
@@ -181,6 +224,26 @@ func (s *Store) ImportRollups(ctx context.Context, rollups []PersistedRollup) er
 			}
 			digest = encodeStoredTDigest(d)
 		}
+		if preserveExisting {
+			stored, err := s.readRollupBucketTx(ctx, rollup.MetricName, key, rollup.Resolution, tx)
+			if err != nil {
+				return err
+			}
+			if stored != nil {
+				incomingDigest, err := digestFromRollup(rollup.Count, rollup.Min, rollup.Max, digest, s.cfg.RollupPolicy.compression())
+				if err != nil {
+					return err
+				}
+				incoming := &rollupBucket{count: rollup.Count, sum: rollup.Sum, sumSq: rollup.SumSq,
+					min: rollup.Min, max: rollup.Max, firstVal: rollup.FirstValue, firstTS: rollup.FirstTime.UTC().UnixMilli(),
+					lastVal: rollup.LastValue, lastTS: rollup.LastTime.UTC().UnixMilli(), digest: incomingDigest}
+				if !equalRebuiltRollup(stored, incoming) {
+					return fmt.Errorf("%w: metric %q entity %q interval %s bucket %s", ErrImportConflict,
+						rollup.MetricName, rollup.EntityID, rollup.Resolution, rollup.Bucket.UTC().Format(time.RFC3339Nano))
+				}
+				continue
+			}
+		}
 		rows = append(rows, normalizedRollupRow{
 			seriesID: seriesID, resolutionID: resolutionID, labelID: labelID,
 			bucketMilli: key.bucket, count: rollup.Count, sum: rollup.Sum, sumSq: rollup.SumSq,
@@ -192,12 +255,21 @@ func (s *Store) ImportRollups(ctx context.Context, rollups []PersistedRollup) er
 	if err := s.upsertNormalizedRollupRowsTx(ctx, rows, tx); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		// A failed acknowledgement can still mean the import committed.
+		s.invalidateRawWindows(importWindows)
+		return s.markCommitUncertain(err)
+	}
+	s.invalidateRawWindows(importWindows)
+	return nil
 }
 
 func validatePersistedRollup(rollup PersistedRollup) error {
 	if strings.TrimSpace(rollup.MetricName) == "" || strings.TrimSpace(rollup.EntityID) == "" {
 		return fmt.Errorf("%w: metric name and entity id are required", ErrInvalidArgument)
+	}
+	if !utf8.ValidString(rollup.MetricName) || !utf8.ValidString(rollup.EntityID) {
+		return fmt.Errorf("%w: metric name and entity id must be valid UTF-8", ErrInvalidArgument)
 	}
 	if rollup.Resolution < time.Millisecond || rollup.Resolution%time.Millisecond != 0 {
 		return fmt.Errorf("%w: rollup interval %s must use whole milliseconds", ErrInvalidArgument, rollup.Resolution)
@@ -210,6 +282,17 @@ func validatePersistedRollup(rollup PersistedRollup) error {
 	}
 	if rollup.FirstTime.After(rollup.LastTime) {
 		return fmt.Errorf("%w: first timestamp must not follow last timestamp", ErrInvalidArgument)
+	}
+	start := rollup.Bucket.UTC().UnixMilli()
+	interval := rollup.Resolution.Milliseconds()
+	// Buckets may predate the Unix epoch; their aligned start and exclusive
+	// end must both be representable and contain the observations.
+	if rollup.Bucket.Nanosecond()%int(time.Millisecond) != 0 || start%interval != 0 || start > math.MaxInt64-interval {
+		return fmt.Errorf("%w: invalid rollup bucket boundary", ErrInvalidArgument)
+	}
+	end := start + interval
+	if rollup.FirstTime.UTC().UnixMilli() < start || rollup.LastTime.UTC().UnixMilli() >= end {
+		return fmt.Errorf("%w: rollup observations must be inside the bucket", ErrInvalidArgument)
 	}
 	if rollup.Min != rollup.Max {
 		if len(rollup.Digest) == 0 {

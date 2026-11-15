@@ -16,6 +16,7 @@
 package plugin
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -29,14 +30,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dop251/goja"
-	"github.com/dop251/goja_nodejs/require"
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/internal/scheduler"
 	"github.com/Aone2233/nekomari/pkg/jsruntime"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 	"github.com/Aone2233/nekomari/web/connection"
+	"github.com/dop251/goja"
+	"github.com/dop251/goja_nodejs/require"
+	"github.com/gin-gonic/gin"
 )
 
 // DataDir is the on-disk root for installed plugins, mirroring the theme
@@ -103,12 +104,16 @@ type Info struct {
 // Manager owns the installed plugin set: load/unload lifecycle, persisted
 // state, per-plugin logs, and the host engine used by server.route.
 type Manager struct {
-	mu        sync.RWMutex
-	engine    *gin.Engine
-	instances map[string]*Instance
-	routes    map[string]map[string]bool // short -> "METHOD path" -> gin slot registered
-	hooks     []*hookEntry               // http request/response hooks in registration order
-	injects   []*injectEntry             // html head/body fragments in registration order
+	mu           sync.RWMutex
+	async        asyncCalls
+	shutdownMu   sync.Mutex
+	shutdownDone chan struct{}
+	shutdownErr  error
+	engine       *gin.Engine
+	instances    map[string]*Instance
+	routes       map[string]map[string]bool // short -> "METHOD path" -> gin slot registered
+	hooks        []*hookEntry               // http request/response hooks in registration order
+	injects      []*injectEntry             // html head/body fragments in registration order
 
 	stateMu sync.Mutex
 	state   *State
@@ -119,15 +124,16 @@ type Manager struct {
 
 // Instance is one loaded plugin runtime plus its host bindings.
 type Instance struct {
-	mu         sync.RWMutex
-	info       models.Plugin
-	dir        string
-	runtime    *jsruntime.Runtime
-	host       *jsruntime.Host
-	handlers   map[string]goja.Callable // "METHOD path" -> current route handler
-	statics    map[string]*staticConfig // mount path -> static folder config
-	rpcMethods map[string]goja.Callable // registered RPC method -> JS handler
-	cronJobs   []string                 // scheduler job names, removed on unload
+	mu                   sync.RWMutex
+	info                 models.Plugin
+	dir                  string
+	runtime              *jsruntime.Runtime
+	host                 *jsruntime.Host
+	handlers             map[string]goja.Callable // "METHOD path" -> current route handler
+	statics              map[string]*staticConfig // mount path -> static folder config
+	rpcMethods           map[string]goja.Callable // registered RPC method -> JS handler
+	cronJobs             []string                 // scheduler job names, removed on unload
+	notificationChannels map[string]*pluginNotificationChannel
 }
 
 // global is the process-wide plugin manager.
@@ -169,6 +175,40 @@ func Reload(short string) error {
 // CloseAll unloads every loaded plugin. Used during server shutdown.
 func CloseAll() error {
 	return global.closeAll()
+}
+
+// CloseAllContext starts unload once and joins it before fencing server.call.
+// If a plugin ignores the deadline, later cleanups must not close its stores.
+func CloseAllContext(ctx context.Context) error {
+	return global.closeAllContext(ctx)
+}
+
+func (m *Manager) closeAllContext(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("plugin shutdown requires a context")
+	}
+	m.shutdownMu.Lock()
+	if m.shutdownDone == nil {
+		m.shutdownDone = make(chan struct{})
+		go func() {
+			err := m.closeAll()
+			m.shutdownMu.Lock()
+			m.shutdownErr = err
+			close(m.shutdownDone)
+			m.shutdownMu.Unlock()
+		}()
+	}
+	done := m.shutdownDone
+	m.shutdownMu.Unlock()
+	select {
+	case <-done:
+		m.shutdownMu.Lock()
+		err := m.shutdownErr
+		m.shutdownMu.Unlock()
+		return errors.Join(err, m.async.stop(ctx))
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // List returns the installed plugins with their enabled/running state.
@@ -333,6 +373,7 @@ func (m *Manager) load(short string) error {
 // hooks. Gin route slots from the failed load stay inert, mirroring the
 // unload behavior. The caller must not hold any Manager lock.
 func (m *Manager) dropInstance(short string, inst *Instance) {
+	m.unregisterNotificationChannels(inst)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.instances[short] != inst {
@@ -379,6 +420,7 @@ func (m *Manager) unload(short string) error {
 	}
 	delete(m.instances, short)
 	m.mu.Unlock()
+	m.unregisterNotificationChannels(inst)
 
 	inst.mu.RLock()
 	rt := inst.runtime

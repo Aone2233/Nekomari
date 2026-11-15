@@ -208,9 +208,13 @@ func TestPanelHistoryWritesDuringStoreReload(t *testing.T) {
 		_ = current.Close()
 	}()
 	results := make(chan error, 1)
+	// Store identities are millisecond-precision. Keep synthetic samples
+	// distinct even when a fast reload occurs within the same millisecond.
+	base := time.Now().UTC().Truncate(time.Millisecond)
 	go func() {
 		for i := 0; i < 40; i++ {
-			if err := WritePanelSample(ctx, PanelSample{At: time.Now(), HeapBytes: uint64(i), Goroutines: 3}); err != nil {
+			at := base.Add(time.Duration(i) * time.Millisecond)
+			if err := WritePanelSample(ctx, PanelSample{At: at, HeapBytes: uint64(i), Goroutines: 3}); err != nil {
 				results <- err
 				return
 			}
@@ -223,6 +227,10 @@ func TestPanelHistoryWritesDuringStoreReload(t *testing.T) {
 	}()
 	for i := 0; i < 4; i++ {
 		if err := storeOperations.Acquire(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if err := GetStore().PersistHotRollups(ctx); err != nil {
+			storeOperations.Release()
 			t.Fatal(err)
 		}
 		next, err := openStore(ctx, config)

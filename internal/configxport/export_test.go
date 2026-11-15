@@ -2,6 +2,7 @@ package configxport
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -11,10 +12,10 @@ import (
 // database: what the document carries, what an import would do, and — the one that matters most
 // here — that a credential never reaches the file.
 type fakeStore struct {
-	clients      []map[string]any
-	tasks        []map[string]any
-	windows      []map[string]any
-	settings     map[string]any
+	clients       []map[string]any
+	tasks         []map[string]any
+	windows       []map[string]any
+	settings      map[string]any
 	notifications []map[string]any
 
 	created []Change
@@ -110,7 +111,7 @@ func (f *fakeStore) Update(entity string, identity string, record map[string]any
 // The field lists, mirroring the real store's. Kept here so the fake's behaviour matches the
 // production export rather than being convenient.
 var clientFields = []string{"uuid", "name", "group", "tags", "weight", "price", "billing_cycle", "currency", "hidden", "traffic_limit", "traffic_limit_type", "expired_at", "token"}
-var taskFields = []string{"id", "name", "type", "target", "interval", "clients"}
+var taskFields = []string{"id", "name", "type", "target", "interval", "clients", "target_family"}
 var windowFields = []string{"id", "name", "start", "end", "clients", "reason"}
 var notificationFields = []string{"client", "enable", "grace_period"}
 
@@ -181,7 +182,7 @@ func TestNoCredentialReachesTheDefaultExport(t *testing.T) {
 		}
 	}
 	// And the values themselves, which is the check that survives a rename.
-	for _, value := range []string{"agent-token-a", "agent-token-b", "hunter2", "sender-secret"} {
+	for _, value := range []string{store.clients[0]["token"].(string), store.clients[1]["token"].(string), store.settings["smtp_password"].(string), store.notifications[0]["addition"].(string)} {
 		if strings.Contains(text, value) {
 			t.Errorf("the export carries the credential value %q", value)
 		}
@@ -201,7 +202,7 @@ func TestSecretsCanBeIncludedExplicitly(t *testing.T) {
 		t.Fatal("the document must record that it carries credentials")
 	}
 	encoded, _ := json.Marshal(document)
-	if !strings.Contains(string(encoded), "agent-token-a") {
+	if !strings.Contains(string(encoded), sampleStore().clients[0]["token"].(string)) {
 		t.Fatal("an explicit secrets export must carry the tokens")
 	}
 }
@@ -222,9 +223,8 @@ func TestRoundTripIntoAnEmptyPanel(t *testing.T) {
 	}
 	// Everything is a create, nothing is unchanged, and nothing is a removal: the document is the
 	// whole configuration.
-	if plan.Creates != 4 { // two clients, one task, one window, one notification ... minus settings
-		// settings are a create too; counted below rather than asserted by arithmetic
-		t.Logf("creates = %d (settings included)", plan.Creates)
+	if plan.Creates != 6 { // two clients, one task, one window, one notification, one setting
+		t.Fatalf("creates = %d, want 6", plan.Creates)
 	}
 	if plan.Unchanged != 0 {
 		t.Errorf("Unchanged = %d on an empty panel", plan.Unchanged)
@@ -239,6 +239,51 @@ func TestRoundTripIntoAnEmptyPanel(t *testing.T) {
 	// Every planned create was performed.
 	if len(empty.created) != plan.Creates {
 		t.Fatalf("applied %d creates, planned %d", len(empty.created), plan.Creates)
+	}
+}
+
+func TestEntityIdentitiesAndDuplicateRecords(t *testing.T) {
+	for _, tc := range []struct {
+		entity, field string
+		record        map[string]any
+	}{
+		{"clients", "uuid", map[string]any{"uuid": "node-a"}},
+		{"ping_tasks", "id", map[string]any{"id": float64(12), "name": "probe"}},
+		{"maintenance_windows", "id", map[string]any{"id": float64(7), "name": "window"}},
+		{"notification_configs", "client", map[string]any{"client": "node-a", "enable": true}},
+		{"settings", "key", map[string]any{"key": "sitename", "value": "name"}},
+	} {
+		t.Run(tc.entity, func(t *testing.T) {
+			if identityField(tc.entity) != tc.field || identityOf(tc.entity, tc.record) != fmt.Sprint(tc.record[tc.field]) {
+				t.Fatalf("incorrect identity for %s", tc.entity)
+			}
+		})
+	}
+	duplicate := Document{SchemaVersion: SchemaVersion, PingTasks: []map[string]any{{"id": 1}, {"id": 1}}}
+	if _, err := Plan(&fakeStore{settings: map[string]any{}}, duplicate); err == nil {
+		t.Fatal("duplicate task IDs must be rejected rather than applying the first record twice")
+	}
+}
+
+func TestLegacyPingFamilyOmissionEqualsOnlyExplicitEmptyString(t *testing.T) {
+	stored := map[string]any{"config_uid": "task", "name": "legacy"}
+	for _, test := range []struct {
+		name    string
+		value   any
+		changed bool
+	}{
+		{"empty", "", false},
+		{"ipv6", "ipv6", true},
+		{"null", nil, true},
+		{"object", map[string]any{"invalid": true}, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			wanted := map[string]any{"config_uid": "task", "name": "legacy", "target_family": test.value}
+			fields := differs("ping_tasks", IdentitySchemaVersion, wanted, stored)
+			if (len(fields) != 0) != test.changed {
+				t.Fatalf("fields=%v, want changed=%v", fields, test.changed)
+			}
+		})
 	}
 }
 
@@ -360,7 +405,7 @@ func TestRemovalsAreReportedAndNeverApplied(t *testing.T) {
 
 // A document from a newer schema is refused rather than partly applied.
 func TestAFutureSchemaIsRefused(t *testing.T) {
-	future, err := json.Marshal(Document{SchemaVersion: SchemaVersion + 1, Clients: []map[string]any{{"uuid": "x"}}})
+	future, err := json.Marshal(Document{SchemaVersion: IdentitySchemaVersion + 1, Clients: []map[string]any{{"uuid": "x"}}})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -380,6 +425,34 @@ func TestAFutureSchemaIsRefused(t *testing.T) {
 	}
 	if _, err := Parse(current); err != nil {
 		t.Fatalf("the current schema must be accepted: %v", err)
+	}
+}
+
+func TestParseRejectsUnknownEnvelopeAndTrailingData(t *testing.T) {
+	for _, doc := range []string{
+		`{"schema_version":3,"unrecognized_settings":{"enabled":true}}`,
+		`{"schema_version":3} {"schema_version":3}`,
+		`{"schema_version":3} garbage`,
+		`{"schema_version":1,"schema_version":3}`,
+		`{"schema_version":3,"SCHEMA_VERSION":1}`,
+		`{"schema_version":3,"secrets_included":false,"SECRETS_INCLUDED":true}`,
+		`{"schema_version":3,"clients":[{"uuid":"one","uuid":"two"}]}`,
+		`{"schema_version":3,"settings":{"site":{"name":"one","name":"two"}}}`,
+		`{"schema_version":3,"settings":` + strings.Repeat("[", 70) + `0` + strings.Repeat("]", 70) + `}`,
+	} {
+		if _, err := Parse([]byte(doc)); err == nil {
+			t.Fatalf("ambiguous document accepted: %s", doc)
+		}
+	}
+}
+
+func TestParsePreservesLargeIntegers(t *testing.T) {
+	doc, err := Parse([]byte(`{"schema_version":3,"clients":[{"traffic_limit":9007199254740993}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := doc.Clients[0]["traffic_limit"]; got != json.Number("9007199254740993") {
+		t.Fatalf("large integer changed: %T %v", got, got)
 	}
 }
 
@@ -479,4 +552,30 @@ func TestAStoreFailureIsReturned(t *testing.T) {
 		t.Fatal("a nil applier must be an error")
 	}
 	_ = time.Now
+}
+
+func TestPinnedExportUsesVersionedSchema(t *testing.T) {
+	legacy := sampleStore()
+	document, err := Export(legacy, false, "test")
+	if err != nil || document.SchemaVersion != SchemaVersion {
+		t.Fatalf("legacy export schema = %d, error = %v", document.SchemaVersion, err)
+	}
+	legacy.tasks[0]["target_family"] = "ipv6"
+	document, err = Export(legacy, false, "test")
+	if err != nil || document.SchemaVersion != PinnedSchemaVersion || document.PingTasks[0]["target_family"] != "ipv6" {
+		t.Fatalf("pinned export = %+v, error = %v", document, err)
+	}
+	data, err := json.Marshal(document)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse(data); err != nil {
+		t.Fatalf("current importer must recognize the versioned document: %v", err)
+	}
+	for _, invalid := range []any{true, "IPV6", nil} {
+		legacy.tasks[0]["target_family"] = invalid
+		if _, err := Export(legacy, false, "test"); err == nil {
+			t.Fatalf("export accepted invalid family %#v", invalid)
+		}
+	}
 }

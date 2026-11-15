@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	logger "github.com/Aone2233/nekomari/utils/log"
 	"strconv"
@@ -63,11 +64,16 @@ func (s cronSchedule) match(t time.Time) bool {
 }
 
 type Manager struct {
-	mu   sync.Mutex
-	jobs map[string]job
+	mu       sync.Mutex
+	jobs     map[string]job
+	stopping bool
+	drained  chan struct{}
+	active   sync.WaitGroup
 }
 
 var defaultManager = NewManager()
+
+var ErrStopped = errors.New("scheduler is stopping")
 
 func NewManager() *Manager {
 	return &Manager{jobs: make(map[string]job)}
@@ -98,6 +104,13 @@ func RemovePrefix(prefix string) {
 
 func StopAll() {
 	defaultManager.StopAll()
+}
+
+// StopAndWait permanently stops the default scheduler and waits for scheduled
+// callbacks themselves to return. Goroutines spawned by callbacks are not
+// tracked and must have their own shutdown coordination.
+func StopAndWait(ctx context.Context) error {
+	return defaultManager.StopAndWait(ctx)
 }
 
 func (m *Manager) AddFunc(name string, spec string, fn func()) error {
@@ -132,9 +145,22 @@ func (m *Manager) AddContextFunc(name string, spec string, runImmediately bool, 
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	m.replace(name, cancel)
-
-	go m.run(ctx, name, s, runImmediately, fn)
+	m.mu.Lock()
+	if m.stopping {
+		m.mu.Unlock()
+		cancel()
+		return ErrStopped
+	}
+	if old, ok := m.jobs[name]; ok {
+		old.cancel()
+	}
+	m.jobs[name] = job{cancel: cancel}
+	m.active.Add(1)
+	go func() {
+		defer m.active.Done()
+		m.run(ctx, name, s, runImmediately, fn)
+	}()
+	m.mu.Unlock()
 	return nil
 }
 
@@ -170,19 +196,51 @@ func (m *Manager) StopAll() {
 	}
 }
 
-func (m *Manager) replace(name string, cancel context.CancelFunc) {
+// StopAndWait is terminal. Its lock orders new registrations and callback
+// launches before Wait starts, including callbacks of removed/replaced jobs.
+func (m *Manager) StopAndWait(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("scheduler shutdown requires a context")
+	}
+	m.mu.Lock()
+	if !m.stopping {
+		m.stopping = true
+		for name, old := range m.jobs {
+			old.cancel()
+			delete(m.jobs, name)
+		}
+		m.drained = make(chan struct{})
+		go func() {
+			m.active.Wait()
+			close(m.drained)
+		}()
+	}
+	drained := m.drained
+	m.mu.Unlock()
+	select {
+	case <-drained:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (m *Manager) launch(ctx context.Context, name string, fn Func) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	if old, ok := m.jobs[name]; ok {
-		old.cancel()
+	if m.stopping || ctx.Err() != nil {
+		return
 	}
-	m.jobs[name] = job{cancel: cancel}
+	m.active.Add(1)
+	go func() {
+		defer m.active.Done()
+		safeRun(ctx, name, fn)
+	}()
 }
 
 func (m *Manager) run(ctx context.Context, name string, s schedule, runImmediately bool, fn Func) {
 	if runImmediately {
-		go safeRun(ctx, name, fn)
+		m.launch(ctx, name, fn)
 	}
 
 	nextTick := s.Next(time.Now())
@@ -201,7 +259,7 @@ func (m *Manager) run(ctx context.Context, name string, s schedule, runImmediate
 		case <-ctx.Done():
 			return
 		case <-timer.C:
-			go safeRun(ctx, name, fn)
+			m.launch(ctx, name, fn)
 			nextTick = s.Next(nextTick)
 			if nextTick.IsZero() {
 				return

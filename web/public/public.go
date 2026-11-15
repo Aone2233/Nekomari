@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"html"
 	"io"
 	"io/fs"
 	"mime"
@@ -227,11 +228,11 @@ const (
 	LanguageCookieName = "language"
 
 	// 主题内部结构定义
-	DistDir   = "dist"       // 静态资源存放目录
+	DistDir = "dist" // 静态资源存放目录
 	// AdminDistDir 是内置归档里面板自带后台界面的子树（roadmap H7）。归档里 dist/ 的内容在根上
 	// （内置主题去掉前缀），所以后台单独放在 admin/ 下，避免与主题的 index.html 和 assets/ 相撞。
 	AdminDistDir = "admin"
-	IndexFile = "index.html" // 相对于 DistDir
+	IndexFile    = "index.html" // 相对于 DistDir
 )
 
 // init 只确保主题目录存在。
@@ -685,7 +686,7 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		// 执行 HTML 内容替换
 		replacer := strings.NewReplacer(
 			"<title>Nekomari Monitor</title>", "<title>"+cfg[config.SitenameKey].(string)+"</title>",
-			"A simple server monitor tool.", cfg[config.DescriptionKey].(string),
+			`<meta name="description" content="A simple server monitor tool."`, `<meta name="description" content="`+html.EscapeString(cfg[config.DescriptionKey].(string))+`"`,
 			"</head>", cfg[config.CustomHeadKey].(string)+"</head>",
 			"</body>", cfg[config.CustomBodyKey].(string)+"</body>",
 		)

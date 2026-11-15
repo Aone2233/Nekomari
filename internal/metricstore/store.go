@@ -110,10 +110,18 @@ func InitializeStore() error {
 	// metric store 始终启用；未配置时默认 SQLite（./data/metrics.db）。
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	if err := acquirePingHistoryTransition(ctx, "initialization"); err != nil {
+		return err
+	}
+	defer releasePingHistoryTransition()
 
 	s, err := openStore(ctx, cfg)
 	if err != nil {
 		return err
+	}
+	if err := ReconcileReservedPingHistory(ctx, s, config.Database()); err != nil {
+		_ = s.Close()
+		return fmt.Errorf("reconcile ping history before opening metric store: %w", err)
 	}
 
 	storeMu.Lock()
@@ -136,10 +144,10 @@ func RecoverStore(ctx context.Context, cfg *MetricStoreConfig) error {
 
 	storeInitMu.Lock()
 	defer storeInitMu.Unlock()
-	if err := storeOperations.Acquire(ctx); err != nil {
-		return fmt.Errorf("wait for metric store operations before recovery: %w", err)
+	if err := acquirePingHistoryTransition(ctx, "recovery"); err != nil {
+		return err
 	}
-	defer storeOperations.Release()
+	defer releasePingHistoryTransition()
 	if isStoreClosing() {
 		return ErrStoreBusy
 	}
@@ -163,9 +171,16 @@ func RecoverStore(ctx context.Context, cfg *MetricStoreConfig) error {
 		logger.Infof("metricstore", "Metric store connection recovered; structure upgrade is required (driver=%s)", recovered.Driver)
 		return nil
 	}
+	if err := prepareActiveStoreForReplacement(ctx); err != nil {
+		return err
+	}
 	s, err := openStore(ctx, &recovered)
 	if err != nil {
 		return err
+	}
+	if err := ReconcileReservedPingHistory(ctx, s, config.Database()); err != nil {
+		_ = s.Close()
+		return fmt.Errorf("reconcile ping history before recovery: %w", err)
 	}
 
 	target := targetFingerprint(&recovered)
@@ -183,7 +198,6 @@ func RecoverStore(ctx context.Context, cfg *MetricStoreConfig) error {
 	store = s
 	storeFingerprint = target
 	storeMu.Unlock()
-	clearStoreClosing()
 
 	if old != nil {
 		if closeErr := old.Close(); closeErr != nil {
@@ -201,10 +215,10 @@ func RecoverStore(ctx context.Context, cfg *MetricStoreConfig) error {
 // 注意：Reload 只切换运行中的连接，不会把旧目标（如 SQLite）中的历史数据
 // 搬运到新目标（如 MySQL/PostgreSQL）。跨库数据迁移必须由管理员手动启动。
 func Reload(ctx context.Context) error {
-	if err := storeOperations.Acquire(ctx); err != nil {
-		return fmt.Errorf("wait for metric store operations before reload: %w", err)
+	if err := acquirePingHistoryTransition(ctx, "reload"); err != nil {
+		return err
 	}
-	defer storeOperations.Release()
+	defer releasePingHistoryTransition()
 	if isStoreClosing() {
 		return ErrStoreBusy
 	}
@@ -212,6 +226,9 @@ func Reload(ctx context.Context) error {
 	cfg, err := config.GetManyAs[MetricStoreConfig]()
 	if err != nil {
 		return fmt.Errorf("failed to load metric store config: %w", err)
+	}
+	if err := prepareActiveStoreForReplacement(ctx); err != nil {
+		return err
 	}
 
 	// Do not let the normal hot-reload path run AutoMigrate against an old
@@ -240,6 +257,10 @@ func Reload(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := ReconcileReservedPingHistory(ctx, s, config.Database()); err != nil {
+		_ = s.Close()
+		return fmt.Errorf("reconcile ping history before metric store reload: %w", err)
+	}
 
 	storeMu.Lock()
 	old := store
@@ -253,6 +274,24 @@ func Reload(ctx context.Context) error {
 	}
 
 	logger.Infof("metricstore", "Metric store reloaded successfully (driver=%s)", ResolveDriverFromConfig(cfg.Driver, cfg.DSN))
+	return nil
+}
+
+// The same underlying database can be named by different DSNs. Drain and
+// clean the active store first so closing it after replacement cannot write an
+// old hot bucket back into a target that has already been reconciled.
+// The caller holds the exclusive store operation gate.
+func prepareActiveStoreForReplacement(ctx context.Context) error {
+	active := GetStore()
+	if active == nil {
+		return nil
+	}
+	if err := active.PersistHotRollups(ctx); err != nil {
+		return fmt.Errorf("persist active metric history before replacement: %w", err)
+	}
+	if err := ReconcileReservedPingHistory(ctx, active, config.Database()); err != nil {
+		return fmt.Errorf("reconcile active ping history before replacement: %w", err)
+	}
 	return nil
 }
 
@@ -270,20 +309,31 @@ func CloseStoreContext(ctx context.Context) error {
 		clearStoreClosing()
 		return err
 	}
-	if err := storeOperations.Acquire(ctx); err != nil {
+	if err := acquirePingHistoryTransition(ctx, "close"); err != nil {
 		clearStoreClosing()
-		return fmt.Errorf("wait for metric store operations before close: %w", err)
+		return err
 	}
-	defer storeOperations.Release()
+	defer releasePingHistoryTransition()
+	if err := prepareActiveStoreForReplacement(ctx); err != nil {
+		clearStoreClosing()
+		return err
+	}
 
 	storeMu.Lock()
 	defer storeMu.Unlock()
 
 	if store != nil {
-		err := store.Close()
+		err := store.CloseContext(ctx)
+		if err != nil {
+			// A flush failure retains hot buckets for retry. A pool-close error
+			// also retains the handle, but is sticky and cannot be retried as a
+			// usable store; it needs an explicit recovery decision.
+			clearStoreClosing()
+			return err
+		}
 		store = nil
 		storeFingerprint = ""
-		return err
+		return nil
 	}
 	storeFingerprint = ""
 	return nil

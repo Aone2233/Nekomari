@@ -286,6 +286,25 @@ func TestRequireProvidesSupportedCoreModules(t *testing.T) {
 	}
 }
 
+func TestURLGlobals(t *testing.T) {
+	for _, node := range []bool{false, true} {
+		t.Run(fmt.Sprintf("node=%v", node), func(t *testing.T) {
+			runtime, err := New(`function verify() {
+   const u = new URL("http://EXAMPLE.com/path?x=1");
+   const params = new URLSearchParams(u.search);
+   return u.hostname === "example.com" && params.get("x") === "1" && URL === require("url").URL;
+  }`, Options{NodeJS: node, BaseDir: t.TempDir(), Console: io.Discard, Timeout: time.Second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer runtime.Close()
+			if err := runtime.Call("verify"); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestRequireConfigurationComposesWithBaseDir(t *testing.T) {
 	baseDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(baseDir, "module.js"), []byte(`

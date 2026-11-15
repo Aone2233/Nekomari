@@ -2,52 +2,61 @@ package metricstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"time"
 
 	logger "github.com/Aone2233/nekomari/utils/log"
 
 	"github.com/Aone2233/nekomari/pkg/metric"
 )
 
-// farFuture 返回一个足够远的未来时间，用于以 DeleteBefore 语义清空某指标的全部数据。
-func farFuture() time.Time {
-	return time.Now().UTC().Add(24 * 365 * time.Hour)
-}
-
 // DeleteAllRecords 删除所有负载/系统类记录（保留指标定义，不含 ping）。
 func DeleteAllRecords(ctx context.Context) error {
+	if err := acquirePingHistoryTransition(ctx, "clearing records"); err != nil {
+		return err
+	}
+	defer releasePingHistoryTransition()
 	s := GetStore()
 	if s == nil {
 		return fmt.Errorf("metric store not enabled")
 	}
 
-	for _, metricName := range recordMetricNames {
-		if _, err := s.DeleteBefore(ctx, metricName, farFuture()); err != nil {
-			logger.Errorf("metricstore", "Failed to delete metric %s: %v", metricName, err)
-		}
-	}
+	err := deleteMetricRecords(ctx, s, recordMetricNames)
 	clearReportTrafficStates()
-
-	return nil
+	return err
 }
 
 // DeleteAllPingRecords 删除全部 ping 记录（保留指标定义）。
 func DeleteAllPingRecords(ctx context.Context) error {
+	if err := acquirePingHistoryTransition(ctx, "clearing ping records"); err != nil {
+		return err
+	}
+	defer releasePingHistoryTransition()
 	s := GetStore()
 	if s == nil {
 		return fmt.Errorf("metric store not enabled")
 	}
-	for _, metricName := range pingMetricNames {
-		if _, err := s.DeleteBefore(ctx, metricName, farFuture()); err != nil {
-			return fmt.Errorf("failed to delete ping records: %w", err)
+	return deleteMetricRecords(ctx, s, pingMetricNames)
+}
+
+func deleteMetricRecords(ctx context.Context, s *metric.Store, names []string) error {
+	var failures []error
+	for _, name := range names {
+		// DeleteSeries also removes pending coarse rollups. DeleteBefore alone
+		// can let those in-memory buckets reappear on a later compaction.
+		if _, err := s.DeleteSeries(ctx, metric.Query{MetricName: name}); err != nil {
+			failures = append(failures, fmt.Errorf("delete metric %s: %w", name, err))
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }
 
 // DeletePingRecordsByTask 删除指定任务（task_id）的全部 ping 记录。
 func DeletePingRecordsByTask(ctx context.Context, taskIDs []uint) error {
+	if err := storeOperations.AcquireShared(ctx); err != nil {
+		return err
+	}
+	defer storeOperations.ReleaseShared()
 	s := GetStore()
 	if s == nil {
 		return fmt.Errorf("metric store not enabled")
@@ -67,6 +76,10 @@ func DeletePingRecordsByTask(ctx context.Context, taskIDs []uint) error {
 
 // DeleteEntity 删除指定 agent 在所有指标下的历史数据。
 func DeleteEntity(ctx context.Context, entityID string) error {
+	if err := acquirePingHistoryTransition(ctx, "clearing node history"); err != nil {
+		return err
+	}
+	defer releasePingHistoryTransition()
 	s := GetStore()
 	if s == nil {
 		return fmt.Errorf("metric store not enabled")
@@ -81,24 +94,32 @@ func DeleteEntity(ctx context.Context, entityID string) error {
 // DeleteEntityAsync clears one agent's metric history without delaying the
 // client deletion response.
 func DeleteEntityAsync(entityID string) {
-	go func() {
-		if err := DeleteEntity(context.Background(), entityID); err != nil {
+	if !pendingCleanup.start(func() error {
+		err := DeleteEntity(context.Background(), entityID)
+		if err != nil {
 			logger.Errorf("metricstore", "Failed to delete metric records for entity %s: %v", entityID, err)
 		}
-	}()
+		return err
+	}) {
+		logger.Errorf("metricstore", "Rejected entity cleanup while shutting down: %s", entityID)
+	}
 }
 
 // DeleteMetricDataAsync clears disabled metric history without delaying an
 // admin retention-policy update response.
 func DeleteMetricDataAsync(metricName string) {
-	go func() {
+	if !pendingCleanup.start(func() error {
 		s := GetStore()
 		if s == nil {
 			logger.Errorf("metricstore", "Failed to delete disabled metric %s: metric store not enabled", metricName)
-			return
+			return errors.New("metric store not enabled")
 		}
-		if _, err := s.DeleteMetricDataIfDisabled(context.Background(), metricName); err != nil {
+		_, err := s.DeleteMetricDataIfDisabled(context.Background(), metricName)
+		if err != nil {
 			logger.Errorf("metricstore", "Failed to delete disabled metric %s: %v", metricName, err)
 		}
-	}()
+		return err
+	}) {
+		logger.Errorf("metricstore", "Rejected disabled metric cleanup while shutting down: %s", metricName)
+	}
 }

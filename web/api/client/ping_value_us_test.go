@@ -12,8 +12,8 @@ import (
 // 上报值到记录的翻译层：value_us 原样带下去，旧 agent（无 value_us）保持 0。
 //
 // 落库/聚合那一侧（小数毫秒、loss 判定）由 internal/metricstore 的用例覆盖；这里钉住的
-// 是「协议字段没有被入口丢掉」——report_v2 把 params.ValueUS 交给 ingestPingResult，
-// ingestPingResult 再交给 newPingRecord。签名是编译期保证，字段映射由这条用例保证。
+// 是「协议字段没有被入口丢掉」——report_v2 把 params.ValueUS 交给 newPingRecord。
+// 签名是编译期保证，字段映射由这条用例保证。
 func TestNewPingRecordCarriesMicroseconds(t *testing.T) {
 	at := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
 

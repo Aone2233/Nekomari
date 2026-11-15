@@ -3,7 +3,6 @@ package server
 import (
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/Aone2233/nekomari/web/public"
 )
@@ -21,16 +20,22 @@ func TestOnlyTheBuiltInThemePrewarmsItsDiskCache(t *testing.T) {
 		// public.PrewarmDefaultThemeCache 会写 ./data；把它留在临时目录里。
 		t.Chdir(t.TempDir())
 
-		prewarmDefaultThemeCacheIfBuiltIn(public.DefaultTheme)
-		waitForThemeCacheMarker(t, 5*time.Second)
+		done := prewarmDefaultThemeCacheIfBuiltIn(public.DefaultTheme)
+		if done == nil {
+			t.Fatal("built-in theme did not start cache warm-up")
+		}
+		// Join the writer before t.Chdir restores the working directory, even
+		// on a slow runner. The job timeout still bounds a stuck writer.
+		<-done
+		assertThemeCacheMarker(t)
 	})
 
 	t.Run("an installed theme is left alone", func(t *testing.T) {
 		t.Chdir(t.TempDir())
 
-		prewarmDefaultThemeCacheIfBuiltIn("sao")
-		// 给一个「本来会预热」的 goroutine 足够的时间出现。
-		time.Sleep(100 * time.Millisecond)
+		if done := prewarmDefaultThemeCacheIfBuiltIn("sao"); done != nil {
+			t.Fatal("installed theme unexpectedly started cache warm-up")
+		}
 
 		matches, err := filepath.Glob(filepath.Join("data", ".theme-cache", "*", ".complete"))
 		if err != nil {
@@ -42,26 +47,16 @@ func TestOnlyTheBuiltInThemePrewarmsItsDiskCache(t *testing.T) {
 	})
 }
 
-// waitForThemeCacheMarker 轮询等待缓存出现 .complete。
-//
-// 判据是标记文件而不是目录本身：目录在解压中途就已经存在，标记只在全部条目写完、字节数
-// 核对通过、rename 之后才出现 —— 那才是「可以用了」的那一刻。预热是异步的，所以这里只能
-// 轮询等待，而 5 秒的上限远大于实测的 300-370ms。
-func waitForThemeCacheMarker(t *testing.T, timeout time.Duration) {
+// The completion channel can also close after a failed warm-up; require the
+// marker itself so this test still verifies materialization succeeded.
+func assertThemeCacheMarker(t *testing.T) {
 	t.Helper()
 	pattern := filepath.Join("data", ".theme-cache", "*", ".complete")
-	deadline := time.Now().Add(timeout)
-	for {
-		matches, err := filepath.Glob(pattern)
-		if err != nil {
-			t.Fatalf("glob %q: %v", pattern, err)
-		}
-		if len(matches) == 1 {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the disk cache did not appear within %s (nothing matched %q)", timeout, pattern)
-		}
-		time.Sleep(5 * time.Millisecond)
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		t.Fatalf("glob %q: %v", pattern, err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected one completed disk cache for %q, got %v", pattern, matches)
 	}
 }

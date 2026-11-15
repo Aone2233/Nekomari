@@ -2,6 +2,7 @@ package metricstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/pkg/metric"
+	"gorm.io/gorm"
 )
 
 // store_migration.go
@@ -20,7 +22,8 @@ import (
 // （通常是用户新配置并热重载后的 MySQL/PostgreSQL）。
 //
 // 此迁移仅能由管理员在 WebUI 中「切换数据库后」手动触发，异步执行并可查询进度 /
-// 取消。服务启动和指标库热重载均不会复制历史数据。数据以 upsert 写入，可安全重复执行。
+// 取消。服务启动和指标库热重载均不会复制历史数据。迁移保留已有目标数据；
+// 同一桶内容或指标定义冲突时停止，不再盲目覆盖。跨批次不是原子操作。
 //
 // 典型流程：
 //  1. 管理员在设置中把 metric_db_dsn 改为 MySQL/PostgreSQL，保存 → 后端连接测试
@@ -99,19 +102,50 @@ func StartStoreMigration(sourceDriver, sourceDSN string) error {
 	sourceFP := ResolveStoreMigrationSourceFingerprint(sourceDriver, sourceDSN)
 
 	if sourceFP == targetFP {
-		return fmt.Errorf("source and target metrics database are the same (%s); nothing to migrate. "+
+		return fmt.Errorf("source and target metrics database are the same; nothing to migrate. "+
 			"The inferred source is the last recorded target (config key %q), which equals the current "+
 			"target once a migration has completed — pass the source driver and DSN explicitly to migrate "+
-			"from an older database", targetFP, MigrationTargetKey)
+			"from an older database", MigrationTargetKey)
 	}
 
 	srcCfg, err := configFromFingerprint(sourceFP, cfg)
 	if err != nil {
 		return fmt.Errorf("resolve source metrics store: %w", err)
 	}
+	if !pingIdentityOperations.TryAcquire() {
+		return ErrStoreBusy
+	}
+	identityLeaseHandedOff := false
+	defer func() {
+		if !identityLeaseHandedOff {
+			pingIdentityOperations.Release()
+		}
+	}()
+	// Drain observations accepted before the identity fence. Otherwise an old
+	// queued ping can be written after the target has been reconciled.
+	flushCtx, cancelFlush := context.WithTimeout(context.Background(), 15*time.Second)
+	if err := reportAdmissions.Acquire(flushCtx); err != nil {
+		cancelFlush()
+		return fmt.Errorf("wait for report admission before metric migration: %w", err)
+	}
+	admissionsHeld := true
+	defer func() {
+		if admissionsHeld {
+			reportAdmissions.Release()
+		}
+	}()
+	err = FlushReportBatch(flushCtx)
+	cancelFlush()
+	if err != nil {
+		return fmt.Errorf("flush reports before metric migration: %w", err)
+	}
 	if !storeOperations.TryAcquire() {
 		return ErrStoreBusy
 	}
+	// Later reports may queue while migration holds the store lease. All prior
+	// admissions have already drained, and deletions remain identity-fenced.
+	reportAdmissions.Release()
+	admissionsHeld = false
 	exclusiveLeaseHandedOff := false
 	defer func() {
 		if !exclusiveLeaseHandedOff {
@@ -155,6 +189,7 @@ func StartStoreMigration(sourceDriver, sourceDSN string) error {
 	storeMigMu.Unlock()
 
 	exclusiveLeaseHandedOff = true
+	identityLeaseHandedOff = true
 	go runStoreMigration(ctx, cancel, done, srcCfg, cfg, dst, targetFP)
 	return nil
 }
@@ -164,6 +199,7 @@ func runStoreMigration(ctx context.Context, cancel context.CancelFunc, done chan
 	defer func() {
 		cancel()
 		storeOperations.Release()
+		pingIdentityOperations.Release()
 
 		storeMigMu.Lock()
 		storeMigCancel = nil
@@ -172,12 +208,28 @@ func runStoreMigration(ctx context.Context, cancel context.CancelFunc, done chan
 		storeMigMu.Unlock()
 	}()
 
+	if ResolveDriverFromConfig(srcCfg.Driver, srcCfg.DSN) == metric.DriverSQLite && dst.Driver() == metric.DriverSQLite {
+		if err := metric.CheckDistinctSQLiteSourcePath(ctx, dst, srcCfg.DSN); err != nil {
+			finishStoreMigration("failed", "cannot establish distinct file-backed SQLite source and destination; preserve both stores and check their paths")
+			return
+		}
+	}
 	src, err := openSourceStore(ctx, srcCfg)
 	if err != nil {
-		finishStoreMigration("failed", fmt.Errorf("open source metrics store: %w", err))
+		// Driver errors can contain the full DSN, its parameters or credentials.
+		finishStoreMigration("failed", "failed to open source metrics store; verify its configuration and connectivity")
 		return
 	}
 	defer src.Close()
+	// Different SQLite DSNs can still name the same file via symlinks or
+	// hard links. Refuse before reconciling or copying either store. This is
+	// an identity check, not a lease against external writers or path changes.
+	if src.Driver() == metric.DriverSQLite && dst.Driver() == metric.DriverSQLite {
+		if err := metric.RequireDistinctSQLiteFiles(ctx, src, dst); err != nil {
+			finishStoreMigration("failed", "cannot establish distinct file-backed SQLite source and destination; preserve both stores and check their paths")
+			return
+		}
+	}
 
 	observe := func(currentMetric string, metricIndex, totalMetrics int, addedPoints int64) {
 		storeMigMu.Lock()
@@ -188,34 +240,69 @@ func runStoreMigration(ctx context.Context, cancel context.CancelFunc, done chan
 		storeMigMu.Unlock()
 	}
 
-	total, err := migrateBetweenStores(ctx, src, dst, observe)
+	reserved, err := reservedPingTaskIDs(ctx, config.Database())
+	if err == nil {
+		err = cleanReservedPingHistory(ctx, dst, reserved)
+	}
 	if err != nil {
+		finishStoreMigration("failed", "failed to prepare destination metrics store")
+		return
+	}
+	total, err := migrateBetweenStores(ctx, src, dst, reserved, observe)
+	if err == nil {
+		// A task can be deleted while migration holds the store lease. Its
+		// normal cleanup waits for that lease; refresh before publishing success.
+		err = ReconcileReservedPingHistory(ctx, dst, config.Database())
+	}
+	if err != nil {
+		switch {
+		case errors.Is(err, metric.ErrCommitUncertain):
+			finishStoreMigration("failed", "migration stopped: a database commit outcome is uncertain; preserve both stores and investigate before retrying")
+			return
+		case errors.Is(err, metric.ErrImportConflict):
+			finishStoreMigration("failed", "migration stopped: an existing destination rollup differs from the source; preserve both stores and reconcile before retrying")
+			return
+		case errors.Is(err, errStoreMigrationDefinitionConflict):
+			finishStoreMigration("failed", "migration stopped: a destination metric type, unit or retention differs from the source; preserve both stores and reconcile before retrying")
+			return
+		}
 		if ctx.Err() != nil {
-			finishStoreMigration("canceled", nil)
+			finishStoreMigration("canceled", "")
 			logger.Warnf("metricstore", "[store-migration] canceled after %d points", total)
 			return
 		}
-		finishStoreMigration("failed", err)
+		finishStoreMigration("failed", "failed to migrate metrics; verify both stores and retry")
 		return
 	}
 
 	// 搬运成功：登记当前目标指纹，供下一次手动迁移推断源库。
-	if err := config.Set(MigrationTargetKey, targetFP); err != nil {
-		logger.Errorf("metricstore", "[store-migration] failed to persist migration target fingerprint: %v", err)
+	if err := saveStoreMigrationTarget(targetFP); err != nil {
+		logger.Errorf("metricstore", "[store-migration] failed to persist migration target fingerprint")
 	}
-	finishStoreMigration("completed", nil)
+	finishStoreMigration("completed", "")
 	logger.Infof("metricstore", "[store-migration] completed via API (%d points) target_driver=%s", total, ResolveDriverFromConfig(cfg.Driver, cfg.DSN))
 }
 
+func saveStoreMigrationTarget(target string) error {
+	var event config.ConfigEvent
+	err := config.Database().Transaction(func(tx *gorm.DB) error {
+		var err error
+		event, err = config.SetManyTx(tx, map[string]any{MigrationTargetKey: target})
+		return err
+	})
+	if err == nil {
+		config.PublishCommitted(event)
+	}
+	return err
+}
+
 // finishStoreMigration 统一收尾：设置终态状态、结束时间与错误信息。
-func finishStoreMigration(status string, err error) {
+func finishStoreMigration(status, safeMessage string) {
 	storeMigMu.Lock()
 	defer storeMigMu.Unlock()
 	storeMigProgress.Status = status
 	storeMigProgress.EndTime = time.Now().UTC()
-	if err != nil {
-		storeMigProgress.Error = err.Error()
-	}
+	storeMigProgress.Error = safeMessage
 	// 完成/取消时把当前指标标记为已全部处理，便于前端进度条归位。
 	if status == "completed" && storeMigProgress.TotalMetrics > 0 {
 		storeMigProgress.MetricsDone = storeMigProgress.TotalMetrics
@@ -223,7 +310,7 @@ func finishStoreMigration(status string, err error) {
 }
 
 // CancelStoreMigration 请求取消正在运行的 store-to-store 迁移，并等待其退出。
-// 由于写入是幂等 upsert，取消后可安全重新发起，不会产生重复数据。
+// 已提交的批次会保留；重试时相同桶是幂等的，冲突或其他错误需要人工处理。
 func CancelStoreMigration() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -289,31 +376,11 @@ func isStoreClosing() bool {
 	return storeClosing
 }
 
-// maskDSN 对 DSN 做粗粒度脱敏，避免在 API 响应/日志中泄露密码。
-// 处理两类常见格式：URL（scheme://user:pass@host/...）与 key=value（password=...）。
+// DSN syntaxes allow credentials in arbitrary parameters, including SQLite
+// URIs. Never return any part of a connection string in migration status.
 func maskDSN(dsn string) string {
-	dsn = strings.TrimSpace(dsn)
-	if dsn == "" {
+	if strings.TrimSpace(dsn) == "" {
 		return ""
 	}
-	// key=value 形式：屏蔽 password=... 段。
-	if strings.Contains(dsn, "password=") {
-		parts := strings.Fields(dsn)
-		for i, p := range parts {
-			if strings.HasPrefix(strings.ToLower(p), "password=") {
-				parts[i] = "password=***"
-			}
-		}
-		return strings.Join(parts, " ")
-	}
-	// URL / user:pass@host 形式：屏蔽 user:pass@ 中的密码。
-	if at := strings.LastIndex(dsn, "@"); at > 0 {
-		head := dsn[:at]
-		tail := dsn[at:]
-		if colon := strings.LastIndex(head, ":"); colon >= 0 {
-			// 保留 scheme://user，屏蔽密码。
-			return head[:colon] + ":***" + tail
-		}
-	}
-	return dsn
+	return "[redacted]"
 }

@@ -1,0 +1,119 @@
+{
+  "name": "WebStackLab · 全球监控大屏",
+  "short": "webstack-observatory",
+  "description": "深蓝科技风全球节点态势大屏，包含实时世界地图、资源指标、异常状态与流量趋势。",
+  "version": "1.2.3",
+  "author": "WebStackLab",
+  "preview": "preview.png",
+  "configuration": {
+    "type": "managed",
+    "name": {
+      "zh-CN": "大屏设置",
+      "en": "Dashboard settings"
+    },
+    "data": [
+      {
+        "name": "基本设置",
+        "type": "title"
+      },
+      {
+        "key": "brand_name",
+        "name": "左上角品牌名称",
+        "type": "string",
+        "default": "WEBSTACK",
+        "help": "例如：我的监控。长名称自动省略，悬停可查看完整名称。"
+      },
+      {
+        "key": "brand_subtitle",
+        "name": "左上角品牌副标题",
+        "type": "string",
+        "default": "运维中心"
+      },
+      {
+        "key": "brand_mark",
+        "name": "左侧标识文字",
+        "type": "string",
+        "default": "W",
+        "help": "建议填写 1–2 个字符。"
+      },
+      {
+        "key": "dashboard_title",
+        "name": "大屏标题",
+        "type": "string",
+        "default": "WebStackLab 全球监控中心"
+      },
+      {
+        "key": "subtitle",
+        "name": "副标题",
+        "type": "string",
+        "default": "全球节点 · 资源总览 · 网络质量"
+      },
+      {
+        "key": "rotate_seconds",
+        "name": "节点轮播间隔（秒）",
+        "type": "number",
+        "default": 15,
+        "help": "最小 5 秒，可在页面中暂停轮播。"
+      },
+      {
+        "key": "refresh_seconds",
+        "name": "数据刷新间隔（秒）",
+        "type": "number",
+        "default": 5,
+        "help": "最小 3 秒。WebSocket 不可用时自动使用 HTTP 轮询。"
+      },
+      {
+        "key": "traffic_timezone",
+        "name": "今日流量统计时区",
+        "type": "select",
+        "options": "Asia/Shanghai,UTC,local",
+        "default": "Asia/Shanghai",
+        "help": "Asia/Shanghai 为北京时间零点；UTC 为协调世界时；local 为访问者浏览器本地时区。"
+      },
+      {
+        "key": "warn_percent",
+        "name": "资源告警阈值（%）",
+        "type": "number",
+        "default": 80
+      },
+      {
+        "key": "critical_percent",
+        "name": "资源危险阈值（%）",
+        "type": "number",
+        "default": 95
+      },
+      {
+        "key": "ping_warn_loss",
+        "name": "Ping 丢包关注阈值（%）",
+        "type": "number",
+        "default": 5
+      },
+      {
+        "key": "ping_critical_loss",
+        "name": "Ping 丢包危险阈值（%）",
+        "type": "number",
+        "default": 30
+      },
+      {
+        "key": "show_map_routes",
+        "name": "显示地图连接动画",
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "show_admin_link",
+        "name": "显示后台入口",
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "node_locations",
+        "name": "自定义节点位置（JSON）",
+        "type": "richtext",
+        "default": "{}",
+        "help": "以节点 UUID 为键，值为 {\"lat\":31.23,\"lon\":121.47,\"label\":\"上海\"}。留空时按名称中的城市或地区代码估算，地图仅作地区示意。此配置公开可见，勿填私密地址。"
+      }
+    ]
+  },
+  "url": "https://github.com/tasue/komari-theme-webstacklab"
+}

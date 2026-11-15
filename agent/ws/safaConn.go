@@ -1,11 +1,16 @@
 package ws
 
 import (
+	"context"
+	"errors"
+	"io"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 )
+
+var errFrameTooLarge = errors.New("websocket frame exceeds read limit")
 
 type SafeConn struct {
 	conn *websocket.Conn
@@ -31,15 +36,108 @@ func (sc *SafeConn) WriteJSON(v interface{}) error {
 	return sc.conn.WriteJSON(v)
 }
 
+// WriteJSONContext does not queue behind a busy writer. Cancellation closes
+// the socket to interrupt an in-progress network write.
+func (sc *SafeConn) WriteJSONContext(ctx context.Context, v interface{}) error {
+	return sc.writeJSONContext(ctx, v, false)
+}
+
+// WriteJSONContextWait permits control messages to wait briefly for ordinary
+// reports, but never past their context deadline.
+func (sc *SafeConn) WriteJSONContextWait(ctx context.Context, v interface{}) error {
+	return sc.writeJSONContext(ctx, v, true)
+}
+
+func (sc *SafeConn) writeJSONContext(ctx context.Context, v interface{}, wait bool) error {
+	if ctx == nil {
+		return errors.New("nil write context")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return errors.New("websocket context write requires a deadline")
+	}
+	for !sc.mu.TryLock() {
+		if !wait {
+			return errors.New("websocket writer busy")
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		timer := time.NewTimer(5 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	if sc.conn == nil {
+		sc.mu.Unlock()
+		return errors.New("nil websocket")
+	}
+	done := make(chan error, 1)
+	go func() {
+		defer sc.mu.Unlock()
+		if err := ctx.Err(); err != nil {
+			done <- err
+			return
+		}
+		if err := sc.conn.SetWriteDeadline(deadline); err != nil {
+			sc.Abort()
+			done <- err
+			return
+		}
+		err := sc.conn.WriteJSON(v)
+		if restoreErr := sc.conn.SetWriteDeadline(time.Time{}); err == nil {
+			err = restoreErr
+		}
+		if err != nil {
+			sc.Abort()
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		sc.Abort()
+		return ctx.Err()
+	}
+}
+
 func (sc *SafeConn) Close() error {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
 	return sc.conn.Close()
 }
+
+// Abort interrupts a stalled write without waiting on the writer mutex.
+func (sc *SafeConn) Abort() {
+	_ = sc.conn.Close()
+}
 func (sc *SafeConn) ReadMessage() (int, []byte, error) {
 	// sc.mu.Lock()
 	// defer sc.mu.Unlock()
 	return sc.conn.ReadMessage()
+}
+
+// ReadMessageLimited bounds the decoded frame even when compression is enabled.
+func (sc *SafeConn) ReadMessageLimited(limit int64) (int, []byte, error) {
+	messageType, reader, err := sc.conn.NextReader()
+	if err != nil {
+		return 0, nil, err
+	}
+	data, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err != nil {
+		return 0, nil, err
+	}
+	if int64(len(data)) > limit {
+		return 0, nil, errFrameTooLarge
+	}
+	return messageType, data, nil
 }
 func (sc *SafeConn) ReadJSON(v interface{}) error {
 	// sc.mu.Lock()

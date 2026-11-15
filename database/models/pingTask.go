@@ -31,6 +31,7 @@ type PingRecord struct {
 // PingTask 表示一次延迟监测任务配置。
 type PingTask struct {
 	Id        uint        `json:"id,omitempty" gorm:"primaryKey;autoIncrement"`
+	ConfigUID string      `json:"-" gorm:"type:varchar(36);not null;default:''"`
 	Weight    int         `json:"weight" gorm:"type:int;not null;default:0;index"`
 	Name      string      `json:"name" gorm:"type:varchar(255);not null;index"`
 	Clients   StringArray `json:"clients" gorm:"type:longtext"`
@@ -43,6 +44,21 @@ type PingTask struct {
 	// 而不是只看到一条延迟曲线在抖却不知道是哪一段。
 	Reference string `json:"reference" gorm:"type:varchar(255);not null;default:''"`
 	Interval  int    `json:"interval" gorm:"type:int;not null;default:60"` // 间隔时间
+	// TargetFamily selects the fenced dispatcher; it never enters legacy delivery.
+	TargetFamily string `json:"target_family" gorm:"type:varchar(8);not null;default:''"`
+	// PinnedGeneration is an internal incarnation, not a hash of the current
+	// fields: an edit/revert or removal/reassignment must not revive old work.
+	PinnedGeneration string `json:"-" gorm:"type:varchar(32);not null;default:''"`
+}
+
+// PingTaskDeletion permanently reserves a deleted task ID. Metrics live in a
+// separate store; a nil CleanedAt means their retryable cleanup is still due.
+type PingTaskDeletion struct {
+	TaskID        uint   `gorm:"primaryKey;autoIncrement:false"`
+	ConfigUID     string `gorm:"type:varchar(36);not null;default:'';index"`
+	CreatedAt     time.Time
+	LastAttemptAt *time.Time `gorm:"index"`
+	CleanedAt     *time.Time `gorm:"index"`
 }
 
 // AppliesToClient 判断当前 PingTask 是否适用于指定服务器。

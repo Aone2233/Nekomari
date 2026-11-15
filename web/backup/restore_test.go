@@ -2,8 +2,12 @@ package backup
 
 import (
 	"archive/zip"
+	"bytes"
+	"encoding/binary"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -33,6 +37,129 @@ func writeTestArchive(t *testing.T, entries map[string]string) string {
 	return path
 }
 
+func TestPublishedBackupDirectorySyncFailureIsUncertain(t *testing.T) {
+	t.Chdir(t.TempDir())
+	archive := writeTestArchiveBytes(t, map[string][]byte{
+		"komari.db":            writeTestDatabase(t, t.TempDir(), 20),
+		"komari-backup-markup": []byte("backup marker"),
+	})
+	data, err := os.ReadFile(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := StageUploadedBackup(bytes.NewReader(data), "backup.zip"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		pendingRestore.Lock()
+		if pendingRestore.lock != nil {
+			pendingRestore.lock.Release()
+			pendingRestore.lock, pendingRestore.path = nil, ""
+		}
+		pendingRestore.Unlock()
+	})
+	cause := errors.New("injected directory sync failure")
+	err = publishPendingRestore(func(string) error { return cause })
+	if !errors.Is(err, cause) || !strings.Contains(err.Error(), "may be eligible for restore") {
+		t.Fatalf("sync failure = %v", err)
+	}
+	if err := ValidateArchive(filepath.Join("data", "backup.zip")); err != nil {
+		t.Fatalf("visible final link is invalid: %v", err)
+	}
+	if staged, err := filepath.Glob(filepath.Join("data", ".backup-pending-*.zip")); err != nil || len(staged) != 1 {
+		t.Fatalf("retained staging link = %v, error = %v", staged, err)
+	}
+	if _, err := AcquireRestoreLock(); err == nil {
+		t.Fatal("uncertain handoff released restore lock")
+	}
+	if err := PublishPendingRestore(); err == nil {
+		t.Fatal("uncertain handoff overwrote existing final link on retry")
+	}
+}
+
+func TestStagingRefusesOutstandingRestoreJournal(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.Mkdir("data", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join("data", ".restore-in-progress"), []byte("unfinished"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := StageUploadedBackup(bytes.NewReader(nil), "backup.zip"); err == nil || !strings.Contains(err.Error(), "restore journal") {
+		t.Fatalf("staging accepted outstanding restore journal: %v", err)
+	}
+	lock, err := AcquireRestoreLock()
+	if err != nil {
+		t.Fatalf("rejected staging left the restore lock held: %v", err)
+	}
+	lock.Release()
+}
+
+func TestStagedBackupIsInertUntilCleanHandoff(t *testing.T) {
+	t.Chdir(t.TempDir())
+	archive := writeTestArchiveBytes(t, map[string][]byte{
+		"komari.db":            writeTestDatabase(t, t.TempDir(), 20),
+		"komari-backup-markup": []byte("backup marker"),
+	})
+	data, err := os.ReadFile(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := StageUploadedBackup(bytes.NewReader(data), "backup.zip"); err != nil {
+		t.Fatalf("stage backup: %v", err)
+	}
+	// Prevent a failing assertion from leaking the process-wide lock into the
+	// following tests; the artifact itself stays in this temporary directory.
+	t.Cleanup(func() {
+		pendingRestore.Lock()
+		if pendingRestore.lock != nil {
+			pendingRestore.lock.Release()
+			pendingRestore.lock, pendingRestore.path = nil, ""
+		}
+		pendingRestore.Unlock()
+	})
+	final := filepath.Join("data", "backup.zip")
+	if _, err := os.Stat(final); !os.IsNotExist(err) {
+		t.Fatalf("staged archive is already eligible for restore: %v", err)
+	}
+	staged, err := filepath.Glob(filepath.Join("data", ".backup-pending-*.zip"))
+	if err != nil || len(staged) != 1 {
+		t.Fatalf("staged archive = %v, error = %v", staged, err)
+	}
+	if err := StageUploadedBackup(bytes.NewReader(data), "other.zip"); err == nil {
+		t.Fatal("second upload replaced the pending archive")
+	}
+	if err := os.WriteFile(final, []byte("other restore"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := PublishPendingRestore(); err == nil {
+		t.Fatal("handoff replaced an existing archive")
+	}
+	if got, err := os.ReadFile(final); err != nil || string(got) != "other restore" {
+		t.Fatalf("existing archive = %q, error = %v", got, err)
+	}
+	if err := os.Remove(final); err != nil {
+		t.Fatal(err)
+	}
+	if err := PublishPendingRestore(); err != nil {
+		t.Fatalf("retry handoff: %v", err)
+	}
+	if got, err := os.ReadFile(final); err != nil || !bytes.Equal(got, data) {
+		t.Fatalf("published archive differs: %v", err)
+	}
+	if err := ValidateArchive(final); err != nil {
+		t.Fatalf("published archive is invalid: %v", err)
+	}
+	if _, err := os.Stat(staged[0]); !os.IsNotExist(err) {
+		t.Fatalf("staging link remains: %v", err)
+	}
+	lock, err := AcquireRestoreLock()
+	if err != nil {
+		t.Fatalf("restore lock not released after handoff: %v", err)
+	}
+	lock.Release()
+}
+
 func TestValidateArchiveAcceptsLegacyRootLayout(t *testing.T) {
 	// The legacy layout keeps the database, the theme data and the markup at the
 	// archive root. komari.db has to be a real database now that ValidateArchive
@@ -44,6 +171,151 @@ func TestValidateArchiveAcceptsLegacyRootLayout(t *testing.T) {
 	})
 	if err := ValidateArchive(archive); err != nil {
 		t.Fatalf("ValidateArchive rejected legacy root layout: %v", err)
+	}
+}
+
+func TestValidateArchiveRejectsUnsafeOrConflictingEntries(t *testing.T) {
+	database := writeTestDatabase(t, t.TempDir(), 20)
+	for name, extra := range map[string]map[string][]byte{
+		"traversal":         {"../escape": []byte("bad")},
+		"windows traversal": {"..\\escape": []byte("bad")},
+		"absolute":          {"/absolute": []byte("bad")},
+		"stream":            {"name:stream": []byte("bad")},
+		"duplicate db":      {"./komari.db": database},
+		"duplicate markup":  {"./komari-backup-markup": []byte("other")},
+		"parent file":       {"theme": []byte("file"), "theme/a": []byte("child")},
+		"backup archive":    {"backup.zip": []byte("overwrite")},
+		"snapshot dir":      {"backup/prior.zip": []byte("overwrite")},
+		"lock":              {".nekomari-panel.lock": []byte("overwrite")},
+		"pending":           {".backup-pending-1.zip": []byte("overwrite")},
+		"restore journal":   {".restore-in-progress": []byte("overwrite")},
+		"journal staging":   {".restore-state-1": []byte("overwrite")},
+		"main journal":      {"komari.db-wal": []byte("stale")},
+		"metric journal":    {"metrics.db-journal": []byte("stale")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			entries := map[string][]byte{"komari.db": database, "komari-backup-markup": []byte("marker")}
+			for key, value := range extra {
+				entries[key] = value
+			}
+			if err := ValidateArchive(writeTestArchiveBytes(t, entries)); err == nil {
+				t.Fatal("unsafe archive was accepted")
+			}
+		})
+	}
+}
+
+func TestValidateArchiveChecksMetricDatabase(t *testing.T) {
+	database := writeTestDatabase(t, t.TempDir(), 20)
+	corrupt := append([]byte(nil), database...)
+	pageSize := fixturePageSize(t, corrupt)
+	copy(corrupt[pageSize:2*pageSize], make([]byte, pageSize))
+	for _, metrics := range [][]byte{[]byte("not SQLite"), corrupt} {
+		archive := writeTestArchiveBytes(t, map[string][]byte{
+			"komari.db": database, "metrics.db": metrics, "komari-backup-markup": []byte("marker"),
+		})
+		err := ValidateArchive(archive)
+		if err == nil || !strings.Contains(err.Error(), "metrics.db") {
+			t.Fatalf("corrupt metric store accepted: %v", err)
+		}
+	}
+}
+
+func TestValidateArchiveRejectsCorruptAssetBeforeStaging(t *testing.T) {
+	t.Chdir(t.TempDir())
+	archive := writeTestArchiveBytes(t, map[string][]byte{
+		"komari.db":            writeTestDatabase(t, t.TempDir(), 20),
+		"komari-backup-markup": []byte("backup marker"),
+		"theme/index.html":     []byte("valid but checksummed asset"),
+	})
+	data, err := os.ReadFile(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	corruptCentralDirectorySize(t, data, "theme/index.html")
+	if err := StageUploadedBackup(bytes.NewReader(data), "backup.zip"); err == nil {
+		t.Fatal("corrupt asset was accepted")
+	}
+	if _, err := os.Stat(filepath.Join("data", "backup.zip")); !os.IsNotExist(err) {
+		t.Fatalf("invalid archive was published: %v", err)
+	}
+	if staged, err := filepath.Glob(filepath.Join("data", ".backup-pending-*.zip")); err != nil || len(staged) != 0 {
+		t.Fatalf("invalid archive retained: %v, %v", staged, err)
+	}
+}
+
+func TestValidateArchiveRejectsSymlinkEntry(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "symlink.zip")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := zip.NewWriter(f)
+	for name, data := range map[string][]byte{
+		"komari.db": writeTestDatabase(t, t.TempDir(), 20), "komari-backup-markup": []byte("marker"),
+	} {
+		entry, err := w.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := entry.Write(data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	header := &zip.FileHeader{Name: "theme/link", Method: zip.Store}
+	header.SetMode(os.ModeSymlink | 0o777)
+	entry, err := w.CreateHeader(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Write([]byte("target")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateArchive(path); err == nil {
+		t.Fatal("symlink entry was accepted")
+	}
+}
+
+func TestValidateArchiveRejectsCentralDirectorySizeMismatch(t *testing.T) {
+	archive := writeTestArchiveBytes(t, map[string][]byte{
+		"komari.db": writeTestDatabase(t, t.TempDir(), 20), "komari-backup-markup": []byte("marker"),
+		"asset": []byte("asset content"),
+	})
+	data, err := os.ReadFile(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	corruptCentralDirectorySize(t, data, "asset")
+	if err := os.WriteFile(archive, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateArchive(archive); err == nil {
+		t.Fatal("asset with falsified size was accepted")
+	}
+}
+
+func corruptCentralDirectorySize(t *testing.T, data []byte, name string) {
+	t.Helper()
+	// Find the entry's central directory record and falsify its expanded size.
+	central := []byte{'P', 'K', 1, 2}
+	for pos := 0; ; {
+		i := bytes.Index(data[pos:], central)
+		if i < 0 {
+			t.Fatal("asset directory record not found")
+		}
+		i += pos
+		nameLen := int(binary.LittleEndian.Uint16(data[i+28 : i+30]))
+		if string(data[i+46:i+46+nameLen]) == name {
+			binary.LittleEndian.PutUint32(data[i+24:i+28], 1)
+			return
+		}
+		pos = i + 46 + nameLen
 	}
 }
 
@@ -71,6 +343,7 @@ func TestCleanupStagedUploadsReclaimsOnlyItsOwnTemporaryFiles(t *testing.T) {
 	}
 	survivors := []string{
 		"backup.zip",             // the real staging target
+		".backup-pending-42.zip", // an inert restore needs manual review
 		".backup-upload-.zip",    // no random suffix
 		".backup-upload-abc.zip", // non-numeric suffix
 		".backup-upload-12.tar",  // wrong extension

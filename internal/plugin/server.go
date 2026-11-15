@@ -2,7 +2,6 @@ package plugin
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,13 +13,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/pkg/jsruntime"
+	"github.com/Aone2233/nekomari/pkg/jsruntime/httpbody"
+	"github.com/Aone2233/nekomari/pkg/rpc"
+	"github.com/Aone2233/nekomari/web/security"
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/buffer"
 	"github.com/dop251/goja_nodejs/require"
 	"github.com/gin-gonic/gin"
-	"github.com/Aone2233/nekomari/pkg/jsruntime"
-	"github.com/Aone2233/nekomari/pkg/jsruntime/httpbody"
-	"github.com/Aone2233/nekomari/pkg/rpc"
 )
 
 // registerServerModule registers the "server" native module for one plugin
@@ -129,15 +130,19 @@ func (m *Manager) registerServerModule(host *jsruntime.Host, registry *require.R
 			}
 			params := callParams(call)
 			promise, resolve, reject := vm.NewPromise()
+			if !inst.info.Permissions.AllowSystemRPC {
+				_ = reject(vm.NewGoError(errors.New("server.call requires the \"system RPC\" permission (allowSystemRPC)")))
+				return vm.ToValue(promise)
+			}
+			callCtx, done, ok := m.async.start()
+			if !ok {
+				_ = reject(vm.NewGoError(errors.New("server.call is unavailable during shutdown")))
+				return vm.ToValue(promise)
+			}
 			go func() {
-				if !inst.info.Permissions.AllowSystemRPC {
-					host.RunOnLoop(func(vm *goja.Runtime) {
-						_ = reject(vm.NewGoError(errors.New("server.call requires the \"system RPC\" permission (allowSystemRPC)")))
-					})
-					return
-				}
+				defer done()
 				meta := &rpc.ContextMeta{Permission: rpc.RoleAdmin, Principal: rpc.PrincipalFromRole(rpc.RoleAdmin)}
-				ctx := rpc.NewContextWithMeta(context.Background(), meta)
+				ctx := rpc.NewContextWithMeta(callCtx, meta)
 				resp := rpc.CallWithContext(ctx, nil, method, params)
 				host.RunOnLoop(func(vm *goja.Runtime) {
 					if resp.Error != nil {
@@ -222,9 +227,34 @@ func (m *Manager) registerServerModule(host *jsruntime.Host, registry *require.R
 			}
 			return goja.Undefined()
 		})
+		_ = exports.Set("registerNotificationChannel", func(call goja.FunctionCall) goja.Value {
+			id := strings.TrimSpace(call.Argument(0).String())
+			handler, ok := goja.AssertFunction(call.Argument(2))
+			if id == "" || !ok {
+				panic(vm.NewTypeError("server.registerNotificationChannel requires an id and handler"))
+			}
+			raw, err := json.Marshal(call.Argument(1).Export())
+			if err != nil {
+				panic(vm.NewTypeError("invalid notification configuration"))
+			}
+			var cfg models.Configuration
+			if err := json.Unmarshal(raw, &cfg); err != nil {
+				panic(vm.NewTypeError("invalid notification configuration"))
+			}
+			if err := m.registerNotificationChannel(inst, id, cfg, handler, host); err != nil {
+				panic(vm.NewGoError(err))
+			}
+			return goja.Undefined()
+		})
 		_ = exports.Set("getConfig", func(call goja.FunctionCall) goja.Value {
 			promise, resolve, reject := vm.NewPromise()
+			_, done, ok := m.async.start()
+			if !ok {
+				_ = reject(vm.NewGoError(errors.New("server.getConfig is unavailable during shutdown")))
+				return vm.ToValue(promise)
+			}
 			go func() {
+				defer done()
 				data, err := GetConfiguration(inst.info.Short)
 				host.RunOnLoop(func(vm *goja.Runtime) {
 					if err != nil {
@@ -332,6 +362,38 @@ func (m *Manager) registerRoute(short, method, path string, handler goja.Callabl
 // or the runtime timeout elapses.
 func (m *Manager) routeHandler(short string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// NetForecast 26.1021.6 exposes admin:listClients (including hidden
+		// nodes and credentials), and invokes admin:editClient, from routes
+		// which perform no authorization. Its shared snapshot also accepts
+		// caller-supplied data. Do not expose any of these routes to guests.
+		if short == "net-forecast" && strings.HasPrefix(c.FullPath(), "/api/plugin/net-forecast/") {
+			principal := rpcPrincipalFromGin(c)
+			if principal == nil || principal.Type != rpc.PrincipalUser || !principal.HasRole(rpc.RoleAdmin) {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			}
+			if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead && c.Request.Method != http.MethodOptions {
+				if origin := c.GetHeader("Origin"); origin != "" && !security.OriginMatchesHost(origin, c.Request.Host) {
+					c.AbortWithStatus(http.StatusForbidden)
+					return
+				}
+			}
+		}
+		// These market plugins interpret every API key as an unrestricted
+		// administrator, while Nekomari keys carry scoped grants. Until the
+		// plugins understand those grants, deny key-based access to their
+		// routes instead of silently elevating a limited key.
+		principal := rpcPrincipalFromGin(c)
+		if (short == "api" || short == "ipqa-alert-report" || short == "availability-history" || short == "komari-gfw") && principal != nil && principal.Type == rpc.PrincipalAPIKey {
+			c.AbortWithStatus(http.StatusForbidden)
+			return
+		}
+		if short == "ipqa-alert-report" && c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead && c.Request.Method != http.MethodOptions {
+			if origin := c.GetHeader("Origin"); origin != "" && !security.OriginMatchesHost(origin, c.Request.Host) {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			}
+		}
 		inst := m.instanceFor(short)
 		if inst == nil {
 			c.Status(http.StatusNotFound)

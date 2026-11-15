@@ -156,16 +156,6 @@ func prepareMetricPoints(points []Point) ([]preparedMetricPoint, error) {
 // writeRawPoints keeps the newest minute in a directly addressable form. The
 // surrounding nine minutes remain individual raw samples in a compact byte
 // representation; only their minute rollups are eventually persisted.
-func (s *Store) writeRawPoints(ctx context.Context, points []preparedMetricPoint) (map[hotRollupKey]struct{}, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if len(points) == 0 {
-		return nil, nil
-	}
-	return s.writeRawPointsAt(points, time.Now().UTC()), nil
-}
-
 func (s *Store) writeRawPointsAt(points []preparedMetricPoint, now time.Time) map[hotRollupKey]struct{} {
 	now = now.UTC()
 	directCutoff := now.Add(-directRawRetention).UnixMilli()
@@ -176,6 +166,10 @@ func (s *Store) writeRawPointsAt(points []preparedMetricPoint, now time.Time) ma
 	defer s.rawMu.Unlock()
 	s.compressRawBeforeLocked("", directCutoff)
 	s.pruneRawBeforeLocked("", rawCutoff)
+	return s.writeRawPointsLocked(points, directCutoff, rawCutoff, rebuild, dirtyLabels)
+}
+
+func (s *Store) writeRawPointsLocked(points []preparedMetricPoint, directCutoff, rawCutoff int64, rebuild map[hotRollupKey]struct{}, dirtyLabels map[*rawSeries]struct{}) map[hotRollupKey]struct{} {
 	for _, point := range points {
 		if point.timestamp < rawCutoff {
 			continue
@@ -474,7 +468,7 @@ func matchRawTags(raw string, filter map[string]string) (map[string]string, bool
 		return nil, false, err
 	}
 	for key, value := range filter {
-		if tags[key] != value {
+		if actual, exists := tags[key]; !exists || actual != value {
 			return tags, false, nil
 		}
 	}
@@ -499,6 +493,44 @@ func (s *Store) trimRawWindow(now time.Time) int64 {
 func (s *Store) deleteRawPoints(metricName, entityID string, tags map[string]string) (int64, error) {
 	s.rawMu.Lock()
 	defer s.rawMu.Unlock()
+	// All callers hold the exclusive retention lock. Preserve unselected or
+	// unknown identities: reloading a baseline while its raw points remain
+	// would count those points twice, and forgetting a partial delete is unsafe.
+	matches := func(key rawMinuteKey, tagsJSON string) (bool, error) {
+		if (metricName != "" && key.series.metricName != metricName) || (entityID != "" && key.series.entityID != entityID) {
+			return false, nil
+		}
+		if len(tags) == 0 {
+			return true, nil
+		}
+		if tagsJSON == "" {
+			return false, nil
+		}
+		_, matched, err := matchRawTags(tagsJSON, tags)
+		return matched, err
+	}
+	for key, baseline := range s.baseline {
+		var tagsJSON string
+		if baseline != nil {
+			tagsJSON = baseline.tagsJSON
+		}
+		matched, err := matches(key, tagsJSON)
+		if err != nil {
+			return 0, err
+		}
+		if matched {
+			delete(s.baseline, key)
+		}
+	}
+	for key, tagsJSON := range s.rawIncomplete {
+		matched, err := matches(key, tagsJSON)
+		if err != nil {
+			return 0, err
+		}
+		if matched {
+			delete(s.rawIncomplete, key)
+		}
+	}
 	var deleted int64
 	for key, series := range s.raw {
 		if metricName != "" && key.metricName != metricName {
@@ -523,6 +555,34 @@ func (s *Store) deleteRawPoints(metricName, entityID string, tags map[string]str
 func (s *Store) deleteRawBefore(metricName string, beforeMilli int64) int64 {
 	s.rawMu.Lock()
 	defer s.rawMu.Unlock()
+	partialMinute := bucketStartMillis(beforeMilli, time.Minute.Milliseconds())
+	oldest := rawMemoryCutoff(time.Now().UTC())
+	if partialMinute != beforeMilli {
+		for key, series := range s.raw {
+			if metricName != "" && key.metricName != metricName {
+				continue
+			}
+			decoder := newRawSampleDecoder(series.compressed)
+			for sample, more := decoder.next(); more; sample, more = decoder.next() {
+				if sample.timestamp >= partialMinute && sample.timestamp < beforeMilli && sample.timestamp >= oldest {
+					if s.rawIncomplete == nil {
+						s.rawIncomplete = make(map[rawMinuteKey]string)
+					}
+					s.rawIncomplete[rawMinuteKey{series: key, bucket: partialMinute}] = series.tagsJSON
+					break
+				}
+			}
+			for _, sample := range series.samples {
+				if sample.timestamp >= partialMinute && sample.timestamp < beforeMilli && sample.timestamp >= oldest {
+					if s.rawIncomplete == nil {
+						s.rawIncomplete = make(map[rawMinuteKey]string)
+					}
+					s.rawIncomplete[rawMinuteKey{series: key, bucket: partialMinute}] = series.tagsJSON
+					break
+				}
+			}
+		}
+	}
 	s.compressRawBeforeLocked(metricName, beforeMilli)
 	return s.pruneRawBeforeLocked(metricName, beforeMilli)
 }
@@ -731,9 +791,8 @@ func compactRawLabels(series *rawSeries) {
 	series.labelIDs = labelIDs
 }
 
+// Caller holds the retention and rollup view read locks.
 func (s *Store) latestRollupBefore(ctx context.Context, metricName, entityID string, before time.Time) (Point, bool, error) {
-	s.rollupViewMu.RLock()
-	defer s.rollupViewMu.RUnlock()
 	end := before.Add(-time.Nanosecond)
 	endMilli := end.UnixMilli()
 	var latest Point

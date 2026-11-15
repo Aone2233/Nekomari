@@ -41,6 +41,8 @@ import { MenuIcon, MoreHorizontal, Pencil, Radar, Trash } from "lucide-react";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { ApiResponseError, requireApiSuccess } from "@/lib/apiResponse";
+import { PingFamilyDiagnostic } from "./PingFamilyDiagnostic";
 
 /**
  * 目标预检结果。后端 admin:netcheck 返回 pkg/netcheck.Report。
@@ -303,21 +305,20 @@ const Row = ({
         ],
       }),
     })
-      .then((res) => {
-        if (!res.ok) {
-          return res.json().then((data) => {
-            throw new Error(data?.message || t("common.error"));
-          });
-        }
-        return res.json();
-      })
+      .then((response) => requireApiSuccess(response, t("common.error")))
       .then(() => {
         setEditOpen(false);
         toast.success(t("common.updated_successfully"));
         refresh();
       })
       .catch((error) => {
-        toast.error(error.message);
+        if (error instanceof ApiResponseError && error.committed) {
+          setEditOpen(false);
+          refresh();
+          toast.error(error.message, { duration: 15000 });
+        } else {
+          toast.error(error.message);
+        }
       })
       .finally(() => setEditSaving(false));
   };
@@ -336,21 +337,20 @@ const Row = ({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: [task.id] }),
     })
-      .then((res) => {
-        if (!res.ok) {
-          return res.json().then((data) => {
-            throw new Error(data?.message || t("common.error"));
-          });
-        }
-        return res.json();
-      })
+      .then((response) => requireApiSuccess(response, t("common.error")))
       .then(() => {
         setDeleteOpen(false);
         toast.success(t("common.deleted_successfully"));
         refresh();
       })
       .catch((error) => {
-        toast.error(error.message);
+        if (error instanceof ApiResponseError && error.committed) {
+          setDeleteOpen(false);
+          refresh();
+          toast.error(error.message, { duration: 15000 });
+        } else {
+          toast.error(error.message);
+        }
       })
       .finally(() => setDeleteLoading(false));
   };
@@ -421,7 +421,12 @@ const Row = ({
           </NodeSelectorDialog>
         </Flex>
       </TableCell>
-      <TableCell>{task.target}</TableCell>
+      <TableCell>
+        {task.target}{task.target_family && ` (${task.target_family.toUpperCase()})`}
+        {task.target_family && <div className="mt-1"><PingFamilyDiagnostic
+          key={JSON.stringify([task.id, task.target_family, task.type, task.target, task.reference, task.clients])}
+          task={task} /></div>}
+      </TableCell>
       <TableCell>{task.type}</TableCell>
       <TableCell>{task.interval}</TableCell>
       <TableCell className="flex items-center gap-2">
@@ -450,6 +455,7 @@ const Row = ({
               <label>{t("common.type")}</label>
               <Select.Root
                 value={form.type}
+                disabled={!!task.target_family}
                 onValueChange={(v) =>
                   setForm((f) => ({ ...f, type: v as any }))
                 }
@@ -470,12 +476,18 @@ const Row = ({
               <label>{t("ping.target")}</label>
               <TextField.Root
                 value={form.target}
+                disabled={!!task.target_family}
                 onChange={(e) => {
                   setForm((f) => ({ ...f, target: e.target.value }));
                   setProbe(null); // 目标改了，旧结论作废
                 }}
                 required
               />
+              <Text size="1" color="gray">
+                {task.target_family
+                  ? t("ping.family_locked", { family: task.target_family.toUpperCase() })
+                  : t("ping.family_legacy_edit_hint")}
+              </Text>
               <Flex align="center" gap="2" wrap="wrap">
                 <Button
                   type="button"
@@ -518,6 +530,7 @@ const Row = ({
               </label>
               <TextField.Root
                 value={form.reference}
+                disabled={!!task.target_family}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, reference: e.target.value }))
                 }

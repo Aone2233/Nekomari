@@ -8,7 +8,6 @@ import (
 
 	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/database/models"
-	"github.com/Aone2233/nekomari/database/tasks"
 	"github.com/Aone2233/nekomari/internal/metricstore"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 	logger "github.com/Aone2233/nekomari/utils/log"
@@ -73,15 +72,6 @@ func ingestBasicInfo(uuid string, info map[string]interface{}, fallbackIP string
 		info = map[string]interface{}{}
 	}
 	return saveClientBasicInfo(info, uuid, fallbackIP)
-}
-
-// ingestPingResult 保存一条 ping 探测结果。
-// pingType 是实际使用的探测协议（icmp/tcp/http）；双协议并列探测时
-// 同一任务会先后上报多条不同协议的结果，必须保留该字段以示区分。
-// family 是本次测量实际使用的地址族（"ipv4"/"ipv6"），空值表示 agent 未上报
-// 或无法判断 —— 此时保持改动前的行为，不额外区分。
-func ingestPingResult(uuid string, taskID uint, pingType, role, family string, value int, valueUS int64) error {
-	return tasks.SavePingRecord(newPingRecord(uuid, taskID, pingType, role, family, value, valueUS, time.Now().UTC()))
 }
 
 // newPingRecord 把一条上报结果组装成 PingRecord。

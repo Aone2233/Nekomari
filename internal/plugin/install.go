@@ -84,6 +84,9 @@ func InstallZip(zipPath string) (models.Plugin, error) {
 		return info, fmt.Errorf("plugin entry %s does not exist", info.Entry)
 	}
 	for _, page := range info.Pages {
+		if page.Type != models.PageTypeIframe {
+			continue
+		}
 		if _, err := os.Stat(filepath.Join(dir, page.File)); err != nil {
 			_ = os.RemoveAll(dir)
 			return info, fmt.Errorf("plugin page %s does not exist", page.File)

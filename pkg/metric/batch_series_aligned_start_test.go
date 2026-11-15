@@ -87,41 +87,58 @@ func TestSeriesBatchAlignedStartSelectsHotAndCoarseBuckets(t *testing.T) {
 		{Interval: time.Minute, Retention: time.Hour},
 		{Interval: 5 * time.Minute, Retention: 72 * time.Hour},
 	}}
-	s := newRollupStore(t, policy)
-	if err := s.CreateMetric(ctx, Definition{Name: "hot", Type: TypeGauge, RetentionDays: 90}); err != nil {
-		t.Fatal(err)
+	interval := 7 * time.Hour
+	boundary := time.Date(2026, 11, 8, 5, 0, 0, 0, time.UTC)
+	if boundary.UnixMilli() != bucketStartMillis(boundary.UnixMilli(), interval.Milliseconds()) {
+		t.Fatal("fixture must start on an output bucket boundary")
 	}
-	base := time.Now().UTC().Truncate(5 * time.Minute).Add(-10 * time.Minute)
-	start, now := base.Add(2*time.Minute+30*time.Second), base.Add(9*time.Minute)
-	writeRollupPointsAt(t, ctx, s, now,
-		Point{MetricName: "hot", EntityID: "node", Timestamp: start.Add(-20 * time.Second), Value: 1000},
-		Point{MetricName: "hot", EntityID: "node", Timestamp: start.Add(10 * time.Second), Value: 2000},
-		Point{MetricName: "hot", EntityID: "node", Timestamp: base.Add(3*time.Minute + 10*time.Second), Value: 100},
-		Point{MetricName: "hot", EntityID: "node", Timestamp: base.Add(5*time.Minute + 10*time.Second), Value: 200},
-	)
-	query := BatchSeriesQuery{Specs: []BatchSeriesSpec{{MetricName: "hot", Aggregations: []Aggregation{AggMax}, Interval: 7 * time.Hour, AlignedStart: true}}, EntityIDs: []string{"node"}, Start: start, End: now}
-	minute, err := s.seriesBatchAt(ctx, query.normalized(), now, map[string]time.Duration{"hot": time.Minute})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if minute.Resolutions["hot"] != time.Minute {
-		t.Fatalf("minute backing not selected: %v", minute.Resolutions)
-	}
-	points := minute.Values["hot"][AggMax]
-	if len(points) != 1 || points[0].Value != 200 || !points[0].Bucket.Equal(start) {
-		t.Fatalf("hot minute output = %+v; crossing minute must be excluded", points)
-	}
-	// Exercise the same boundary using a live five-minute parent.
-	coarse, err := s.seriesBatchAt(ctx, query.normalized(), now, map[string]time.Duration{"hot": 5 * time.Minute})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if coarse.Resolutions["hot"] != 5*time.Minute {
-		t.Fatalf("coarse backing not selected: %v", coarse.Resolutions)
-	}
-	points = coarse.Values["hot"][AggMax]
-	if len(points) != 1 || points[0].Value != 200 || !points[0].Bucket.Equal(start) {
-		t.Fatalf("coarse output = %+v; crossing parent must be excluded", points)
+	for _, tc := range []struct {
+		name        string
+		base        time.Time
+		crossOutput bool
+	}{
+		{"same_output", boundary.Add(5 * time.Minute), false},
+		{"cross_output", boundary.Add(-5 * time.Minute), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newRollupStore(t, policy)
+			if err := s.CreateMetric(ctx, Definition{Name: "hot", Type: TypeGauge, RetentionDays: 90}); err != nil {
+				t.Fatal(err)
+			}
+			base := tc.base
+			start, now := base.Add(2*time.Minute+30*time.Second), base.Add(9*time.Minute)
+			writeRollupPointsAt(t, ctx, s, now,
+				Point{MetricName: "hot", EntityID: "node", Timestamp: start.Add(-20 * time.Second), Value: 1000},
+				Point{MetricName: "hot", EntityID: "node", Timestamp: start.Add(10 * time.Second), Value: 2000},
+				Point{MetricName: "hot", EntityID: "node", Timestamp: base.Add(3*time.Minute + 10*time.Second), Value: 100},
+				Point{MetricName: "hot", EntityID: "node", Timestamp: base.Add(5*time.Minute + 10*time.Second), Value: 200},
+			)
+			query := BatchSeriesQuery{Specs: []BatchSeriesSpec{{MetricName: "hot", Aggregations: []Aggregation{AggMax}, Interval: interval, AlignedStart: true}}, EntityIDs: []string{"node"}, Start: start, End: now}
+			for _, resolution := range []time.Duration{time.Minute, 5 * time.Minute} {
+				result, err := s.seriesBatchAt(ctx, query.normalized(), now, map[string]time.Duration{"hot": resolution})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if result.Resolutions["hot"] != resolution {
+					t.Fatalf("backing resolution = %v; want %v", result.Resolutions, resolution)
+				}
+				points := result.Values["hot"][AggMax]
+				wantBucket := start
+				if tc.crossOutput {
+					wantBucket = boundary
+				}
+				wantLen := 1
+				if tc.crossOutput && resolution == time.Minute {
+					wantLen = 2
+					if len(points) != wantLen || points[0].Value != 100 || !points[0].Bucket.Equal(start) {
+						t.Fatalf("minute output = %+v; want the first wholly in-window minute at %s", points, start)
+					}
+				}
+				if len(points) != wantLen || points[wantLen-1].Value != 200 || !points[wantLen-1].Bucket.Equal(wantBucket) {
+					t.Fatalf("%s output = %+v; crossing backing buckets must be excluded", resolution, points)
+				}
+			}
+		})
 	}
 }
 

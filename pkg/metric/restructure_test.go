@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -554,6 +555,40 @@ func TestDiscardHistoryClearsAlreadyNormalizedStore(t *testing.T) {
 	}
 	if preserved.Description != definition.Description || preserved.RetentionDays != definition.RetentionDays {
 		t.Fatalf("preserved definition = %#v", preserved)
+	}
+}
+
+func TestDiscardHistoryClearsPendingCoarseParents(t *testing.T) {
+	ctx := t.Context()
+	path := filepath.Join(t.TempDir(), "discard-coarse.db")
+	s, err := Open(ctx, SQLite(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if err := s.CreateMetric(ctx, Definition{Name: "discard", RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Now().UTC().Truncate(5 * time.Minute)
+	point := Point{MetricName: "discard", EntityID: "node", Timestamp: base.Add(time.Second), Value: 7}
+	if err := s.writeBatch(ctx, []Point{point}, func() time.Time { return base.Add(2 * time.Second) }); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PersistHotRollups(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.coarse) == 0 {
+		t.Fatal("fixture did not stage a parent")
+	}
+	if _, err := s.DiscardHistory(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.FlushCoarse(ctx, base.Add(72*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ := exportAllTestRollups(t, s, "discard", 10)
+	if len(rows) != 0 {
+		t.Fatalf("discarded history returned: %+v", rows)
 	}
 }
 
