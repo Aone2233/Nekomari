@@ -19,6 +19,7 @@ import (
 	"github.com/Aone2233/nekomari/database/tasks"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/internal/sla"
 	"github.com/Aone2233/nekomari/pkg/metric"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 	"github.com/Aone2233/nekomari/web/api"
@@ -231,5 +232,43 @@ func TestUnknownProbeThroughAuthenticatedReport(t *testing.T) {
 		if err != nil || len(points) != check.count {
 			t.Fatalf("%s: points=%+v err=%v", check.name, points, err)
 		}
+	}
+	now := time.Now().UTC()
+	report, err := sla.Build(t.Context(), sla.ReportRequest{
+		Reader: metricstore.GetStore(), EntityIDs: []string{node.UUID},
+		Start: now.Add(-2 * time.Minute), End: now.Add(time.Minute), Interval: time.Minute, Now: now,
+	})
+	if err != nil || len(report.Nodes) != 1 {
+		t.Fatalf("unknown-only SLA report: %+v, err=%v", report, err)
+	}
+	if report.Nodes[0].HasReport || len(report.Nodes[0].Tasks) != 0 {
+		t.Fatalf("unknown probe became SLA availability or outage: %+v", report.Nodes[0])
+	}
+	// A real measured success in the same aggregation bucket must remain the
+	// only availability evidence; the unknown result cannot dilute it into a
+	// partial failure. Both go through the authenticated production handler.
+	goodBody, err := json.Marshal(v2.Request{JSONRPC: v2.Version, ID: 2, Method: v2.MethodAgentPingResult, Params: v2.PingResultParams{TaskID: task.Id, PingType: "tcp", Value: 12, ValueUS: 12000}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	goodRequest := httptest.NewRequest(http.MethodPost, "/api/clients/v2/rpc", bytes.NewReader(goodBody))
+	goodRequest.Header.Set("Authorization", "Bearer "+node.Token)
+	goodRequest.Header.Set("Content-Type", "application/json")
+	goodResponse := httptest.NewRecorder()
+	router.ServeHTTP(goodResponse, goodRequest)
+	if goodResponse.Code != http.StatusOK {
+		t.Fatalf("success report: %d %s", goodResponse.Code, goodResponse.Body.String())
+	}
+	now = time.Now().UTC()
+	report, err = sla.Build(t.Context(), sla.ReportRequest{
+		Reader: metricstore.GetStore(), EntityIDs: []string{node.UUID},
+		Start: now.Add(-2 * time.Minute), End: now.Add(time.Minute), Interval: time.Minute, Now: now,
+	})
+	if err != nil || len(report.Nodes) != 1 || len(report.Nodes[0].Tasks) != 1 {
+		t.Fatalf("mixed SLA report: %+v, err=%v", report, err)
+	}
+	got := report.Nodes[0].Tasks[0]
+	if !got.Loss.HasData || got.Loss.Fraction != 1 || got.Loss.Buckets != 1 || len(got.Outages) != 0 {
+		t.Fatalf("unknown result distorted measured success: %+v", got)
 	}
 }
