@@ -419,6 +419,7 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 	var phaseMu sync.Mutex
 	var dnsUS, tcpUS int64
 	var dnsSet, dnsFailed bool
+	var dnsPending int
 	var tcpSet bool
 	var firstFamily string
 	transport := &http.Transport{
@@ -429,10 +430,17 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 				return nil, err
 			}
 			dnsStart := time.Now()
+			isHostname := net.ParseIP(host) == nil
+			if isHostname {
+				phaseMu.Lock()
+				dnsPending++
+				phaseMu.Unlock()
+			}
 			ip, err := resolve(host, preference)
 			dnsElapsed := time.Since(dnsStart).Microseconds()
 			phaseMu.Lock()
-			if net.ParseIP(host) == nil {
+			if isHostname {
+				dnsPending--
 				if err != nil {
 					dnsFailed = true
 				} else {
@@ -526,7 +534,7 @@ func httpProbeWithResolver(target string, timeout time.Duration, expectedStatus 
 	family := firstFamily
 	tcpKnown := tcpSet
 	wasConnected := connected
-	dnsValue, dnsKnown := dnsUS, dnsSet && !dnsFailed
+	dnsValue, dnsKnown := dnsUS, dnsSet && !dnsFailed && dnsPending == 0
 	tcpValue, tlsValue, ttfbValue, hasTTFB := tcpUS, tlsUS, ttfbUS, ttfbSet
 	phaseMu.Unlock()
 	out := httpProbeOutcome{totalUS: totalUS, family: family, reachable: wasConnected}

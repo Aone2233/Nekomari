@@ -65,6 +65,29 @@ func TestHTTPProbeDNSFailureOnRedirectDoesNotReportPartialSum(t *testing.T) {
 	}
 }
 
+func TestHTTPProbeDNSTimeoutOnRedirectDoesNotReportPartialSum(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://slow.test/", http.StatusFound)
+	}))
+	defer server.Close()
+	_, port, err := net.SplitHostPort(server.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	defer close(release)
+	out := httpProbeWithResolver("http://first.test:"+port, 100*time.Millisecond, "", true, "", func(host, _ string) (string, error) {
+		if host == "first.test" {
+			return "127.0.0.1", nil
+		}
+		<-release
+		return "", errors.New("resolution stopped")
+	})
+	if out.err == nil || out.obs == nil || out.obs.DNSUS != nil {
+		t.Fatalf("redirect timeout reported a partial DNS sum: %+v", out)
+	}
+}
+
 // HTTP TTFB calibration: a server that waits before writing the response
 // should be observed within the v1.8 phase tolerance. This catches a phase
 // that is present but measured from the wrong start point.
