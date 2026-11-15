@@ -19,8 +19,8 @@ case of `TestLostDeleteAcknowledgementStopsPendingDataFromReturning`: its two
 fixture writes used wall-clock time and could straddle a minute boundary, so
 the second write legitimately flushed the hot bucket before the deletion.
 The test now supplies a fixed clock to both writes and verifies pending hot
-data before injecting the lost commit acknowledgement. This explains the
-observed failure without changing store behavior; Linux repeated the test 25
+data before injecting the lost commit acknowledgement. This is a plausible
+cause, not a confirmed explanation of that failure; Linux repeated the test 25
 times and race-checked it three times. The candidate still needs its own
 complete Windows CI result.
 
@@ -93,6 +93,9 @@ Remaining acceptance and operational limits:
   the ordinary scheduler and authenticated WebSocket: a reserved invalid
   hostname produced `dns_failure`, no loss or latency point, and no SLA outage.
   This is not evidence of a production fleet rollout or every failure type.
+  Three 60-second function-level CPU comparisons on OC424 met the predeclared
+  two-percentage-point limit; the [field record](./V1.8.1-CPU-CALIBRATION.md)
+  describes their scope and the remaining reporting-path and other-host checks.
   A read-only OC424 audit on 2026-11-15 found two pinned tasks: task 30 has no
   advanced options, while task 31 retains attempts 3, spacing 200 ms and
   legacy HTTP/default address options that its pinned dispatcher never sends.
