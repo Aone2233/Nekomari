@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -67,6 +68,13 @@ func TestOrdinaryAgentExecutableRedirectDNSDeadline(t *testing.T) {
 	ordinaryAgentExecutableFixture(t, "redirect-dns")
 }
 
+func TestOrdinaryAgentExecutableICMPPermissionUnknown(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_PERMISSION_E2E") != "1" {
+		t.Skip("requires root, Linux network namespace privileges, and UID/GID 65534")
+	}
+	ordinaryAgentExecutableFixture(t, "permission")
+}
+
 func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	t.Helper()
 	const marker = "NEKOMARI_ORDINARY_EXEC_CHILD"
@@ -81,6 +89,8 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 		runPattern = "^TestOrdinaryAgentExecutableHTTPDNSDeadline$"
 	} else if scenario == "redirect-dns" {
 		runPattern = "^TestOrdinaryAgentExecutableRedirectDNSDeadline$"
+	} else if scenario == "permission" {
+		runPattern = "^TestOrdinaryAgentExecutableICMPPermissionUnknown$"
 	}
 	if os.Getenv(marker) != "1" {
 		_, source, _, ok := runtime.Caller(0)
@@ -104,6 +114,13 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	}
 	if out, err := exec.CommandContext(t.Context(), "ip", "link", "set", "lo", "up").CombinedOutput(); err != nil {
 		t.Fatalf("loopback: %v %s", err, out)
+	}
+	if scenario == "permission" {
+		// This sysctl is network-namespace scoped. Restrict ping sockets only
+		// in this disposable namespace, and run the Agent without CAP_NET_RAW.
+		if err := os.WriteFile("/proc/sys/net/ipv4/ping_group_range", []byte("0 0\n"), 0o644); err != nil {
+			t.Fatalf("restrict isolated ping sockets: %v", err)
+		}
 	}
 	flags.DatabaseType = flags.DatabaseTypeSQLite
 	flags.DatabaseFile = filepath.Join("data", "komari.db")
@@ -183,6 +200,39 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	}
 	cmd.Dir = t.TempDir()
 	cmd.Env = append(os.Environ(), "AGENT_TOKEN="+token, "HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "NO_PROXY=*")
+	if scenario == "permission" {
+		// t.TempDir's ancestors are private to root. Copy only the test Agent to
+		// a disposable, traversable directory, and give its workdir to the
+		// unprivileged process. No host Agent or sysctl outside this namespace changes.
+		dir, err := os.MkdirTemp("", "nekomari-permission-agent-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(dir) })
+		if err := os.Chmod(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		binary := filepath.Join(dir, "komari-agent")
+		data, err := os.ReadFile(os.Getenv("NEKOMARI_ORDINARY_EXEC_BINARY"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(binary, data, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		work := filepath.Join(dir, "work")
+		if err := os.Mkdir(work, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chown(work, 65534, 65534); err != nil {
+			t.Fatal(err)
+		}
+		cmd.Path, cmd.Args[0], cmd.Dir = binary, binary, work
+		cmd.Env = append(cmd.Env, "HOME="+work)
+		// Drop supplementary groups too: retaining group 0 would still permit
+		// a datagram ping socket under the namespace's 0..0 group range.
+		cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 65534, Gid: 65534}}
+	}
 	output := &bytes.Buffer{}
 	cmd.Stdout = output
 	cmd.Stderr = output
@@ -205,6 +255,9 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 		}
 	}()
 	task := models.PingTask{Name: "unknown fixture", Type: "tcp", Target: "invalid.invalid:80", Interval: 2, Clients: models.StringArray{id}}
+	if scenario == "permission" {
+		task = models.PingTask{Name: "ICMP permission fixture", Type: "icmp", Target: "127.0.0.1", Interval: 2, Clients: models.StringArray{id}}
+	}
 	if scenario == "tls" {
 		tlsTarget := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
 		defer tlsTarget.Close()
@@ -293,7 +346,11 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	if points := query(metricstore.MetricPingUnknown); len(points) == 0 || points[0].Tags["reason"] != "dns_failure" {
+	wantReason := "dns_failure"
+	if scenario == "permission" {
+		wantReason = "permission_denied"
+	}
+	if points := query(metricstore.MetricPingUnknown); len(points) == 0 || points[0].Tags["reason"] != wantReason {
 		t.Fatalf("unknown points: %+v", points)
 	}
 	if (scenario == "custom-dns" || scenario == "http-dns" || scenario == "redirect-dns") && dnsQueries.Load() == 0 {

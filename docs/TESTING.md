@@ -333,6 +333,14 @@ uses no production data or external network. Its DNS-failure case verifies
 the scheduler, authenticated WebSocket, metrics and SLA chain; it does not
 stand in for a production deployment or other local failure types.
 
+The separate opt-in `NEKOMARI_ORDINARY_PERMISSION_E2E=1 go test -race
+./web/api/client -run '^TestOrdinaryAgentExecutableICMPPermissionUnknown$'
+-count=1` additionally requires root, a writable network-namespace-scoped
+`ping_group_range`, and the ability to run the disposable Agent as UID/GID
+65534. It restricts ping sockets inside the new namespace, drops supplementary
+groups and checks the actual scheduler-to-metric-store/SLA path. It does not
+change the host network namespace or prove behavior on other platforms.
+
 A full `go test ./...` reports two failures on a host where the test process cannot
 write its own temporary directory — observed on a systemd service with a confined
 `/tmp`. Both are in `pkg/jsruntime`:

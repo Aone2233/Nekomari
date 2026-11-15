@@ -135,7 +135,13 @@ Remaining acceptance and operational limits:
   An isolated Linux network-namespace test ran a real Agent executable through
   the ordinary scheduler and authenticated WebSocket: a reserved invalid
   hostname produced `dns_failure`, no loss or latency point, and no SLA outage.
-  This is not evidence of a production fleet rollout or every failure type.
+  A separate root-run namespace restricted ping sockets and ran the real
+  Agent as an unprivileged UID with supplementary groups dropped; the same
+  chain produced `permission_denied` without a loss or latency point or SLA
+  outage. One normal and three race-enabled runs passed on the Linux x86-64
+  test host. The initial fixture retained group 0 and therefore still had a
+  ping socket; it failed to create the intended permission condition. These
+  checks do not establish production rollout or every failure type.
   Three 60-second function-level CPU comparisons on OC424 met the predeclared
   two-percentage-point limit; the [field record](./V1.8.1-CPU-CALIBRATION.md)
   describes their scope and the remaining reporting-path and other-host checks.
