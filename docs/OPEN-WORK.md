@@ -16,7 +16,7 @@ holds the evidence and the acceptance criteria for each item. This file is the l
 
 **Current v1.8.1 candidate:** See [the short implementation and acceptance
 status](./V1.8.1-CURRENT-STATUS.md). v1.8.1 may fix existing probe correctness
-and visibility defects; the three field verification gates below remain open.
+and visibility defects; the remaining field verification gates are described below.
 The prepared release policy keeps Agent assets manual, GitHub Latest unchanged,
 and both Docker moving tags unchanged. This is not evidence of publication,
 deployment or Agent rollout.
@@ -39,8 +39,9 @@ but hidden in the patched detail chart when current type/role are known.
 
 Remaining acceptance and operational limits:
 
-- The remaining v1.8.0 verification gates are 64-theme
-  browser/hydration/mobile and LAN ICMP / `tc netem` loss. The configured
+- The remaining v1.8.0 verification gate is 64-theme
+  browser/hydration/mobile. LAN ICMP and isolated `tc netem` loss checks now
+  have the evidence described below. The configured
   Telegram delivery gate is verified as described below. The 12-run isolated netem experiment met predeclared
   loss and independent-counter checks. On 2026-11-13, three predeclared runs
   from OC424 to its cloud subnet gateway each received 30/30 Agent probes and
@@ -62,7 +63,9 @@ Remaining acceptance and operational limits:
   changed. The physical local router did reply, but the Agent test on MAC-WAN
   could not open an ICMP socket under its unprivileged account. A separate
   privileged-container calibration could not be completed after MAC-WAN SSH
-  became intermittent. Physical-LAN calibration remains open.
+  became intermittent. A subsequent three-run physical wired-LAN ICMP
+  comparison from MAC-WAN to its router passed the predeclared 1 ms bounds;
+  see [`V1.8.1-NETEM-PRELIMINARY.md`](./V1.8.1-NETEM-PRELIMINARY.md).
   The preliminary 64-theme browser scan identified errors and did not cover
   every mobile interaction or authenticated route; see
   [`V1.8.1-THEME-SMOKE.md`](./V1.8.1-THEME-SMOKE.md).
