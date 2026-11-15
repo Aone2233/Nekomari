@@ -118,7 +118,8 @@ Remaining acceptance and operational limits:
   Local comparisons covered DNS, TCP, TTFB, TLS and one HTTP redirect in
   isolation, including a failed TLS delay-only reference; [their record](./V1.8.1-HTTP-CALIBRATION.md)
   identifies the remaining configured-resolver, delayed/physical TCP and
-  HTTPS redirect work.
+  other redirect paths. A subsequent two-hop HTTPS loopback comparison also
+  passed within the limits in that record.
   An [isolated mixed-Agent check](./V1.8.1-MIXED-AGENT.md) exercised the
   ordinary scheduler, actual v1.7.30 and candidate executables, authenticated
   WebSockets and metric storage with a dual-stack hostname and IPv4 preference.
