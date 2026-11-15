@@ -141,7 +141,11 @@ Remaining acceptance and operational limits:
   outage. One normal and three race-enabled runs passed on the Linux x86-64
   test host. The initial fixture retained group 0 and therefore still had a
   ping socket; it failed to create the intended permission condition. These
-  checks do not establish production rollout or every failure type.
+  checks do not establish production rollout or every failure type. A further
+  three-attempt permission fixture likewise produced unknown with no attempt,
+  success, loss-percentage, latency or loss points and no SLA outage; a permitted
+  control recorded three successful attempts. It does not independently count
+  the denied socket calls.
   Three 60-second function-level CPU comparisons on OC424 met the predeclared
   two-percentage-point limit; the [field record](./V1.8.1-CPU-CALIBRATION.md)
   describes their scope and the remaining reporting-path and other-host checks.

@@ -75,6 +75,20 @@ func TestOrdinaryAgentExecutableICMPPermissionUnknown(t *testing.T) {
 	ordinaryAgentExecutableFixture(t, "permission")
 }
 
+func TestOrdinaryAgentExecutableICMPMultiPermissionUnknown(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_PERMISSION_E2E") != "1" {
+		t.Skip("requires root, Linux network namespace privileges, and UID/GID 65534")
+	}
+	ordinaryAgentExecutableFixture(t, "permission-multi")
+}
+
+func TestOrdinaryAgentExecutableICMPMultiControl(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_PERMISSION_E2E") != "1" {
+		t.Skip("requires root and Linux network namespace privileges")
+	}
+	ordinaryAgentExecutableFixture(t, "icmp-multi-control")
+}
+
 func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	t.Helper()
 	const marker = "NEKOMARI_ORDINARY_EXEC_CHILD"
@@ -91,6 +105,10 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 		runPattern = "^TestOrdinaryAgentExecutableRedirectDNSDeadline$"
 	} else if scenario == "permission" {
 		runPattern = "^TestOrdinaryAgentExecutableICMPPermissionUnknown$"
+	} else if scenario == "permission-multi" {
+		runPattern = "^TestOrdinaryAgentExecutableICMPMultiPermissionUnknown$"
+	} else if scenario == "icmp-multi-control" {
+		runPattern = "^TestOrdinaryAgentExecutableICMPMultiControl$"
 	}
 	if os.Getenv(marker) != "1" {
 		_, source, _, ok := runtime.Caller(0)
@@ -115,7 +133,7 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	if out, err := exec.CommandContext(t.Context(), "ip", "link", "set", "lo", "up").CombinedOutput(); err != nil {
 		t.Fatalf("loopback: %v %s", err, out)
 	}
-	if scenario == "permission" {
+	if scenario == "permission" || scenario == "permission-multi" {
 		// This sysctl is network-namespace scoped. Restrict ping sockets only
 		// in this disposable namespace, and run the Agent without CAP_NET_RAW.
 		if err := os.WriteFile("/proc/sys/net/ipv4/ping_group_range", []byte("0 0\n"), 0o644); err != nil {
@@ -200,7 +218,7 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	}
 	cmd.Dir = t.TempDir()
 	cmd.Env = append(os.Environ(), "AGENT_TOKEN="+token, "HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "NO_PROXY=*")
-	if scenario == "permission" {
+	if scenario == "permission" || scenario == "permission-multi" {
 		// t.TempDir's ancestors are private to root. Copy only the test Agent to
 		// a disposable, traversable directory, and give its workdir to the
 		// unprivileged process. No host Agent or sysctl outside this namespace changes.
@@ -255,8 +273,12 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 		}
 	}()
 	task := models.PingTask{Name: "unknown fixture", Type: "tcp", Target: "invalid.invalid:80", Interval: 2, Clients: models.StringArray{id}}
-	if scenario == "permission" {
+	if scenario == "permission" || scenario == "permission-multi" {
 		task = models.PingTask{Name: "ICMP permission fixture", Type: "icmp", Target: "127.0.0.1", Interval: 2, Clients: models.StringArray{id}}
+	}
+	if scenario == "permission-multi" || scenario == "icmp-multi-control" {
+		task.Type, task.Target = "icmp", net.IPv4(127, 0, 0, 1).String()
+		task.ProbeAttempts, task.ProbeSpacingMS = 3, 200
 	}
 	if scenario == "tls" {
 		tlsTarget := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
@@ -315,6 +337,24 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 		}
 		return p
 	}
+	if scenario == "icmp-multi-control" {
+		for len(query(metricstore.MetricPingAttempts)) == 0 {
+			if time.Now().After(deadline) {
+				t.Fatal("multi-attempt control result not received")
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if points := query(metricstore.MetricPingAttempts); points[0].Value != 3 {
+			t.Fatalf("control attempts: %+v", points)
+		}
+		if points := query(metricstore.MetricPingSuccess); len(points) == 0 || points[0].Value != 3 {
+			t.Fatalf("control successes: %+v", points)
+		}
+		if points := query(metricstore.MetricPingLossPct); len(points) == 0 || points[0].Value != 0 {
+			t.Fatalf("control loss percentage: %+v", points)
+		}
+		return
+	}
 	if scenario == "tls" || scenario == "1xx" {
 		for len(query(metricstore.MetricHTTPReachable)) == 0 {
 			if time.Now().After(deadline) {
@@ -347,7 +387,7 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	wantReason := "dns_failure"
-	if scenario == "permission" {
+	if scenario == "permission" || scenario == "permission-multi" {
 		wantReason = "permission_denied"
 	}
 	if points := query(metricstore.MetricPingUnknown); len(points) == 0 || points[0].Tags["reason"] != wantReason {
@@ -361,6 +401,11 @@ func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
 	}
 	if points := query(metricstore.MetricPingLatency); len(points) != 0 {
 		t.Fatalf("unknown produced latency: %+v", points)
+	}
+	for _, name := range []string{metricstore.MetricPingAttempts, metricstore.MetricPingSuccess, metricstore.MetricPingLossPct} {
+		if points := query(name); len(points) != 0 {
+			t.Fatalf("unknown produced %s: %+v", name, points)
+		}
 	}
 	if scenario == "http-dns" || scenario == "redirect-dns" {
 		if scenario == "redirect-dns" {

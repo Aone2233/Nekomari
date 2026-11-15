@@ -340,6 +340,12 @@ The separate opt-in `NEKOMARI_ORDINARY_PERMISSION_E2E=1 go test -race
 65534. It restricts ping sockets inside the new namespace, drops supplementary
 groups and checks the actual scheduler-to-metric-store/SLA path. It does not
 change the host network namespace or prove behavior on other platforms.
+The same opt-in also enables `TestOrdinaryAgentExecutableICMPMultiPermissionUnknown`
+and `TestOrdinaryAgentExecutableICMPMultiControl`. They configure three attempts:
+the unprivileged case checks unknown without latency, loss, attempt, success or
+loss-percentage points and without an SLA outage; a permitted loopback control
+checks that the actual scheduler and Agent produce three successes and zero
+percent loss. The tests do not count individual socket calls in the denied case.
 
 A full `go test ./...` reports two failures on a host where the test process cannot
 write its own temporary directory — observed on a systemd service with a confined
