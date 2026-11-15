@@ -108,6 +108,10 @@ Remaining acceptance and operational limits:
   The original Next Pro archive's hydration exception also reproduces when
   served by a standalone static server without a Panel; this control does not
   identify the underlying mismatch or make the original archive pass.
+  Naive's original node card also did not accept programmatic focus or Enter
+  in isolated Chromium at 320 and 390 pixels, on both candidate and published
+  v1.7.30 Panels; another keyboard route has not been ruled out. See the
+  [theme record](./V1.8.1-THEME-SMOKE.md).
   The candidate Agent also omits HTTP DNS duration for literal-only targets
   and failed lookups rather than recording resolution overhead as a successful
   DNS measurement. It also omits TLS duration for a failed final handshake or
