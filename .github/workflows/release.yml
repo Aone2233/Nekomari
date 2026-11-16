@@ -171,7 +171,7 @@ jobs:
         uses: actions/setup-go@v7
         with:
           # Module minimums do not select a security-patched release compiler.
-          go-version: '1.27.3'
+          go-version: '1.27.4'
           cache: true
           cache-dependency-path: |
             go.sum
@@ -324,7 +324,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v7
         with:
-          go-version: '1.27.3'
+          go-version: '1.27.4'
           cache: true
           cache-dependency-path: agent/go.sum
 
@@ -412,8 +412,8 @@ jobs:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          if [ "$RELEASE_TAG" != v1.7.30 ] && [ "$RELEASE_TAG" != v1.8.0 ]; then
-            echo '::error::this manual-only Agent publication policy is restricted to v1.7.30 and v1.8.0'
+          if [ "$RELEASE_TAG" != v1.7.30 ] && [ "$RELEASE_TAG" != v1.8.0 ] && [ "$RELEASE_TAG" != v1.8.1 ]; then
+            echo '::error::this manual-only Agent publication policy is restricted to v1.7.30, v1.8.0 and v1.8.1'
             exit 1
           fi
           shopt -s nullglob
@@ -536,6 +536,15 @@ jobs:
             > binary explicitly after reviewing the node and retaining its old binary.
             > Installer scripts and panel-requested automatic updates do not target these
             > assets. The previous release remains GitHub's latest installer target.
+
+            For v1.8.1, upgrade the Panel before an Agent: older Panels can
+            interpret the new Agent's unknown probe result as packet loss.
+            Known third-party theme limitations include Next Pro 2.0.0
+            hydration, LuminaCustom 3.1.2 and Aero 1.4.5 mobile navigation,
+            btop-terminal 1.0.3 live status, and Light 1.1.1 status after
+            reconnect. These also reproduced on the v1.7.30 Panel in the
+            bounded tests; see the [theme test record](https://github.com/${{ github.repository }}/blob/${{ needs.resolve.outputs.tag }}/docs/V1.8.1-THEME-SMOKE.md)
+            for the evidence and remaining coverage limits.
 
             Every attached binary also carries a **build provenance attestation** signed by
             this workflow run. Verify one before running it:

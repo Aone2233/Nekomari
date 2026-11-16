@@ -52,7 +52,8 @@ func cpuIntervalSample() (usage, interval float64, ok bool) {
 		return 0, 0, false
 	}
 	var total, idle uint64
-	for i, field := range fields[1:] {
+	// guest and guest_nice are already included in user and nice.
+	for i, field := range fields[1:min(len(fields), 9)] {
 		value, err := strconv.ParseUint(field, 10, 64)
 		if err != nil {
 			return 0, 0, false
@@ -70,12 +71,13 @@ func cpuIntervalSample() (usage, interval float64, ok bool) {
 		cpuIntervalState.lastAt, cpuIntervalState.ready = now, true
 		return 0, 0, false
 	}
-	totalDelta := total - cpuIntervalState.lastTotal
-	idleDelta := idle - cpuIntervalState.lastIdle
+	previousTotal, previousIdle := cpuIntervalState.lastTotal, cpuIntervalState.lastIdle
+	totalDelta := total - previousTotal
+	idleDelta := idle - previousIdle
 	elapsed := now.Sub(cpuIntervalState.lastAt).Seconds()
 	cpuIntervalState.lastTotal, cpuIntervalState.lastIdle = total, idle
 	cpuIntervalState.lastAt = now
-	if totalDelta == 0 || elapsed <= 0 {
+	if total < previousTotal || idle < previousIdle || totalDelta == 0 || idleDelta > totalDelta || elapsed <= 0 {
 		return 0, 0, false
 	}
 	usage = (1 - float64(idleDelta)/float64(totalDelta)) * 100

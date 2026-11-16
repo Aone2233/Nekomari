@@ -14,6 +14,61 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
+**CI follow-up (2026-11-15):** Windows run 43714186713 failed the `series`
+case of `TestLostDeleteAcknowledgementStopsPendingDataFromReturning`: its two
+fixture writes used wall-clock time and could straddle a minute boundary, so
+the second write legitimately flushed the hot bucket before the deletion.
+The test now supplies a fixed clock to both writes and verifies pending hot
+data before injecting the lost commit acknowledgement. This is a plausible
+cause, not a confirmed explanation of that failure; Linux repeated the test 25
+times and race-checked it three times. The candidate still needs its own
+complete Windows CI result.
+
+Windows run 43747130955 later failed `TestPanelPoolReadsRealSQLWaitCounters`:
+the SQL wait count incremented but the measured interval rounded to zero.
+The test cancelled as soon as it saw the queued request, leaving no minimum
+wait for the platform clock. It now holds the connection for 100 ms after
+observing the wait; 25 Linux repetitions passed. This is a plausible timing
+explanation, not proof of the original Windows failure. The changed test still
+requires exact-commit Windows CI.
+
+**Local ICMP follow-up (2026-11-15):** The Agent `server` and
+`monitoring/unit` suite failed `TestICMPLoopbackCalibration` once on the
+Linux x86-64 development host: Agent median 126 µs versus system-ping average
+65 µs, a 61 µs difference against the 50 µs tolerance. The test uses two
+sequential groups and different summary statistics. A subsequent predeclared
+same-probe loopback capture found all 90 Agent RTT values more than 50 µs
+above their captured intervals; details and timing-boundary limitations are
+in [the calibration record](./V1.8.1-NETEM-PRELIMINARY.md). A receive-only
+prototype also exceeded the bound. The candidate now uses Linux software TX
+and RX timestamps on amd64/arm64, with legacy fallback before sending when
+unavailable. Integrated same-packet loopback and physical LAN comparisons
+passed within their stated scope; clock changes within the tolerance and
+platforms using the legacy path remain limitations. The separate-packet
+system-ping test subsequently failed once and is now an explicit field check,
+not a substitute for the same-packet comparison. Exact-commit CI and remaining
+release acceptance still need completion; see the calibration record.
+
+**Current v1.8.1 candidate:** See [the short implementation and acceptance
+status](./V1.8.1-CURRENT-STATUS.md). v1.8.1 may fix existing probe correctness
+and visibility defects; the remaining field verification gates are described below.
+The prepared release policy keeps Agent assets manual, GitHub Latest unchanged,
+and both Docker moving tags unchanged. This is not evidence of publication,
+deployment or Agent rollout.
+
+**Owner theme decision (2026-11-16, Asia/Shanghai):** confirmed third-party
+theme defects can be recorded and excluded as v1.8.1 release blockers; a
+candidate regression or an issue not established to be third-party does not
+receive that exception. The original ZIPs and the observed defects remain
+unchanged. Existing browser scans are bounded, and untested interactions are
+not a pass. See [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md) and the
+[theme record](./V1.8.1-THEME-SMOKE.md).
+
+The 2026-11-15 locked-plugin load/unload rerun now includes `komari-gfw` and
+passes 26/26 in a network-isolated namespace; the earlier skipped failure's
+cause was not established. This covers load/unload, not all plugin features.
+See [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md).
+
 **Current v1.8.0 Probe Truth checkpoint (2026-11-09, Asia/Shanghai):** The formal
 [v1.8.0 release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.0)
 and its pinned panel image are live on OC424; the release record, image digest,
@@ -32,11 +87,107 @@ but hidden in the patched detail chart when current type/role are known.
 
 Remaining acceptance and operational limits:
 
-- The three v1.8.0 verification gates are still open: 64-theme
-  browser/hydration/mobile, real external provider delivery, and LAN ICMP /
-  `tc netem` loss. **v1.8.1 is a formal patch release** scoped only to these
-  gates and no new features; release tag/OC424 deploy mechanics and the
-  defect-fix boundary remain TBD. See
+- The remaining v1.8.0 verification gate is 64-theme
+  browser/hydration/mobile. LAN ICMP and isolated `tc netem` loss checks now
+  have the evidence described below. The configured
+  Telegram delivery gate is verified as described below. The 12-run isolated netem experiment met predeclared
+  loss and independent-counter checks. On 2026-11-13, three predeclared runs
+  from OC424 to its cloud subnet gateway each received 30/30 Agent probes and
+  30/30 system pings; Agent-to-capture per-probe RTT differences were at most
+  0.264 ms, with no capture drops. The gateway's physical topology is unknown;
+  this does not establish physical LAN calibration. Details are in
+  [`V1.8.1-NETEM-PRELIMINARY.md`](./V1.8.1-NETEM-PRELIMINARY.md).
+  A single test message sent directly from OC424 using the configured Telegram
+  provider received HTTP 200 and Telegram `ok=true` at 09:03:28 Asia/Shanghai.
+  The owner confirmed receiving it on 2026-11-13. A separate disposable Panel
+  on OC424, using the production v1.8.0 binary and the same configured sender,
+  successfully invoked `admin:testSendMessage` at 15:53:34 Asia/Shanghai. Its
+  database and account were temporary; the production Panel was not changed.
+  The owner confirmed receiving that second message. On 2026-11-15 the owner
+  also tested the production Panel notification and confirmed receipt. The
+  configured Telegram delivery gate is therefore verified for that channel.
+  On the same date, MAC-WAN reached AONE over SSH but three ICMP requests to
+  that Windows workstation received no replies; no workstation settings were
+  changed. The physical local router did reply, but the Agent test on MAC-WAN
+  could not open an ICMP socket under its unprivileged account. A separate
+  privileged-container calibration could not be completed after MAC-WAN SSH
+  became intermittent. A subsequent three-run physical wired-LAN ICMP
+  comparison from MAC-WAN to its router passed the predeclared 1 ms bounds;
+  see [`V1.8.1-NETEM-PRELIMINARY.md`](./V1.8.1-NETEM-PRELIMINARY.md).
+  The preliminary 64-theme browser scan identified errors and did not cover
+  every mobile interaction or authenticated route; see
+  [`V1.8.1-THEME-SMOKE.md`](./V1.8.1-THEME-SMOKE.md).
+  A further isolated scan clicked recognisable mobile menu controls in two
+  themes. Authenticated `/admin/` returned nonempty content without page
+  exceptions at both viewports for all 64 archives; theme-specific private
+  routes and remaining interaction coverage are open.
+  The original Next Pro archive's hydration exception also reproduces when
+  served by a standalone static server without a Panel; this control does not
+  identify the underlying mismatch or make the original archive pass.
+  A subsequent real Tab and Enter check reached Naive's outer card link and
+  opened the synthetic node detail at desktop and 390-pixel widths on both
+  candidate and published v1.7.30 Panels. The earlier focus check targeted an
+  inner element and did not establish a keyboard limitation. See the
+  [theme record](./V1.8.1-THEME-SMOKE.md).
+  The locked btop-terminal theme displayed the synthetic node offline and
+  zero-valued on both Panels. Its `/api/clients` socket sent no request in a
+  focused capture, while a separate `get` control returned the fixture report.
+  The offline display also reproduced with a continuously reporting real Agent
+  while a separate request reported it online on both Panels; further protocol
+  controls and limitations are in the same theme record.
+  In another isolated real-Agent check, locked Light displayed the initial
+  online and subsequent offline states on both Panels, but remained offline
+  for 25 seconds after the Agent reconnected and a separate control confirmed
+  it online. A page reload restored online in a separate candidate run; a
+  manual `get` on the theme socket restored it on both Panels. The upstream
+  v1.1.1 source polls only while its last online list is nonempty, consistent
+  with this result. Longer-term behavior remains unverified.
+  The candidate Agent also omits HTTP DNS duration for literal-only targets
+  and failed lookups rather than recording resolution overhead as a successful
+  DNS measurement. It also omits TLS duration for a failed final handshake or
+  a plain-HTTP final redirect, and omits TTFB when only a 1xx response arrives
+  before timeout; these changes do not rewrite historical samples.
+  An isolated Linux network-namespace test ran a real Agent executable through
+  the ordinary scheduler and authenticated WebSocket: a reserved invalid
+  hostname produced `dns_failure`, no loss or latency point, and no SLA outage.
+  A separate root-run namespace restricted ping sockets and ran the real
+  Agent as an unprivileged UID with supplementary groups dropped; the same
+  chain produced `permission_denied` without a loss or latency point or SLA
+  outage. One normal and three race-enabled runs passed on the Linux x86-64
+  test host. The initial fixture retained group 0 and therefore still had a
+  ping socket; it failed to create the intended permission condition. These
+  checks do not establish production rollout or every failure type. A further
+  three-attempt permission fixture likewise produced unknown with no attempt,
+  success, loss-percentage, latency or loss points and no SLA outage; a permitted
+  control recorded three successful attempts. It does not independently count
+  the denied socket calls.
+  Three 60-second function-level CPU comparisons on OC424 met the predeclared
+  two-percentage-point limit; the [field record](./V1.8.1-CPU-CALIBRATION.md)
+  describes their scope and the remaining reporting-path and other-host checks.
+  Three default-memory function comparisons on OC424 also passed; the
+  [record](./V1.8.1-MEMORY-CALIBRATION.md) limits the claim to that mode.
+  Local comparisons covered DNS, TCP, TTFB, TLS and one HTTP redirect in
+  isolation, including a failed TLS delay-only reference; [their record](./V1.8.1-HTTP-CALIBRATION.md)
+  identifies the remaining configured-resolver, delayed/physical TCP and
+  other redirect paths. A subsequent two-hop HTTPS loopback comparison also
+  passed within the limits in that record. A delayed virtual-link TCP probe
+  comparison passed with a warm neighbor cache, while the cold run failed the
+  packet-only bound with ARP preceding the SYN; see the
+  [network record](./V1.8.1-NETEM-PRELIMINARY.md). A later warm-neighbor TCP
+  comparison on MAC-WAN's physical wired LAN passed nine same-connection
+  checks within 1 ms; other LAN paths and cold-neighbor behavior remain distinct.
+  An [isolated mixed-Agent check](./V1.8.1-MIXED-AGENT.md) exercised the
+  ordinary scheduler, actual v1.7.30 and candidate executables, authenticated
+  WebSockets and metric storage with a dual-stack hostname and IPv4 preference.
+  A read-only OC424 audit on 2026-11-15 found two pinned tasks: task 30 has no
+  advanced options, while task 31 retains attempts 3, spacing 200 ms and
+  legacy HTTP/default address options that its pinned dispatcher never sends.
+  The candidate marks such saved options as ignored in the task list. No task
+  configuration or history was modified; the warning does not make those
+  options effective or reconstruct earlier probe results.
+  **v1.8.1 is a formal patch candidate** that also fixes existing probe
+  correctness and visibility defects. Publication remains gated on retained
+  acceptance evidence; production deployment is separately recorded. See
   [`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md) and
   [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md).
 - The owner should refresh the signed-in MegaBox and HK04 detail pages to
@@ -296,7 +447,7 @@ The next bounded releases and operational gates, in order:
    - LAN ICMP and `tc netem` loss. Loopback ICMP/TCP and HTTP TTFB calibration
      pass; LAN ICMP and 0/1/5/20% `tc netem` loss runs remain NOT RUN.
 
-   v1.8.1 contains no new features; v1.9.0 exec-result history and the other
+   v1.8.1 includes existing probe correctness fixes; v1.9.0 exec-result history and the other
    v1.9 slices are explicitly out of scope. Agent v1.8.0 staged rollout is
    **not started during v1.8.1**; it will be discussed only after all three
    gates close. Release tag/OC424 deploy mechanics and the defect-fix boundary

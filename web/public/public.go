@@ -227,11 +227,11 @@ const (
 	LanguageCookieName = "language"
 
 	// 主题内部结构定义
-	DistDir   = "dist"       // 静态资源存放目录
+	DistDir = "dist" // 静态资源存放目录
 	// AdminDistDir 是内置归档里面板自带后台界面的子树（roadmap H7）。归档里 dist/ 的内容在根上
 	// （内置主题去掉前缀），所以后台单独放在 admin/ 下，避免与主题的 index.html 和 assets/ 相撞。
 	AdminDistDir = "admin"
-	IndexFile = "index.html" // 相对于 DistDir
+	IndexFile    = "index.html" // 相对于 DistDir
 )
 
 // init 只确保主题目录存在。
@@ -270,6 +270,12 @@ func writeShell(c *gin.Context, body []byte) {
 	c.Header("Cache-Control", shellCacheControl)
 	if strings.Contains(c.GetHeader("If-None-Match"), etag) {
 		c.Status(http.StatusNotModified)
+		return
+	}
+	if c.Request.Method == http.MethodHead {
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		c.Header("Content-Length", strconv.Itoa(len(body)))
+		c.Status(http.StatusOK)
 		return
 	}
 	// c.Data 会带上 Content-Length；靠 chunked 传输的响应 CDN 更不愿意缓存。
@@ -815,6 +821,13 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 
 	// 3. SPA 路由 (noRoute)
 	noRoute(func(c *gin.Context) {
+		// Some themes check their own public home page with HEAD. Gin does not
+		// route HEAD to GET automatically, so answer only this public shell
+		// here; unrelated methods and paths keep their existing behavior.
+		if c.Request.Method == http.MethodHead && c.Request.URL.Path == "/" {
+			serveIndex(c)
+			return
+		}
 		if c.Request.Method != http.MethodGet {
 			c.Status(http.StatusNotFound)
 			return

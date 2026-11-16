@@ -2,6 +2,14 @@
 
 ## Cut a release
 
+**v1.8.1 candidate policy:** Before tagging, the exact release commit must have
+green CI and all acceptance gates must be closed or explicitly excepted. The
+prepared workflow publishes Agent binaries only as `manual-komari-agent-*`,
+keeps GitHub Latest unchanged, and leaves the Panel and Agent image `latest`
+and major.minor aliases unchanged. Version-specific images remain available.
+This is a prepared policy, not evidence that v1.8.1 has been released or
+deployed. See [`V1.8.1-CURRENT-STATUS.md`](./V1.8.1-CURRENT-STATUS.md).
+
 **v1.7.30 staged policy:** Agent binaries are published as
 `manual-komari-agent-<os>-<arch>` and are not matched by the existing Agent's
 automatic or panel-requested updater. GitHub's `latest` release and the Agent
@@ -213,7 +221,7 @@ Two consequences worth remembering when the fleet does move:
 
 ## Container images
 
-CI and release builds pin Go 1.27.3 independently of the `go.mod` minimum.
+CI and release builds pin Go 1.27.4 independently of the `go.mod` minimum. This fixes GO-2026-6859 in the standard library.
 Update both workflows together when applying compiler security patches. Every
 server/agent executable must pass `govulncheck -mode=binary` (tool v1.8.0) before
 artifact upload. Local source scanning alone does not verify the compiler used
@@ -466,7 +474,15 @@ confirms the node reports. It cleans up after itself.
 ```bash
 bash deploy/deploy-verify.sh                 # latest release, throwaway temp dir
 bash deploy/deploy-verify.sh /tmp/dv 25799 v0.1.2   # explicit dir/port/tag
+NEKOMARI_MANUAL_AGENT_ASSET=1 bash deploy/deploy-verify.sh "" 25799 v1.8.1  # after publication
 ```
+
+The manual-asset flag is required for v1.8.1: it checks the published
+`manual-komari-agent-*` filename and checksum. Without the explicit version,
+the script selects GitHub Latest, which this release intentionally does not
+move. The release workflow uses the same flag for its native amd64 and arm64
+published-artifact checks; running these checks against v1.8.1 is possible
+only after its artifacts exist.
 
 This runs automatically in CI as the `verify` job, after `release`. It exists
 because `build` only proves the code compiles and `release` only proves the assets

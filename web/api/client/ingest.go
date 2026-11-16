@@ -88,7 +88,7 @@ func pingStatsFromParams(params v2.PingResultParams) *v2.PingProbeStats {
 	if params.Attempts == nil && params.Success == nil && params.LossPct == nil &&
 		params.MinUS == nil && params.AvgUS == nil && params.MaxUS == nil &&
 		params.JitterUS == nil && params.HTTP == nil &&
-		params.ResolvedIP == "" && params.ResolvedFamily == "" && params.ProbeMode == "" {
+		params.ResolvedIP == "" && params.ResolvedFamily == "" && params.ProbeMode == "" && params.ProbeStatus == "" && params.ProbeReason == "" {
 		return nil
 	}
 	return &v2.PingProbeStats{
@@ -96,7 +96,7 @@ func pingStatsFromParams(params v2.PingResultParams) *v2.PingProbeStats {
 		MinUS: params.MinUS, AvgUS: params.AvgUS, MaxUS: params.MaxUS,
 		JitterUS: params.JitterUS, HTTP: params.HTTP,
 		ResolvedIP: params.ResolvedIP, ResolvedFamily: params.ResolvedFamily,
-		ProbeMode: params.ProbeMode,
+		ProbeMode: params.ProbeMode, ProbeStatus: params.ProbeStatus, ProbeReason: params.ProbeReason,
 	}
 }
 
@@ -116,6 +116,7 @@ func newPingRecordWithStats(uuid string, taskID uint, pingType, role, family str
 	if stats == nil {
 		return rec
 	}
+	rec.ProbeStatus, rec.ProbeReason = stats.ProbeStatus, stats.ProbeReason
 	if stats.Attempts != nil {
 		rec.Attempts = *stats.Attempts
 	}

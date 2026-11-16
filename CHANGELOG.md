@@ -8,6 +8,48 @@ Nekomari's own.
 
 ## [Unreleased]
 
+### v1.8.1 candidate — probe correctness
+
+- Build CI and release artifacts with Go 1.27.4 to address GO-2026-6859 in
+  `net/http`; the earlier 1.27.3 compiler is affected.
+
+- Correct Linux CPU guest accounting and reject counter-reset intervals; align
+  the independent calibration harness.
+- On Linux amd64/arm64, measure ICMP round-trip time between kernel software
+  transmit and receive timestamps when available, avoiding userspace scheduling
+  in the measured interval. Other platforms and unsupported sockets retain the
+  existing measurement. A reply without usable timing is unknown, not retried.
+- Honor ordinary probe IP preference; reject advanced options on pinned tasks,
+  whose separate protocol cannot execute them. Flag old pinned tasks whose
+  saved options are ignored. Older Agents can ignore options.
+- Ordinary ICMP, TCP and HTTP hostname probes now use the Agent's configured
+  custom DNS resolver, as pinned probes already do. Previously they always
+  used the system resolver; upgrading an Agent can therefore change the
+  address and path probed when custom DNS is configured. Without custom DNS,
+  the system resolver remains in use.
+- Measure HTTP TTFB from request write and report completed connection status
+  separately from response success. HTTP probes omit DNS phase timing when no
+  hostname was resolved or a lookup failed, omit final TLS timing when
+  the last connection is plain HTTP or the handshake fails, and omit TTFB
+  when only an informational response arrives before timeout. Local probe setup failures report
+  unknown rather than packet loss on a compatible Panel; recent reasons are
+  inspectable. HTTP deadlines reached while DNS is still pending are also
+  classified as unknown, including after a redirect; a late DNS answer no
+  longer starts a new TCP connection after the request has ended. If the
+  final redirect target cannot resolve, an earlier TCP connection no longer
+  fabricates a final-hop reachability result.
+- Refresh quality-page ages and expose failures; forecast read errors no longer
+  appear as empty zero-risk results. See `docs/V1.8.1-CURRENT-STATUS.md` for
+  pending real-world acceptance and release policy.
+- Answer `HEAD /` with the same public theme shell headers as `GET /`, so
+  themes that check their home page no longer receive a misleading 404.
+- Known third-party theme limitations remain: Next Pro 2.0.0 hydration,
+  LuminaCustom 3.1.2 and Aero 1.4.5 mobile navigation, btop-terminal 1.0.3
+  live status, and Light 1.1.1 status after reconnection. These observations
+  also reproduce with the official v1.7.30 Panel in the documented fixtures;
+  not all interactions or real devices were tested. See
+  `docs/V1.8.1-THEME-SMOKE.md` for the original archives and controls.
+
 ### v1.7.30 release candidate
 
 - Family-pinned hostname monitoring resolves on each compatible Agent and

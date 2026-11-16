@@ -28,6 +28,11 @@ def run(script, cwd, env=None, success=True):
         raise AssertionError(f"unexpected exit {result.returncode}:\n{result.stdout}")
 
 
+metadata = step(DOCKER["jobs"]["build-and-push"], "Derive image metadata")["with"]["tags"]
+for moving_tag in ("type=raw,value=latest", "type=semver,pattern={{major}}.{{minor}}"):
+    line = next(line for line in metadata.splitlines() if line.startswith(moving_tag))
+    assert "steps.tag.outputs.tag != 'v1.8.1'" in line, moving_tag
+
 names = ["komari-agent-linux-amd64", "komari-agent-linux-arm64",
          "komari-agent-windows-amd64.exe", "komari-agent-darwin-amd64",
          "komari-agent-darwin-arm64"]
@@ -51,6 +56,15 @@ assert step(release_job, "Validate and publish opt-in release")["env"]["RELEASE_
 assert 'releases/${RELEASE_ID}' in publish and 'releases/tags/${RELEASE_TAG}" >' not in publish
 verify = step(RELEASE["jobs"]["verify"], "Deploy the published artifacts and check they work")["run"]
 assert "NEKOMARI_MANUAL_AGENT_ASSET=1" in verify
+
+with tempfile.TemporaryDirectory() as tmp:
+    root = Path(tmp)
+    dist = root / "dist"
+    dist.mkdir()
+    for name in names:
+        (dist / name).write_bytes(name.encode())
+    run(stage, root, dict(os.environ, RELEASE_TAG="v1.8.1"))
+    assert sorted(p.name for p in dist.iterdir()) == sorted("manual-" + n for n in names)
 
 with tempfile.TemporaryDirectory() as tmp:
     root = Path(tmp)

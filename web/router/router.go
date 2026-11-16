@@ -290,6 +290,7 @@ func registerAdminRoutes(r *gin.Engine) {
 		pingTask.POST("/edit", jsonRpc.Bind("admin:editPingTask"))
 		pingTask.POST("/order", jsonRpc.Bind("admin:orderPingTask"))
 		pingTask.POST("/diagnostic", jsonRpc.Bind("admin:getPinnedPingDiagnostic"))
+		pingTask.POST("/unknowns", jsonRpc.Bind("admin:getProbeUnknowns"))
 		// 目标预检：保存监测任务前先确认目标答应哪种协议（icmp/tcp）
 		pingTask.POST("/netcheck", jsonRpc.Bind("admin:netcheck"))
 	}

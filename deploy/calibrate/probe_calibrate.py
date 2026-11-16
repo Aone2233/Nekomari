@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import shutil
 import time
@@ -45,7 +46,10 @@ def read_proc_stat() -> tuple[int, int]:
     if not fields or fields[0] != "cpu":
         raise RuntimeError("/proc/stat has no aggregate cpu line")
     values = [int(value) for value in fields[1:]]
-    total = sum(values)
+    if len(values) < 4:
+        raise RuntimeError("/proc/stat has an incomplete aggregate cpu line")
+    # guest and guest_nice are already included in user and nice.
+    total = sum(values[:8])
     idle = values[3] + (values[4] if len(values) > 4 else 0)
     return total, idle
 
@@ -92,10 +96,13 @@ def host_sample() -> dict[str, Any]:
     return {
         "cpu_total": total,
         "cpu_idle": idle,
-        "mem_total": mem.get("MemTotal", 0),
-        "mem_available": mem.get("MemAvailable", 0),
-        "mem_cached": mem.get("Cached", 0),
-        "mem_buffers": mem.get("Buffers", 0),
+        "mem_total": mem.get("MemTotal"),
+        "mem_free": mem.get("MemFree"),
+        "mem_available": mem.get("MemAvailable"),
+        "mem_cached": mem.get("Cached"),
+        "mem_buffers": mem.get("Buffers"),
+        "mem_sreclaimable": mem.get("SReclaimable"),
+        "mem_shmem": mem.get("Shmem"),
         "disk_total": disk.total,
         "disk_used": disk.used,
         "net_up": up,
@@ -114,6 +121,31 @@ def max_abs_or_relative(actual: float, expected: float, absolute: float, relativ
     return abs(actual - expected) <= max(absolute, abs(expected) * relative)
 
 
+def is_measurement(value: Any) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+
+
+def expected_ram_used(sample: dict[str, Any], mode: str) -> float | None:
+    total = sample.get("mem_total")
+    if not is_measurement(total) or total <= 0:
+        return None
+    if mode == "gopsutil":
+        available = sample.get("mem_available")
+        return total - available if is_measurement(available) and 0 <= available <= total else None
+    if mode == "includeCache":
+        free = sample.get("mem_free")
+        return total - free if is_measurement(free) and 0 <= free <= total else None
+    if mode == "htoplike":
+        values = [sample.get(key) for key in ("mem_free", "mem_cached", "mem_sreclaimable", "mem_buffers", "mem_shmem")]
+        if not all(is_measurement(value) and 0 <= value <= total for value in values):
+            return None
+        free, cached, reclaimable, buffers, shmem = values
+        deductions = free + cached + reclaimable + buffers
+        used = total - deductions if deductions <= total else total - free
+        return used + shmem if shmem <= total - used else None
+    return None
+
+
 def compare_report(report: dict[str, Any], before: dict[str, Any], after: dict[str, Any], elapsed: float) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
 
@@ -122,40 +154,42 @@ def compare_report(report: dict[str, Any], before: dict[str, Any], after: dict[s
 
     total_delta = after["cpu_total"] - before["cpu_total"]
     idle_delta = after["cpu_idle"] - before["cpu_idle"]
-    expected_cpu = (1 - idle_delta / total_delta) * 100 if total_delta > 0 else None
+    expected_cpu = (1 - idle_delta / total_delta) * 100 if total_delta > 0 and 0 <= idle_delta <= total_delta else None
     actual_cpu = report.get("cpu", {}).get("usage")
-    if expected_cpu is None or not isinstance(actual_cpu, (int, float)):
-        add("cpu", actual_cpu, expected_cpu, False, "NOT RUN: missing CPU interval or report value")
+    quality = report.get("quality", {})
+    cpu_quality = quality.get("cpu") if isinstance(quality, dict) else None
+    if expected_cpu is None or cpu_quality != "ok" or not is_measurement(actual_cpu):
+        add("cpu", actual_cpu, expected_cpu, False, "NOT RUN: missing or unknown CPU measurement or reference interval")
     else:
         ok = abs(actual_cpu - expected_cpu) <= TOLERANCES["cpu_percentage_points"]
         add("cpu", actual_cpu, round(expected_cpu, 4), ok, "±2 percentage points absolute")
 
     actual_ram = report.get("ram", {}).get("used")
-    expected_ram = after["mem_total"] - after["mem_available"]
-    if isinstance(actual_ram, (int, float)):
+    ram_mode = report.get("ram", {}).get("mode")
+    expected_ram = expected_ram_used(after, ram_mode)
+    if expected_ram is not None and is_measurement(actual_ram) and isinstance(quality, dict) and quality.get("ram") == "ok":
         tolerance = max(after["mem_total"] * 0.01, 4096)
         ok = abs(actual_ram - expected_ram) <= tolerance
-        add("ram_used", actual_ram, expected_ram, ok, "max(1% of total, 4 KiB); definition differences are reported, not hidden")
+        add("ram_used", actual_ram, expected_ram, ok, f"mode {ram_mode}; max(1% of total, 4 KiB)")
     else:
-        add("ram_used", actual_ram, expected_ram, False, "NOT RUN: report has no RAM used")
+        add("ram_used", actual_ram, expected_ram, False, "NOT RUN: report has no valid RAM used")
 
     actual_disk = report.get("disk", {}).get("used")
-    if isinstance(actual_disk, (int, float)):
+    mounts = report.get("disk", {}).get("mounts")
+    root_only = (isinstance(mounts, list) and len(mounts) == 1 and isinstance(mounts[0], dict)
+                 and mounts[0].get("mountpoint") == "/" and mounts[0].get("used") == actual_disk
+                 and mounts[0].get("total") == report.get("disk", {}).get("total"))
+    if root_only and is_measurement(actual_disk) and isinstance(quality, dict) and quality.get("disk") == "ok":
         ok = relative_error(actual_disk, after["disk_used"]) <= TOLERANCES["disk_relative"]
         add("disk_used", actual_disk, after["disk_used"], ok, "±0.5% relative to df /")
     else:
-        add("disk_used", actual_disk, after["disk_used"], False, "NOT RUN: report has no disk used")
+        add("disk_used", actual_disk, after["disk_used"], False, "NOT RUN: valid single-root mount aggregate required")
 
-    network = report.get("network", {})
-    if isinstance(network.get("totalUp"), (int, float)) and isinstance(network.get("totalDown"), (int, float)):
-        up_delta = after["net_up"] - before["net_up"]
-        down_delta = after["net_down"] - before["net_down"]
-        up_ok = abs(network["totalUp"] - up_delta) <= max(4096, abs(up_delta) * 0.005) if up_delta >= 0 else False
-        down_ok = abs(network["totalDown"] - down_delta) <= max(4096, abs(down_delta) * 0.005) if down_delta >= 0 else False
-        add("network_up_delta", network["totalUp"], up_delta, up_ok, "kernel counter delta, ±0.5% or 4 KiB")
-        add("network_down_delta", network["totalDown"], down_delta, down_ok, "kernel counter delta, ±0.5% or 4 KiB")
-    else:
-        add("network_delta", None, None, False, "NOT RUN: report has no kernel counters")
+    # totalUp/totalDown are lifetime counters, not interval deltas. A single
+    # supplied report cannot establish the Agent's start counter, elapsed
+    # window, interface scope, or reset state. Never compare those totals to
+    # a /proc delta and accidentally label unrelated numbers a pass.
+    add("network_delta", None, None, False, "NOT RUN: requires aligned Agent counter pairs and interface scope")
 
     return results
 

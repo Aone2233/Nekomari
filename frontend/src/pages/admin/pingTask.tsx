@@ -95,11 +95,13 @@ export const AddButton: React.FC<{ pinnedFamilyAvailable?: boolean }> = ({ pinne
       default_on: defaultOn,
       clients: selected,
       interval: parseInt(e.currentTarget.interval.value, 10),
-      probe_attempts: 3,
-      probe_spacing_ms: 200,
-      http_mode: "legacy",
-      http_expected_status: "200-399",
-      ip_version_preference: "auto",
+      ...(targetFamily === "legacy" ? {
+        probe_attempts: 3,
+        probe_spacing_ms: 200,
+        http_mode: "legacy",
+        http_expected_status: "200-399",
+        ip_version_preference: "auto",
+      } : {}),
       ...(pinnedFamilyAvailable && targetFamily !== "legacy" ? { target_family: targetFamily } : {}),
     };
     setSaving(true);

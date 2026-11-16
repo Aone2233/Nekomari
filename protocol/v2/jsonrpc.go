@@ -404,6 +404,8 @@ type PingProbeStats struct {
 	ResolvedIP     string           `json:"resolved_ip,omitempty"`
 	ResolvedFamily string           `json:"resolved_family,omitempty"`
 	ProbeMode      string           `json:"probe_mode,omitempty"`
+	ProbeStatus    string           `json:"probe_status,omitempty"`
+	ProbeReason    string           `json:"probe_reason,omitempty"`
 }
 
 type PingResultParams struct {
@@ -437,6 +439,8 @@ type PingResultParams struct {
 	ResolvedIP     string           `json:"resolved_ip,omitempty"`
 	ResolvedFamily string           `json:"resolved_family,omitempty"`
 	ProbeMode      string           `json:"probe_mode,omitempty"`
+	ProbeStatus    string           `json:"probe_status,omitempty"`
+	ProbeReason    string           `json:"probe_reason,omitempty"`
 }
 
 type TaskResultParams struct {

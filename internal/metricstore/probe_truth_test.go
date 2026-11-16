@@ -55,3 +55,20 @@ func TestPingRecordPointsAddProbeTruthMetrics(t *testing.T) {
 		}
 	}
 }
+
+func TestUnknownProbeNeverWritesLossOrLatency(t *testing.T) {
+	for _, reason := range []string{"dns_failure", "permission_denied", "socket_unavailable", "unsupported", "untrusted input"} {
+		rec := models.PingRecord{Client: "node", TaskId: 1, Time: time.Now(), Value: -1, ProbeStatus: "unknown", ProbeReason: reason, Attempts: 3}
+		points := pingRecordPoints([]models.PingRecord{rec})
+		if len(points) != 1 || points[0].MetricName != MetricPingUnknown {
+			t.Fatalf("%s: unexpected points: %+v", reason, points)
+		}
+		want := reason
+		if reason == "untrusted input" {
+			want = "other"
+		}
+		if points[0].Tags["reason"] != want {
+			t.Fatalf("reason = %q, want %q", points[0].Tags["reason"], want)
+		}
+	}
+}

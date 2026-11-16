@@ -9,7 +9,7 @@ new theme. Upstream baseline:
   `e557a5fe89eab5ec0b553f631511e499a01b611481e13771e8c5d3f8268b50ba`
 - Manifest version stays `2.0.0`; this is a local bundle, not an official release.
 
-## Root cause
+## Observed triggers
 
 Two independent defects were reproduced with the disposable panel:
 
@@ -18,27 +18,28 @@ Two independent defects were reproduced with the disposable panel:
    static server still produced #418 with no API at all. Rebuilding v2.0.0
    from source produced a clean static page. The clean rebuild still produced
    #418 when the panel answered APIs quickly; blocking any one API endpoint or
-   delaying `/api/**` by 1.5 s removed it. The remaining trigger is that data
-   providers (`/api/public`, `/api/rpc2`, `/api/me`, ...) start fetching in
-   effects immediately after the first commit, and their state updates can
-   commit while React is still hydrating the large client tree.
+   delaying `/api/**` by 1.5 s removed it. Updates from data providers during
+   hydration are a plausible explanation, rather than a proven cause. A
+   separate diagnostic identified a concrete footer mismatch in the original
+   market archive; see `docs/V1.8.1-THEME-SMOKE.md` for the controls and limits.
    Evidence:
    - Market ZIP: `pageerror: Minified React error #418` on public desktop and
      mobile; `/admin/` was unaffected.
    - Fresh source rebuild in the panel: same #418; API block/delay removed it.
    - Fresh source rebuild on a plain static server: no #418.
-2. **`404 http://127.0.0.1:<port>/` console error.** Next.js `<Link href="/">`
-   prefetches an RSC payload; the panel does not serve the Next RSC response for
-   that request, so the prefetch is logged as a 404. It is local to the panel,
-   not an external dependency.
+2. **Home-page 404.** A later browser control identified the observed
+   request as `HEAD /`, which the Panel rejected; it did not establish an RSC
+   prefetch as the cause. The v1.8.1 candidate answers that HEAD request,
+   independently of the local theme patch. See `docs/V1.8.1-THEME-SMOKE.md`.
 
 ## Patch
 
 - `theme/src/components/providers.tsx`: do not mount the provider tree until
   after the first client effect. The server and the first client render both
   return `null`, so no data update can race hydration.
-- `theme/src/components/NavBar.tsx`: `<Link href="/" prefetch={false}>` to
-  avoid the unsupported RSC prefetch.
+- `theme/src/components/NavBar.tsx`: `<Link href="/" prefetch={false}>` was
+  part of the original local patch; its effect on the observed HEAD request
+  was not independently established.
 
 ## Build and release-artifact caveat
 
@@ -48,6 +49,26 @@ and the `data-k` integrity scripts). Rebuilding from source alone drops those
 features. The verified fixed artifact re-injects them from the original market
 ZIP after `npm ci && npm run build`; that build passed the same gate with them
 present.
+
+A repeatable builder now checks the market archive SHA-256 and upstream tag
+commit, applies `nekomari.patch`, runs `npm ci` and `npm run build` in a
+temporary checkout, and copies the original archive's extra scripts back into
+the rebuilt page. It requires Git, Node/npm and network access:
+
+```sh
+python3 deploy/theme-patches/komari-next-pro-v2.0.0/build.py original.zip local-next-pro.zip
+```
+
+The output is a local variant; build metadata can change the output hash. One
+independent builder run produced
+`e0de4b035c724009ef390c049871feb2203b67d12d64d2d8faec715d8f0c8424`.
+A disposable Panel accepted that ZIP through its chunked upload and theme
+switch APIs. With one synthetic node, desktop and mobile runs under 100 ms
+emulated latency and 250,000 bytes/second throughput showed CPU, RAM and disk,
+retained the three integrity scripts and attribution, switched table/grid and
+opened the node detail without observed page exceptions. These are limited
+Chromium checks, not all theme interactions or real-device acceptance. Neither
+local build is the original market ZIP.
 
 The fixed archive used for this verification is:
 

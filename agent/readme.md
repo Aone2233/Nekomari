@@ -61,6 +61,10 @@ export AGENT_TOKEN="your-token"
 | `disable_compression` | `AGENT_DISABLE_COMPRESSION` | `--disable-compression` | 禁用 v2 传输压缩 | `1.2.10` |
 | `prefer_ip_version` | `AGENT_PREFER_IP_VERSION` | `--prefer-ip-version` | 优先使用 IP 版本，可选 `4` 或 `6` | 未发布 |
 
+从 v1.8.1 起，普通 ICMP、TCP 和 HTTP 域名探测也使用 `custom_dns`；此前普通探测使用系统解析器。升级 Agent 后，配置了自定义 DNS 的节点可能探测到不同的地址。未配置时仍使用系统解析器；固定地址族探测继续使用所配置的解析器。IP 字面量无需 DNS 解析。
+
+Go 解析器仍可能先采用本机 hosts 文件。自定义解析器的内置备用服务器仅在创建 DNS UDP 连接失败时尝试；连接成功不代表服务器已响应，查询超时或 NXDOMAIN 不保证触发备用服务器。
+
 完整参数可运行：
 
 ```bash

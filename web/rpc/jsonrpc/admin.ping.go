@@ -170,6 +170,10 @@ func adminAddPingTaskWith(ctx context.Context, req *rpc.JsonRpcRequest, addPinne
 		return nil, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
 	}
 	if params.TargetFamily != "" {
+		if params.ProbeAttempts != nil || params.ProbeSpacingMS != nil || params.ProbeTimeoutMS != nil ||
+			params.HTTPMode != "" || params.HTTPExpectedStatus != "" || params.IPVersionPreference != "" {
+			return nil, rpc.MakeError(rpc.InvalidParams, "family-pinned tasks do not support advanced probe options", nil)
+		}
 		if addPinned == nil {
 			return nil, rpc.MakeError(rpc.InvalidParams, "family-pinned tasks are not available yet", nil)
 		}
@@ -179,9 +183,7 @@ func adminAddPingTaskWith(ctx context.Context, req *rpc.JsonRpcRequest, addPinne
 		task := models.PingTask{Name: params.Name, Target: params.Target, Type: params.TaskType,
 			TargetFamily: params.TargetFamily, Reference: params.Reference, DefaultOn: params.DefaultOn,
 			Clients: models.StringArray(params.Clients), Interval: params.Interval,
-			ProbeAttempts: opts.ProbeAttempts, ProbeSpacingMS: opts.ProbeSpacingMS,
-			ProbeTimeoutMS: opts.ProbeTimeoutMS, HTTPMode: opts.HTTPMode,
-			HTTPExpectedStatus: opts.HTTPExpectedStatus, IPVersionPreference: opts.IPVersionPreference}
+		}
 		if err := addPinned(ctx, &task); err != nil {
 			var pending *tasks.ScheduleReloadPendingError
 			if errors.As(err, &pending) {
@@ -240,8 +242,14 @@ func adminEditPingTask(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.Js
 func adminEditPingTaskWith(req *rpc.JsonRpcRequest, allowPinned bool, editTasks func([]tasks.PingTaskEdit) error) (any, *rpc.JsonRpcError) {
 	type pingTaskEdit struct {
 		models.PingTask
-		Reference *string `json:"reference"`
-		Family    *string `json:"target_family"`
+		Reference           *string `json:"reference"`
+		Family              *string `json:"target_family"`
+		ProbeAttempts       *int    `json:"probe_attempts"`
+		ProbeSpacingMS      *int    `json:"probe_spacing_ms"`
+		ProbeTimeoutMS      *int    `json:"probe_timeout_ms"`
+		HTTPMode            *string `json:"http_mode"`
+		HTTPExpectedStatus  *string `json:"http_expected_status"`
+		IPVersionPreference *string `json:"ip_version_preference"`
 	}
 	var params struct {
 		Tasks []*pingTaskEdit `json:"tasks"`
@@ -260,7 +268,26 @@ func adminEditPingTaskWith(req *rpc.JsonRpcRequest, allowPinned bool, editTasks 
 		if !allowPinned && task.Family != nil && *task.Family != "" {
 			return nil, rpc.MakeError(rpc.InvalidParams, "family-pinned tasks are not available yet", nil)
 		}
-		edits = append(edits, tasks.PingTaskEdit{Task: &task.PingTask, Reference: task.Reference, Family: task.Family})
+		provided := task.ProbeAttempts != nil || task.ProbeSpacingMS != nil || task.ProbeTimeoutMS != nil || task.HTTPMode != nil || task.HTTPExpectedStatus != nil || task.IPVersionPreference != nil
+		if task.ProbeAttempts != nil {
+			task.PingTask.ProbeAttempts = *task.ProbeAttempts
+		}
+		if task.ProbeSpacingMS != nil {
+			task.PingTask.ProbeSpacingMS = *task.ProbeSpacingMS
+		}
+		if task.ProbeTimeoutMS != nil {
+			task.PingTask.ProbeTimeoutMS = *task.ProbeTimeoutMS
+		}
+		if task.HTTPMode != nil {
+			task.PingTask.HTTPMode = *task.HTTPMode
+		}
+		if task.HTTPExpectedStatus != nil {
+			task.PingTask.HTTPExpectedStatus = *task.HTTPExpectedStatus
+		}
+		if task.IPVersionPreference != nil {
+			task.PingTask.IPVersionPreference = *task.IPVersionPreference
+		}
+		edits = append(edits, tasks.PingTaskEdit{Task: &task.PingTask, Reference: task.Reference, Family: task.Family, AdvancedOptionsProvided: provided})
 	}
 	if err := editTasks(edits); err != nil {
 		var pending *tasks.ScheduleReloadPendingError

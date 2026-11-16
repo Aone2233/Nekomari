@@ -43,6 +43,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { ApiResponseError, requireApiSuccess } from "@/lib/apiResponse";
 import { PingFamilyDiagnostic } from "./PingFamilyDiagnostic";
+import { PingUnknownDiagnostic } from "./PingUnknownDiagnostic";
 
 /**
  * 目标预检结果。后端 admin:netcheck 返回 pkg/netcheck.Report。
@@ -252,6 +253,11 @@ const Row = ({
     ip_version_preference: task.ip_version_preference || "auto",
   });
   const [probe, setProbe] = React.useState<ProbeState | null>(null);
+  const hasIgnoredPinnedOptions = !!task.target_family && (
+    (task.probe_attempts ?? 0) !== 0 || (task.probe_spacing_ms ?? 0) !== 0 ||
+    (task.probe_timeout_ms ?? 0) !== 0 || !!task.http_mode ||
+    !!task.http_expected_status || !!task.ip_version_preference
+  );
 
   // 目标预检：在保存前先探测目标，避免选了目标不答应的协议
   // （监测任务类型是每个任务一个，选错会恒定 100% 丢包）
@@ -307,12 +313,12 @@ const Row = ({
             default_on: newForm.default_on,
             clients: newForm.clients,
             interval: newForm.interval,
-            probe_attempts: newForm.probe_attempts,
+            ...(!task.target_family ? { probe_attempts: newForm.probe_attempts,
             probe_spacing_ms: newForm.probe_spacing_ms,
             probe_timeout_ms: newForm.probe_timeout_ms,
             http_mode: newForm.http_mode,
             http_expected_status: newForm.http_expected_status,
-            ip_version_preference: newForm.ip_version_preference,
+            ip_version_preference: newForm.ip_version_preference } : {}),
           },
         ],
       }),
@@ -438,6 +444,8 @@ const Row = ({
         {task.target_family && <div className="mt-1"><PingFamilyDiagnostic
           key={JSON.stringify([task.id, task.target_family, task.type, task.target, task.reference, task.clients])}
           task={task} /></div>}
+        {hasIgnoredPinnedOptions && <div role="note" className="mt-1 text-xs text-amber-11">{t("ping.pinnedSavedOptionsIgnored")}</div>}
+        {!task.target_family && task.id && <div className="mt-1"><PingUnknownDiagnostic taskID={task.id} /></div>}
       </TableCell>
       <TableCell>{task.type}</TableCell>
       <TableCell>{task.interval}</TableCell>
@@ -590,11 +598,12 @@ const Row = ({
                 }
                 required
               />
-              <details className="rounded border border-gray-200 p-3">
+              {task.target_family ? <Text size="2" color="gray">{t("ping.pinnedOptionsUnsupported", "Advanced probe options are not supported for family-pinned tasks.")}</Text> : <details className="rounded border border-gray-200 p-3">
                 <summary className="cursor-pointer text-sm font-medium">
                   {t("ping.probeTruth", "Probe truth (optional)")}
                 </summary>
                 <Flex direction="column" gap="2" className="mt-3">
+                  <Text size="2" color="amber">{t("ping.legacyOptionsWarning", "Older Agents may ignore these settings. IP preference and unknown-error reporting require v1.8.1; Agent version alone does not prove capability.")}</Text>
                   <label className="text-sm">{t("ping.probeAttempts", "Attempts per cycle (0 = legacy single probe)")}</label>
                   <TextField.Root
                     type="number"
@@ -640,7 +649,7 @@ const Row = ({
                     </Select.Content>
                   </Select.Root>
                 </Flex>
-              </details>
+              </details>}
               <Flex gap="2" justify="end" className="mt-4">
                 <Dialog.Close>
                   <Button

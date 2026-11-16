@@ -2,6 +2,7 @@ package server
 
 import (
 	"net"
+	"os"
 	"os/exec"
 	"regexp"
 	"sort"
@@ -61,8 +62,13 @@ func TestTCPPingLoopbackCalibration(t *testing.T) {
 
 // ICMP loopback calibration: compare the production ICMP path with the system
 // ping average over the same loopback target. The v1.8 tolerance is ±50 µs.
-// Skipped when raw ICMP is unavailable or the host has no ping command.
+// This compares different packets and statistics, so it is an opt-in field
+// comparison, not the same-packet capture calibration. It also needs ping and
+// an ICMP socket.
 func TestICMPLoopbackCalibration(t *testing.T) {
+	if os.Getenv("NEKOMARI_ICMP_SEPARATE_REFERENCE") != "1" {
+		t.Skip("sequential system-ping comparison requires an explicit calibration run")
+	}
 	if _, err := exec.LookPath("ping"); err != nil {
 		t.Skip("system ping not available")
 	}

@@ -81,9 +81,6 @@ func TestKomariMarketPluginLoadUnload(t *testing.T) {
 			if expected, ok := archives[short]; !ok || fmt.Sprintf("%x", sha256.Sum256(raw)) != expected {
 				t.Fatalf("archive %s does not match catalog SHA-256", short)
 			}
-			if short == "komari-gfw" {
-				t.Skip("known fixture limitation: the plugin rejects the synthetic domain at load")
-			}
 			withTempDataDir(t)
 			Init(gin.New())
 			oldVersion := utils.CurrentVersion

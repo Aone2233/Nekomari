@@ -521,3 +521,51 @@ func TestDraftPinnedImportFenceCoversCheckAndApply(t *testing.T) {
 		t.Fatalf("unexpected client state: %+v err=%v", got, err)
 	}
 }
+
+func TestPinnedCreateRejectsAdvancedOptions(t *testing.T) {
+	for _, field := range []string{"probe_attempts", "probe_spacing_ms", "probe_timeout_ms", "http_mode", "http_expected_status", "ip_version_preference"} {
+		params := map[string]any{"name": "test", "target": "example.com:80", "type": "tcp", "interval": 60, "default_on": true, "target_family": "ipv4"}
+		switch field {
+		case "probe_attempts":
+			params[field] = 1
+		case "probe_spacing_ms":
+			params[field] = 200
+		case "probe_timeout_ms":
+			params[field] = 1000
+		case "http_mode":
+			params[field] = "legacy"
+		case "http_expected_status":
+			params[field] = "200-399"
+		case "ip_version_preference":
+			params[field] = "auto"
+		}
+		_, err := adminAddPingTaskWith(t.Context(), &rpc.JsonRpcRequest{Version: rpc.RPC_VERSION, Params: params}, func(context.Context, *models.PingTask) error {
+			t.Fatal("unsupported configuration reached persistence")
+			return nil
+		})
+		if err == nil {
+			t.Errorf("%s was accepted", field)
+		}
+	}
+}
+
+func TestPinnedEditRejectsExplicitAdvancedOption(t *testing.T) {
+	db := dbcore.GetDBInstance()
+	node := models.Client{UUID: "pinned-option-edit-node", Token: "pinned-option-edit-token"}
+	if err := db.Create(&node).Error; err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Delete(&node).Error })
+	task := models.PingTask{Name: "pinned-option-edit", Target: "example.test:80", Type: "tcp", Interval: 60, TargetFamily: "ipv4", Clients: models.StringArray{node.UUID}}
+	if err := tasks.AddPingTaskPinnedDraft(t.Context(), db, &task, func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Delete(&task).Error })
+	apply := func(edits []tasks.PingTaskEdit) error {
+		return tasks.EditPingTasksPinnedDraft(t.Context(), db, edits, func() error { return nil })
+	}
+	req := &rpc.JsonRpcRequest{Version: rpc.RPC_VERSION, Params: map[string]any{"tasks": []map[string]any{{"id": task.Id, "name": task.Name, "type": task.Type, "target": task.Target, "interval": task.Interval, "clients": []string{node.UUID}, "probe_attempts": 0}}}}
+	if _, rpcErr := adminEditPingTaskWith(req, true, apply); rpcErr == nil {
+		t.Fatal("explicit zero was silently ignored")
+	}
+}
