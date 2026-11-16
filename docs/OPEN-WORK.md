@@ -14,6 +14,15 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
+**v1.8.1 publication (2026-11-16):** The [formal release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)
+is published from merge commit `787a4cd19e3750ad4fcd6c25aa273b303c415b7a`.
+Exact-commit CI passed 8/8, the release workflow 10/10 and Docker publication
+2/2. Published checksums and binary attestations verified; a separate local
+deployment check passed 23/23. See [`RELEASING.md`](./RELEASING.md) for the
+release evidence and limitations. OC424 now runs the pinned v1.8.1 panel;
+fresh pre/post encrypted archives and isolated recovery drills passed. See
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md). No production Agent was upgraded.
+
 **CI follow-up (2026-11-15):** Windows run 43714186713 failed the `series`
 case of `TestLostDeleteAcknowledgementStopsPendingDataFromReturning`: its two
 fixture writes used wall-clock time and could straddle a minute boundary, so
@@ -30,7 +39,7 @@ The test cancelled as soon as it saw the queued request, leaving no minimum
 wait for the platform clock. It now holds the connection for 100 ms after
 observing the wait; 25 Linux repetitions passed. This is a plausible timing
 explanation, not proof of the original Windows failure. The changed test still
-requires exact-commit Windows CI.
+required exact-commit Windows CI; the v1.8.1 merge commit passed it.
 
 **Local ICMP follow-up (2026-11-15):** The Agent `server` and
 `monitoring/unit` suite failed `TestICMPLoopbackCalibration` once on the
@@ -47,14 +56,13 @@ passed within their stated scope; clock changes within the tolerance and
 platforms using the legacy path remain limitations. The separate-packet
 system-ping test subsequently failed once and is now an explicit field check,
 not a substitute for the same-packet comparison. Exact-commit CI and remaining
-release acceptance still need completion; see the calibration record.
+release acceptance are documented in the calibration record and release record.
 
-**Current v1.8.1 candidate:** See [the short implementation and acceptance
-status](./V1.8.1-CURRENT-STATUS.md). v1.8.1 may fix existing probe correctness
-and visibility defects; the remaining field verification gates are described below.
-The prepared release policy keeps Agent assets manual, GitHub Latest unchanged,
-and both Docker moving tags unchanged. This is not evidence of publication,
-deployment or Agent rollout.
+**v1.8.1 acceptance record:** See [the implementation and acceptance
+status](./V1.8.1-CURRENT-STATUS.md) for the pre-publication checkpoint and
+the theme decision below for the approved exception. The published release
+keeps Agent assets manual, GitHub Latest unchanged, and both Docker moving
+tags unchanged. Publication does not itself deploy the panel or Agents.
 
 **Owner theme decision (2026-11-16, Asia/Shanghai):** confirmed third-party
 theme defects can be recorded and excluded as v1.8.1 release blockers; a
@@ -69,9 +77,9 @@ passes 26/26 in a network-isolated namespace; the earlier skipped failure's
 cause was not established. This covers load/unload, not all plugin features.
 See [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md).
 
-**Current v1.8.0 Probe Truth checkpoint (2026-11-09, Asia/Shanghai):** The formal
+**Historical v1.8.0 Probe Truth checkpoint (2026-11-09, Asia/Shanghai):** The formal
 [v1.8.0 release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.0)
-and its pinned panel image are live on OC424; the release record, image digest,
+and its pinned panel image were deployed on OC424; the release record, image digest,
 backup hashes, rollout evidence and caveats are in
 [`DEPLOY-OC424.md`](./DEPLOY-OC424.md). All 14 clients and 13 ping tasks remain;
 all 14 Agents still report v1.7.30. The panel is additive and compatible with
@@ -199,11 +207,12 @@ Remaining acceptance and operational limits:
 - One recent MegaBox task-30 minute was absent despite the v1.7.30 follow-up,
   with a `permit_write` warning. Missing observations are not packet loss; the
   underlying intermittent skip is not claimed fixed or fully diagnosed.
-- MAC-WAN's prior backup and backup-health timer units are absent/inactive by
-  owner design. Manual pre/post encrypted archives and isolated drills passed,
-  but there is no verified automatic backup schedule or alert in this state;
-  do not silently re-enable or assume one. Online archives are not atomic
-  snapshots across databases and in-memory queues.
+- On 2026-11-16 MAC-WAN's backup and health timers were observed enabled and
+  active, contradicting the earlier absent/inactive record; the backup service
+  last succeeded on 2026-11-15 and the health service on 2026-11-16. This
+  deployment changed neither. Verify actual alert delivery and independent-media
+  recovery separately; online archives are not atomic across databases and
+  in-memory queues.
 - PZYC's pre-existing `/dev/null` is a regular root-owned mode-755 file, not a
   character device. Its Agent was updated and reports, but the host-level issue
   remains for the owner to assess; the rollout did not alter it.

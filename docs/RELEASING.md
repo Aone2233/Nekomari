@@ -2,13 +2,25 @@
 
 ## Cut a release
 
-**v1.8.1 candidate policy:** Before tagging, the exact release commit must have
-green CI and all acceptance gates must be closed or explicitly excepted. The
-prepared workflow publishes Agent binaries only as `manual-komari-agent-*`,
-keeps GitHub Latest unchanged, and leaves the Panel and Agent image `latest`
-and major.minor aliases unchanged. Version-specific images remain available.
-This is a prepared policy, not evidence that v1.8.1 has been released or
-deployed. See [`V1.8.1-CURRENT-STATUS.md`](./V1.8.1-CURRENT-STATUS.md).
+**v1.8.1 release (2026-11-16):** The [formal release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)
+was published from merge commit `787a4cd19e3750ad4fcd6c25aa273b303c415b7a`.
+Exact-commit CI [43790273368](https://github.com/Aone2233/Nekomari/actions/runs/43790273368)
+passed 8/8, release [43791367420](https://github.com/Aone2233/Nekomari/actions/runs/43791367420)
+10/10, and Docker [43792078669](https://github.com/Aone2233/Nekomari/actions/runs/43792078669)
+2/2. The nine published checksums, including the SBOM, passed; all eight
+binary attestations verified against the release workflow, tag and commit.
+An independent local test using the published amd64 artifacts passed 23/23;
+the optional authenticated existing-panel smoke was not run. Extracted amd64
+panel and Agent image binaries matched their published release assets.
+
+Version-specific multi-architecture image indexes are panel
+`sha256:b1ff8aa19d8d1e1572cda509670c5d3c74ac0861266cbc12481b2b582ada196d`
+and Agent `sha256:b0dbfeb386493f4f0456789726dd0388429d20c3710cd29ab368993f9512f1aa`.
+Agent binaries remain `manual-komari-agent-*`; GitHub Latest remains v1.7.29
+and Docker moving tags were not advanced. Upgrade the panel before any Agent.
+The owner excepted confirmed third-party theme defects, not candidate
+regressions or unverified interactions; see [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md).
+Publication alone is not production deployment or an Agent rollout.
 
 **v1.7.30 staged policy:** Agent binaries are published as
 `manual-komari-agent-<os>-<arch>` and are not matched by the existing Agent's

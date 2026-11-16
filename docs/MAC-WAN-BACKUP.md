@@ -1,5 +1,14 @@
 # MAC-WAN backup receiver (updated 2026-11-05)
 
+## 2026-11-16 v1.8.1 production cutover
+
+Fresh pre/post encrypted snapshots were received and verified on MAC-WAN. The
+pre archive passed isolated v1.8.0 and v1.8.1 boot drills; the post archive
+passed the v1.8.1 drill. Exact archive paths, hashes, sizes and online-snapshot
+limitations are in [`DEPLOY-OC424.md`](./DEPLOY-OC424.md). The identity stayed
+on MAC-WAN. Both the backup and health user timers were observed enabled and
+active, contrary to an earlier record; neither was changed during this cutover.
+
 ## 2026-11-09 v1.8.0 production cutover
 
 Pre and post snapshots were produced by the existing OC424 producer and
