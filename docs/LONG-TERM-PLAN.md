@@ -66,26 +66,28 @@ decides at the gates marked **[Owner]**.
 | `v1.7.27` | 2026-11-04 → 05 | First v1.9.0 slice: metric CSV export on the node chart page — wide table of chart series, BOM + CRLF, five locales — **deployed 2026-11-04**; tagged headers need the follow-up fix | CI green; OC424 9/9; owner on-page acceptance **[Owner]** |
 | `v1.7.28` / `v1.7.29` | 2026-11-04 → 05 | Ping/load CSV export was published in v1.7.28 but skipped in production; the v1.7.29 correction deploys explicit historical bucket semantics | CI and release complete; backup/identity gates pass; signed-in OC424 CSV acceptance **[Owner]** |
 | `v1.8.0` | 2026-11 (released 2026-11-08) | Probe Truth: additive multi-probe, HTTP phases, host detail, retention/quality and compatibility gates; see [`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md) | CI/release green; OC424 9/9; fresh pre/post backups and restore drill. Three verification gates remain open. |
-| `v1.8.1` | TBD (release window) | Probe correctness and verification close-out **formal patch**: existing capability fixes; 64-theme browser/hydration/mobile; configured external provider delivery; LAN ICMP and `tc netem` loss | All three gates close with retained evidence; exact-commit CI; Agent rollout only after the gates. |
-| `v1.9.0` | 2026-11 → 2027-01 | Metric CSV ships as v1.7.27 and corrected history-bucket CSV as v1.7.29; remaining: exec-result history, cost-forecast column, roles (viewer/operator/admin), frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
+| `v1.8.1` | 2026-11 (released 2026-11-16) | Probe correctness and verification close-out **formal patch**: existing capability fixes; 64-theme browser/hydration/mobile; configured external provider delivery; LAN ICMP and `tc netem` loss | All three gates close with retained evidence; exact-commit CI; Agent rollout only after the gates. |
+| `v1.9.0` | 2027-02 → 2027-03 | Metric CSV ships as v1.7.27 and corrected history-bucket CSV as v1.7.29; remaining: exec-result history, cost-forecast column, roles (viewer/operator/admin), frontend budgets and a11y | feature acceptance tests; budget targets met on a production build |
 | `v2.0.0` | 2027-Q2 | non-root agent default, protocol consolidation, secrets at rest, 200-node benchmark | migration guide; two-minor compat policy; benchmark |
 
 ### v1.8.1 verification close-out patch
 
-Status: **formal patch candidate**, covering correctness fixes for existing
-probe capabilities and the three v1.8.0 verification gates. Execution history
-and new product features remain separate. See [current status](./V1.8.1-CURRENT-STATUS.md).
+Status: **released 2026-11-16 and deployed to OC424 the same day**; covers
+correctness fixes for existing probe capabilities and the three v1.8.0 verification
+gates. Execution history and new product features remain separate. See [current
+status](./V1.8.1-CURRENT-STATUS.md) and [the release record](./RELEASING.md).
 
 | Item | Recorded basis | Proposed acceptance | Status |
 |---|---|---|---|
-| 64 themes: browser, hydration, mobile | 64/64 manifests, preflight, install and reinstall already pass; browser/hydration/mobile is the recorded pending visual gate ([`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md)) | Disposable panel; every theme loaded at the existing desktop/mobile browser viewports; check rendered pages, hydration diagnostics, console errors and primary public/admin routes; record a per-theme pass/fail matrix and retain failures. | Gate is recorded; execution protocol is a proposal. |
-| External provider delivery | Registry/load/unload and fake-channel dispatch are tested; real external delivery is the recorded pending item ([`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md)) | Use every provider configured in the runtime at gate time; send one bounded test message per provider, record provider, receipt and timestamp; never print secrets; retain failures. | Gate is recorded; provider set is defined by runtime configuration. |
-| LAN ICMP and `tc netem` loss | Loopback ICMP ±50 µs, TCP ±1 ms and HTTP TTFB tests pass; LAN ICMP and 0/1/5/20% loss are recorded NOT RUN ([`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md)) | Disposable root host and the real measurement path; LAN ICMP against `ping` within ±1 ms; compare reported loss with independent send/receive counts; assess random injection against a predeclared statistical interval; without root the item is NOT RUN, never pass. | Gate and tolerances are recorded; environment is a proposal. |
+| 64 themes: browser, hydration, mobile | 64/64 manifests, preflight, install and reinstall already pass; browser/hydration/mobile is the recorded pending visual gate ([`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md)) | Disposable panel; every theme loaded at the existing desktop/mobile browser viewports; check rendered pages, hydration diagnostics, console errors and primary public/admin routes; record a per-theme pass/fail matrix and retain failures. | Excepted for confirmed third-party defects; remaining interaction checks open. |
+| External provider delivery | Registry/load/unload and fake-channel dispatch are tested; real external delivery is the recorded pending item ([`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md)) | Use every provider configured in the runtime at gate time; send one bounded test message per provider, record provider, receipt and timestamp; never print secrets; retain failures. | Closed: production Panel test confirmed by the owner. |
+| LAN ICMP and `tc netem` loss | Loopback ICMP ±50 µs, TCP ±1 ms and HTTP TTFB tests pass; LAN ICMP and 0/1/5/20% loss are recorded NOT RUN ([`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md)) | Disposable root host and the real measurement path; LAN ICMP against `ping` within ±1 ms; compare reported loss with independent send/receive counts; assess random injection against a predeclared statistical interval; without root the item is NOT RUN, never pass. | Closed: physical wired-LAN ICMP checks passed; TCP LAN calibration is separate. |
 
-The prepared v1.8.1 policy publishes manual-only Agent assets, keeps GitHub
-Latest unchanged and does not move Docker aliases. Panel deployment and Agent
-rollout are separate from publication and require their own evidence. The three
-verification gates remain open.
+The v1.8.1 policy published manual-only Agent assets, kept GitHub Latest on v1.7.29
+and did not move the Docker aliases. The panel is deployed; no Agent was upgraded, so
+none of the Agent-side fixes runs in production yet. Two of the three gates closed
+(notification delivery, LAN ICMP); the theme gate was excepted rather than closed
+for confirmed third-party defects, and its interaction checks remain open.
 
 ### Delivery sequence checkpoint (2026-11-05, historical)
 
