@@ -56,6 +56,14 @@ The prepared release policy keeps Agent assets manual, GitHub Latest unchanged,
 and both Docker moving tags unchanged. This is not evidence of publication,
 deployment or Agent rollout.
 
+**Owner theme decision (2026-11-16, Asia/Shanghai):** confirmed third-party
+theme defects can be recorded and excluded as v1.8.1 release blockers; a
+candidate regression or an issue not established to be third-party does not
+receive that exception. The original ZIPs and the observed defects remain
+unchanged. Existing browser scans are bounded, and untested interactions are
+not a pass. See [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md) and the
+[theme record](./V1.8.1-THEME-SMOKE.md).
+
 The 2026-11-15 locked-plugin load/unload rerun now includes `komari-gfw` and
 passes 26/26 in a network-isolated namespace; the earlier skipped failure's
 cause was not established. This covers load/unload, not all plugin features.

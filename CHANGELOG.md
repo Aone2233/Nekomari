@@ -43,6 +43,12 @@ Nekomari's own.
   pending real-world acceptance and release policy.
 - Answer `HEAD /` with the same public theme shell headers as `GET /`, so
   themes that check their home page no longer receive a misleading 404.
+- Known third-party theme limitations remain: Next Pro 2.0.0 hydration,
+  LuminaCustom 3.1.2 and Aero 1.4.5 mobile navigation, btop-terminal 1.0.3
+  live status, and Light 1.1.1 status after reconnection. These observations
+  also reproduce with the official v1.7.30 Panel in the documented fixtures;
+  not all interactions or real devices were tested. See
+  `docs/V1.8.1-THEME-SMOKE.md` for the original archives and controls.
 
 ### v1.7.30 release candidate
 

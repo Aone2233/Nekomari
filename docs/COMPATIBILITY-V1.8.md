@@ -34,6 +34,14 @@ Each release must pin one upstream commit and both market catalog hashes, then
 run the 26-plugin / 64-theme fixtures. A failure blocks the release; a plugin
 requirement is never lowered.
 
+For v1.8.1, the owner decided on 2026-11-16 that a confirmed defect in a
+third-party theme itself may be recorded and excluded from the release blocker.
+This is specific to the evidenced behavior, not a pass for the theme or a
+blanket exception for every failure seen on an older Panel. Candidate-only
+regressions and failures whose origin is not established remain open. The
+bounded comparisons, controls and untested interactions are in
+[`V1.8.1-THEME-SMOKE.md`](./V1.8.1-THEME-SMOKE.md).
+
 This branch contains the offline **26-plugin manifest and version gate**
 (`internal/plugin/market_manifest_gate_test.go`, pinned 2026-11-08 catalog
 fixtures). It validates manifest identity, catalog hashes, manifest rules and
