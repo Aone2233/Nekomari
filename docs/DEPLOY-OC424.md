@@ -3,9 +3,49 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.8.1 panel deployment (2026-11-16 10:35 Asia/Shanghai)
+
+Production runs **v1.8.1 / 787a4cd**, image
+`ghcr.io/aone2233/nekomari:v1.8.1@sha256:b1ff8aa19d8d1e1572cda509670c5d3c74ac0861266cbc12481b2b582ada196d`.
+The [formal release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)
+and its verification are recorded in [`RELEASING.md`](./RELEASING.md).
+
+A fresh online encrypted pre-snapshot was received on MAC-WAN at
+`manual/v181-pre-20261116T023158Z/oc424-20261116T023158244674Z-db4334b2a02c.tar.gz.age`
+(264,520,921 bytes, SHA-256
+`1b5633c9c3dd458d70ceec11ca6e624afd18a9fe5d66ed3b0999d6a8d3bab418`).
+Authenticated extraction and isolated, network-free boot drills passed with
+both v1.8.0 and v1.8.1. The old compose and container inspection are retained
+at `/opt/nekomari/backups/v1.8.1-cutover-20261116T023510Z/`, and the old
+image remains available. The initial preparation created an additional private
+backup directory at `v1.8.1-cutover-20261116T023453Z`; a permissions command
+failed before any compose or container modification, and the subsequent
+preparation succeeded in the separately named directory above.
+
+After the panel-only cutover, `panel-upgrade-check.sh` passed **9/9**, including
+healthy, zero restarts, v1.8.1/787a4cd, successful public API and root page,
+database `quick_check`, three upgrade archives and zero ERROR lines. Public
+HTTPS reported the same version. All 14 complete client rows and 14 task rows
+had unchanged ordered digests across the switch; the separate deletion table
+contained one tombstone, which did not match a current task. In the following
+five-minute observation, CPU and ping rollups
+included 14 distinct entities. No production Agent was upgraded by this work.
+
+The separate post-snapshot
+`manual/v181-post-20261116T023529Z/oc424-20261116T023529441977Z-3749115e7478.tar.gz.age`
+(269,362,107 bytes, SHA-256
+`a1ec986cce977430a37d3ba30ea8b046493299b3a55ad62e55ad7012fc7f506e`)
+passed authenticated verification and an isolated v1.8.1 boot drill. Both
+snapshots are online and are not atomic across stores or in-memory queues;
+restoring an older snapshot over current production would discard later data.
+On inspection, MAC-WAN's backup and health timers were both enabled and active;
+their actual state differs from older records and this deployment did not alter
+them. A successful timer/service result is not proof of alert delivery or
+independent-media recovery.
+
 ## v1.8.0 Probe Truth release (2026-11-09 10:32 Asia/Shanghai)
 
-Production runs **v1.8.0 / a92a242**, image
+At this historical checkpoint production ran **v1.8.0 / a92a242**, image
 `ghcr.io/aone2233/nekomari:v1.8.0@sha256:119f7aab805d46cf947008be9003ead4d508cbb1abd08534cec5551a4b659e9f`.
 The release was built from tag `v1.8.0` on merge commit `a92a242`; main CI was
 8/8 and the release workflow run `42550381372` finished 10/10. Its arm64 binary
