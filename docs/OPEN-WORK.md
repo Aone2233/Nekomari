@@ -193,11 +193,13 @@ Remaining acceptance and operational limits:
   The candidate marks such saved options as ignored in the task list. No task
   configuration or history was modified; the warning does not make those
   options effective or reconstruct earlier probe results.
-  **v1.8.1 is a formal patch candidate** that also fixes existing probe
-  correctness and visibility defects. Publication remains gated on retained
-  acceptance evidence; production deployment is separately recorded. See
-  [`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md) and
-  [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md).
+  **v1.8.1 was published on 2026-11-16 and its panel was deployed to OC424 the
+  same day**; it also fixes existing probe correctness and visibility defects.
+  Publication, deployment and acceptance are separate: no Agent was upgraded, so
+  none of those Agent-side fixes runs on any node. See
+  [`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md),
+  [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md) and
+  [`RELEASING.md`](./RELEASING.md).
 - The owner should refresh the signed-in MegaBox and HK04 detail pages to
   confirm that only the ICMP primary appears; mocked browser
   tests and public assets do not substitute for that session. The home-card
@@ -439,28 +441,32 @@ The next bounded releases and operational gates, in order:
    passing isolated restore drills. Exit closed 2026-11-04: the owner
    sent a test notification from the button and acknowledged the real
    receipt.
-3. **v1.8.0 Probe Truth delivered; v1.8.1 is a formal verification
-   close-out patch.** The uptime restart-count metric
+3. **v1.8.0 Probe Truth delivered; v1.8.1 published 2026-11-16 and deployed to
+   OC424 the same day.** The uptime restart-count metric
    (`system.restarts`) shipped in v1.7.26 and the 50-node capacity/memory gate
    passed on 2026-11-04; see [`CAPACITY-50NODE.md`](./CAPACITY-50NODE.md).
-   v1.8.0 itself is released and deployed as `v1.8.0/a92a242`; 14 clients and
-   13 ping tasks remain, and all 14 Agents still report v1.7.30. The three
-   remaining gates are:
+   v1.8.0 itself is released and deployed as `v1.8.0/a92a242`; production now
+   runs 14 clients and 14 ping tasks, and all 14 Agents still report v1.7.30.
+   Of the three v1.8.0 gates, two are closed and one is excepted rather than
+   closed:
 
-   - 64-theme browser/hydration/mobile visual gate. Offline gates are
-     64/64 manifests, preflight, install and reinstall; browser rendering,
-     hydration diagnostics and mobile interaction remain pending.
-   - Real external provider delivery. Channel registry, plugin load/unload and
-     fake-channel dispatch are tested; every provider configured in the runtime
-     at gate time still needs a real bounded test message and receipt.
-   - LAN ICMP and `tc netem` loss. Loopback ICMP/TCP and HTTP TTFB calibration
-     pass; LAN ICMP and 0/1/5/20% `tc netem` loss runs remain NOT RUN.
+   - 64-theme browser/hydration/mobile visual gate. **Excepted**: the owner
+     accepted confirmed third-party theme defects as non-blocking for v1.8.1.
+     The original Next Pro archive still raises hydration #418, and a
+     LuminaCustom mobile `/connections` click stays on `/` while the desktop
+     link and keyboard activation navigate. Patched variants render, but
+     reinstalling an online theme overwrites the patch; per-theme private
+     routes and the remaining mobile interactions stay open.
+   - Real external provider delivery. **Closed**: the owner confirmed receipt of
+     a production Panel test message over the configured Telegram channel.
+   - LAN ICMP and `tc netem` loss. **Closed**: isolated loss runs plus physical
+     wired-LAN ICMP checks passed within their documented scope; TCP LAN
+     calibration is separate.
 
-   v1.8.1 includes existing probe correctness fixes; v1.9.0 exec-result history and the other
-   v1.9 slices are explicitly out of scope. Agent v1.8.0 staged rollout is
-   **not started during v1.8.1**; it will be discussed only after all three
-   gates close. Release tag/OC424 deploy mechanics and the defect-fix boundary
-   remain TBD. The second off-host destination decision remains with the owner.
+   v1.9.0 exec-result history and the other v1.9 slices stay out of scope for
+   v1.8.1. The Agent staged rollout is **still not started**: no production
+   Agent was upgraded, so no v1.8.1 Agent-side fix runs yet. The second
+   off-host destination decision remains with the owner.
 4. **Still open acceptance.** Real remote notification receipt (a genuine
    incident, not the acknowledged test send) and MegaBox provider-billing
    equivalence; the latter needs provider-side data and must never be
@@ -2094,7 +2100,8 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | Most agents still run as root; only MAC is non-root | `docs/DEPLOY-OC424.md` | The NOSLA pattern (unprivileged user + `AmbientCapabilities=CAP_NET_RAW`) works; Alpine has no `setcap`. OpenRC install support shipped in v1.6.25, but moving users is still a fleet-wide change |
 | Windows local builds can fail on a locked esbuild temp file | Windows dev environment | The build itself is deterministic on Windows: two builds with a project-local `TEMP`/`TMP` were byte-identical (819 files, diff 0). With the system `%TEMP%`, esbuild sometimes cannot delete its temp file ("Access is denied"); CI's Windows runner is unaffected. Not a source change — a dev-environment workaround until the temp cleaner/AV exclusion is settled |
-| Encrypted backup follow-up | `docs/ENCRYPTED-BACKUPS.md`; `docs/MAC-WAN-BACKUP.md` | MAC-WAN's encrypted daily timer completes its first scheduled backup on 2026-10-29 and the subsequent health report identifies it. The 2026-10-28 scheduled success was on the former OVH receiver. Owner-reported offline download is not independent-media restore. Live incident delivery/stronger drill policy remain open; keep all old plaintext/manual rollback copies until explicit deletion approval |
+| Encrypted backup follow-up | `docs/ENCRYPTED-BACKUPS.md`; `docs/MAC-WAN-BACKUP.md` | MAC-WAN's encrypted daily timer is active and has run repeatedly; the newest scheduled archive is 2026-11-16T03:30:16Z, about 258 MB, and the 15-minute health timer reported `status=ok` for it. The v1.8.1 cutover added pre and post archives that passed isolated v1.8.0 and v1.8.1 boot drills. Owner-reported offline download is not independent-media restore. Live incident delivery and a stronger drill policy remain open; keep all old plaintext and manual rollback copies until explicit deletion approval |
+| Execution history sits on an unmerged branch that main has left 184 commits behind | branch `codex/exec-history-implementation`; `docs/EXEC-HISTORY-DESIGN.md` | The v1.9.0 slice is already implemented there — 6 commits, 33 files, +3156/−26, including the bounded history RPC, incremental reads of large result fields, keyset pagination that survives a stale cursor, and all five locales. Rebase cost was measured on 2026-11-16 by replaying it onto current main: only three files conflict — CHANGELOG.md, docs/OPEN-WORK.md and the built defaultTheme dist.tar.zst — with no source conflicts, and the replayed branch builds with CGO, vets clean and passes the database/tasks, dbcore, sqlitetune, pkg/rpc and web/rpc/jsonrpc suites. What remains is re-applying the two documents' additions instead of taking main's copy, and a frontend build, which needs npm ci. It is a two-document reconciliation, not greenfield work |
 | OIDC + 2FA makes SSO login fail-closed with no way for the browser to answer the challenge | `docs/ROADMAP.md` §F12 | Deliberately shipped as a gate, not half a state machine. Needs a one-time pending token plus a code prompt; production impact is zero while OIDC is off |
 | `sso_id` survives a password change, and `DeleteAllSessions()` is global | `database/accounts/` | Policy questions now that the SSO path requires TOTP; recommendation was (b)+(c) in the audit report |
 | A committed admin password from the SECRETS incident still has to be changed | `docs/SECRETS.md` incident 4 | An ops action on the live panel, not a repository change |
