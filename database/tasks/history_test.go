@@ -106,7 +106,7 @@ func TestHistoryIndexSupportsBoundedKeyset(t *testing.T) {
 	flags.DatabaseFile = "file:task-history-test?mode=memory&cache=shared"
 	db := dbcore.GetDBInstance()
 	var plan []struct{ Detail string }
-	if err := db.Raw(`EXPLAIN QUERY PLAN SELECT rowid, CAST(substr(CAST(client AS BLOB), 1, 37) AS TEXT) AS client FROM task_results AS r WHERE task_id = ? AND (r.client, rowid) > (?, ?) ORDER BY r.client, rowid LIMIT ?`, "task", "client", 1, HistoryResultPageSize+1).Scan(&plan).Error; err != nil {
+	if err := db.Raw(`EXPLAIN QUERY PLAN SELECT rowid, substr(CAST(client AS TEXT), 1, 36) AS client, CASE WHEN octet_length(client) <= 128 AND instr(CAST(client AS BLOB), x'00') = 0 THEN CAST(client AS TEXT) ELSE '' END AS client_full FROM task_results AS r WHERE task_id = ? AND (r.client, rowid) > (?, ?) ORDER BY r.client, rowid LIMIT ?`, "task", "client", 1, HistoryResultPageSize+1).Scan(&plan).Error; err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := json.Marshal(plan)
@@ -114,7 +114,7 @@ func TestHistoryIndexSupportsBoundedKeyset(t *testing.T) {
 		t.Fatalf("unbounded history query plan: %s", raw)
 	}
 	plan = nil
-	if err := db.Raw(`EXPLAIN QUERY PLAN SELECT CAST(substr(CAST(task_id AS BLOB), 1, 37) AS TEXT) AS task_id, history_order FROM tasks AS t WHERE (history_order,t.task_id) < (?,?) ORDER BY history_order DESC, t.task_id DESC LIMIT ?`, 1000, "task", HistoryPageSize+1).Scan(&plan).Error; err != nil {
+	if err := db.Raw(`EXPLAIN QUERY PLAN SELECT CASE WHEN octet_length(task_id) <= 512 AND instr(CAST(task_id AS BLOB), x'00') = 0 THEN CAST(task_id AS TEXT) ELSE '' END AS task_id, history_order FROM tasks AS t WHERE (history_order,t.task_id) < (?,?) ORDER BY history_order DESC, t.task_id DESC LIMIT ?`, 1000, "task", HistoryPageSize+1).Scan(&plan).Error; err != nil {
 		t.Fatal(err)
 	}
 	raw, _ = json.Marshal(plan)
@@ -404,7 +404,11 @@ func TestHistoryMalformedTargetsAreSkippedNotFatal(t *testing.T) {
 	if err := CreateTask(id, nil, "synthetic"); err != nil {
 		t.Fatal(err)
 	}
-	long := strings.Repeat("\u754c", 13) // 39 bytes: addressable, shown truncated
+	// 13 CJK characters are 39 bytes but still fit the 36-character display, so
+	// they must be shown whole and not marked as shortened.
+	wide := strings.Repeat("\u754c", 13)
+	// 40 ASCII characters fit the byte bound but not the display bound.
+	long := strings.Repeat("x", 40)
 	insert := func(client string) {
 		if err := db.Exec(`INSERT INTO task_results(task_id,client,result,created_at) VALUES(?,?,'secret','2026-11-05 00:00:00+00:00')`, id, client).Error; err != nil {
 			t.Fatal(err)
@@ -412,6 +416,7 @@ func TestHistoryMalformedTargetsAreSkippedNotFatal(t *testing.T) {
 	}
 	insert(strings.Repeat("x", 1<<20))
 	insert("client\x00suffix")
+	insert(wide)
 	insert(long)
 	insert("node-ok")
 	detail, err := GetHistoryDetail(t.Context(), id, "")
@@ -421,24 +426,28 @@ func TestHistoryMalformedTargetsAreSkippedNotFatal(t *testing.T) {
 	if detail.SkippedMalformed != 2 {
 		t.Fatalf("skipped = %d, want 2", detail.SkippedMalformed)
 	}
-	if len(detail.Results) != 2 {
-		t.Fatalf("results = %d, want 2", len(detail.Results))
+	if len(detail.Results) != 3 {
+		t.Fatalf("results = %d, want 3", len(detail.Results))
 	}
 	seen := map[string]bool{}
 	longCursor := ""
 	for _, result := range detail.Results {
 		seen[result.Client] = true
-		if result.Client == long {
+		if result.Client == long[:36] {
 			longCursor = result.Cursor
 			if !result.ClientTruncated {
-				t.Errorf("39-byte client not marked truncated")
+				t.Errorf("40-character client not marked truncated")
 			}
+		}
+		if result.Client == wide && result.ClientTruncated {
+			t.Errorf("39-byte, 13-character client marked truncated")
 		}
 		if result.Client == "node-ok" && result.ClientTruncated {
 			t.Errorf("36-byte client marked truncated")
 		}
 	}
-	if !seen[long] || !seen["node-ok"] {
+	// A shortened display still carries the whole value in its cursor.
+	if !seen[long[:36]] || !seen[wide] || !seen["node-ok"] {
 		t.Fatalf("addressable rows missing: %+v", seen)
 	}
 	chunk, err := ReadHistoryChunk(t.Context(), id, "output", longCursor, 0)

@@ -126,8 +126,8 @@ func withHistoryLimit(db *gorm.DB, query func(*gorm.DB) error) error {
 				sqliteConn.SetLimit(sqlite3.SQLITE_LIMIT_LENGTH, previous)
 				return nil
 			})
-			if restoreErr != nil && err == nil {
-				err = fmt.Errorf("restore SQLite length limit: %w", restoreErr)
+			if restoreErr != nil {
+				err = errors.Join(err, fmt.Errorf("restore SQLite length limit: %w", restoreErr))
 			}
 		}()
 		return query(tx)
@@ -170,7 +170,7 @@ func decodeTaskCursor(encoded string) (historyTaskCursor, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(encoded)
 	// The order value is a position, not an identifier: a boundary row may sit at
 	// any order, so it is not narrowed to positive values here.
-	if err != nil || json.Unmarshal(raw, &cursor) != nil || len(cursor.TaskID) > HistoryCursorValueMaxBytes {
+	if err != nil || json.Unmarshal(raw, &cursor) != nil || len(cursor.TaskID) == 0 || len(cursor.TaskID) > HistoryCursorValueMaxBytes {
 		return historyTaskCursor{}, ErrInvalidHistoryParams
 	}
 	return cursor, nil
@@ -247,11 +247,6 @@ func listHistory(db *gorm.DB, cursor string) (HistoryPage, error) {
 	query := fmt.Sprintf(`SELECT CASE WHEN octet_length(task_id) <= %d AND instr(CAST(task_id AS BLOB), x'00') = 0 THEN CAST(task_id AS TEXT) ELSE '' END AS task_id, history_order, CASE WHEN coalesce(octet_length(clients), 0) <= 1048576 AND json_valid(clients) THEN CASE WHEN json_type(clients) = 'array' THEN json_array_length(clients) END END AS target_count FROM tasks AS t `, HistoryCursorValueMaxBytes)
 	if cursor == "" {
 		err = db.Raw(query+`WHERE history_order IS NOT NULL ORDER BY history_order DESC, t.task_id DESC LIMIT ?`, HistoryPageSize+1).Scan(&parents).Error
-	} else if len(after.TaskID) == 0 {
-		// The boundary row's own task ID could not be carried; fall back to its
-		// order value alone. Rows sharing that order are then skipped, which the
-		// count reports.
-		err = db.Raw(query+`WHERE history_order < ? ORDER BY history_order DESC, t.task_id DESC LIMIT ?`, after.Order, HistoryPageSize+1).Scan(&parents).Error
 	} else {
 		err = db.Raw(query+`WHERE (history_order, t.task_id) < (?, ?) ORDER BY history_order DESC, t.task_id DESC LIMIT ?`, after.Order, string(after.TaskID), HistoryPageSize+1).Scan(&parents).Error
 	}
@@ -317,13 +312,23 @@ func listHistory(db *gorm.DB, cursor string) (HistoryPage, error) {
 		page.Tasks = append(page.Tasks, summary)
 	}
 	if more {
-		last := parents[len(parents)-1]
-		if last.TaskID == "" || len(last.TaskID) > HistoryCursorValueMaxBytes {
-			// The boundary row's own key cannot travel in a cursor, so no honest
-			// cursor exists. Say so instead of minting one that would loop.
+		// Walk back to the last row whose key can actually travel: one untravelable
+		// ID at the window edge must not hide the rows behind it. Rows after that
+		// position are fetched again and counted again on the next page, which the
+		// contract allows. If none can travel, no honest cursor exists and the
+		// response says so instead of looping over the same window.
+		var boundaryID string
+		var boundaryOrder int64
+		for i := len(parents) - 1; i >= 0; i-- {
+			if parents[i].TaskID != "" {
+				boundaryID, boundaryOrder = parents[i].TaskID, parents[i].HistoryOrder
+				break
+			}
+		}
+		if boundaryID == "" {
 			page.Blocked = true
 		} else {
-			page.NextCursor = encodeTaskCursor(last.HistoryOrder, last.TaskID)
+			page.NextCursor = encodeTaskCursor(boundaryOrder, boundaryID)
 		}
 	}
 	return page, nil
@@ -373,7 +378,7 @@ func getHistoryDetail(db *gorm.DB, taskID, cursor string) (HistoryDetail, error)
 	// The displayed client is a bounded prefix; the full value is carried
 	// separately so a cursor can address the row exactly and the UI can say
 	// truthfully that what it shows is shortened.
-	query := fmt.Sprintf(`SELECT rowid AS row_id, substr(CAST(client AS TEXT), 1, %d) AS client, CASE WHEN octet_length(client) <= %d AND instr(CAST(client AS BLOB), x'00') = 0 THEN CAST(client AS TEXT) ELSE '' END AS client_full, octet_length(client) > %d AS client_truncated, created_at, CASE WHEN octet_length(history_identity) = 32 THEN CAST(history_identity AS TEXT) ELSE '' END AS identity, finished_at, exit_code, coalesce(octet_length(result), 0) AS output_bytes, typeof(result) IN ('null', 'text', 'blob') AS output_available FROM task_results AS r WHERE task_id = ? `, HistoryClientDisplay, HistoryCursorValueMaxBytes, HistoryClientDisplay)
+	query := fmt.Sprintf(`SELECT rowid AS row_id, substr(CAST(client AS TEXT), 1, %d) AS client, CASE WHEN octet_length(client) <= %d AND instr(CAST(client AS BLOB), x'00') = 0 THEN CAST(client AS TEXT) ELSE '' END AS client_full, length(CAST(client AS TEXT)) > %d AS client_truncated, created_at, CASE WHEN octet_length(history_identity) = 32 THEN CAST(history_identity AS TEXT) ELSE '' END AS identity, finished_at, exit_code, coalesce(octet_length(result), 0) AS output_bytes, typeof(result) IN ('null', 'text', 'blob') AS output_available FROM task_results AS r WHERE task_id = ? `, HistoryClientDisplay, HistoryCursorValueMaxBytes, HistoryClientDisplay)
 	if cursor == "" {
 		err = db.Raw(query+`ORDER BY r.client, rowid LIMIT ?`, taskID, HistoryResultPageSize+1).Scan(&rows).Error
 	} else {
@@ -419,18 +424,26 @@ func getHistoryDetail(db *gorm.DB, taskID, cursor string) (HistoryDetail, error)
 		})
 	}
 	if more {
-		last := rows[len(rows)-1]
-		switch {
-		case last.ClientFull == "" || len(last.ClientFull) > HistoryCursorValueMaxBytes:
-			// No honest cursor can name this boundary; report it rather than
-			// minting one that would silently loop over the same window.
+		var boundary string
+		var boundaryRowID int64
+		var boundaryIdentity string
+		for i := len(rows) - 1; i >= 0; i-- {
+			if rows[i].ClientFull == "" {
+				continue
+			}
+			boundary, boundaryRowID = rows[i].ClientFull, rows[i].RowID
+			// Only a row the page could show may be named as a row; a skipped
+			// row's position still carries the reader past it, but its cursor is
+			// boundary-only so no read path can refetch its output.
+			if validHistoryClient(boundary) && validResultIdentity(rows[i].Identity) {
+				boundaryIdentity = rows[i].Identity
+			}
+			break
+		}
+		if boundary == "" {
 			detail.Blocked = true
-		case validResultIdentity(last.Identity):
-			detail.NextCursor = encodeResultCursor(last.ClientFull, last.RowID, last.Identity)
-		default:
-			// The row cannot be displayed, but its position can still carry the
-			// reader past it.
-			detail.NextCursor = encodeResultCursor(last.ClientFull, last.RowID, "")
+		} else {
+			detail.NextCursor = encodeResultCursor(boundary, boundaryRowID, boundaryIdentity)
 		}
 	}
 	return detail, nil

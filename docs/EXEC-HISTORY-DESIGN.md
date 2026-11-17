@@ -1,9 +1,9 @@
 # Remote execution history: design and safety contract
 
 Status: implemented on branch `codex/exec-history-implementation`, replayed onto v1.8.1
-main on 2026-11-17; not released or deployed. Exact-commit CI is recorded per commit in
-draft PR #165: runs 43987832874 and 43989372866 passed 8/8 before the review fixes, and
-the head needs its own green run. Owner on-page acceptance of the history page and of the
+main on 2026-11-17; not released or deployed. 8/8 CI evidence exists for `706685c`,
+`89b900c`, `34ee5e4` and `32c8485` (runs 43987832874, 43989372866, 44003074054,
+44005959823); a later head needs its own run. Owner on-page acceptance of the history page and of the
 two CSV downloads, and the normal release/backup gates, remain open.
 
 ## Existing behavior and the actual gap
@@ -48,13 +48,15 @@ such as Hermes; avoid an incompatible replacement of `getTasks`.
   last row actually fetched, not the last addressable one, so a page made
   entirely of unaddressable rows still advances. Cursor values travel as bytes
   up to 512 octets, the encoded cursor is capped at 1024 characters, and the
-  count is per page, not a re-count of the same rows. When the boundary row's
+  count is per page. Rows after the last travelable position are fetched and
+  counted again on the next page, so a row can be counted twice; it is never
+  displayed twice. When the boundary row's
   own key cannot travel at all — a task ID or client longer than that, or one
   carrying a NUL — no cursor is minted and `blocked` is set, so the reader is
   told that more rows exist behind an unpageable boundary instead of being
   stranded in silence. A cursor minted from a row that cannot be displayed is
-  boundary-only: it names a position, never a row, and every read path refuses
-  it.
+  boundary-only: it names a position, never a row. The detail page accepts it
+  only as a position, and chunk reads refuse it outright.
 - Use stable keyset pagination, a small fixed maximum page size, deterministic
   tie-breaking and bounded database queries. Current `tasks` rows lack a
   creation timestamp, and orphan parents are not chronologically sortable;

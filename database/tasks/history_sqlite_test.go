@@ -358,6 +358,9 @@ func TestHistoryAllSkippedResultWindowStillPages(t *testing.T) {
 	if len(detail.Results) != 0 || detail.SkippedMalformed != 20 || detail.NextCursor == "" {
 		t.Fatalf("detail = %+v, want no results, 20 skipped and a cursor", detail)
 	}
+	if _, err := readHistoryChunk(db, "fixture", "output", detail.NextCursor, 0); !errors.Is(err, ErrInvalidHistoryParams) {
+		t.Fatalf("cursor minted from a skipped row read its output: %v", err)
+	}
 	second, err := getHistoryDetail(db, "fixture", detail.NextCursor)
 	if err != nil {
 		t.Fatalf("boundary cursor unusable: %v", err)
@@ -397,5 +400,63 @@ func TestHistoryBoundaryCursorSurvivesLongAndBinaryValues(t *testing.T) {
 	boundary := encodeResultCursor("node", 1, "")
 	if _, err := readHistoryChunk(db, "fixture", "output", boundary, 0); !errors.Is(err, ErrInvalidHistoryParams) {
 		t.Fatalf("boundary cursor read output: %v", err)
+	}
+}
+
+func TestHistoryUntravelableBoundaryIsBlocked(t *testing.T) {
+	db, _ := historyWALFixture(t)
+	// Keys over the 512-octet carry bound cannot be named by any cursor, so the
+	// response must report blocked rather than stopping as if the table ended.
+	for i := 0; i < 21; i++ {
+		if err := db.Exec(`INSERT INTO task_results(task_id,client,result,created_at) VALUES('fixture',?,'bad','2026-11-05 02:30:00+00:00')`, strings.Repeat("c", 600)+fmt.Sprint(i)).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	detail, err := getHistoryDetail(db, "fixture", "")
+	if err != nil {
+		t.Fatalf("untravelable boundary failed the request: %v", err)
+	}
+	if !detail.Blocked || detail.NextCursor != "" || detail.SkippedMalformed != 20 {
+		t.Fatalf("detail = %+v, want blocked with no cursor", detail)
+	}
+	for i := 0; i < 21; i++ {
+		if err := db.Exec(`INSERT INTO tasks VALUES (?, '[]', '', ?)`, strings.Repeat("t", 600)+fmt.Sprint(i), 200-i).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := listHistory(db, "")
+	if err != nil {
+		t.Fatalf("untravelable parent boundary failed the request: %v", err)
+	}
+	if !page.Blocked || page.NextCursor != "" || page.SkippedMalformed != 20 {
+		t.Fatalf("page = %+v, want blocked with no cursor", page)
+	}
+}
+
+func TestHistoryBoundaryPrefersTheLastTravelableRow(t *testing.T) {
+	db, _ := historyWALFixture(t)
+	// One untravelable key at the window edge must not block the rows behind it:
+	// the cursor comes from the last row that can travel.
+	for i := 0; i < 19; i++ {
+		if err := db.Exec(`INSERT INTO tasks VALUES (?, '[]', '', ?)`, strings.Repeat("t", 40)+fmt.Sprint(i), 50-i).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Exec(`INSERT INTO tasks VALUES (?, '[]', '', 30)`, strings.Repeat("u", 600)).Error; err != nil {
+		t.Fatal(err)
+	}
+	page, err := listHistory(db, "")
+	if err != nil {
+		t.Fatalf("mixed window failed: %v", err)
+	}
+	if page.Blocked || page.NextCursor == "" {
+		t.Fatalf("page = %+v, want a cursor from the travelable rows", page)
+	}
+	second, err := listHistory(db, page.NextCursor)
+	if err != nil {
+		t.Fatalf("mixed-window cursor unusable: %v", err)
+	}
+	if second.SkippedMalformed == 0 {
+		t.Fatalf("second page = %+v, want the untravelable row counted again", second)
 	}
 }
