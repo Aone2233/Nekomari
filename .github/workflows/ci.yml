@@ -322,6 +322,9 @@ jobs:
         # 所以网络抖动不会让它变红。
         run: python deploy/check-action-inputs.py
 
+      - name: Check the documentation index and relative links
+        run: node script/docs-index.mjs
+
       - name: Check the published documentation site
         # site/README.md 说这一步 "not optional"：mkdocs --strict 能发现坏链，但
         # 发现不了「导航里点名了一个不存在的页面」，而那正是这个 check 的作用。

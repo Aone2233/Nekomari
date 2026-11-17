@@ -11,8 +11,8 @@ stops carrying loose files and the notes stop being one `rm` away from gone.
 | `task_plan.md` | The plan and gates the session worked to, including the boundaries it promised not to cross. |
 
 They are **working notes, not the record.** The record for that session is
-[`../MONITORING-ACCURACY-FIXES-2026-09-30.md`](../MONITORING-ACCURACY-FIXES-2026-09-30.md)
-and the acceptance write-up is [`../../DEPLOY-OC424.md`](../../DEPLOY-OC424.md).
+[`../MONITORING-ACCURACY-FIXES-2026-09-30.md`](../../../MONITORING-ACCURACY-FIXES-2026-09-30.md)
+and the acceptance write-up is [`../../DEPLOY-OC424.md`](../../../DEPLOY-OC424.md).
 Where the two disagree, the record wins — these files were not updated after the
 work moved on, and at least one of them still describes the fleet as it was
 before the v1.6.5 rollout.
