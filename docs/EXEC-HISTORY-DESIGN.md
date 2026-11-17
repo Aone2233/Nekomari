@@ -1,7 +1,8 @@
 # Remote execution history: design and safety contract
 
-Status: implementation in progress on a separate development branch, not
-released or deployed. CSV owner browser acceptance remains a release gate.
+Status: implemented on branch `codex/exec-history-reconcile`, replayed onto v1.8.1
+main on 2026-11-17; not released or deployed. Its own exact-commit CI, CSV owner
+browser acceptance and the normal release/backup gates remain open.
 
 ## Existing behavior and the actual gap
 
