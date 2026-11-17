@@ -17,7 +17,9 @@ Nekomari's own.
   acceptance and normal release/backup gates still apply. Rebased onto v1.8.1 main on
   2026-11-17; the embedded default theme was regenerated from the merged sources.
   Unaddressable legacy rows are skipped and counted rather than failing the page, and
-  paging continues past them; see `docs/EXEC-HISTORY-DESIGN.md`.
+  paging continues past them. A page's counts come from one aggregate statement, so
+  they are exact and the list no longer holds the single main connection for 20
+  round trips; see `docs/EXEC-HISTORY-DESIGN.md`.
 
 ### v1.8.1 candidate — probe correctness
 

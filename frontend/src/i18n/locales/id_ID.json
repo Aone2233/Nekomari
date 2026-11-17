@@ -516,7 +516,6 @@
     "timeUnknown": "Waktu hasil tidak diketahui",
     "noRetained": "Tidak ada hasil tersimpan: mungkin telah dibersihkan, dihapus, atau tidak pernah dibuat.",
     "incomplete": "Target dan hasil tersimpan tidak lengkap; status dapat berubah.",
-    "countsTruncated": "Jumlah hanya mencakup 1.000 hasil pertama.",
     "timeIncomplete": "Ini hasil paling awal yang diperiksa, belum tentu paling awal secara keseluruhan.",
     "showDetails": "Lihat detail",
     "hideDetails": "Tutup detail",

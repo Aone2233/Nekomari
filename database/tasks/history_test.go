@@ -122,11 +122,11 @@ func TestHistoryIndexSupportsBoundedKeyset(t *testing.T) {
 		t.Fatalf("unbounded task query plan: %s", raw)
 	}
 	plan = nil
-	if err := db.Raw(`EXPLAIN QUERY PLAN SELECT created_at, finished_at, exit_code FROM task_results WHERE task_id = ? ORDER BY rowid LIMIT ?`, "task", HistoryCountLimit+1).Scan(&plan).Error; err != nil {
+	if err := db.Raw(`EXPLAIN QUERY PLAN SELECT task_id, count(*), min(created_at) FROM task_results WHERE task_id IN (?) GROUP BY task_id`, "task").Scan(&plan).Error; err != nil {
 		t.Fatal(err)
 	}
 	raw, _ = json.Marshal(plan)
-	if !bytes.Contains(raw, []byte("idx_task_results_task_id")) || bytes.Contains(raw, []byte("TEMP B-TREE")) {
+	if !bytes.Contains(raw, []byte("idx_task_results_task_id")) || bytes.Contains(raw, []byte("SCAN task_results")) {
 		t.Fatalf("unbounded summary query plan: %s", raw)
 	}
 }
@@ -456,7 +456,7 @@ func TestHistoryMalformedTargetsAreSkippedNotFatal(t *testing.T) {
 	}
 }
 
-func TestHistorySummaryCapsResultScans(t *testing.T) {
+func TestHistorySummaryCountsEveryResult(t *testing.T) {
 	db := dbcore.GetDBInstance()
 	id := "history-large-test"
 	t.Cleanup(func() {
@@ -467,7 +467,8 @@ func TestHistorySummaryCapsResultScans(t *testing.T) {
 		t.Fatal(err)
 	}
 	var rows []models.TaskResult
-	for i := 0; i < HistoryCountLimit+1; i++ {
+	const total = 1100
+	for i := 0; i < total; i++ {
 		rows = append(rows, models.TaskResult{TaskId: id, Client: fmt.Sprint(i), CreatedAt: time.Now().UTC()})
 	}
 	if err := db.CreateInBatches(rows, 100).Error; err != nil {
@@ -477,8 +478,8 @@ func TestHistorySummaryCapsResultScans(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Tasks[0].TaskID != id || !page.Tasks[0].CountsTruncated || !page.Tasks[0].TimeIncomplete || page.Tasks[0].ResultCount != HistoryCountLimit {
-		t.Fatalf("oversized summary: %+v", page.Tasks[0])
+	if page.Tasks[0].TaskID != id || page.Tasks[0].ResultCount != total || !page.Tasks[0].TimeIncomplete || page.Tasks[0].Status != "incomplete" {
+		t.Fatalf("summary should count every result: %+v", page.Tasks[0])
 	}
 }
 

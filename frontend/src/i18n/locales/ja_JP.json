@@ -516,7 +516,6 @@
     "timeUnknown": "結果時刻は不明",
     "noRetained": "保存された結果がありません。削除済みか、作成されなかった可能性があります。",
     "incomplete": "対象と保存結果が不完全です。状態は変わる場合があります。",
-    "countsTruncated": "最初の1000件のみ集計しています。",
     "timeIncomplete": "確認した結果の最古時刻であり、全体の最古とは限りません。",
     "showDetails": "詳細を表示",
     "hideDetails": "詳細を閉じる",

@@ -516,7 +516,6 @@
     "timeUnknown": "結果時間未知",
     "noRetained": "沒有保留的結果：可能已清理、刪除或從未產生。",
     "incomplete": "目標與保留結果不完整，狀態可能改變。",
-    "countsTruncated": "數量只統計前 1000 筆結果。",
     "timeIncomplete": "顯示的是已檢查結果中的最早時間，並非完整歷史。",
     "showDetails": "檢視詳情",
     "hideDetails": "收合詳情",

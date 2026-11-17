@@ -86,10 +86,15 @@ such as Hermes; avoid an incompatible replacement of `getTasks`.
 The implementation exposes three JSON-RPC methods through the existing
 no-store `/api/rpc2`: `admin:listExecHistory`, `admin:getExecHistoryDetail`
 and `admin:readExecHistoryChunk`, all explicitly scoped to `tasks:read`.
-Each list is limited to 20 rows; a summary examines at most 1,000 results
-per task and labels partial counts and timestamps. Command or output text is
-only read on a separate user action in byte-bounded 16 KiB chunks, encoded as
-base64. The browser renders decoded text, never HTML; invalid UTF-8 bytes are
+Each list is limited to 20 rows, and a page's counts come from one aggregate
+statement over that page's task IDs: they are exact, because no result rows reach
+Go, so a per-task ceiling would only have made the numbers wrong. Measured on a
+scratch database of 20 tasks x 1,000 results, a page took 31-38 ms with the
+previous one-query-per-parent path and 3.8-6.6 ms with the aggregate; since the
+history request leases the single main connection (`SetMaxOpenConns(1)`), that
+duration is also the window in which other database work waits. Command or
+output text is only read on a separate user action in byte-bounded 16 KiB
+chunks, encoded as base64. The browser renders decoded text, never HTML; invalid UTF-8 bytes are
 shown as replacement characters, while the API preserves the original bytes.
 Batch JSON-RPC requests containing any of these methods are rejected, so the
 transport cannot amplify the response budget 32-fold. History has its own two

@@ -81,7 +81,7 @@ class ExecHistoryBrowserTest(unittest.TestCase):
             if (call.method === 'admin:listExecHistory') {
               if (window.failList) return json({error:'unavailable'}, 503);
               const task = call.params.cursor ? 'task-older' : 'task-current';
-              return json({jsonrpc:'2.0',id:1,result:{tasks:[{task_id:task,target_count:2,result_count:1,pending_count:1,success_count:0,failed_count:0,unknown_count:0,counts_truncated:false,earliest_result_time:'2026-11-05T02:00:00Z',time_incomplete:true,status:'incomplete'}],skipped_malformed:0,...(call.params.cursor ? {} : {next_cursor:'task-current'})}});
+              return json({jsonrpc:'2.0',id:1,result:{tasks:[{task_id:task,target_count:2,result_count:1,pending_count:1,success_count:0,failed_count:0,unknown_count:0,earliest_result_time:'2026-11-05T02:00:00Z',time_incomplete:true,status:'incomplete'}],skipped_malformed:0,...(call.params.cursor ? {} : {next_cursor:'task-current'})}});
             }
             if (call.method === 'admin:getExecHistoryDetail') {
               if (window.holdDetail) await new Promise(resolve => { window.releaseDetail = resolve; });

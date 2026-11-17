@@ -302,7 +302,6 @@
     "timeUnknown": "Result time unknown",
     "noRetained": "No results retained: they may have been cleaned up, deleted, or never created.",
     "incomplete": "Targets and retained results are incomplete; status may change.",
-    "countsTruncated": "Counts cover only the first 1,000 results.",
     "timeIncomplete": "This is the earliest checked result, not necessarily the earliest overall.",
     "showDetails": "View details",
     "hideDetails": "Hide details",

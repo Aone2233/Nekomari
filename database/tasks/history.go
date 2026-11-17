@@ -20,7 +20,6 @@ import (
 const (
 	HistoryPageSize       = 20
 	HistoryResultPageSize = 20
-	HistoryCountLimit     = 1000
 	HistoryChunkBytes     = 16384
 	HistoryOffsetLimit    = 1<<53 - 1
 	HistorySQLiteMaxBytes = 16 << 20
@@ -44,7 +43,6 @@ type HistorySummary struct {
 	SuccessCount       int        `json:"success_count"`
 	FailedCount        int        `json:"failed_count"`
 	UnknownCount       int        `json:"unknown_count"`
-	CountsTruncated    bool       `json:"counts_truncated"`
 	EarliestResultTime *time.Time `json:"earliest_result_time"`
 	TimeIncomplete     bool       `json:"time_incomplete"`
 	Status             string     `json:"status"`
@@ -218,6 +216,77 @@ func encodeResultCursor(client string, rowID int64, identity string) string {
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
 
+type historyParent struct {
+	TaskID       string
+	HistoryOrder int64
+	TargetCount  *int
+}
+
+type historyAggregate struct {
+	Total       int
+	Pending     int
+	Unknown     int
+	Success     int
+	Failed      int
+	MissingTime int
+	Earliest    *time.Time
+}
+
+// summariseResults answers one page of parents in a single statement. The counts
+// are exact: no result rows reach Go, so a per-task ceiling would only have made
+// the numbers wrong.
+func summariseResults(db *gorm.DB, parents []historyParent) (map[string]historyAggregate, error) {
+	out := make(map[string]historyAggregate, len(parents))
+	if len(parents) == 0 {
+		return out, nil
+	}
+	placeholders := make([]string, len(parents))
+	args := make([]any, len(parents))
+	for i, parent := range parents {
+		placeholders[i] = "?"
+		args[i] = parent.TaskID
+	}
+	var rows []struct {
+		TaskID      string
+		Total       int
+		Pending     int
+		Unknown     int
+		Success     int
+		Failed      int
+		MissingTime int
+		// created_at is stored as text, so the aggregate comes back as one; the
+		// UTC form keeps it parseable whatever offset the row was written with.
+		Earliest *string
+	}
+	err := db.Raw(`SELECT task_id, count(*) AS total,
+		sum(CASE WHEN finished_at IS NULL THEN 1 ELSE 0 END) AS pending,
+		sum(CASE WHEN finished_at IS NOT NULL AND exit_code IS NULL THEN 1 ELSE 0 END) AS unknown,
+		sum(CASE WHEN finished_at IS NOT NULL AND exit_code = 0 THEN 1 ELSE 0 END) AS success,
+		sum(CASE WHEN finished_at IS NOT NULL AND exit_code IS NOT NULL AND exit_code <> 0 THEN 1 ELSE 0 END) AS failed,
+		sum(CASE WHEN created_at IS NULL THEN 1 ELSE 0 END) AS missing_time,
+		strftime('%Y-%m-%dT%H:%M:%fZ', min(created_at)) AS earliest
+		FROM task_results WHERE task_id IN (`+strings.Join(placeholders, ",")+`) GROUP BY task_id`, args...).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		var earliest *time.Time
+		if row.Earliest != nil {
+			parsed, err := time.Parse(time.RFC3339Nano, *row.Earliest)
+			if err != nil {
+				return nil, fmt.Errorf("parse earliest result time: %w", err)
+			}
+			earliest = &parsed
+		}
+		out[row.TaskID] = historyAggregate{
+			Total: row.Total, Pending: row.Pending, Unknown: row.Unknown,
+			Success: row.Success, Failed: row.Failed, MissingTime: row.MissingTime,
+			Earliest: earliest,
+		}
+	}
+	return out, nil
+}
+
 // ListHistory follows persisted insertion order, not timestamps: legacy parent
 // tasks lack creation times and retained result times may disappear.
 func ListHistory(ctx context.Context, cursor string) (HistoryPage, error) {
@@ -239,11 +308,7 @@ func listHistory(db *gorm.DB, cursor string) (HistoryPage, error) {
 			return HistoryPage{}, err
 		}
 	}
-	var parents []struct {
-		TaskID       string
-		HistoryOrder int64
-		TargetCount  *int
-	}
+	var parents []historyParent
 	query := fmt.Sprintf(`SELECT CASE WHEN octet_length(task_id) <= %d AND instr(CAST(task_id AS BLOB), x'00') = 0 THEN CAST(task_id AS TEXT) ELSE '' END AS task_id, history_order, CASE WHEN coalesce(octet_length(clients), 0) <= 1048576 AND json_valid(clients) THEN CASE WHEN json_type(clients) = 'array' THEN json_array_length(clients) END END AS target_count FROM tasks AS t `, HistoryCursorValueMaxBytes)
 	if cursor == "" {
 		err = db.Raw(query+`WHERE history_order IS NOT NULL ORDER BY history_order DESC, t.task_id DESC LIMIT ?`, HistoryPageSize+1).Scan(&parents).Error
@@ -262,51 +327,43 @@ func listHistory(db *gorm.DB, cursor string) (HistoryPage, error) {
 	// it. The cursor is minted below from the last row actually fetched, not the
 	// last good one, so a full window of bad rows still leads somewhere instead
 	// of stranding everything behind it.
+	addressable := make([]historyParent, 0, len(parents))
 	for _, parent := range parents {
 		if !validHistoryID(parent.TaskID) || parent.HistoryOrder <= 0 {
 			page.SkippedMalformed++
 			continue
 		}
-		var results []struct {
-			CreatedAt  *time.Time
-			FinishedAt *time.Time
-			ExitCode   *int
+		addressable = append(addressable, parent)
+	}
+	// One aggregate statement for the whole page, not one per parent: the page
+	// holds the single main connection for a fraction of the time, and the counts
+	// are exact because nothing is materialised in Go.
+	aggregates, err := summariseResults(db, addressable)
+	if err != nil {
+		return HistoryPage{}, err
+	}
+	for _, parent := range addressable {
+		agg := aggregates[parent.TaskID]
+		summary := HistorySummary{
+			TaskID:       parent.TaskID,
+			TargetCount:  parent.TargetCount,
+			ResultCount:  agg.Total,
+			PendingCount: agg.Pending,
+			UnknownCount: agg.Unknown,
+			SuccessCount: agg.Success,
+			FailedCount:  agg.Failed,
 		}
-		err = db.Raw(`SELECT created_at, finished_at, exit_code FROM task_results WHERE task_id = ? ORDER BY rowid LIMIT ?`, parent.TaskID, HistoryCountLimit+1).Scan(&results).Error
-		if err != nil {
-			return HistoryPage{}, err
+		if agg.Earliest != nil {
+			created := agg.Earliest.UTC()
+			summary.EarliestResultTime = &created
 		}
-		summary := HistorySummary{TaskID: parent.TaskID, TargetCount: parent.TargetCount}
-		if len(results) > HistoryCountLimit {
-			summary.CountsTruncated = true
-			results = results[:HistoryCountLimit]
-		}
-		summary.ResultCount = len(results)
-		missingResultTime := false
-		for _, result := range results {
-			if result.CreatedAt == nil {
-				missingResultTime = true
-			} else if summary.EarliestResultTime == nil || result.CreatedAt.Before(*summary.EarliestResultTime) {
-				created := result.CreatedAt.UTC()
-				summary.EarliestResultTime = &created
-			}
-			switch {
-			case result.FinishedAt == nil:
-				summary.PendingCount++
-			case result.ExitCode == nil:
-				summary.UnknownCount++
-			case *result.ExitCode == 0:
-				summary.SuccessCount++
-			default:
-				summary.FailedCount++
-			}
-		}
-		summary.TimeIncomplete = missingResultTime || summary.CountsTruncated || summary.TargetCount == nil || *summary.TargetCount != summary.ResultCount
-		if summary.ResultCount == 0 {
+		summary.TimeIncomplete = agg.MissingTime > 0 || summary.TargetCount == nil || *summary.TargetCount != summary.ResultCount
+		switch {
+		case summary.ResultCount == 0:
 			summary.Status = "no_retained_results"
-		} else if summary.TargetCount == nil || summary.CountsTruncated || *summary.TargetCount != summary.ResultCount {
+		case summary.TargetCount == nil || *summary.TargetCount != summary.ResultCount:
 			summary.Status = "incomplete"
-		} else {
+		default:
 			summary.Status = "retained"
 		}
 		page.Tasks = append(page.Tasks, summary)

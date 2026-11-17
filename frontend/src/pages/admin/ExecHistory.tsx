@@ -11,9 +11,9 @@ const resultCursor = z.string().min(1).max(1024).regex(/^[A-Za-z0-9_-]+$/);
 const date = z.string().nullable();
 const summarySchema = z.object({
   task_id: z.string().min(1).max(36), target_count: nonnegative.nullable(),
-  result_count: nonnegative.max(1000), pending_count: nonnegative.max(1000),
-  success_count: nonnegative.max(1000), failed_count: nonnegative.max(1000),
-  unknown_count: nonnegative.max(1000), counts_truncated: z.boolean(),
+  result_count: nonnegative, pending_count: nonnegative,
+  success_count: nonnegative, failed_count: nonnegative,
+  unknown_count: nonnegative,
   earliest_result_time: date, time_incomplete: z.boolean(),
   status: z.enum(["retained", "incomplete", "no_retained_results"]),
 });
@@ -264,7 +264,6 @@ export default function ExecHistory() {
               <Text size="2" color="gray">{t("execHistory.targets", { count: task.target_count ?? t("execHistory.unknown") })} · {t("execHistory.counts", { pending: task.pending_count, success: task.success_count, failed: task.failed_count, unknown: task.unknown_count })}</Text>
               <Text size="1" color="gray">{task.earliest_result_time ? t("execHistory.earliest", { time: formatTime(task.earliest_result_time) ?? t("execHistory.unknown") }) : t("execHistory.timeUnknown")}</Text>
               {task.status !== "retained" && <Text size="1" color="orange">{t(task.status === "no_retained_results" ? "execHistory.noRetained" : "execHistory.incomplete")}</Text>}
-              {task.counts_truncated && <Text size="1" color="orange">{t("execHistory.countsTruncated")}</Text>}
               {task.time_incomplete && task.earliest_result_time && <Text size="1" color="gray">{t("execHistory.timeIncomplete")}</Text>}
               {selected === task.task_id && <TaskDetail key={task.task_id} id={detailPanelID} taskID={task.task_id} />}
             </Flex>
