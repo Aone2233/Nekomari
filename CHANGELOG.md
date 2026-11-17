@@ -8,10 +8,12 @@ Nekomari's own.
 
 ## [Unreleased]
 
-- **Documentation index and link check.** `README.md` now lists every document in
-  `docs/` under its own title instead of 19 of 80, the two relative links that
-  pointed at nothing are fixed, and `script/docs-index.mjs` runs in CI so the
+- **Documentation index and link check.** `README.md` now lists all 80 top-level
+  documents in `docs/` — the 19 it described plus 61 generated entries under
+  their own titles — and the two relative links that pointed at nothing are
+  fixed. `script/docs-index.mjs` checks every tracked markdown file in CI, so the
   next unlisted document or dead link fails a check instead of a reader's time.
+  Dated records under `docs/audits/` are checked but not listed.
 ### v1.8.1 candidate — probe correctness
 
 - Build CI and release artifacts with Go 1.27.4 to address GO-2026-6859 in

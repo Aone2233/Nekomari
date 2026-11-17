@@ -179,8 +179,10 @@ checksum check and the systemd unit.
 | [docs/IP-INFO-API.md](./docs/IP-INFO-API.md) | The `/api/*/ip-info/v1` contract, its upstreams, and caching |
 | [deploy/README.md](./deploy/README.md) | What each operational script does, and why some hosts need their own |
 
-The table above is the short list worth reading first. Every other document in
-`docs/` is listed below under its own title; `docs/OPEN-WORK.md` stays the only
+The table above is the short list worth reading first. Every top-level document
+in `docs/` is listed below under its own title (dated records under
+`docs/audits/` are checked for dead links but not listed — they are snapshots,
+not a map); `docs/OPEN-WORK.md` stays the only
 file that claims to say what is still open. `script/docs-index.mjs` regenerates
 this list and fails CI when a document is missing from it or a relative link in
 the repository's markdown points at nothing.

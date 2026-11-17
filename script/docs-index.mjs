@@ -2,134 +2,148 @@
 // Documentation index and link check.
 //
 // Two things had drifted and nobody noticed: two relative links in a dated
-// audit note pointed at files that are one directory up, and README.md's table
-// covered 19 of the 80 documents in docs/ while calling itself the index. Both
-// are invisible in review and only cost a reader's time. This checks them.
+// audit note pointed one directory too high, and README.md's table covered 19
+// of the 80 top-level documents in docs/ while calling itself the index. Both
+// are invisible in review and cost a reader's time. This checks them.
 //
 // Usage:
 //   node script/docs-index.mjs          check, exit 1 on a problem
-//   node script/docs-index.mjs --write  rewrite the generated block first
+//   node script/docs-index.mjs --write  regenerate the list, then check
 //
-// The generated block lists the documents README.md does not otherwise mention,
-// with each document's own first heading as its label, so nothing here invents
-// a description.
+// The generated block lists the documents README.md does not link anywhere
+// else, labelled with each document's own first heading, so nothing here
+// invents a description. Dated records under docs/audits/ are checked for dead
+// links but are not listed: they are snapshots, not a map.
 
-import { readdirSync, readFileSync, statSync, writeFileSync, existsSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const readmePath = join(root, "README.md");
 const START = "<!-- docs-index:start -->";
 const END = "<!-- docs-index:end -->";
 
-function walk(dir, out = []) {
-  for (const name of readdirSync(dir).sort()) {
-    const path = join(dir, name);
-    const info = statSync(path);
-    if (info.isDirectory()) {
-      walk(path, out);
-    } else if (name.endsWith(".md")) {
-      out.push(path);
-    }
-  }
-  return out;
-}
-
-// Links inside fenced code blocks are examples, not references.
-function stripFences(text) {
-  return text.replace(/^```[\s\S]*?^```/gm, "");
-}
-
-const LINK = /\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-
-function linksIn(text) {
-  const links = [];
-  for (const match of stripFences(text).matchAll(LINK)) {
-    const target = match[1];
-    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/|#)/i.test(target)) continue;
-    links.push(target.split("#")[0]);
-  }
-  return links.filter(Boolean);
-}
-
 const problems = [];
+const linkedPaths = new Set();
+// Links outside the generated block: a document that only the block links is
+// still "not linked elsewhere" and must stay in the block.
+const linkedOutsideBlock = new Set();
 
-// 1. Every relative link in the repository's markdown resolves.
-const markdown = [
-  ...walk(join(root, "docs")),
-  ...["README.md", "CONTRIBUTING.md", "CHANGELOG.md", "FORK.md"]
-    .map((name) => join(root, name))
-    .filter((path) => existsSync(path)),
-];
-for (const path of markdown) {
-  const text = readFileSync(path, "utf8");
-  for (const target of linksIn(text)) {
-    const resolved = resolve(dirname(path), decodeURIComponent(target));
+// Tracked markdown only: build output and node_modules are not documentation,
+// and `git ls-files` is what reviewers and CI both see.
+function trackedMarkdown() {
+  const out = execFileSync("git", ["ls-files", "-z", "*.md"], { cwd: root, encoding: "utf8" });
+  return out.split("\0").filter(Boolean).map((path) => join(root, path));
+}
+
+// Text that looks like a link but is not one: fenced blocks, HTML comments and
+// inline code. Removing it keeps examples and notes from failing the check.
+function stripNonProse(text) {
+  return text
+    .replace(/^ {0,3}(```|~~~)[^\n]*\n[\s\S]*?^ {0,3}\1[^\n]*$/gm, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/`[^`\n]*`/g, "");
+}
+
+const INLINE_LINK = /\[[^\]]*\]\(\s*(<[^>\n]*>|[^)\s]+)(?:\s+("[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g;
+const REFERENCE_DEFINITION = /^ {0,3}\[[^\]]+\]:\s*(<[^>\n]*>|\S+)/gm;
+
+function targetsIn(text) {
+  const prose = stripNonProse(text);
+  const targets = [];
+  for (const match of prose.matchAll(INLINE_LINK)) targets.push(match[1]);
+  for (const match of prose.matchAll(REFERENCE_DEFINITION)) targets.push(match[1]);
+  return targets
+    .map((target) => target.replace(/^<|>$/g, "").split("#")[0])
+    .filter((target) => target && !/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(target));
+}
+
+function checkFile(path, text, extraSet, report = true) {
+  for (const target of targetsIn(text)) {
+    let decoded = target;
+    try {
+      decoded = decodeURIComponent(target);
+    } catch {
+      if (report) problems.push(`${relative(root, path)} has a malformed link target: ${target}`);
+      continue;
+    }
+    const resolved = resolve(dirname(path), decoded);
     if (!existsSync(resolved)) {
-      problems.push(`${relative(root, path)} links to ${target}, which does not exist`);
+      if (report) problems.push(`${relative(root, path)} links to ${target}, which does not exist`);
+    } else {
+      linkedPaths.add(resolved);
+      if (extraSet) extraSet.add(resolved);
     }
   }
 }
-
-// 2. Every document in docs/ is reachable from README.md.
-const docs = readdirSync(join(root, "docs"))
-  .filter((name) => name.endsWith(".md"))
-  .sort();
-let readme = readFileSync(readmePath, "utf8");
 
 function splitBlock(text) {
   const start = text.indexOf(START);
   const end = text.indexOf(END);
   if (start === -1 || end === -1 || end < start) return null;
-  return { before: text.slice(0, start + START.length), block: text.slice(start + START.length, end), after: text.slice(end) };
+  if (text.indexOf(START, start + START.length) !== -1) return null;
+  if (text.indexOf(END, end + END.length) !== -1) return null;
+  return { block: text.slice(start + START.length, end) };
 }
 
 function heading(path) {
+  const text = stripNonProse(readFileSync(path, "utf8").replace(/^---\n[\s\S]*?\n---\n/, ""));
+  const line = text.split("\n").find((candidate) => candidate.startsWith("# "));
+  return (line ? line.replace(/^#\s+/, "") : relative(root, path)).trim();
+}
+
+const docs = readdirSync(join(root, "docs"))
+  .filter((name) => name.endsWith(".md"))
+  .sort()
+  .map((name) => ({ name, path: join(root, "docs", name) }));
+
+let readme = readFileSync(readmePath, "utf8");
+let parts = splitBlock(readme);
+
+// The generated block's own entries must not count as coverage, or every
+// document it lists would look linked and the list could never be rebuilt.
+for (const path of trackedMarkdown()) {
   const text = readFileSync(path, "utf8");
-  const line = text.split("\n").find((l) => l.startsWith("# "));
-  return line ? line.replace(/^#\s+/, "").trim() : relative(root, path);
+  if (path === readmePath && parts) {
+    checkFile(path, text);
+    checkFile(path, text.replace(parts.block, ""), linkedOutsideBlock, false);
+  } else {
+    checkFile(path, text);
+  }
 }
 
-// Documents the generated block has to list: those README does not mention
-// anywhere outside the block itself.
-function unlistedDocs(text) {
-  const parts = splitBlock(text);
-  const body = parts ? parts.before.replace(START, "") + parts.after.replace(END, "") : text;
-  return docs.filter((name) => !body.includes(`docs/${name}`));
-}
+const unlinked = docs.filter((doc) => !linkedOutsideBlock.has(doc.path));
+const unreachable = docs.filter((doc) => !linkedPaths.has(doc.path));
+const render = (list) => list.map((doc) => `- [${heading(doc.path)}](./docs/${doc.name})`).join("\n");
 
-// Documents a reader cannot reach from README at all, block included.
-function unreadableDocs(text) {
-  return docs.filter((name) => !text.includes(`docs/${name}`));
-}
-
-function renderBlock(missing) {
-  return missing.map((name) => `- [${heading(join(root, "docs", name))}](./docs/${name})`).join("\n");
-}
-
-const write = process.argv.includes("--write");
-const parts = splitBlock(readme);
-
-if (write) {
-  if (!parts) {
-    console.error(`README.md is missing ${START} / ${END}; add them where the generated list belongs.`);
+if (process.argv.includes("--write")) {
+  // Never rewrite a file that already has dead links: the writer would look as
+  // if it had fixed something.
+  if (problems.length) {
+    console.error(`refusing to write: ${problems.length} link problem(s) first`);
+    for (const problem of problems) console.error(`  - ${problem}`);
     process.exit(1);
   }
-  const missing = unlistedDocs(readme);
-  const block = `\n${renderBlock(missing)}\n`;
-  readme = parts.before + block + parts.after;
-  writeFileSync(readmePath, readme);
-  console.log(`wrote ${missing.length} entries into README.md`);
-} else {
-  for (const name of unreadableDocs(readme)) {
-    problems.push(`docs/${name} is not linked from README.md (run: node script/docs-index.mjs --write)`);
+  if (!parts) {
+    console.error(`README.md is missing ${START} / ${END}, or has them out of order.`);
+    process.exit(1);
   }
-  if (parts) {
-    const expected = renderBlock(unlistedDocs(readme));
-    if (parts.block.trim() !== expected.trim()) {
-      problems.push("the generated list in README.md is stale (run: node script/docs-index.mjs --write)");
-    }
-  }
+  const temp = `${readmePath}.tmp`;
+  writeFileSync(temp, readme.replace(parts.block, `\n${render(unlinked)}\n`));
+  renameSync(temp, readmePath);
+  console.log(`wrote ${unlinked.length} entries into README.md`);
+  readme = readFileSync(readmePath, "utf8");
+  parts = splitBlock(readme);
+}
+
+for (const doc of unreachable) {
+  problems.push(`docs/${doc.name} is not linked from README.md (run: node script/docs-index.mjs --write)`);
+}
+if (!parts) {
+  problems.push(`README.md is missing ${START} / ${END}, or has them out of order`);
+} else if (parts.block.trim() !== render(unlinked).trim()) {
+  problems.push("the generated list in README.md is stale (run: node script/docs-index.mjs --write)");
 }
 
 if (problems.length) {
@@ -137,4 +151,4 @@ if (problems.length) {
   for (const problem of problems) console.error(`  - ${problem}`);
   process.exit(1);
 }
-console.log(`documentation check passed: ${markdown.length} files, ${docs.length} documents`);
+console.log(`documentation check passed: ${trackedMarkdown().length} markdown files, ${docs.length} documents in docs/`);
