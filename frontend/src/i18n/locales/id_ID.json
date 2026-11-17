@@ -531,6 +531,7 @@
     "unknown": "Tidak diketahui",
     "exitCode": "Kode keluar: {{code}}",
     "finishedAt": "Selesai: {{time}}",
+    "blocked": "Masih ada entri, tetapi halaman berikutnya tidak dapat dialamatkan.",
     "chunkPosition": "Byte {{start}}–{{end}} / {{total}}",
     "emptyText": "(kosong)",
     "previousChunk": "Bagian sebelumnya",

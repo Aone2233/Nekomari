@@ -317,6 +317,7 @@
     "unknown": "Unknown",
     "exitCode": "Exit code: {{code}}",
     "finishedAt": "Finished: {{time}}",
+    "blocked": "More entries exist, but the next page cannot be addressed.",
     "chunkPosition": "Bytes {{start}}–{{end}} / {{total}}",
     "emptyText": "(empty)",
     "previousChunk": "Previous chunk",

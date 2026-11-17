@@ -1,8 +1,10 @@
 # Remote execution history: design and safety contract
 
 Status: implemented on branch `codex/exec-history-implementation`, replayed onto v1.8.1
-main on 2026-11-17; not released or deployed. Exact-commit CI passed 8/8 on `89b900c`.
-CSV owner browser acceptance and the normal release/backup gates remain open.
+main on 2026-11-17; not released or deployed. Exact-commit CI is recorded per commit in
+draft PR #165: runs 43987832874 and 43989372866 passed 8/8 before the review fixes, and
+the head needs its own green run. Owner on-page acceptance of the history page and of the
+two CSV downloads, and the normal release/backup gates, remain open.
 
 ## Existing behavior and the actual gap
 
@@ -36,14 +38,23 @@ such as Hermes; avoid an incompatible replacement of `getTasks`.
   the database still holds.
 - A row that cannot be addressed must not take the page with it. Skip it and
   count it in `skipped_malformed` instead of failing the response. Unaddressable
-  means: a task ID longer than 36 bytes, invalid UTF-8 or a NUL; a client longer
-  than 128 bytes, invalid UTF-8 or a NUL; or a result identity that is not 32
-  lowercase hex characters. A client between 37 and 128 bytes stays addressable
-  and is shown with `client_truncated`, because the cursor carries its full value.
-  The count is per response window, not a distinct-row census, and paging
-  continues from the last addressable row: one bad row can no longer hide
-  everything behind it, while a run of bad rows at the very end of the table
-  still cannot be paged past, which the count makes visible instead of silent.
+  means: an empty value; a task ID longer than 36 bytes, invalid UTF-8 or a NUL;
+  a client longer than 128 bytes, invalid UTF-8 or a NUL; a result identity that
+  is not 32 lowercase hex characters; or, in the list, a `history_order` of zero
+  or less. Rows whose `history_order` is NULL are excluded by the query and are
+  not counted. A client between 37 and 128 bytes stays addressable and is shown
+  with `client_truncated`, because the cursor carries its full value.
+- Paging must survive its own skipped rows. The next cursor is minted from the
+  last row actually fetched, not the last addressable one, so a page made
+  entirely of unaddressable rows still advances. Cursor values travel as bytes
+  up to 512 octets, the encoded cursor is capped at 1024 characters, and the
+  count is per page, not a re-count of the same rows. When the boundary row's
+  own key cannot travel at all — a task ID or client longer than that, or one
+  carrying a NUL — no cursor is minted and `blocked` is set, so the reader is
+  told that more rows exist behind an unpageable boundary instead of being
+  stranded in silence. A cursor minted from a row that cannot be displayed is
+  boundary-only: it names a position, never a row, and every read path refuses
+  it.
 - Use stable keyset pagination, a small fixed maximum page size, deterministic
   tie-breaking and bounded database queries. Current `tasks` rows lack a
   creation timestamp, and orphan parents are not chronologically sortable;

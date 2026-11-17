@@ -186,16 +186,22 @@ func TestHistoryResultCursorsAcceptSQLiteRowIDZeroAndNegative(t *testing.T) {
 		t.Fatalf("visited %d of %d rows", len(seen), len(ids))
 	}
 	for _, raw := range []string{
-		`{"c":"node","i":"00000000000000000000000000000000"}`,
-		`{"c":"node","r":null,"i":"00000000000000000000000000000000"}`,
-		`{"c":"node","r":9223372036854775808,"i":"00000000000000000000000000000000"}`,
-		`{"c":"node","r":0}`,
-		`{"c":"node","r":0,"i":"bad"}`,
+		`{"c":"bm9kZQ","i":"00000000000000000000000000000000"}`,
+		`{"c":"bm9kZQ","r":null,"i":"00000000000000000000000000000000"}`,
+		`{"c":"bm9kZQ","r":9223372036854775808,"i":"00000000000000000000000000000000"}`,
+		`{"c":"bm9kZQ","r":0,"i":"bad"}`,
+		`{"c":"!!!","r":0,"i":"00000000000000000000000000000000"}`,
 	} {
 		cursor := base64.RawURLEncoding.EncodeToString([]byte(raw))
 		if _, err := decodeResultCursor(cursor); !errors.Is(err, ErrInvalidHistoryParams) {
 			t.Errorf("malformed cursor accepted: %s: %v", raw, err)
 		}
+	}
+	// An empty identity marks a boundary-only cursor: valid to page from, never
+	// valid to read a row with.
+	boundary, err := decodeResultCursor(encodeResultCursor("node", 0, ""))
+	if err != nil || boundary.Identity != "" || string(boundary.Client) != "node" {
+		t.Fatalf("boundary cursor rejected: %+v %v", boundary, err)
 	}
 }
 
@@ -308,5 +314,88 @@ func TestHistoryMalformedParentIsSkippedAndOrderKept(t *testing.T) {
 	}
 	if page.Tasks[0].TaskID != "older" || page.Tasks[1].TaskID != "fixture" {
 		t.Fatalf("unexpected order: %+v", page.Tasks)
+	}
+}
+
+func TestHistoryAllSkippedWindowStillPages(t *testing.T) {
+	db, _ := historyWALFixture(t)
+	// Longer than one page of unaddressable parents in front of the good rows:
+	// the window fills with rows nobody can address, and paging must still move.
+	for i := 0; i < 25; i++ {
+		if err := db.Exec(`INSERT INTO tasks VALUES (?, '[]', '', ?)`, strings.Repeat("y", 40)+fmt.Sprint(i), 100-i).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := listHistory(db, "")
+	if err != nil {
+		t.Fatalf("all-skipped window failed the request: %v", err)
+	}
+	if len(page.Tasks) != 0 || page.SkippedMalformed != 20 || page.NextCursor == "" {
+		t.Fatalf("page = %+v, want no tasks, 20 skipped and a cursor", page)
+	}
+	second, err := listHistory(db, page.NextCursor)
+	if err != nil {
+		t.Fatalf("boundary cursor unusable: %v", err)
+	}
+	if second.SkippedMalformed != 5 || len(second.Tasks) != 1 || second.Tasks[0].TaskID != "fixture" {
+		t.Fatalf("second page = %+v, want the 5 skipped rows and the fixture", second)
+	}
+}
+
+func TestHistoryAllSkippedResultWindowStillPages(t *testing.T) {
+	db, _ := historyWALFixture(t)
+	// Clients over the addressable bound sort before "node", so the first
+	// window is entirely unaddressable.
+	for i := 0; i < 25; i++ {
+		if err := db.Exec(`INSERT INTO task_results(task_id,client,result,created_at) VALUES('fixture',?,'bad','2026-11-05 02:10:00+00:00')`, strings.Repeat("a", 129)+fmt.Sprint(i)).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	detail, err := getHistoryDetail(db, "fixture", "")
+	if err != nil {
+		t.Fatalf("all-skipped result window failed the request: %v", err)
+	}
+	if len(detail.Results) != 0 || detail.SkippedMalformed != 20 || detail.NextCursor == "" {
+		t.Fatalf("detail = %+v, want no results, 20 skipped and a cursor", detail)
+	}
+	second, err := getHistoryDetail(db, "fixture", detail.NextCursor)
+	if err != nil {
+		t.Fatalf("boundary cursor unusable: %v", err)
+	}
+	if second.SkippedMalformed != 5 || len(second.Results) != 1 || second.Results[0].Client != "node" {
+		t.Fatalf("second page = %+v, want the 5 skipped rows and the node result", second)
+	}
+}
+
+func TestHistoryBoundaryCursorSurvivesLongAndBinaryValues(t *testing.T) {
+	db, _ := historyWALFixture(t)
+	// Control bytes expand sixfold under JSON escaping if they are carried raw;
+	// the cursor must stay decodable and must still name the same boundary.
+	for i := 0; i < 25; i++ {
+		client := strings.Repeat("\x01", 128) + fmt.Sprint(i)
+		if i%2 == 1 {
+			client = strings.Repeat("b", 128) + fmt.Sprint(i)
+		}
+		if err := db.Exec(`INSERT INTO task_results(task_id,client,result,created_at) VALUES('fixture',?,'boundary','2026-11-05 02:20:00+00:00')`, client).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	detail, err := getHistoryDetail(db, "fixture", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.NextCursor == "" {
+		t.Fatal("no cursor minted for a page with more rows")
+	}
+	if _, err := decodeResultCursor(detail.NextCursor); err != nil {
+		t.Fatalf("server minted a cursor it refuses: %v", err)
+	}
+	if _, err := getHistoryDetail(db, "fixture", detail.NextCursor); err != nil {
+		t.Fatalf("server cursor rejected on reuse: %v", err)
+	}
+	// A boundary-only cursor may not read anyone's output.
+	boundary := encodeResultCursor("node", 1, "")
+	if _, err := readHistoryChunk(db, "fixture", "output", boundary, 0); !errors.Is(err, ErrInvalidHistoryParams) {
+		t.Fatalf("boundary cursor read output: %v", err)
 	}
 }

@@ -6,8 +6,8 @@ import { z } from "zod";
 import { useNodeDetails } from "@/contexts/NodeDetailsContext";
 
 const nonnegative = z.number().int().nonnegative();
-const taskCursor = z.string().min(1).max(512).regex(/^[A-Za-z0-9_-]+$/);
-const resultCursor = z.string().min(1).max(512).regex(/^[A-Za-z0-9_-]+$/);
+const taskCursor = z.string().min(1).max(1024).regex(/^[A-Za-z0-9_-]+$/);
+const resultCursor = z.string().min(1).max(1024).regex(/^[A-Za-z0-9_-]+$/);
 const date = z.string().nullable();
 const summarySchema = z.object({
   task_id: z.string().min(1).max(36), target_count: nonnegative.nullable(),
@@ -17,12 +17,12 @@ const summarySchema = z.object({
   earliest_result_time: date, time_incomplete: z.boolean(),
   status: z.enum(["retained", "incomplete", "no_retained_results"]),
 });
-const pageSchema = z.object({ tasks: z.array(summarySchema).max(20), next_cursor: taskCursor.optional(), skipped_malformed: nonnegative });
+const pageSchema = z.object({ tasks: z.array(summarySchema).max(20), next_cursor: taskCursor.optional(), skipped_malformed: nonnegative.default(0), blocked: z.boolean().default(false) });
 const resultSchema = z.object({
   cursor: resultCursor, client: z.string().max(128), client_truncated: z.boolean(), created_at: date,
   finished_at: date, exit_code: z.number().int().nullable(), output_bytes: nonnegative, output_available: z.boolean(),
 });
-const detailSchema = z.object({ task_id: z.string().min(1).max(36), results: z.array(resultSchema).max(20), next_cursor: resultCursor.optional(), skipped_malformed: nonnegative });
+const detailSchema = z.object({ task_id: z.string().min(1).max(36), results: z.array(resultSchema).max(20), next_cursor: resultCursor.optional(), skipped_malformed: nonnegative.default(0), blocked: z.boolean().default(false) });
 const chunkSchema = z.object({
   data_base64: z.string().max(22000), offset: nonnegative, next_offset: nonnegative,
   total_bytes: nonnegative, has_more: z.boolean(), available: z.boolean(),
@@ -183,7 +183,8 @@ function TaskDetail({ taskID, id }: { taskID: string; id: string }) {
     </Flex>}
     {detail && <>
       {detail.skipped_malformed > 0 && <Text size="2" color="orange" role="status">{t("execHistory.skippedMalformed", { count: detail.skipped_malformed })}</Text>}
-      {detail.results.length === 0 && <Text size="2" color="gray">{t("execHistory.noResults")}</Text>}
+      {detail.blocked && <Text size="2" color="orange" role="status">{t("execHistory.blocked")}</Text>}
+      {detail.results.length === 0 && detail.skipped_malformed === 0 && <Text size="2" color="gray">{t("execHistory.noResults")}</Text>}
       {detail.results.map((result) => {
         const name = nodeDetail.find((node) => node.uuid === result.client)?.name || result.client;
         const state = result.finished_at === null ? "pending" : result.exit_code === null ? "unknown" : result.exit_code === 0 ? "success" : "failed";
@@ -252,7 +253,8 @@ export default function ExecHistory() {
         {error && <Flex gap="2" align="center"><Text size="2" color="red" role="alert">{t("execHistory.error")}</Text><Button size="1" onClick={() => void load(cursorStack[cursorIndex], cursorStack, cursorIndex)}>{t("execHistory.retry")}</Button></Flex>}
         {page && <>
           {page.skipped_malformed > 0 && <Text size="2" color="orange" role="status">{t("execHistory.skippedMalformed", { count: page.skipped_malformed })}</Text>}
-          {page.tasks.length === 0 && <Text size="2" color="gray">{t("execHistory.empty")}</Text>}
+          {page.blocked && <Text size="2" color="orange" role="status">{t("execHistory.blocked")}</Text>}
+          {page.tasks.length === 0 && page.skipped_malformed === 0 && <Text size="2" color="gray">{t("execHistory.empty")}</Text>}
           {page.tasks.map((task) => <Card key={task.task_id} className="min-w-0 p-3">
             <Flex direction="column" gap="2">
               <Flex align="center" justify="between" gap="2" wrap="wrap">

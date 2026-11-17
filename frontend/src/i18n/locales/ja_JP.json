@@ -531,6 +531,7 @@
     "unknown": "不明",
     "exitCode": "終了コード：{{code}}",
     "finishedAt": "完了時刻：{{time}}",
+    "blocked": "続きの記録はありますが、次のページを特定できません。",
     "chunkPosition": "バイト {{start}}–{{end}} / {{total}}",
     "emptyText": "（空）",
     "previousChunk": "前の部分",

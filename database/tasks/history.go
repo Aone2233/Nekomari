@@ -24,7 +24,14 @@ const (
 	HistoryChunkBytes     = 16384
 	HistoryOffsetLimit    = 1<<53 - 1
 	HistorySQLiteMaxBytes = 16 << 20
+	// Addressability bound for a client or task ID that may be displayed.
 	HistoryClientMaxBytes = 128
+	// A boundary value only has to travel inside a cursor, so it may be longer
+	// than a displayable one; this is what keeps a page made entirely of
+	// unaddressable rows from stranding everything behind it.
+	HistoryCursorValueMaxBytes = 512
+	HistoryCursorMaxEncoded    = 1024
+	HistoryClientDisplay       = 36
 )
 
 var ErrInvalidHistoryParams = errors.New("invalid execution history parameters")
@@ -47,6 +54,7 @@ type HistoryPage struct {
 	Tasks            []HistorySummary `json:"tasks"`
 	NextCursor       string           `json:"next_cursor,omitempty"`
 	SkippedMalformed int              `json:"skipped_malformed"`
+	Blocked          bool             `json:"blocked"`
 }
 
 type HistoryResult struct {
@@ -65,6 +73,7 @@ type HistoryDetail struct {
 	Results          []HistoryResult `json:"results"`
 	NextCursor       string          `json:"next_cursor,omitempty"`
 	SkippedMalformed int             `json:"skipped_malformed"`
+	Blocked          bool            `json:"blocked"`
 }
 
 type HistoryChunk struct {
@@ -138,28 +147,30 @@ func validHistoryClient(value string) bool {
 }
 
 type historyResultCursor struct {
-	Client   string `json:"c"`
+	Client   []byte `json:"c"`
 	RowID    int64  `json:"r"`
 	Identity string `json:"i"`
 }
 
 type historyTaskCursor struct {
 	Order  int64  `json:"o"`
-	TaskID string `json:"t"`
+	TaskID []byte `json:"t"`
 }
 
 func encodeTaskCursor(order int64, taskID string) string {
-	raw, _ := json.Marshal(historyTaskCursor{Order: order, TaskID: taskID})
+	raw, _ := json.Marshal(historyTaskCursor{Order: order, TaskID: []byte(taskID)})
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
 
 func decodeTaskCursor(encoded string) (historyTaskCursor, error) {
 	var cursor historyTaskCursor
-	if len(encoded) > 512 {
+	if len(encoded) > HistoryCursorMaxEncoded {
 		return cursor, ErrInvalidHistoryParams
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(encoded)
-	if err != nil || json.Unmarshal(raw, &cursor) != nil || cursor.Order <= 0 || !validHistoryID(cursor.TaskID) {
+	// The order value is a position, not an identifier: a boundary row may sit at
+	// any order, so it is not narrowed to positive values here.
+	if err != nil || json.Unmarshal(raw, &cursor) != nil || len(cursor.TaskID) > HistoryCursorValueMaxBytes {
 		return historyTaskCursor{}, ErrInvalidHistoryParams
 	}
 	return cursor, nil
@@ -167,18 +178,23 @@ func decodeTaskCursor(encoded string) (historyTaskCursor, error) {
 
 func decodeResultCursor(encoded string) (historyResultCursor, error) {
 	var cursor historyResultCursor
-	if len(encoded) > 512 {
+	if len(encoded) > HistoryCursorMaxEncoded {
 		return cursor, ErrInvalidHistoryParams
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(encoded)
 	// SQLite rowids are signed and may legitimately be zero or negative. A
 	// pointer distinguishes rowid zero from a missing or null cursor field.
 	var wire struct {
-		Client   string `json:"c"`
+		Client   []byte `json:"c"`
 		RowID    *int64 `json:"r"`
 		Identity string `json:"i"`
 	}
-	if err != nil || json.Unmarshal(raw, &wire) != nil || !validHistoryClient(wire.Client) || wire.RowID == nil || !validResultIdentity(wire.Identity) {
+	if err != nil || json.Unmarshal(raw, &wire) != nil || len(wire.Client) > HistoryCursorValueMaxBytes || wire.RowID == nil {
+		return historyResultCursor{}, ErrInvalidHistoryParams
+	}
+	// An empty identity marks a boundary-only cursor: it names a position rather
+	// than a row, and every path that needs a row refuses it.
+	if wire.Identity != "" && !validResultIdentity(wire.Identity) {
 		return historyResultCursor{}, ErrInvalidHistoryParams
 	}
 	cursor = historyResultCursor{Client: wire.Client, RowID: *wire.RowID, Identity: wire.Identity}
@@ -198,7 +214,7 @@ func validResultIdentity(value string) bool {
 }
 
 func encodeResultCursor(client string, rowID int64, identity string) string {
-	raw, _ := json.Marshal(historyResultCursor{Client: client, RowID: rowID, Identity: identity})
+	raw, _ := json.Marshal(historyResultCursor{Client: []byte(client), RowID: rowID, Identity: identity})
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
 
@@ -228,11 +244,16 @@ func listHistory(db *gorm.DB, cursor string) (HistoryPage, error) {
 		HistoryOrder int64
 		TargetCount  *int
 	}
-	query := `SELECT CAST(substr(CAST(task_id AS BLOB), 1, 37) AS TEXT) AS task_id, history_order, CASE WHEN coalesce(octet_length(clients), 0) <= 1048576 AND json_valid(clients) THEN CASE WHEN json_type(clients) = 'array' THEN json_array_length(clients) END END AS target_count FROM tasks AS t `
+	query := fmt.Sprintf(`SELECT CASE WHEN octet_length(task_id) <= %d AND instr(CAST(task_id AS BLOB), x'00') = 0 THEN CAST(task_id AS TEXT) ELSE '' END AS task_id, history_order, CASE WHEN coalesce(octet_length(clients), 0) <= 1048576 AND json_valid(clients) THEN CASE WHEN json_type(clients) = 'array' THEN json_array_length(clients) END END AS target_count FROM tasks AS t `, HistoryCursorValueMaxBytes)
 	if cursor == "" {
 		err = db.Raw(query+`WHERE history_order IS NOT NULL ORDER BY history_order DESC, t.task_id DESC LIMIT ?`, HistoryPageSize+1).Scan(&parents).Error
+	} else if len(after.TaskID) == 0 {
+		// The boundary row's own task ID could not be carried; fall back to its
+		// order value alone. Rows sharing that order are then skipped, which the
+		// count reports.
+		err = db.Raw(query+`WHERE history_order < ? ORDER BY history_order DESC, t.task_id DESC LIMIT ?`, after.Order, HistoryPageSize+1).Scan(&parents).Error
 	} else {
-		err = db.Raw(query+`WHERE (history_order, t.task_id) < (?, ?) ORDER BY history_order DESC, t.task_id DESC LIMIT ?`, after.Order, after.TaskID, HistoryPageSize+1).Scan(&parents).Error
+		err = db.Raw(query+`WHERE (history_order, t.task_id) < (?, ?) ORDER BY history_order DESC, t.task_id DESC LIMIT ?`, after.Order, string(after.TaskID), HistoryPageSize+1).Scan(&parents).Error
 	}
 	if err != nil {
 		return HistoryPage{}, err
@@ -242,18 +263,15 @@ func listHistory(db *gorm.DB, cursor string) (HistoryPage, error) {
 	if more {
 		parents = parents[:HistoryPageSize]
 	}
-	// A malformed parent must not take the whole list with it. Skip it, count it
-	// in the response, and keep paging from the last addressable row. A run of
-	// malformed rows at the very end of the table cannot be paged past; the
-	// count makes that visible instead of silent.
-	var lastTaskID string
-	var lastOrder int64
+	// A malformed parent must not take the whole list with it: skip it and count
+	// it. The cursor is minted below from the last row actually fetched, not the
+	// last good one, so a full window of bad rows still leads somewhere instead
+	// of stranding everything behind it.
 	for _, parent := range parents {
 		if !validHistoryID(parent.TaskID) || parent.HistoryOrder <= 0 {
 			page.SkippedMalformed++
 			continue
 		}
-		lastTaskID, lastOrder = parent.TaskID, parent.HistoryOrder
 		var results []struct {
 			CreatedAt  *time.Time
 			FinishedAt *time.Time
@@ -298,8 +316,15 @@ func listHistory(db *gorm.DB, cursor string) (HistoryPage, error) {
 		}
 		page.Tasks = append(page.Tasks, summary)
 	}
-	if more && lastTaskID != "" {
-		page.NextCursor = encodeTaskCursor(lastOrder, lastTaskID)
+	if more {
+		last := parents[len(parents)-1]
+		if last.TaskID == "" || len(last.TaskID) > HistoryCursorValueMaxBytes {
+			// The boundary row's own key cannot travel in a cursor, so no honest
+			// cursor exists. Say so instead of minting one that would loop.
+			page.Blocked = true
+		} else {
+			page.NextCursor = encodeTaskCursor(last.HistoryOrder, last.TaskID)
+		}
 	}
 	return page, nil
 }
@@ -336,6 +361,7 @@ func getHistoryDetail(db *gorm.DB, taskID, cursor string) (HistoryDetail, error)
 	var rows []struct {
 		RowID           int64
 		Client          string
+		ClientFull      string
 		ClientTruncated bool
 		CreatedAt       *time.Time
 		Identity        string
@@ -344,19 +370,26 @@ func getHistoryDetail(db *gorm.DB, taskID, cursor string) (HistoryDetail, error)
 		OutputBytes     int64
 		OutputAvailable bool
 	}
-	query := `SELECT rowid AS row_id, CASE WHEN octet_length(client) <= 128 AND instr(CAST(client AS BLOB), x'00') = 0 THEN CAST(client AS TEXT) ELSE '' END AS client, octet_length(client) > 36 AS client_truncated, created_at, CASE WHEN octet_length(history_identity) = 32 THEN CAST(history_identity AS TEXT) ELSE '' END AS identity, finished_at, exit_code, coalesce(octet_length(result), 0) AS output_bytes, typeof(result) IN ('null', 'text', 'blob') AS output_available FROM task_results AS r WHERE task_id = ? `
+	// The displayed client is a bounded prefix; the full value is carried
+	// separately so a cursor can address the row exactly and the UI can say
+	// truthfully that what it shows is shortened.
+	query := fmt.Sprintf(`SELECT rowid AS row_id, substr(CAST(client AS TEXT), 1, %d) AS client, CASE WHEN octet_length(client) <= %d AND instr(CAST(client AS BLOB), x'00') = 0 THEN CAST(client AS TEXT) ELSE '' END AS client_full, octet_length(client) > %d AS client_truncated, created_at, CASE WHEN octet_length(history_identity) = 32 THEN CAST(history_identity AS TEXT) ELSE '' END AS identity, finished_at, exit_code, coalesce(octet_length(result), 0) AS output_bytes, typeof(result) IN ('null', 'text', 'blob') AS output_available FROM task_results AS r WHERE task_id = ? `, HistoryClientDisplay, HistoryCursorValueMaxBytes, HistoryClientDisplay)
 	if cursor == "" {
 		err = db.Raw(query+`ORDER BY r.client, rowid LIMIT ?`, taskID, HistoryResultPageSize+1).Scan(&rows).Error
 	} else {
-		var present int
-		result := db.Raw(`SELECT 1 FROM task_results WHERE task_id = ? AND client = ? AND rowid = ? AND history_identity = ?`, taskID, after.Client, after.RowID, after.Identity).Scan(&present)
-		if result.Error != nil {
-			return HistoryDetail{}, result.Error
+		// A cursor that names a row must still name that row; a boundary-only
+		// cursor (empty identity) is a position and is used without that check.
+		if after.Identity != "" {
+			var present int
+			result := db.Raw(`SELECT 1 FROM task_results WHERE task_id = ? AND client = ? AND rowid = ? AND history_identity = ?`, taskID, string(after.Client), after.RowID, after.Identity).Scan(&present)
+			if result.Error != nil {
+				return HistoryDetail{}, result.Error
+			}
+			if result.RowsAffected == 0 {
+				return HistoryDetail{}, gorm.ErrRecordNotFound
+			}
 		}
-		if result.RowsAffected == 0 {
-			return HistoryDetail{}, gorm.ErrRecordNotFound
-		}
-		err = db.Raw(query+`AND (r.client, rowid) > (?, ?) ORDER BY r.client, rowid LIMIT ?`, taskID, after.Client, after.RowID, HistoryResultPageSize+1).Scan(&rows).Error
+		err = db.Raw(query+`AND (r.client, rowid) > (?, ?) ORDER BY r.client, rowid LIMIT ?`, taskID, string(after.Client), after.RowID, HistoryResultPageSize+1).Scan(&rows).Error
 	}
 	if err != nil {
 		return HistoryDetail{}, err
@@ -366,21 +399,16 @@ func getHistoryDetail(db *gorm.DB, taskID, cursor string) (HistoryDetail, error)
 	if more {
 		rows = rows[:HistoryResultPageSize]
 	}
-	// An unaddressable row is skipped and counted instead of failing the page:
-	// without a usable client and identity it cannot be carried in a cursor, and
-	// one such row would otherwise hide every result behind it.
-	var last historyResultCursor
-	var haveLast bool
+	// An unaddressable row is skipped and counted instead of failing the page.
+	// The next cursor comes from the last row fetched, good or not, so a window
+	// made entirely of unaddressable rows still advances.
 	for _, row := range rows {
-		if !validHistoryClient(row.Client) || !validResultIdentity(row.Identity) {
+		if row.ClientFull == "" || !validHistoryClient(row.ClientFull) || !validResultIdentity(row.Identity) {
 			detail.SkippedMalformed++
 			continue
 		}
-		cursor := encodeResultCursor(row.Client, row.RowID, row.Identity)
-		last = historyResultCursor{Client: row.Client, RowID: row.RowID, Identity: row.Identity}
-		haveLast = true
 		detail.Results = append(detail.Results, HistoryResult{
-			Cursor:          cursor,
+			Cursor:          encodeResultCursor(row.ClientFull, row.RowID, row.Identity),
 			Client:          row.Client,
 			ClientTruncated: row.ClientTruncated,
 			CreatedAt:       row.CreatedAt,
@@ -390,8 +418,20 @@ func getHistoryDetail(db *gorm.DB, taskID, cursor string) (HistoryDetail, error)
 			OutputAvailable: row.OutputAvailable,
 		})
 	}
-	if more && haveLast {
-		detail.NextCursor = encodeResultCursor(last.Client, last.RowID, last.Identity)
+	if more {
+		last := rows[len(rows)-1]
+		switch {
+		case last.ClientFull == "" || len(last.ClientFull) > HistoryCursorValueMaxBytes:
+			// No honest cursor can name this boundary; report it rather than
+			// minting one that would silently loop over the same window.
+			detail.Blocked = true
+		case validResultIdentity(last.Identity):
+			detail.NextCursor = encodeResultCursor(last.ClientFull, last.RowID, last.Identity)
+		default:
+			// The row cannot be displayed, but its position can still carry the
+			// reader past it.
+			detail.NextCursor = encodeResultCursor(last.ClientFull, last.RowID, "")
+		}
 	}
 	return detail, nil
 }
@@ -429,7 +469,12 @@ func readHistoryChunk(db *gorm.DB, taskID, kind, resultCursor string, offset int
 		if err != nil {
 			return HistoryChunk{}, ErrInvalidHistoryParams
 		}
-		result = db.Raw(`SELECT CASE typeof(result) WHEN 'null' THEN x'' WHEN 'text' THEN nekomari_history_blob(1, rowid, ?) WHEN 'blob' THEN nekomari_history_blob(1, rowid, ?) END AS data, coalesce(octet_length(result), 0) AS total_bytes, typeof(result) IN ('null', 'text', 'blob') AS available FROM task_results WHERE task_id = ? AND client = ? AND rowid = ? AND history_identity = ?`, offset, offset, taskID, cursor.Client, cursor.RowID, cursor.Identity).Scan(&row)
+		// A boundary-only cursor names a position, not a row, so it cannot be used
+		// to read anyone's output.
+		if cursor.Identity == "" {
+			return HistoryChunk{}, ErrInvalidHistoryParams
+		}
+		result = db.Raw(`SELECT CASE typeof(result) WHEN 'null' THEN x'' WHEN 'text' THEN nekomari_history_blob(1, rowid, ?) WHEN 'blob' THEN nekomari_history_blob(1, rowid, ?) END AS data, coalesce(octet_length(result), 0) AS total_bytes, typeof(result) IN ('null', 'text', 'blob') AS available FROM task_results WHERE task_id = ? AND client = ? AND rowid = ? AND history_identity = ?`, offset, offset, taskID, string(cursor.Client), cursor.RowID, cursor.Identity).Scan(&row)
 	default:
 		return HistoryChunk{}, ErrInvalidHistoryParams
 	}

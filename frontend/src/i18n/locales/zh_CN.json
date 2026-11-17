@@ -531,6 +531,7 @@
     "unknown": "未知",
     "exitCode": "退出码：{{code}}",
     "finishedAt": "完成时间：{{time}}",
+    "blocked": "还有记录，但下一页无法定位。",
     "chunkPosition": "字节 {{start}}–{{end}} / {{total}}",
     "emptyText": "（空）",
     "previousChunk": "上一段",
