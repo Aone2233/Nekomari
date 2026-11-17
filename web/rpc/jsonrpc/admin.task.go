@@ -2,10 +2,12 @@ package jsonrpc
 
 import (
 	"context"
+	"errors"
 
 	"github.com/Aone2233/nekomari/database/models"
 	"github.com/Aone2233/nekomari/database/tasks"
 	"github.com/Aone2233/nekomari/pkg/rpc"
+	"gorm.io/gorm"
 )
 
 // admin.task.go
@@ -17,6 +19,70 @@ func init() {
 	reg("getTasksByClientId", adminGetTasksByClientId, "List tasks assigned to a client")
 	reg("getSpecificTaskResult", adminGetSpecificTaskResult, "Get a task result for a client")
 	reg("getTaskResultsByTaskId", adminGetTaskResultsByTaskId, "List results of a task")
+	reg("listExecHistory", adminListExecHistory, "List bounded execution history summaries")
+	reg("getExecHistoryDetail", adminGetExecHistoryDetail, "List bounded execution result metadata")
+	reg("readExecHistoryChunk", adminReadExecHistoryChunk, "Read a bounded execution command or output chunk")
+}
+
+func historyError(err error) *rpc.JsonRpcError {
+	switch {
+	case errors.Is(err, tasks.ErrInvalidHistoryParams):
+		return rpc.MakeError(rpc.InvalidParams, "Invalid execution history parameters", nil)
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return rpc.MakeError(rpc.NotFound, "Execution history not found", nil)
+	case errors.Is(err, context.Canceled):
+		return rpc.MakeError(rpc.Cancelled, "Execution history request canceled", nil)
+	case errors.Is(err, context.DeadlineExceeded):
+		return rpc.MakeError(rpc.DeadlineExceeded, "Execution history request timed out", nil)
+	default:
+		return rpc.MakeError(rpc.Unavailable, "Unable to read execution history", nil)
+	}
+}
+
+func adminListExecHistory(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	var params struct {
+		Cursor string `json:"cursor"`
+	}
+	if err := req.BindParams(&params); err != nil {
+		return nil, historyError(tasks.ErrInvalidHistoryParams)
+	}
+	page, err := tasks.ListHistory(ctx, params.Cursor)
+	if err != nil {
+		return nil, historyError(err)
+	}
+	return page, nil
+}
+
+func adminGetExecHistoryDetail(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	var params struct {
+		TaskID string `json:"task_id"`
+		Cursor string `json:"cursor"`
+	}
+	if err := req.BindParams(&params); err != nil {
+		return nil, historyError(tasks.ErrInvalidHistoryParams)
+	}
+	page, err := tasks.GetHistoryDetail(ctx, params.TaskID, params.Cursor)
+	if err != nil {
+		return nil, historyError(err)
+	}
+	return page, nil
+}
+
+func adminReadExecHistoryChunk(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	var params struct {
+		TaskID       string `json:"task_id"`
+		Kind         string `json:"kind"`
+		ResultCursor string `json:"result_cursor"`
+		Offset       int64  `json:"offset"`
+	}
+	if err := req.BindParams(&params); err != nil {
+		return nil, historyError(tasks.ErrInvalidHistoryParams)
+	}
+	chunk, err := tasks.ReadHistoryChunk(ctx, params.TaskID, params.Kind, params.ResultCursor, params.Offset)
+	if err != nil {
+		return nil, historyError(err)
+	}
+	return chunk, nil
 }
 
 // projectTaskResults 投影任务结果，保持与原 REST 输出字段一致。

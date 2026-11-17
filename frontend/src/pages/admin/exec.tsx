@@ -16,6 +16,7 @@ import { Play, AlertCircle, CheckCircle2, Copy, Clock } from "lucide-react";
 import { toast } from "sonner";
 import NodeSelector from "@/components/NodeSelector";
 import { SettingCardCollapse } from "@/components/admin/SettingCard";
+import ExecHistory from "./ExecHistory";
 
 interface TaskResult {
     task_id: string;
@@ -641,6 +642,7 @@ const ExecContent = () => {
                     </Flex>
                 </Card>
             )}
+            <ExecHistory />
         </div>
     );
 };

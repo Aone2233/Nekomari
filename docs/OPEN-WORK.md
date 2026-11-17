@@ -446,7 +446,7 @@ The next bounded releases and operational gates, in order:
    (`system.restarts`) shipped in v1.7.26 and the 50-node capacity/memory gate
    passed on 2026-11-04; see [`CAPACITY-50NODE.md`](./CAPACITY-50NODE.md).
    v1.8.0 itself is released and deployed as `v1.8.0/a92a242`; production now
-   runs 14 clients and 14 ping tasks, and all 14 Agents still report v1.7.30.
+   runs 14 clients and 13 ping tasks, and all 14 Agents still report v1.7.30.
    Of the three v1.8.0 gates, two are closed and one is excepted rather than
    closed:
 
@@ -1478,6 +1478,52 @@ The local draft now protects that variable and adds a deterministic delayed-DNS
 race regression and loopback success check; both pass with `-race`, alongside
 the pinned tests. They do not constitute an Agent release or a fleet rollout.
 
+**Unreleased development (2026-11-05).** The remote-execution history UI and
+bounded, `tasks:read`-scoped RPC implementation are under verification on an
+independent branch; they are not deployed. Targeted Go and synthetic browser
+checks pass. A disposable, network-isolated built panel also shows synthetic
+history via the real admin UI and backend in English desktop/light and Chinese
+mobile/dark. A network-isolated synthetic v1.7.29/candidate/rollback/candidate
+startup drill preserves old and rollback-era task data; rollback-era rows were
+injected as SQL fixtures, not dispatched to an agent. CSV owner acceptance and
+the normal release/backup gates remain open; this is not a production rollout.
+An additional scratch stress check showed SQLite may materialize an entire
+legacy output despite the 16 KiB response cap. The next candidate uses SQLite
+incremental blob reads on the same connection and snapshot to preserve bounded
+access to large TEXT/BLOB records; malformed non-text values fail closed. A
+16 MiB connection limit still guards other materialized fields. See the design
+document for local measurements, security boundaries and remaining portability
+gates. Commit `3db976c` passed 8/8 CI and native OC424 ARM64 synthetic tests.
+A subsequent audit reproduced a stale result cursor silently retargeting a
+duplicate after a table rebuild and rowid renumbering. The unreleased follow-up
+adds indexed stable result identities and rollback-compatible insert/backfill
+handling; its new head requires its own CI and fresh platform verification.
+CSV owner acceptance remains a separate release gate.
+
+**Read-only production identity/task recheck (2026-11-05 04:02 UTC):** 13
+current node UUID/token pairs match the previously audited `55bc6191…d2bde`
+snapshot; this does not rule out an intervening change subsequently reversed.
+All six retained task parents have matching retained audit entries; the latest
+task-result creation and execution audit are dated 2026-10-25, and none are
+newer than the v1.7.29 switch. Three 2026-10-20 results lack a completion time,
+which does not establish they are still executing. These checks cannot prove
+the absence of deleted or unrecorded activity; the old digest discrepancy
+remains unexplained. No production credential, node or task was changed.
+
+**Reconciliation onto v1.8.1 main (2026-11-17).** The six commits above now sit on
+`codex/exec-history-implementation`, replayed onto current main. Three files conflicted:
+`CHANGELOG.md`, this file (both kept both sides' additions) and the committed
+`web/public/defaultTheme/dist.tar.zst`, which was regenerated from the merged sources rather
+than merged. `go build ./...`, `go vet ./...` and the database/tasks, dbcore, sqlitetune,
+pkg/rpc, web/rpc/jsonrpc and web/router suites pass locally, as do frontend lint and the 219
+frontend tests. 8/8 CI evidence exists for `706685c`, `89b900c`, `34ee5e4` and `32c8485`;
+the work is draft PR #165, and anything pushed after this paragraph must bring its own run. A later review found that one malformed legacy row failed the whole page and
+could not be paged past; unaddressable rows are now skipped and counted in
+`skipped_malformed`, and the next cursor now comes from the last row fetched, so a page of
+nothing but bad rows still advances (see the design contract for what counts as unaddressable
+and when the response reports `blocked` instead of a cursor). Nothing is deployed or
+released; owner acceptance and the release, backup and deploy gates remain open.
+
 **Prior backup close-out (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds
 the two older verified copies, and four isolated restore drills pass (see
@@ -2101,7 +2147,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Most agents still run as root; only MAC is non-root | `docs/DEPLOY-OC424.md` | The NOSLA pattern (unprivileged user + `AmbientCapabilities=CAP_NET_RAW`) works; Alpine has no `setcap`. OpenRC install support shipped in v1.6.25, but moving users is still a fleet-wide change |
 | Windows local builds can fail on a locked esbuild temp file | Windows dev environment | The build itself is deterministic on Windows: two builds with a project-local `TEMP`/`TMP` were byte-identical (819 files, diff 0). With the system `%TEMP%`, esbuild sometimes cannot delete its temp file ("Access is denied"); CI's Windows runner is unaffected. Not a source change — a dev-environment workaround until the temp cleaner/AV exclusion is settled |
 | Encrypted backup follow-up | `docs/ENCRYPTED-BACKUPS.md`; `docs/MAC-WAN-BACKUP.md` | MAC-WAN's encrypted daily timer is active and has run repeatedly; the newest scheduled archive is 2026-11-16T03:30:16Z, about 258 MB, and the 15-minute health timer reported `status=ok` for it. The v1.8.1 cutover added pre and post archives that passed isolated v1.8.0 and v1.8.1 boot drills. Owner-reported offline download is not independent-media restore. Live incident delivery and a stronger drill policy remain open; keep all old plaintext and manual rollback copies until explicit deletion approval |
-| Execution history sits on an unmerged branch that main has left 184 commits behind | branch `codex/exec-history-implementation`; `docs/EXEC-HISTORY-DESIGN.md` | The v1.9.0 slice is already implemented there — 6 commits, 33 files, +3156/−26, including the bounded history RPC, incremental reads of large result fields, keyset pagination that survives a stale cursor, and all five locales. Rebase cost was measured on 2026-11-16 by replaying it onto current main: only three files conflict — CHANGELOG.md, docs/OPEN-WORK.md and the built defaultTheme dist.tar.zst — with no source conflicts, and the replayed branch builds with CGO, vets clean and passes the database/tasks, dbcore, sqlitetune, pkg/rpc and web/rpc/jsonrpc suites. What remains is re-applying the two documents' additions instead of taking main's copy, and a frontend build, which needs npm ci. It is a two-document reconciliation, not greenfield work |
+| Execution history is implemented and replayed onto current main, but not released or deployed | branch `codex/exec-history-implementation`; `docs/EXEC-HISTORY-DESIGN.md` | The v1.9.0 slice was replayed onto v1.8.1 main on 2026-11-17: 13 commits, 35 files (32 of them source), no source conflicts. Only CHANGELOG.md, docs/OPEN-WORK.md and the built defaultTheme `dist.tar.zst` conflicted; the documents keep both sides' additions and the archive was regenerated from the merged sources rather than merged (`npm install && npm run build`, then `node script/embed-theme.mjs`, 1138 files). The replayed tree builds with CGO, vets clean and passes the database/tasks, dbcore, sqlitetune, pkg/rpc, web/rpc/jsonrpc and web/router suites, plus frontend lint and 219 frontend tests. 8/8 CI evidence exists for `706685c`, `89b900c`, `34ee5e4` and `32c8485` (runs 43987832874, 43989372866, 44003074054, 44005959823); every later head needs its own run. The measured list cost replaced the per-parent queries: on a scratch database of 20 tasks x 1,000 results a page fell from 31-38 ms to 3.8-6.6 ms (8-9x), which also shortens how long the page holds the single main connection. Counts are now exact; the 1,000-row ceiling and `counts_truncated` are gone, and the contract records both. The 2026-11-17 review's malformed-row defect is fixed there: unaddressable rows are skipped and counted in `skipped_malformed`, the next cursor is minted from the last row actually fetched so a page of nothing but bad rows still advances, and a boundary that cannot travel sets `blocked` instead of disappearing. What remains is owner on-page acceptance of the history view and the normal release, backup and deploy gates; it is not deployed and involves no Agent rollout |
 | OIDC + 2FA makes SSO login fail-closed with no way for the browser to answer the challenge | `docs/ROADMAP.md` §F12 | Deliberately shipped as a gate, not half a state machine. Needs a one-time pending token plus a code prompt; production impact is zero while OIDC is off |
 | `sso_id` survives a password change, and `DeleteAllSessions()` is global | `database/accounts/` | Policy questions now that the SSO path requires TOTP; recommendation was (b)+(c) in the audit report |
 | A committed admin password from the SECRETS incident still has to be changed | `docs/SECRETS.md` incident 4 | An ops action on the live panel, not a repository change |
