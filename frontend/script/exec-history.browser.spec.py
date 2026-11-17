@@ -81,13 +81,13 @@ class ExecHistoryBrowserTest(unittest.TestCase):
             if (call.method === 'admin:listExecHistory') {
               if (window.failList) return json({error:'unavailable'}, 503);
               const task = call.params.cursor ? 'task-older' : 'task-current';
-              return json({jsonrpc:'2.0',id:1,result:{tasks:[{task_id:task,target_count:2,result_count:1,pending_count:1,success_count:0,failed_count:0,unknown_count:0,counts_truncated:false,earliest_result_time:'2026-11-05T02:00:00Z',time_incomplete:true,status:'incomplete'}],...(call.params.cursor ? {} : {next_cursor:'task-current'})}});
+              return json({jsonrpc:'2.0',id:1,result:{tasks:[{task_id:task,target_count:2,result_count:1,pending_count:1,success_count:0,failed_count:0,unknown_count:0,counts_truncated:false,earliest_result_time:'2026-11-05T02:00:00Z',time_incomplete:true,status:'incomplete'}],skipped_malformed:0,...(call.params.cursor ? {} : {next_cursor:'task-current'})}});
             }
             if (call.method === 'admin:getExecHistoryDetail') {
               if (window.holdDetail) await new Promise(resolve => { window.releaseDetail = resolve; });
               if (window.detailPaging && window.expireResults && call.params.cursor) return json({jsonrpc:'2.0',id:1,error:{code:-32000,message:'History not found'}});
               const next = window.detailPaging ? (call.params.cursor ? 'page-3' : 'page-2') : undefined;
-              return json({jsonrpc:'2.0',id:1,result:{task_id:call.params.task_id,results:[{cursor:'7',client:'deleted-node',client_truncated:false,created_at:'2026-11-05T02:00:00Z',finished_at:null,exit_code:null,output_bytes:window.largeOutput ? 9000000 : 41,output_available:!window.unsupportedOutput}],...(next ? {next_cursor:next} : {})}});
+              return json({jsonrpc:'2.0',id:1,result:{task_id:call.params.task_id,results:[{cursor:'7',client:'deleted-node',client_truncated:false,created_at:'2026-11-05T02:00:00Z',finished_at:null,exit_code:null,output_bytes:window.largeOutput ? 9000000 : 41,output_available:!window.unsupportedOutput}],skipped_malformed:0,...(next ? {next_cursor:next} : {})}});
             }
             if (call.method === 'admin:readExecHistoryChunk') {
               if (call.params.kind === 'command' && window.unsupportedCommand) return json({jsonrpc:'2.0',id:1,result:{data_base64:'',offset:call.params.offset,next_offset:call.params.offset,total_bytes:2,has_more:false,available:false}});

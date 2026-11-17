@@ -523,6 +523,7 @@
     "command": "Perintah",
     "showCommand": "Tampilkan perintah",
     "showOutput": "Tampilkan keluaran",
+"skippedMalformed": "{{count}} entri tidak dapat dibaca dan tidak ditampilkan.",
     "noResults": "Tugas ini tidak memiliki hasil tersimpan.",
     "pending": "Tertunda / tidak diketahui",
     "success": "Berhasil",

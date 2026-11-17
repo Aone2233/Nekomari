@@ -34,6 +34,16 @@ such as Hermes; avoid an incompatible replacement of `getTasks`.
   This replaces the earlier draft's `result_expired`: the cleanup path cannot
   establish that a missing result expired, so the status names only what
   the database still holds.
+- A row that cannot be addressed must not take the page with it. Skip it and
+  count it in `skipped_malformed` instead of failing the response. Unaddressable
+  means: a task ID longer than 36 bytes, invalid UTF-8 or a NUL; a client longer
+  than 128 bytes, invalid UTF-8 or a NUL; or a result identity that is not 32
+  lowercase hex characters. A client between 37 and 128 bytes stays addressable
+  and is shown with `client_truncated`, because the cursor carries its full value.
+  The count is per response window, not a distinct-row census, and paging
+  continues from the last addressable row: one bad row can no longer hide
+  everything behind it, while a run of bad rows at the very end of the table
+  still cannot be paged past, which the count makes visible instead of silent.
 - Use stable keyset pagination, a small fixed maximum page size, deterministic
   tie-breaking and bounded database queries. Current `tasks` rows lack a
   creation timestamp, and orphan parents are not chronologically sortable;

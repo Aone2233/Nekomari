@@ -24,6 +24,7 @@ const (
 	HistoryChunkBytes     = 16384
 	HistoryOffsetLimit    = 1<<53 - 1
 	HistorySQLiteMaxBytes = 16 << 20
+	HistoryClientMaxBytes = 128
 )
 
 var ErrInvalidHistoryParams = errors.New("invalid execution history parameters")
@@ -43,8 +44,9 @@ type HistorySummary struct {
 }
 
 type HistoryPage struct {
-	Tasks      []HistorySummary `json:"tasks"`
-	NextCursor string           `json:"next_cursor,omitempty"`
+	Tasks            []HistorySummary `json:"tasks"`
+	NextCursor       string           `json:"next_cursor,omitempty"`
+	SkippedMalformed int              `json:"skipped_malformed"`
 }
 
 type HistoryResult struct {
@@ -59,9 +61,10 @@ type HistoryResult struct {
 }
 
 type HistoryDetail struct {
-	TaskID     string          `json:"task_id"`
-	Results    []HistoryResult `json:"results"`
-	NextCursor string          `json:"next_cursor,omitempty"`
+	TaskID           string          `json:"task_id"`
+	Results          []HistoryResult `json:"results"`
+	NextCursor       string          `json:"next_cursor,omitempty"`
+	SkippedMalformed int             `json:"skipped_malformed"`
 }
 
 type HistoryChunk struct {
@@ -126,6 +129,14 @@ func validHistoryID(value string) bool {
 	return value != "" && len(value) <= 36 && utf8.ValidString(value) && !strings.ContainsRune(value, 0)
 }
 
+// A target client is normally a node UUID, but a legacy row may hold a longer
+// label. Rows up to this bound stay addressable (their full value is carried in
+// the cursor); longer, NUL-bearing or non-UTF-8 rows cannot be addressed and
+// are skipped and counted instead of failing the page.
+func validHistoryClient(value string) bool {
+	return value != "" && len(value) <= HistoryClientMaxBytes && utf8.ValidString(value) && !strings.ContainsRune(value, 0)
+}
+
 type historyResultCursor struct {
 	Client   string `json:"c"`
 	RowID    int64  `json:"r"`
@@ -167,7 +178,7 @@ func decodeResultCursor(encoded string) (historyResultCursor, error) {
 		RowID    *int64 `json:"r"`
 		Identity string `json:"i"`
 	}
-	if err != nil || json.Unmarshal(raw, &wire) != nil || !validHistoryID(wire.Client) || wire.RowID == nil || !validResultIdentity(wire.Identity) {
+	if err != nil || json.Unmarshal(raw, &wire) != nil || !validHistoryClient(wire.Client) || wire.RowID == nil || !validResultIdentity(wire.Identity) {
 		return historyResultCursor{}, ErrInvalidHistoryParams
 	}
 	cursor = historyResultCursor{Client: wire.Client, RowID: *wire.RowID, Identity: wire.Identity}
@@ -226,18 +237,23 @@ func listHistory(db *gorm.DB, cursor string) (HistoryPage, error) {
 	if err != nil {
 		return HistoryPage{}, err
 	}
+	page := HistoryPage{Tasks: make([]HistorySummary, 0, HistoryPageSize)}
+	more := len(parents) > HistoryPageSize
+	if more {
+		parents = parents[:HistoryPageSize]
+	}
+	// A malformed parent must not take the whole list with it. Skip it, count it
+	// in the response, and keep paging from the last addressable row. A run of
+	// malformed rows at the very end of the table cannot be paged past; the
+	// count makes that visible instead of silent.
+	var lastTaskID string
+	var lastOrder int64
 	for _, parent := range parents {
 		if !validHistoryID(parent.TaskID) || parent.HistoryOrder <= 0 {
-			return HistoryPage{}, ErrInvalidHistoryParams
+			page.SkippedMalformed++
+			continue
 		}
-	}
-	page := HistoryPage{Tasks: make([]HistorySummary, 0, HistoryPageSize)}
-	if len(parents) > HistoryPageSize {
-		parents = parents[:HistoryPageSize]
-		last := parents[len(parents)-1]
-		page.NextCursor = encodeTaskCursor(last.HistoryOrder, last.TaskID)
-	}
-	for _, parent := range parents {
+		lastTaskID, lastOrder = parent.TaskID, parent.HistoryOrder
 		var results []struct {
 			CreatedAt  *time.Time
 			FinishedAt *time.Time
@@ -282,6 +298,9 @@ func listHistory(db *gorm.DB, cursor string) (HistoryPage, error) {
 		}
 		page.Tasks = append(page.Tasks, summary)
 	}
+	if more && lastTaskID != "" {
+		page.NextCursor = encodeTaskCursor(lastOrder, lastTaskID)
+	}
 	return page, nil
 }
 
@@ -325,7 +344,7 @@ func getHistoryDetail(db *gorm.DB, taskID, cursor string) (HistoryDetail, error)
 		OutputBytes     int64
 		OutputAvailable bool
 	}
-	query := `SELECT rowid AS row_id, CAST(substr(CAST(client AS BLOB), 1, 37) AS TEXT) AS client, length(CAST(client AS BLOB)) > 36 AS client_truncated, created_at, CASE WHEN octet_length(history_identity) = 32 THEN CAST(history_identity AS TEXT) ELSE '' END AS identity, finished_at, exit_code, coalesce(octet_length(result), 0) AS output_bytes, typeof(result) IN ('null', 'text', 'blob') AS output_available FROM task_results AS r WHERE task_id = ? `
+	query := `SELECT rowid AS row_id, CASE WHEN octet_length(client) <= 128 AND instr(CAST(client AS BLOB), x'00') = 0 THEN CAST(client AS TEXT) ELSE '' END AS client, octet_length(client) > 36 AS client_truncated, created_at, CASE WHEN octet_length(history_identity) = 32 THEN CAST(history_identity AS TEXT) ELSE '' END AS identity, finished_at, exit_code, coalesce(octet_length(result), 0) AS output_bytes, typeof(result) IN ('null', 'text', 'blob') AS output_available FROM task_results AS r WHERE task_id = ? `
 	if cursor == "" {
 		err = db.Raw(query+`ORDER BY r.client, rowid LIMIT ?`, taskID, HistoryResultPageSize+1).Scan(&rows).Error
 	} else {
@@ -343,19 +362,36 @@ func getHistoryDetail(db *gorm.DB, taskID, cursor string) (HistoryDetail, error)
 		return HistoryDetail{}, err
 	}
 	detail := HistoryDetail{TaskID: taskID, Results: make([]HistoryResult, 0, HistoryResultPageSize)}
-	if len(rows) > HistoryResultPageSize {
+	more := len(rows) > HistoryResultPageSize
+	if more {
 		rows = rows[:HistoryResultPageSize]
-		last := rows[len(rows)-1]
-		if last.ClientTruncated || !validHistoryID(last.Client) || !validResultIdentity(last.Identity) {
-			return HistoryDetail{}, ErrInvalidHistoryParams
-		}
-		detail.NextCursor = encodeResultCursor(last.Client, last.RowID, last.Identity)
 	}
+	// An unaddressable row is skipped and counted instead of failing the page:
+	// without a usable client and identity it cannot be carried in a cursor, and
+	// one such row would otherwise hide every result behind it.
+	var last historyResultCursor
+	var haveLast bool
 	for _, row := range rows {
-		if row.ClientTruncated || !validHistoryID(row.Client) || !validResultIdentity(row.Identity) {
-			return HistoryDetail{}, ErrInvalidHistoryParams
+		if !validHistoryClient(row.Client) || !validResultIdentity(row.Identity) {
+			detail.SkippedMalformed++
+			continue
 		}
-		detail.Results = append(detail.Results, HistoryResult{Cursor: encodeResultCursor(row.Client, row.RowID, row.Identity), Client: row.Client, ClientTruncated: row.ClientTruncated, CreatedAt: row.CreatedAt, FinishedAt: row.FinishedAt, ExitCode: row.ExitCode, OutputBytes: row.OutputBytes, OutputAvailable: row.OutputAvailable})
+		cursor := encodeResultCursor(row.Client, row.RowID, row.Identity)
+		last = historyResultCursor{Client: row.Client, RowID: row.RowID, Identity: row.Identity}
+		haveLast = true
+		detail.Results = append(detail.Results, HistoryResult{
+			Cursor:          cursor,
+			Client:          row.Client,
+			ClientTruncated: row.ClientTruncated,
+			CreatedAt:       row.CreatedAt,
+			FinishedAt:      row.FinishedAt,
+			ExitCode:        row.ExitCode,
+			OutputBytes:     row.OutputBytes,
+			OutputAvailable: row.OutputAvailable,
+		})
+	}
+	if more && haveLast {
+		detail.NextCursor = encodeResultCursor(last.Client, last.RowID, last.Identity)
 	}
 	return detail, nil
 }

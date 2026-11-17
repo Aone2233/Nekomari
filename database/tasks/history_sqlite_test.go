@@ -269,7 +269,7 @@ func TestHistoryVacuumCannotRetargetDuplicateResultCursor(t *testing.T) {
 	}
 }
 
-func TestHistoryMissingOrMalformedIdentityFailsClosed(t *testing.T) {
+func TestHistoryMissingOrMalformedIdentityIsSkippedButCursorsFailClosed(t *testing.T) {
 	db, _ := historyWALFixture(t)
 	if err := db.Exec(`DROP TRIGGER task_results_assign_history_identity`).Error; err != nil {
 		t.Fatal(err)
@@ -278,8 +278,35 @@ func TestHistoryMissingOrMalformedIdentityFailsClosed(t *testing.T) {
 		if err := db.Exec(`UPDATE task_results SET history_identity = ? WHERE rowid = 1`, bad).Error; err != nil {
 			t.Fatal(err)
 		}
-		if _, err := getHistoryDetail(db, "fixture", ""); !errors.Is(err, ErrInvalidHistoryParams) {
-			t.Fatalf("malformed identity did not fail closed: %v", err)
+		detail, err := getHistoryDetail(db, "fixture", "")
+		if err != nil {
+			t.Fatalf("malformed identity failed the page: %v", err)
 		}
+		if detail.SkippedMalformed != 1 || len(detail.Results) != 0 {
+			t.Fatalf("detail = %+v, want one skipped row", detail)
+		}
+		if _, err := decodeResultCursor(encodeResultCursor("node", 1, "UPPERCASE")); !errors.Is(err, ErrInvalidHistoryParams) {
+			t.Fatalf("malformed identity accepted in a cursor")
+		}
+	}
+}
+
+func TestHistoryMalformedParentIsSkippedAndOrderKept(t *testing.T) {
+	db, _ := historyWALFixture(t)
+	if err := db.Exec(`INSERT INTO tasks VALUES (?, '[]', '', 2)`, strings.Repeat("y", 40)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO tasks VALUES ('older', '[]', '', 3)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	page, err := listHistory(db, "")
+	if err != nil {
+		t.Fatalf("malformed parent failed the page: %v", err)
+	}
+	if page.SkippedMalformed != 1 || len(page.Tasks) != 2 {
+		t.Fatalf("page = %+v", page)
+	}
+	if page.Tasks[0].TaskID != "older" || page.Tasks[1].TaskID != "fixture" {
+		t.Fatalf("unexpected order: %+v", page.Tasks)
 	}
 }

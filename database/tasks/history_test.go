@@ -394,7 +394,7 @@ func TestHistoryOutputMayChangeBetweenChunks(t *testing.T) {
 	}
 }
 
-func TestHistoryMalformedIdentityFailsClosed(t *testing.T) {
+func TestHistoryMalformedTargetsAreSkippedNotFatal(t *testing.T) {
 	db := dbcore.GetDBInstance()
 	id := "history-malformed-test"
 	t.Cleanup(func() {
@@ -404,16 +404,46 @@ func TestHistoryMalformedIdentityFailsClosed(t *testing.T) {
 	if err := CreateTask(id, nil, "synthetic"); err != nil {
 		t.Fatal(err)
 	}
-	for _, client := range []string{strings.Repeat("x", 1<<20), "client\x00suffix", strings.Repeat("界", 13)} {
+	long := strings.Repeat("\u754c", 13) // 39 bytes: addressable, shown truncated
+	insert := func(client string) {
 		if err := db.Exec(`INSERT INTO task_results(task_id,client,result,created_at) VALUES(?,?,'secret','2026-11-05 00:00:00+00:00')`, id, client).Error; err != nil {
 			t.Fatal(err)
 		}
-		if _, err := GetHistoryDetail(t.Context(), id, ""); !errors.Is(err, ErrInvalidHistoryParams) {
-			t.Fatalf("malformed client identity accepted: %v", err)
+	}
+	insert(strings.Repeat("x", 1<<20))
+	insert("client\x00suffix")
+	insert(long)
+	insert("node-ok")
+	detail, err := GetHistoryDetail(t.Context(), id, "")
+	if err != nil {
+		t.Fatalf("one malformed target hid the whole page: %v", err)
+	}
+	if detail.SkippedMalformed != 2 {
+		t.Fatalf("skipped = %d, want 2", detail.SkippedMalformed)
+	}
+	if len(detail.Results) != 2 {
+		t.Fatalf("results = %d, want 2", len(detail.Results))
+	}
+	seen := map[string]bool{}
+	longCursor := ""
+	for _, result := range detail.Results {
+		seen[result.Client] = true
+		if result.Client == long {
+			longCursor = result.Cursor
+			if !result.ClientTruncated {
+				t.Errorf("39-byte client not marked truncated")
+			}
 		}
-		if err := db.Exec("DELETE FROM task_results WHERE task_id = ?", id).Error; err != nil {
-			t.Fatal(err)
+		if result.Client == "node-ok" && result.ClientTruncated {
+			t.Errorf("36-byte client marked truncated")
 		}
+	}
+	if !seen[long] || !seen["node-ok"] {
+		t.Fatalf("addressable rows missing: %+v", seen)
+	}
+	chunk, err := ReadHistoryChunk(t.Context(), id, "output", longCursor, 0)
+	if err != nil || !chunk.Available || string(chunk.Data) != "secret" {
+		t.Fatalf("long client cursor unusable: %q %v", chunk.Data, err)
 	}
 }
 

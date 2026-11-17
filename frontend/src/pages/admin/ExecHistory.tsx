@@ -17,12 +17,12 @@ const summarySchema = z.object({
   earliest_result_time: date, time_incomplete: z.boolean(),
   status: z.enum(["retained", "incomplete", "no_retained_results"]),
 });
-const pageSchema = z.object({ tasks: z.array(summarySchema).max(20), next_cursor: taskCursor.optional() });
+const pageSchema = z.object({ tasks: z.array(summarySchema).max(20), next_cursor: taskCursor.optional(), skipped_malformed: nonnegative });
 const resultSchema = z.object({
   cursor: resultCursor, client: z.string().max(128), client_truncated: z.boolean(), created_at: date,
   finished_at: date, exit_code: z.number().int().nullable(), output_bytes: nonnegative, output_available: z.boolean(),
 });
-const detailSchema = z.object({ task_id: z.string().min(1).max(36), results: z.array(resultSchema).max(20), next_cursor: resultCursor.optional() });
+const detailSchema = z.object({ task_id: z.string().min(1).max(36), results: z.array(resultSchema).max(20), next_cursor: resultCursor.optional(), skipped_malformed: nonnegative });
 const chunkSchema = z.object({
   data_base64: z.string().max(22000), offset: nonnegative, next_offset: nonnegative,
   total_bytes: nonnegative, has_more: z.boolean(), available: z.boolean(),
@@ -182,6 +182,7 @@ function TaskDetail({ taskID, id }: { taskID: string; id: string }) {
       <Button size="1" variant="soft" onClick={() => void load("", [""])}>{t("execHistory.refresh")}</Button>
     </Flex>}
     {detail && <>
+      {detail.skipped_malformed > 0 && <Text size="2" color="orange" role="status">{t("execHistory.skippedMalformed", { count: detail.skipped_malformed })}</Text>}
       {detail.results.length === 0 && <Text size="2" color="gray">{t("execHistory.noResults")}</Text>}
       {detail.results.map((result) => {
         const name = nodeDetail.find((node) => node.uuid === result.client)?.name || result.client;
@@ -250,6 +251,7 @@ export default function ExecHistory() {
         {loading && <Text size="2" role="status">{t("execHistory.loading")}</Text>}
         {error && <Flex gap="2" align="center"><Text size="2" color="red" role="alert">{t("execHistory.error")}</Text><Button size="1" onClick={() => void load(cursorStack[cursorIndex], cursorStack, cursorIndex)}>{t("execHistory.retry")}</Button></Flex>}
         {page && <>
+          {page.skipped_malformed > 0 && <Text size="2" color="orange" role="status">{t("execHistory.skippedMalformed", { count: page.skipped_malformed })}</Text>}
           {page.tasks.length === 0 && <Text size="2" color="gray">{t("execHistory.empty")}</Text>}
           {page.tasks.map((task) => <Card key={task.task_id} className="min-w-0 p-3">
             <Flex direction="column" gap="2">

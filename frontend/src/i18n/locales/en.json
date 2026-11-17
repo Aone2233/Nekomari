@@ -309,6 +309,7 @@
     "command": "Command",
     "showCommand": "Show command",
     "showOutput": "Show output",
+"skippedMalformed": "{{count}} entries could not be read and are not displayed.",
     "noResults": "This task has no retained results.",
     "pending": "Pending / unknown",
     "success": "Success",

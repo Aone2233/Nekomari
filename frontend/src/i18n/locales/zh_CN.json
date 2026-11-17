@@ -523,6 +523,7 @@
     "command": "命令",
     "showCommand": "显示命令",
     "showOutput": "显示输出",
+"skippedMalformed": "{{count}} 条记录无法读取，未显示。",
     "noResults": "该任务没有保留的结果。",
     "pending": "未完成／状态未知",
     "success": "成功",

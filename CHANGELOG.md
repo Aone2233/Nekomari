@@ -16,7 +16,8 @@ Nekomari's own.
   tasks were SQL fixtures, not Agent-dispatched commands. The CSV owner
   acceptance and normal release/backup gates still apply. Rebased onto v1.8.1 main on
   2026-11-17; the embedded default theme was regenerated from the merged sources. See
-  `docs/EXEC-HISTORY-DESIGN.md`.
+  Unaddressable legacy rows are skipped and counted rather than failing the page.
+  See `docs/EXEC-HISTORY-DESIGN.md`.
 
 ### v1.8.1 candidate — probe correctness
 

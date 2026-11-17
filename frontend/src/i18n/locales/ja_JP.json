@@ -523,6 +523,7 @@
     "command": "コマンド",
     "showCommand": "コマンドを表示",
     "showOutput": "出力を表示",
+"skippedMalformed": "{{count}} 件を読み取れなかったため表示していません。",
     "noResults": "保存された結果はありません。",
     "pending": "未完了／不明",
     "success": "成功",
