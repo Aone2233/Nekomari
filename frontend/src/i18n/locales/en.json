@@ -290,6 +290,7 @@
     "close": "Close history",
     "warning": "Commands and outputs may contain secrets. Results may be cleaned up after 30 days; command records are not automatically deleted with results. Do not share with unauthorized people.",
     "ordering": "Ordered by recorded database insertion, not execution time; history may change while paging or after database maintenance.",
+"output": "Output",
     "loading": "Loading history…",
     "error": "History could not be read. Try again.",
     "unsupportedField": "This command or output has an unsupported format and cannot be viewed. The stored data has not been changed.",

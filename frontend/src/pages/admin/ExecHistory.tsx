@@ -31,9 +31,15 @@ type Page = z.infer<typeof pageSchema>;
 type Detail = z.infer<typeof detailSchema>;
 type Chunk = z.infer<typeof chunkSchema>;
 const maxCursorPages = 100;
+const detailPanelID = "exec-history-detail";
 
+// The first entry is the root cursor (newest page). On overflow drop the oldest
+// intermediate cursor rather than the root, so paging back always still ends at
+// the newest page instead of stranding the reader mid-history.
 function appendCursor<T>(values: T[], value: T): T[] {
-  return [...values, value].slice(-maxCursorPages);
+  const stack = [...values, value];
+  if (stack.length > maxCursorPages) stack.splice(1, 1);
+  return stack;
 }
 
 async function readHistory<T>(method: string, params: object, schema: z.ZodType<T>, signal: AbortSignal): Promise<T> {
@@ -110,7 +116,7 @@ function ChunkViewer({ taskID, kind, resultCursor }: { taskID: string; kind: "co
       </>}
       {chunk?.available && <>
         <Text as="p" size="1" color="gray">{t("execHistory.chunkPosition", { start: chunk.offset, end: chunk.next_offset, total: chunk.total_bytes })}</Text>
-        <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--gray-2)] p-3 font-mono text-sm">{text || t("execHistory.emptyText")}</pre>
+        <pre tabIndex={0} aria-label={t(kind === "command" ? "execHistory.command" : "execHistory.output")} className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--gray-2)] p-3 font-mono text-sm">{text || t("execHistory.emptyText")}</pre>
         <Flex gap="2" wrap="wrap">
           <Button size="1" variant="soft" disabled={loading || offsets.length <= 1} onClick={() => {
             const previous = offsets.slice(0, -1);
@@ -128,7 +134,7 @@ function ChunkViewer({ taskID, kind, resultCursor }: { taskID: string; kind: "co
   );
 }
 
-function TaskDetail({ taskID }: { taskID: string }) {
+function TaskDetail({ taskID, id }: { taskID: string; id: string }) {
   const { t } = useTranslation();
   const { nodeDetail } = useNodeDetails();
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -165,7 +171,7 @@ function TaskDetail({ taskID }: { taskID: string }) {
     void fetchDetail("", [""], controller);
     return () => controller.abort();
   }, [fetchDetail]);
-  return <div className="min-w-0 space-y-3 border-t border-[var(--gray-a5)] pt-3">
+  return <div id={id} className="min-w-0 space-y-3 border-t border-[var(--gray-a5)] pt-3">
     <Text as="p" size="2" weight="medium">{t("execHistory.command")}</Text>
     <ChunkViewer taskID={taskID} kind="command" />
     <Text as="p" size="1" color="gray">{t("execHistory.liveChunks")}</Text>
@@ -249,14 +255,14 @@ export default function ExecHistory() {
             <Flex direction="column" gap="2">
               <Flex align="center" justify="between" gap="2" wrap="wrap">
                 <Text weight="medium" className="break-all">{task.task_id}</Text>
-                <Button size="1" variant="soft" aria-expanded={selected === task.task_id} onClick={() => setSelected(selected === task.task_id ? null : task.task_id)}>{t(selected === task.task_id ? "execHistory.hideDetails" : "execHistory.showDetails")}</Button>
+                <Button size="1" variant="soft" aria-expanded={selected === task.task_id} aria-controls={selected === task.task_id ? detailPanelID : undefined} onClick={() => setSelected(selected === task.task_id ? null : task.task_id)}>{t(selected === task.task_id ? "execHistory.hideDetails" : "execHistory.showDetails")}</Button>
               </Flex>
               <Text size="2" color="gray">{t("execHistory.targets", { count: task.target_count ?? t("execHistory.unknown") })} · {t("execHistory.counts", { pending: task.pending_count, success: task.success_count, failed: task.failed_count, unknown: task.unknown_count })}</Text>
               <Text size="1" color="gray">{task.earliest_result_time ? t("execHistory.earliest", { time: formatTime(task.earliest_result_time) ?? t("execHistory.unknown") }) : t("execHistory.timeUnknown")}</Text>
               {task.status !== "retained" && <Text size="1" color="orange">{t(task.status === "no_retained_results" ? "execHistory.noRetained" : "execHistory.incomplete")}</Text>}
               {task.counts_truncated && <Text size="1" color="orange">{t("execHistory.countsTruncated")}</Text>}
               {task.time_incomplete && task.earliest_result_time && <Text size="1" color="gray">{t("execHistory.timeIncomplete")}</Text>}
-              {selected === task.task_id && <TaskDetail key={task.task_id} taskID={task.task_id} />}
+              {selected === task.task_id && <TaskDetail key={task.task_id} id={detailPanelID} taskID={task.task_id} />}
             </Flex>
           </Card>)}
           <Flex gap="2" wrap="wrap">

@@ -64,6 +64,9 @@ static void history_blob_chunk(sqlite3_context *ctx, int argc, sqlite3_value **a
         else sqlite3_result_error(ctx, "cannot close history blob", -1);
         return;
     }
+    // The two casts below narrow to int, but they are unreachable for values
+    // beyond INT_MAX: any offset >= size returns an empty blob first, and a
+    // blob's size is itself an int (<= 16 MiB under the history limit).
     int count = size - (int)offset;
     if (count > HISTORY_CHUNK_BYTES) count = HISTORY_CHUNK_BYTES;
     unsigned char data[HISTORY_CHUNK_BYTES];

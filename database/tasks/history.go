@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -80,7 +81,7 @@ func historyDB(ctx context.Context) *gorm.DB {
 // Guard other malformed fields from SQLite materialization. Constrain only
 // the exclusively leased connection, then restore its previous pool setting.
 func withHistoryLimit(db *gorm.DB, query func(*gorm.DB) error) error {
-	return db.Connection(func(tx *gorm.DB) error {
+	return db.Connection(func(tx *gorm.DB) (err error) {
 		conn, ok := tx.Statement.ConnPool.(*sql.Conn)
 		if !ok {
 			return errors.New("history requires a dedicated SQLite connection")
@@ -101,10 +102,22 @@ func withHistoryLimit(db *gorm.DB, query func(*gorm.DB) error) error {
 		}); err != nil {
 			return err
 		}
-		defer conn.Raw(func(driverConn any) error {
-			driverConn.(*sqlite3.SQLiteConn).SetLimit(sqlite3.SQLITE_LIMIT_LENGTH, previous)
-			return nil
-		})
+		// A dropped restore error would leave the shared main connection at the
+		// reduced limit for the process lifetime, so unrelated large writes would
+		// fail with "string or blob too big" until a restart. Report it instead.
+		defer func() {
+			restoreErr := conn.Raw(func(driverConn any) error {
+				sqliteConn, ok := driverConn.(*sqlite3.SQLiteConn)
+				if !ok {
+					return errors.New("history requires the SQLite driver")
+				}
+				sqliteConn.SetLimit(sqlite3.SQLITE_LIMIT_LENGTH, previous)
+				return nil
+			})
+			if restoreErr != nil && err == nil {
+				err = fmt.Errorf("restore SQLite length limit: %w", restoreErr)
+			}
+		}()
 		return query(tx)
 	})
 }
