@@ -87,12 +87,19 @@ The implementation exposes three JSON-RPC methods through the existing
 no-store `/api/rpc2`: `admin:listExecHistory`, `admin:getExecHistoryDetail`
 and `admin:readExecHistoryChunk`, all explicitly scoped to `tasks:read`.
 Each list is limited to 20 rows, and a page's counts come from one aggregate
-statement over that page's task IDs: they are exact, because no result rows reach
-Go, so a per-task ceiling would only have made the numbers wrong. Measured on a
-scratch database of 20 tasks x 1,000 results, a page took 31-38 ms with the
-previous one-query-per-parent path and 3.8-6.6 ms with the aggregate; since the
-history request leases the single main connection (`SetMaxOpenConns(1)`), that
-duration is also the window in which other database work waits. Command or
+statement over that page's task IDs, so they are exact. The earlier per-task
+`LIMIT 1001` did bound how long one parent could cost, but it did so by making
+the numbers wrong; the aggregate trades that bound for one that holds per page:
+twenty indexed seeks, index-only counting, the ten-second work deadline and the
+driver's interrupt handler. The earliest retained time is chosen by
+`min(julianday(created_at))`, so it orders instants rather than text and is
+reported to the millisecond, and a summary whose results all have unusable
+timestamps reports `time_incomplete` instead of omitting the time quietly.
+Measured on a scratch database of 20 tasks x 1,000 results, a page took
+31-38 ms with the previous one-query-per-parent path and 3.8-6.6 ms with the
+aggregate; since the history request leases the single main connection
+(`SetMaxOpenConns(1)`), that duration is also the window in which other database
+work waits. Command or
 output text is only read on a separate user action in byte-bounded 16 KiB
 chunks, encoded as base64. The browser renders decoded text, never HTML; invalid UTF-8 bytes are
 shown as replacement characters, while the API preserves the original bytes.

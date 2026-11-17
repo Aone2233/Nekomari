@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -458,5 +459,81 @@ func TestHistoryBoundaryPrefersTheLastTravelableRow(t *testing.T) {
 	}
 	if second.SkippedMalformed == 0 {
 		t.Fatalf("second page = %+v, want the untravelable row counted again", second)
+	}
+}
+
+func TestHistoryAggregateOrdersInstantsNotText(t *testing.T) {
+	db, _ := historyWALFixture(t)
+	if err := db.Exec(`DELETE FROM task_results`).Error; err != nil {
+		t.Fatal(err)
+	}
+	// The same day written with two offsets: 01:00-05:00 is 06:00Z, so a text
+	// minimum would report 06:00Z instead of the true earliest, 02:00Z.
+	for _, row := range []struct{ client, at string }{
+		{"b", "2026-11-05 01:00:00-05:00"},
+		{"a", "2026-11-05 02:00:00+00:00"},
+	} {
+		if err := db.Exec(`INSERT INTO task_results(task_id,client,result,created_at) VALUES('fixture',?,'r',?)`, row.client, row.at).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := listHistory(db, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := page.Tasks[0].EarliestResultTime
+	if got == nil || !got.Equal(time.Date(2026, 11, 5, 2, 0, 0, 0, time.UTC)) {
+		t.Fatalf("earliest = %v, want 02:00Z", got)
+	}
+}
+
+func TestHistoryAggregateFlagsUnorderableTimestamps(t *testing.T) {
+	db, _ := historyWALFixture(t)
+	if err := db.Exec(`DELETE FROM task_results`).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, at := range []string{"garbage", ""} {
+		if err := db.Exec(`INSERT INTO task_results(task_id,client,result,created_at) VALUES('fixture',?,?,?)`, at, "r", at).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := listHistory(db, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary := page.Tasks[0]
+	if summary.ResultCount != 2 || summary.EarliestResultTime != nil || !summary.TimeIncomplete {
+		t.Fatalf("summary = %+v, want two results, no earliest and an incomplete time", summary)
+	}
+}
+
+func TestHistoryAggregateCountsAreExhaustive(t *testing.T) {
+	db, _ := historyWALFixture(t)
+	if err := db.Exec(`DELETE FROM task_results`).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range []struct {
+		finished any
+		exit     any
+	}{
+		{nil, nil},                         // pending
+		{"2026-11-05 02:00:05+00:00", nil}, // unknown
+		{"2026-11-05 02:00:05+00:00", 0},   // success
+		{"2026-11-05 02:00:05+00:00", 7},   // failed
+	} {
+		if err := db.Exec(`INSERT INTO task_results(task_id,client,result,created_at,finished_at,exit_code) VALUES('fixture',?,'r','2026-11-05 02:00:00+00:00',?,?)`, fmt.Sprint(row.finished), row.finished, row.exit).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := listHistory(db, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := page.Tasks[0]
+	if s.ResultCount != 4 || s.PendingCount != 1 || s.UnknownCount != 1 || s.SuccessCount != 1 || s.FailedCount != 1 {
+		t.Fatalf("summary = %+v", s)
+	}
+	if s.PendingCount+s.UnknownCount+s.SuccessCount+s.FailedCount != s.ResultCount {
+		t.Fatalf("counts do not add up: %+v", s)
 	}
 }

@@ -254,8 +254,10 @@ func summariseResults(db *gorm.DB, parents []historyParent) (map[string]historyA
 		Success     int
 		Failed      int
 		MissingTime int
-		// created_at is stored as text, so the aggregate comes back as one; the
-		// UTC form keeps it parseable whatever offset the row was written with.
+		// created_at is text, so min() would order it lexicographically and pick
+		// the wrong row whenever offsets differ. julianday orders instants; the
+		// formatted value is UTC to the millisecond, which is the resolution this
+		// list displays.
 		Earliest *string
 	}
 	err := db.Raw(`SELECT task_id, count(*) AS total,
@@ -264,23 +266,28 @@ func summariseResults(db *gorm.DB, parents []historyParent) (map[string]historyA
 		sum(CASE WHEN finished_at IS NOT NULL AND exit_code = 0 THEN 1 ELSE 0 END) AS success,
 		sum(CASE WHEN finished_at IS NOT NULL AND exit_code IS NOT NULL AND exit_code <> 0 THEN 1 ELSE 0 END) AS failed,
 		sum(CASE WHEN created_at IS NULL THEN 1 ELSE 0 END) AS missing_time,
-		strftime('%Y-%m-%dT%H:%M:%fZ', min(created_at)) AS earliest
+		strftime('%Y-%m-%dT%H:%M:%fZ', min(julianday(created_at))) AS earliest
 		FROM task_results WHERE task_id IN (`+strings.Join(placeholders, ",")+`) GROUP BY task_id`, args...).Scan(&rows).Error
 	if err != nil {
 		return nil, err
 	}
 	for _, row := range rows {
 		var earliest *time.Time
+		missing := row.MissingTime
 		if row.Earliest != nil {
 			parsed, err := time.Parse(time.RFC3339Nano, *row.Earliest)
 			if err != nil {
 				return nil, fmt.Errorf("parse earliest result time: %w", err)
 			}
 			earliest = &parsed
+		} else if row.Total > 0 {
+			// Results exist but none of their timestamps could be ordered, so the
+			// summary must say the time is incomplete rather than omit it quietly.
+			missing++
 		}
 		out[row.TaskID] = historyAggregate{
 			Total: row.Total, Pending: row.Pending, Unknown: row.Unknown,
-			Success: row.Success, Failed: row.Failed, MissingTime: row.MissingTime,
+			Success: row.Success, Failed: row.Failed, MissingTime: missing,
 			Earliest: earliest,
 		}
 	}

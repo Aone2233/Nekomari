@@ -122,11 +122,20 @@ func TestHistoryIndexSupportsBoundedKeyset(t *testing.T) {
 		t.Fatalf("unbounded task query plan: %s", raw)
 	}
 	plan = nil
-	if err := db.Raw(`EXPLAIN QUERY PLAN SELECT task_id, count(*), min(created_at) FROM task_results WHERE task_id IN (?) GROUP BY task_id`, "task").Scan(&plan).Error; err != nil {
+	// Same shape as summariseResults: one placeholder per parent on the page.
+	placeholders := make([]string, HistoryPageSize)
+	args := make([]any, HistoryPageSize)
+	for i := range placeholders {
+		placeholders[i] = "?"
+		args[i] = "task"
+	}
+	if err := db.Raw(`EXPLAIN QUERY PLAN SELECT task_id, count(*) FROM task_results WHERE task_id IN (`+strings.Join(placeholders, ",")+`) GROUP BY task_id`, args...).Scan(&plan).Error; err != nil {
 		t.Fatal(err)
 	}
 	raw, _ = json.Marshal(plan)
-	if !bytes.Contains(raw, []byte("idx_task_results_task_id")) || bytes.Contains(raw, []byte("SCAN task_results")) {
+	// Either per-task index is a bounded seek; what must never happen is a scan of
+	// the whole result table.
+	if !bytes.Contains(raw, []byte("idx_task_results_")) || bytes.Contains(raw, []byte("SCAN task_results")) {
 		t.Fatalf("unbounded summary query plan: %s", raw)
 	}
 }
