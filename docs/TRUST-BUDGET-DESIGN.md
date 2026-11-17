@@ -71,9 +71,9 @@ Factors, each with the exact input and the threshold at which it reaches 0:
 | Factor | Computed from | 1.0 when | 0.0 when |
 |---|---|---|---|
 | `completeness` | scheduled slots for each task in the window ÷ points actually stored | every scheduled sample exists | no sample exists |
-| `usability` | stored points whose `quality` is `ok` ÷ stored points; samples the agent classified as unknowable are counted separately and are **not** silently treated as missing | 0 % unusable | ≥ 20 % unusable |
-| `clock` | \|offset\| between agent and panel, from the WS handshake minimum-RTT exchange, per agent report | ≤ 10 ms | ≥ 200 ms, or the agent never reports one |
-| `reconciliation` | mismatched rollup rows ÷ compared rollup rows for the window | 0 mismatches | any mismatch outside the in-flight grace period |
+| `usability` | quality outcomes counted at ingest — `ok`, unknowable, dropped — for the window; a sample the agent classified as unknowable is counted as such and is **not** silently treated as missing | 0 % unusable | ≥ 20 % unusable |
+| `clock` | \|offset\| between agent and panel: the smallest observed (panel receive time − agent sampled time) for the window, which is a lower bound on the one-way delay and therefore an upper bound on the offset | ≤ 10 ms | ≥ 200 ms, or no report carried both timestamps |
+| `reconciliation` | coarse buckets whose `count`/`sum`/`min`/`max` disagree with the fine rows they cover ÷ compared buckets | 0 mismatches | any mismatch outside the in-flight grace period |
 | `schedule` | p95 delay between a task's due time and the timestamp of the sample it produced | ≤ 1 s | ≥ 30 s |
 
 Interpolation between the two thresholds is linear; the thresholds are
@@ -144,9 +144,48 @@ definition above.
 3. **`disk` unknown has no reason.** The quality gate correctly drops the field,
    but nothing records *why*, so `usability` cannot distinguish a broken agent
    from an empty optical drive.
-4. **Clock offset is not observed at all.** No factor can be computed until the
-   agent reports one; the v1.8.1 calibration record lists clock changes as an
-   open limitation.
+4. **The report carries the timestamps and the clock is still unobserved.** The
+   wire format already has `sampled_at` (agent clock) and `received_at` (panel
+   clock), and `Quality` per field — but the store keeps neither, so neither the
+   clock factor nor the usability factor can be computed from stored data. They
+   have to be counted at ingest, which is a schema and write-path change, not an
+   agent change. The v1.8.1 calibration record lists clock changes as an open
+   limitation for the same reason.
+
+## Measurement (2026-11-17)
+
+`deploy/trust-budget-probe.py` builds a throwaway database with the store's own
+schema and times the candidate queries: 50 nodes × 6 metrics (300 series), one
+minute rollups for a day, five minute rollups for a week, 1.04 M rollup rows,
+95 MB, SQLite on the same host as the panel.
+
+| Query | Window | Time |
+|---|---|---|
+| completeness | 1 hour, all series | 7 ms |
+| completeness | 24 hours, all series | 184 ms |
+| schedule lag (average and maximum first-sample offset) | 1 hour | 9 ms |
+| reconciliation, bucket-aligned join | 1 hour | 1.26 s |
+| reconciliation, totals-only join | 1 hour | 16 s |
+| reconciliation, coarse-driven, planner's index | 1 hour | 1.28 s |
+| reconciliation, coarse-driven, forced unique index | 1 hour | 0.51 s |
+
+Three things follow, and two of them change the design above:
+
+1. Completeness and schedule lag are cheap enough to run hourly over every
+   series. The production fleet is about 100 series, so these numbers are an
+   upper bound rather than a forecast.
+2. Reconciliation is not cheap and its cost is a property of the query shape,
+   not of the data: the totals-only join is thirty times the bucket-aligned one
+   because the planner multiplies the window against itself, and the
+   coarse-driven shape halves again once the inner lookup is forced onto the
+   unique `(series_id, resolution_id, label_id, bucket_milli)` index. The job
+   therefore compares a rolling two-hour slice every hour with the coarse-driven
+   query and a forced index, and sweeps retention in nightly chunks — never a
+   whole retention window inside one request.
+3. `clock` and `usability` cannot be computed from anything the store keeps
+   today: no rollup row records when the panel received a sample, and none
+   records the quality outcome of a report field. Both exist on the wire only.
+   Recording them at ingest is a prerequisite, listed above as item 4.
 
 ## Failure modes this must not introduce
 
