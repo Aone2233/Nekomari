@@ -1,8 +1,8 @@
 # Remote execution history: design and safety contract
 
-Status: implemented on branch `codex/exec-history-reconcile`, replayed onto v1.8.1
-main on 2026-11-17; not released or deployed. Its own exact-commit CI, CSV owner
-browser acceptance and the normal release/backup gates remain open.
+Status: implemented on branch `codex/exec-history-implementation`, replayed onto v1.8.1
+main on 2026-11-17; not released or deployed. Exact-commit CI passed 8/8 on `89b900c`.
+CSV owner browser acceptance and the normal release/backup gates remain open.
 
 ## Existing behavior and the actual gap
 
@@ -31,6 +31,9 @@ such as Hermes; avoid an incompatible replacement of `getTasks`.
   available result-creation timestamp. No output or command is in list rows.
   A parent without retained results is `no_retained_results` with an unknown
   time: cleanup, deleted targets and failed creation cannot be distinguished.
+  This replaces the earlier draft's `result_expired`: the cleanup path cannot
+  establish that a missing result expired, so the status names only what
+  the database still holds.
 - Use stable keyset pagination, a small fixed maximum page size, deterministic
   tie-breaking and bounded database queries. Current `tasks` rows lack a
   creation timestamp, and orphan parents are not chronologically sortable;
