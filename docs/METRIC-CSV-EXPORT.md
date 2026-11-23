@@ -1,10 +1,26 @@
 # Metric CSV exports
 
 The fixes described here were released in v1.7.29 and deployed on OC424 on
-2026-11-05. Owner acceptance in the signed-in browser remains open. The
+2026-11-05. The
 published v1.7.28 record CSV schema differs; do not treat that version's
 reconstructed records as raw observations or use them for traffic billing.
-See `OPEN-WORK.md` for current delivery state.
+See [OPEN-WORK.md](./OPEN-WORK.md) for current delivery state.
+
+**Verification (2026-11-23):** The owner downloaded the load-history CSV for
+MegaBox in the production browser using the endpoint URL and confirmed
+`bucket_start_utc`, `sample_count` and data rows. This was not a chart-button
+click: the installed Emerald Insights node page has neither built-in export
+button. No production theme change or copy of the downloaded data was needed.
+
+Separately, the [browser drill](../frontend/script/metric-chart-csv-panel.spec.py)
+ran against the checksum-verified v1.8.1 Linux amd64 panel (`787a4cd`) with its
+embedded default theme and a fresh synthetic store. In a signed-in Chinese
+browser it selected the one-hour window, clicked **导出 CSV** and parsed the
+actual attachment. CPU and memory values matched the seeded minute buckets;
+a missing CPU sample was empty, not zero. This tests the published button,
+not the operator's session or the Emerald Insights theme. To repeat, run
+`python frontend/script/metric-chart-csv-panel.spec.py --panel-binary /path/to/nekomari`
+with Playwright/Chromium in a network namespace with only loopback enabled.
 
 ## History bucket endpoints
 

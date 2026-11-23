@@ -482,8 +482,11 @@ The next bounded releases and operational gates, in order:
    and five-locale button. Deployed on OC424 with upgrade9/9, identical
    client rows, fresh pre/post archives and two passing isolated restore
    drills. The v1.7.29 correction replaces misleading v1.7.28 reconstructed
-   history rows with retained bucket data and is now deployed. Owner on-page
-   acceptance of both Export CSV and Export history-bucket CSV remains open.
+   history rows with retained bucket data and is now deployed. On 2026-11-23
+   the owner downloaded MegaBox’s load-history CSV via its URL and confirmed
+   the bucket headers and data rows. The built-in chart CSV button passed a
+   separate isolated v1.8.1 browser check. Neither is an owner click on an
+   export button: the deployed Emerald Insights node page has neither control.
    See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md). After the v1.8.1
    verification gates: bounded exec-result history, designed separately in
    [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md). Later slices include
