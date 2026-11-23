@@ -21,7 +21,12 @@ Exact-commit CI passed 8/8, the release workflow 10/10 and Docker publication
 deployment check passed 23/23. See [`RELEASING.md`](./RELEASING.md) for the
 release evidence and limitations. OC424 now runs the pinned v1.8.1 panel;
 fresh pre/post encrypted archives and isolated recovery drills passed. See
-[`DEPLOY-OC424.md`](./DEPLOY-OC424.md). No production Agent was upgraded.
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md). That cutover did not upgrade any Agents.
+
+**Agent verification (2026-11-23):** All 16 registered nodes now report v1.8.1
+and had recent CPU, memory and ping samples. On BERO (amd64) and OC424 (arm64),
+the running executables also matched the published release checksums. See the
+[production verification](./DEPLOY-OC424.md#v181-agent-verification-2026-11-23).
 
 **CI follow-up (2026-11-15):** Windows run 43714186713 failed the `series`
 case of `TestLostDeleteAcknowledgementStopsPendingDataFromReturning`: its two
@@ -81,8 +86,8 @@ See [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md).
 [v1.8.0 release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.0)
 and its pinned panel image were deployed on OC424; the release record, image digest,
 backup hashes, rollout evidence and caveats are in
-[`DEPLOY-OC424.md`](./DEPLOY-OC424.md). All 14 clients and 13 ping tasks remain;
-all 14 Agents still report v1.7.30. The panel is additive and compatible with
+[`DEPLOY-OC424.md`](./DEPLOY-OC424.md). At that checkpoint there were 14 clients and 13 ping tasks;
+all 14 Agents reported v1.7.30. The panel is additive and compatible with
 old Agents, so no Agent rollout was required for this release. The Agent release
 remains manual-only; nodes need an explicitly staged upgrade.
 HKHKT was reached through MAC-WAN and the OC424 IPv4 jump and its CPU and ping
@@ -195,8 +200,8 @@ Remaining acceptance and operational limits:
   options effective or reconstruct earlier probe results.
   **v1.8.1 was published on 2026-11-16 and its panel was deployed to OC424 the
   same day**; it also fixes existing probe correctness and visibility defects.
-  Publication, deployment and acceptance are separate: no Agent was upgraded, so
-  none of those Agent-side fixes runs on any node. See
+  That panel-only deployment did not deliver the Agent-side fixes; the November 23
+  verification above describes the subsequent fleet state. See
   [`PROBE-TRUTH-V1.8-CHECKLIST.md`](./PROBE-TRUTH-V1.8-CHECKLIST.md),
   [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md) and
   [`RELEASING.md`](./RELEASING.md).
@@ -445,8 +450,8 @@ The next bounded releases and operational gates, in order:
    OC424 the same day.** The uptime restart-count metric
    (`system.restarts`) shipped in v1.7.26 and the 50-node capacity/memory gate
    passed on 2026-11-04; see [`CAPACITY-50NODE.md`](./CAPACITY-50NODE.md).
-   v1.8.0 itself is released and deployed as `v1.8.0/a92a242`; production now
-   runs 14 clients and 14 ping tasks, and all 14 Agents still report v1.7.30.
+   v1.8.0 itself shipped as `v1.8.0/a92a242`; all 14 Agents were on v1.7.30
+   at the later v1.8.1 panel cutover.
    Of the three v1.8.0 gates, two are closed and one is excepted rather than
    closed:
 
@@ -464,9 +469,8 @@ The next bounded releases and operational gates, in order:
      calibration is separate.
 
    v1.9.0 exec-result history and the other v1.9 slices stay out of scope for
-   v1.8.1. The Agent staged rollout is **still not started**: no production
-   Agent was upgraded, so no v1.8.1 Agent-side fix runs yet. The second
-   off-host destination decision remains with the owner.
+   v1.8.1. Agent versions were checked separately on November 23 (above).
+   The second off-host destination decision remains with the owner.
 4. **Still open acceptance.** Real remote notification receipt (a genuine
    incident, not the acknowledged test send) and MegaBox provider-billing
    equivalence; the latter needs provider-side data and must never be
