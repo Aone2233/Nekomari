@@ -217,6 +217,29 @@ attempt timed out because its readiness helper kept polling the install-only
 route after installation; the corrected helper accepts the version route and
 the complete old/new/old/new/restart sequence passes.
 
+**Production-version rollback drill (2026-11-23).** Three independent Linux
+amd64 runs used the checksum-pinned v1.8.1 release panel and a CGO build of
+`9ee5a8b`. Each booted v1.8.1 → candidate → v1.8.1 → candidate → candidate
+on one fresh synthetic database. The old panel accepted a legacy-shaped SQL
+insert while running against the migrated schema: the new result got a unique
+identity immediately and the unnumbered task was ordered on the next upgrade.
+Both task markers, outputs, orders and identities were retained on the final
+restart. `PRAGMA quick_check` and graceful shutdown passed on all five boots.
+The harness also refused a non-isolated network and detected substitution of
+the old executable for the candidate. This checks clean process transitions,
+not production data, Agent execution, a crash, or an off-host restore.
+
+To repeat with the [drill](../deploy/experiments/exec-history-rollback.py),
+use Python 3.11+ and Linux/amd64. Supply the official v1.8.1 `nekomari-linux-amd64`
+and a candidate built with CGO and `utils.VersionHash` set to its commit. Run as
+an unprivileged user in a fresh network namespace with only loopback enabled
+(on hosts allowing unprivileged user namespaces):
+
+```sh
+unshare -Urn sh -ec 'ip link set lo up; exec python3 deploy/experiments/exec-history-rollback.py "$@"' \
+  sh /path/to/v1.8.1/nekomari-linux-amd64 /path/to/candidate "$(git rev-parse --short=7 HEAD)"
+```
+
 A separate network-isolated disposable panel was built with the current
 embedded frontend and served real backend responses for synthetic task rows.
 The administrator history page opened and read command/output as text in
