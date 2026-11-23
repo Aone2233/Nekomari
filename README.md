@@ -179,6 +179,78 @@ checksum check and the systemd unit.
 | [docs/IP-INFO-API.md](./docs/IP-INFO-API.md) | The `/api/*/ip-info/v1` contract, its upstreams, and caching |
 | [deploy/README.md](./deploy/README.md) | What each operational script does, and why some hosts need their own |
 
+The table above is the short list worth reading first. Every top-level document
+in `docs/` is listed below under its own title (dated records under
+`docs/audits/` are checked for dead links but not listed — they are snapshots,
+not a map); `docs/OPEN-WORK.md` stays the only
+file that claims to say what is still open. `script/docs-index.mjs` regenerates
+this list and fails CI when a document is missing from it or a relative link in
+the repository's markdown points at nothing.
+
+<!-- docs-index:start -->
+- [Admin Tools Navigation](./docs/ADMIN-TOOLS-NAVIGATION.md)
+- [Agent footprint, and the smallest server it will run on](./docs/AGENT-FOOTPRINT.md)
+- [Saved load-alert rule preview](./docs/ALERT-RULE-PREVIEW.md)
+- [Authentication hardening](./docs/AUTH-HARDENING.md)
+- [Off-host backup health (v1.7.3)](./docs/BACKUP-HEALTH.md)
+- [50-node capacity and memory gate](./docs/CAPACITY-50NODE.md)
+- [v1.8 compatibility policy](./docs/COMPATIBILITY-V1.8.md)
+- [React Compiler migration ledger](./docs/COMPILER-MIGRATION-2026-09-23.md)
+- [Go 1.27.3 Security Build](./docs/COMPILER-SECURITY-1273.md)
+- [Container data mount warning](./docs/DATA-MOUNT-WARNING.md)
+- [Remote execution history: design and safety contract](./docs/EXEC-HISTORY-DESIGN.md)
+- [v0.1.21 follow-up to DSH's v0.1.20](./docs/FOLLOWUP-v0.1.21.md)
+- [v0.1.22: frontend state and browser review](./docs/FOLLOWUP-v0.1.22.md)
+- [v0.1.23: review and next changes](./docs/FOLLOWUP-v0.1.23.md)
+- [v0.1.25: post-release review and next work](./docs/FOLLOWUP-v0.1.25.md)
+- [Traffic forecast direction integrity](./docs/FORECAST-DIRECTIONS.md)
+- [GeoIP empty-country cache](./docs/GEOIP-EMPTY-COUNTRY.md)
+- [GeoIP configuration reload](./docs/GEOIP-RELOAD.md)
+- [Health review — 2026-09-19 (v0.1.10)](./docs/HEALTH-REVIEW-2026-09-19.md)
+- [改进审计 — 2026-10-13](./docs/IMPROVEMENT-AUDIT-2026-10-13.md)
+- [Nekomari long-term plan (2026-10-20 onward)](./docs/LONG-TERM-PLAN.md)
+- [MAC-WAN backup receiver (updated 2026-11-05)](./docs/MAC-WAN-BACKUP.md)
+- [Metric CSV exports](./docs/METRIC-CSV-EXPORT.md)
+- [Nekomari Mint extension](./docs/MINT-THEME.md)
+- [监控准确性修复与验收记录](./docs/MONITORING-ACCURACY-FIXES-2026-09-30.md)
+- [Nekomari 监控数据准确性审查](./docs/MONITORING-ACCURACY-REVIEW-2026-09-30.md)
+- [Next improvements after v0.1.19](./docs/NEXT-REVIEW-v0.1.19.md)
+- [OAuth integration, admission, and numeric identity migration](./docs/OAUTH-INTEGRATION.md)
+- [Offline notifications: maintenance and grace](./docs/OFFLINE-MAINTENANCE-GRACE.md)
+- [Nekomari 优化推荐报告](./docs/OPTIMIZATION-RECOMMENDATIONS-2026-09-26.md)
+- [Optimization review — 2026-09-22](./docs/OPTIMIZATION-REVIEW-2026-09-22.md)
+- [OVH retirement security and backup follow-up (2026-10-28)](./docs/OVH-RETIREMENT-2026-10-28.md)
+- [Panel process history](./docs/PANEL-HISTORY.md)
+- [Panel database connection-pool wait history](./docs/PANEL-POOL-HISTORY.md)
+- [Panel load performance](./docs/PERFORMANCE.md)
+- [Family-pinned hostname probes: design and safety contract](./docs/PING-DOMAIN-FAMILY-DESIGN.md)
+- [Family-pinned rollback research (experimental, not a runbook)](./docs/PING-FAMILY-ROLLBACK-DRAFT.md)
+- [Family-pinned probes: transport fencing design](./docs/PING-FAMILY-TRANSPORT-DESIGN.md)
+- [Probe data contract (v1.8 probe truth)](./docs/PROBE-DATA-CONTRACT.md)
+- [v1.8.0 "Probe Truth" checklist](./docs/PROBE-TRUTH-V1.8-CHECKLIST.md)
+- [Rejected approaches](./docs/REJECTED.md)
+- [Resource and security boundaries (v0.1.13)](./docs/RESOURCE-HARDENING.md)
+- [Project review and dependency refresh - 2026-09-22](./docs/REVIEW-2026-09-22.md)
+- [Roadmap](./docs/ROADMAP.md)
+- [SAO cycle-traffic rollout, 2026-11-02](./docs/SAO-CYCLE-ROLLOUT.md)
+- [SLA task-generation normalization (v1.7.4)](./docs/SLA-GENERATIONS.md)
+- [Structural and optimization review — 2026-09-23](./docs/STRUCTURAL-REVIEW-2026-09-23.md)
+- [Default-theme cache diagnostics](./docs/THEME-CACHE-DIAGNOSTICS.md)
+- [Default-theme cache history](./docs/THEME-CACHE-HISTORY.md)
+- [Third-party licences](./docs/THIRD-PARTY-LICENSES.md)
+- [Agent/panel traffic accounting — what was wrong, and what changed](./docs/TRAFFIC-ACCOUNTING.md)
+- [Node uptime history](./docs/UPTIME-HISTORY.md)
+- [v1.8 probe-truth OC424 staging acceptance (2026-11-08)](./docs/V1.8-OC424-STAGING.md)
+- [OC424 CPU interval comparison, 2026-11-15](./docs/V1.8.1-CPU-CALIBRATION.md)
+- [v1.8.1 current implementation and acceptance status](./docs/V1.8.1-CURRENT-STATUS.md)
+- [HTTP phase injected-delay comparison, 2026-11-15](./docs/V1.8.1-HTTP-CALIBRATION.md)
+- [Default memory accounting comparison, 2026-11-15](./docs/V1.8.1-MEMORY-CALIBRATION.md)
+- [Mixed Agent address preference check, 2026-11-15](./docs/V1.8.1-MIXED-AGENT.md)
+- [v1.8.1 preliminary isolated netem evidence](./docs/V1.8.1-NETEM-PRELIMINARY.md)
+- [v1.8.1 original-theme public-root scan matrix](./docs/V1.8.1-THEME-MATRIX.md)
+- [v1.8.1 preliminary theme browser smoke](./docs/V1.8.1-THEME-SMOKE.md)
+<!-- docs-index:end -->
+
 ## Credits and provenance
 
 Nekomari is a fork of **[Komari](https://github.com/komari-monitor/komari)**,

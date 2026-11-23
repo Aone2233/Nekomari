@@ -309,6 +309,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
@@ -324,6 +327,9 @@ jobs:
         # action.yml 逐个核对；读不到（composite/local）只打印，不算问题，
         # 所以网络抖动不会让它变红。
         run: python deploy/check-action-inputs.py
+
+      - name: Check the documentation index and relative links
+        run: node script/docs-index.mjs
 
       - name: Check the published documentation site
         # site/README.md 说这一步 "not optional"：mkdocs --strict 能发现坏链，但
