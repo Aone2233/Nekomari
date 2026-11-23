@@ -3,6 +3,26 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.8.1 Agent verification (2026-11-23)
+
+At 14:35 UTC the production panel reported **v1.8.1 / 787a4cd** and all
+**16 registered clients** reported Agent **v1.8.1**. To distinguish current
+telemetry from idle registrations, a read-only query joined the registered
+client IDs to one-minute metric rollups. In the preceding five minutes every
+node had a stored sample for each of `cpu.usage`, `memory.used`, `ping.latency_ms`
+and `ping.loss`; the newest sample in each node/metric pair was under two
+minutes old. This does not establish coverage of every task or zero loss.
+
+On BERO (Linux amd64) and OC424 (Linux arm64), the Agent systemd unit's
+`MainPID` identified the running executable. For each, `/proc/<pid>/exe --version`
+printed `v1.8.1`, and the SHA-256 of that same executable matched both the
+architecture-specific `manual-komari-agent-linux-*` entry in the [official
+release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)'s
+`SHA256SUMS.txt` and its release asset digest. The other 14 have panel-reported
+versions and recent telemetry, not a process-level checksum verification.
+No Agent was installed or restarted and no production settings were changed
+by this check; it does not date or reconstruct the intervening upgrades.
+
 ## v1.8.1 panel deployment (2026-11-16 10:35 Asia/Shanghai)
 
 Production runs **v1.8.1 / 787a4cd**, image
