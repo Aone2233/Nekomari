@@ -189,6 +189,8 @@
     "days_other": "{{count}} Hari",
     "downsampleAlgorithm": "Downsample",
     "endTime": "Waktu selesai",
+    "historyExport": "Grafik dan ekspor",
+    "nodeUnavailable": "Node ini tidak dapat dimuat.",
     "exportCsv": "Ekspor CSV",
     "exportRecordsCsv": "Ekspor CSV interval riwayat",
     "exportBucketsHelp": "Data berupa interval agregat, bukan sampel mentah. Interval tepi yang tidak lengkap dikecualikan.",

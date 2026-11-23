@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
-import { IconButton } from "@radix-ui/themes";
+import { Button, IconButton } from "@radix-ui/themes";
+import { Link } from "react-router-dom";
 import { Terminal } from "lucide-react";
 import type { NodeDetail } from "@/contexts/NodeDetailsContext";
 import { GenerateCommandButton } from "./GenerateCommandButton";
@@ -19,6 +20,9 @@ export const ActionButtons = ({
   const { t } = useTranslation();
   return (
     <div className="flex items-center gap-4">
+      <Button asChild size="1" variant="soft">
+        <Link to={`/admin/servers/${encodeURIComponent(node.uuid)}/charts`}>{t("chart.historyExport")}</Link>
+      </Button>
       <GenerateCommandButton
         node={node}
         settings={settings}

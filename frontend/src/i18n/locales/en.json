@@ -189,6 +189,8 @@
     "days_other": "{{count}} days",
     "downsampleAlgorithm": "Downsample",
     "endTime": "End time",
+    "historyExport": "Charts & export",
+    "nodeUnavailable": "This node could not be loaded.",
     "exportCsv": "Export CSV",
     "exportRecordsCsv": "Export history buckets CSV",
     "exportBucketsHelp": "Aggregated buckets, not raw samples. Partial edge buckets are excluded.",

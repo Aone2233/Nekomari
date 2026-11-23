@@ -98,7 +98,8 @@ import { downloadRecordCsv, recordCsvUrl } from "@/utils/recordCsv";
 import type { RecordFormat } from "@/utils/RecordHelper";
 
 type LoadChartProps = {
-  data: RecordFormat[];
+  data?: RecordFormat[];
+  historyOnly?: boolean;
   onRealtimeActiveChange?: (active: boolean) => void;
 };
 
@@ -963,7 +964,7 @@ const toQueryRange = (range: CustomTimeRange) => {
   return { start: start.toISOString(), end: end.toISOString() };
 };
 
-const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
+const LoadChart = ({ data = [], historyOnly = false, onRealtimeActiveChange }: LoadChartProps) => {
   const { t } = useTranslation();
   const { uuid } = useParams<{ uuid: string }>();
   const { call } = useRPC2Call();
@@ -984,10 +985,10 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
     return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
   }, [definitions, definitionsLoaded, publicInfo?.metric_retention_days]);
   const timeViews = useMemo(
-    () => buildTimeViews(t, maxMetricRetentionDays),
-    [t, maxMetricRetentionDays],
+    () => buildTimeViews(t, maxMetricRetentionDays).filter((view) => !historyOnly || view.key !== "real-time"),
+    [t, maxMetricRetentionDays, historyOnly],
   );
-  const [viewKey, setViewKey] = useState("real-time");
+  const [viewKey, setViewKey] = useState(historyOnly ? "1h" : "real-time");
   // Keep the selected view valid while rendering: retention can shrink and drop a
   // view (e.g. "7d"), in which case the choice is written back to the first view.
   if (!timeViews.some((view) => view.key === viewKey)) {
@@ -1016,8 +1017,8 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
     "komari-instance-metric-hidden-series",
     {},
   );
-  const globalDashboardTemplate =
-    publicInfo?.theme_settings?.[DASHBOARD_TEMPLATE_KEY];
+  // The admin history view belongs to the panel, not to the installed public theme.
+  const globalDashboardTemplate = historyOnly ? undefined : publicInfo?.theme_settings?.[DASHBOARD_TEMPLATE_KEY];
   const [dashboard, setDashboard] = useState<DashboardChart[]>(() =>
     parseDashboardTemplate(globalDashboardTemplate),
   );
@@ -1551,7 +1552,7 @@ const LoadChart = ({ data = [], onRealtimeActiveChange }: LoadChartProps) => {
             </label>
           </div>
           <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
-            {account?.logged_in && (
+            {!historyOnly && account?.logged_in && (
               <Button
                 type="button"
                 variant="outline"

@@ -487,6 +487,8 @@ The next bounded releases and operational gates, in order:
    the bucket headers and data rows. The built-in chart CSV button passed a
    separate isolated v1.8.1 browser check. Neither is an owner click on an
    export button: the deployed Emerald Insights node page has neither control.
+   A candidate admin node-row entry provides both buttons independently of
+   the public theme. Production owner on-page acceptance is still open.
    See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md). After the v1.8.1
    verification gates: bounded exec-result history, designed separately in
    [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md). Later slices include
