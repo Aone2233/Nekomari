@@ -2,6 +2,22 @@
 
 ## Cut a release
 
+**v1.8.2 staged publication policy (not a rollout record):** Publish the plain
+version tag as a GitHub *prerelease*, not Latest, with standard Agent filenames.
+Merely withholding Latest from a stable release is insufficient: stable Agents
+search the release list. Drafts and prereleases are skipped by both ordinary
+and panel-targeted stable selection. Keep both Docker moving aliases unchanged.
+
+Require green CI on the tagged commit (including the WebSocket fix), published
+amd64/arm64 verification, provenance, checksums and both Docker image checks.
+Before production, retain and restore-test a fresh off-host backup. Upgrade
+the panel by digest, then install the verified Agent explicitly on a canary;
+check the service executable, reported version and fresh samples before
+continuing in batches. Retain per-node rollback binaries. Stop on failure.
+Only after fleet acceptance, promote **the same release ID** (no retag, no
+asset replacement) to stable and GitHub Latest. Verify the Latest API and
+installer asset URLs; never move Docker `latest` or `1.8` for this release.
+
 **v1.8.1 release (2026-11-16):** The [formal release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)
 was published from merge commit `787a4cd19e3750ad4fcd6c25aa273b303c415b7a`.
 Exact-commit CI [43790273368](https://github.com/Aone2233/Nekomari/actions/runs/43790273368)
