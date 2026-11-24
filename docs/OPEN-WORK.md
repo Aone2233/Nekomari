@@ -14,7 +14,7 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**v1.8.2 production (2026-11-24):** OC424 runs the [verified v1.8.2 panel](./DEPLOY-OC424.md#v182-panel-cutover-2026-11-24-utc). Agent rollout is separate. Hold GitHub Latest until all 16 nodes have passed the binary, version and telemetry checks; do not change the Docker aliases.
+**v1.8.2 production (2026-11-24):** OC424 runs the [verified v1.8.2 panel](./DEPLOY-OC424.md#v182-panel-cutover-2026-11-24-utc). All 16 Agents passed the final binary, version and telemetry checks. The same release was promoted to GitHub Latest; Docker aliases were unchanged.
 
 **v1.8.1 publication (2026-11-16):** The [formal release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)
 is published from merge commit `787a4cd19e3750ad4fcd6c25aa273b303c415b7a`.

@@ -27,7 +27,12 @@ BERO (amd64) passed the Agent canary at 02:19:50 and OC424's separate arm64
 Agent passed at 02:36:39. Both retained rollback binaries. The running executable
 matched the release asset; the panel recorded v1.8.2 and new CPU, memory, ping
 latency and ping loss samples. OC424's Agent upgrade did not restart the panel.
-These two canaries do not establish fleet-wide acceptance.
+The remaining Agents were upgraded in batches. MAC-WAN was last: its root
+service passed the process and telemetry checks at 03:41:21. At 03:42:34
+the final check confirmed the expected 16 node identities, v1.8.2 versions,
+matching running binaries and fresh CPU, memory, ping latency and loss samples
+for every node in the preceding five minutes. No rollout targets were left
+pending. This is fleet acceptance for this release, not a zero-loss claim.
 
 ## v1.8.1 Agent verification (2026-11-23)
 
