@@ -3,6 +3,32 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.8.2 panel cutover (2026-11-24, UTC)
+
+The staged release (`d58ec32`) went live on OC424 at 02:13. By 02:15:10
+production checks passed 9/9 and public HTTPS returned the same version and hash.
+The pinned panel index is
+`sha256:cc875c0a8ad21170017c8c74d1b604f3fef3f1c19cdd25a6f1e7741e433353cf`.
+The amd64 and arm64 panel/Agent image binaries matched the release assets.
+Client identities, update targets and ping task rows survived cutover; all 16
+nodes had new CPU and ping loss samples. The public theme remained Emerald
+Insights. Both admin downloads were exercised with the published binary in a
+scratch panel, not in a production administrator's browser session.
+
+MAC-WAN verified and booted the pre-cut encrypted archive (SHA-256
+`90695f58734d0a538597ea3a09ccece89e6c6a219b29585665f24ce59001ef5f`)
+with both v1.8.1 and v1.8.2, then the distinct post-cut archive
+(`0da9c3c11b676fb1b89d9824ac6fca5d95889c3f8f86df4b0a07d3eb13fa4dbb`)
+with v1.8.2. All three boots were network-isolated. These were online snapshots,
+not an atomic boundary across databases and queued samples. The prior compose
+is retained under `/opt/nekomari/rollbacks/chart-v182-20261124T021300Z-MNGvfMfz/`.
+
+BERO (amd64) passed the Agent canary at 02:19:50 and OC424's separate arm64
+Agent passed at 02:36:39. Both retained rollback binaries. The running executable
+matched the release asset; the panel recorded v1.8.2 and new CPU, memory, ping
+latency and ping loss samples. OC424's Agent upgrade did not restart the panel.
+These two canaries do not establish fleet-wide acceptance.
+
 ## v1.8.1 Agent verification (2026-11-23)
 
 At 14:35 UTC the production panel reported **v1.8.1 / 787a4cd** and all
@@ -25,7 +51,7 @@ by this check; it does not date or reconstruct the intervening upgrades.
 
 ## v1.8.1 panel deployment (2026-11-16 10:35 Asia/Shanghai)
 
-Production runs **v1.8.1 / 787a4cd**, image
+At this checkpoint production ran **v1.8.1 / 787a4cd**, image
 `ghcr.io/aone2233/nekomari:v1.8.1@sha256:b1ff8aa19d8d1e1572cda509670c5d3c74ac0861266cbc12481b2b582ada196d`.
 The [formal release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)
 and its verification are recorded in [`RELEASING.md`](./RELEASING.md).

@@ -2,6 +2,8 @@
 
 ## Cut a release
 
+**v1.8.2 publication evidence (2026-11-24):** [Release ID 456220909](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.2) was published as a prerelease at `d58ec32`. [Exact CI](https://github.com/Aone2233/Nekomari/actions/runs/45307225895), [release verification](https://github.com/Aone2233/Nekomari/actions/runs/45308351923) and [image publication](https://github.com/Aone2233/Nekomari/actions/runs/45310050142) passed; the checksums and attestations of all eight binaries were verified. Promotion to Latest is a separate fleet acceptance step.
+
 **v1.8.2 staged publication policy (not a rollout record):** Publish the plain
 version tag as a GitHub *prerelease*, not Latest, with standard Agent filenames.
 Merely withholding Latest from a stable release is insufficient: stable Agents

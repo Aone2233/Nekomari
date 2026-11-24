@@ -14,16 +14,18 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
+**v1.8.2 production (2026-11-24):** OC424 runs the [verified v1.8.2 panel](./DEPLOY-OC424.md#v182-panel-cutover-2026-11-24-utc). Agent rollout is separate. Hold GitHub Latest until all 16 nodes have passed the binary, version and telemetry checks; do not change the Docker aliases.
+
 **v1.8.1 publication (2026-11-16):** The [formal release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)
 is published from merge commit `787a4cd19e3750ad4fcd6c25aa273b303c415b7a`.
 Exact-commit CI passed 8/8, the release workflow 10/10 and Docker publication
 2/2. Published checksums and binary attestations verified; a separate local
 deployment check passed 23/23. See [`RELEASING.md`](./RELEASING.md) for the
-release evidence and limitations. OC424 now runs the pinned v1.8.1 panel;
+release evidence and limitations. OC424 then ran the pinned v1.8.1 panel;
 fresh pre/post encrypted archives and isolated recovery drills passed. See
 [`DEPLOY-OC424.md`](./DEPLOY-OC424.md). That cutover did not upgrade any Agents.
 
-**Agent verification (2026-11-23):** All 16 registered nodes now report v1.8.1
+**Agent verification (2026-11-23):** All 16 registered nodes then reported v1.8.1
 and had recent CPU, memory and ping samples. On BERO (amd64) and OC424 (arm64),
 the running executables also matched the published release checksums. See the
 [production verification](./DEPLOY-OC424.md#v181-agent-verification-2026-11-23).
@@ -31,11 +33,10 @@ the running executables also matched the published release checksums. See the
 **Admin chart deployment gate (2026-11-24):** #181 merged as `ae10d8c` after
 8/8 PR checks. Its [merge CI](https://github.com/Aone2233/Nekomari/actions/runs/45300595197)
 flagged `GO-2026-6278` in the panel’s Gorilla WebSocket v1.5.3. The nested
-Agent module independently pinned the same version. Do not ship the failed
-commit: verify the dependency fix on both modules and obtain green exact-commit
-CI and verified artifacts before cutover. A fresh off-host encrypted snapshot
-booted with the pinned v1.8.1 image in a network-isolated recovery drill; the
-production panel was not replaced.
+Agent module independently pinned the same version. That failed commit was
+not deployed. #182 fixed both dependencies; the release commit passed
+[exact CI](https://github.com/Aone2233/Nekomari/actions/runs/45307225895)
+and the later cutover is recorded above.
 
 **CI follow-up (2026-11-15):** Windows run 43714186713 failed the `series`
 case of `TestLostDeleteAcknowledgementStopsPendingDataFromReturning`: its two
@@ -496,7 +497,7 @@ The next bounded releases and operational gates, in order:
    the bucket headers and data rows. The built-in chart CSV button passed a
    separate isolated v1.8.1 browser check. Neither is an owner click on an
    export button: the deployed Emerald Insights node page has neither control.
-   A candidate admin node-row entry provides both buttons independently of
+   The deployed v1.8.2 admin node-row entry provides both buttons independently of
    the public theme. Production owner on-page acceptance is still open.
    See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md). After the v1.8.1
    verification gates: bounded exec-result history, designed separately in
