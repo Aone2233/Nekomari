@@ -164,6 +164,9 @@ jobs:
         run: python3 -W error::ResourceWarning deploy/sla-generations-smoke.py --panel-binary ./nekomari
       - name: Check SLA span explanations in both embedded pages
         run: python -W error::ResourceWarning frontend/script/sla-span-panel.spec.py --panel-binary ./nekomari
+      - name: Check both admin chart downloads under a replacement public theme
+        run: |
+          sudo unshare -n sh -ec 'ip link set lo up; exec sudo -u "$1" -H "$2" -W error::ResourceWarning frontend/script/metric-chart-csv-panel.spec.py --panel-binary ./nekomari --admin-chart' sh "$(id -un)" "$(command -v python)"
       - name: Check incomplete traffic forecast directions in a synthetic Panel
         run: python3 -W error::ResourceWarning deploy/forecast-direction-smoke.py --panel-binary ./nekomari
       - name: Test saved alert rule preview on an isolated Panel

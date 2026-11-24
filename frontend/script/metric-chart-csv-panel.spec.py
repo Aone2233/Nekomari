@@ -41,7 +41,7 @@ def seed(path, entity):
     return first
 
 
-def run(binary, root):
+def run(binary, root, admin_chart):
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
         address = '127.0.0.1:%d' % sock.getsockname()[1]
@@ -90,6 +90,12 @@ def run(binary, root):
                 assert request.post('/api/admin/settings/', data={'eula_accepted': True, 'geo_ip_enabled': False,
                     'login_notification': False, 'notification_enabled': False}).json()['status'] == 'success'
                 entity = request.post('/api/admin/client/add', data={'name': 'CSV fixture'}).json()['uuid']
+                if admin_chart:
+                    theme = root / 'data/theme/csv-fixture'
+                    (theme / 'dist').mkdir(parents=True)
+                    (theme / 'komari-theme.json').write_text(json.dumps({'name': 'CSV fixture', 'short': 'csv-fixture'}))
+                    (theme / 'dist/index.html').write_text('<!doctype html><title>Fixture</title><p>Theme owns this page</p>')
+                    assert request.get('/api/admin/theme/set?theme=csv-fixture').json()['status'] == 'success'
             finally:
                 request.dispose()
         finally:
@@ -107,7 +113,18 @@ def run(binary, root):
                     ctx.add_init_script("localStorage.setItem('language','zh-CN')")
                     page = ctx.new_page()
                     page.goto('/instance/' + entity, wait_until='domcontentloaded')
-                    page.get_by_role('radio', name='1 小时', exact=True).click()
+                    if admin_chart:
+                        expect(page.get_by_text('Theme owns this page')).to_be_visible()
+                        page.goto('/admin/servers')
+                        row = page.get_by_test_id('node-row').filter(has_text='CSV fixture')
+                        row.get_by_role('link', name='图表与导出').click()
+                        expect(page).to_have_url(origin + '/admin/servers/' + entity + '/charts')
+                        expect(page.get_by_role('heading', name='CSV fixture · 图表与导出')).to_be_visible()
+                        expect(page.get_by_role('radio', name='1 小时', exact=True)).to_be_checked()
+                        expect(page.get_by_role('radio', name='实时', exact=True)).to_have_count(0)
+                        expect(page.get_by_role('button', name='保存为全局模板')).to_have_count(0)
+                    else:
+                        page.get_by_role('radio', name='1 小时', exact=True).click()
                     button = page.get_by_role('button', name='导出 CSV', exact=True)
                     expect(button).to_be_enabled()
                     with page.expect_download() as event:
@@ -124,7 +141,30 @@ def run(binary, root):
                         return rows[time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(ms / 1000))]
                     assert float(at(first)['cpu.usage']) == 12.5 and int(at(first)['memory.used']) == 4194304
                     assert at(first + 60000)['cpu.usage'] == '' and int(at(first + 60000)['memory.used']) == 8388608
-                    assert page.url == origin + '/instance/' + entity
+                    if admin_chart:
+                        with page.expect_download() as event:
+                            page.get_by_role('button', name='导出历史聚合桶 CSV', exact=True).click()
+                        assert event.value.suggested_filename == 'nekomari-load-buckets.csv'
+                        with Path(event.value.path()).open(encoding='utf-8-sig', newline='') as file:
+                            buckets = list(csv.DictReader(file))
+                        assert any(r['metric'] == 'cpu.usage' and float(r['value']) == 12.5
+                                   and r['client'] == entity and r['sample_count'] == '1' for r in buckets)
+                        assert page.url == origin + '/admin/servers/' + entity + '/charts'
+                        page.goto('/admin/servers/nonexistent/charts')
+                        expect(page.get_by_text('无法加载此节点。')).to_be_visible()
+                        expect(page.get_by_role('button', name='导出 CSV', exact=True)).to_have_count(0)
+                        guest = browser.new_context(base_url=origin, locale='zh-CN')
+                        try:
+                            guest.add_init_script("localStorage.setItem('language','zh-CN')")
+                            anon = guest.new_page()
+                            anon.goto('/admin/servers/' + entity + '/charts')
+                            expect(anon.get_by_role('dialog').filter(has_text='登录到 Nekomari 控制面板。')).to_be_visible()
+                            expect(anon.get_by_text('导出 CSV', exact=True)).to_have_count(0)
+                        finally:
+                            guest.close()
+                        print('PASS: custom public theme unchanged; admin list to both downloads; missing node and guest')
+                    else:
+                        assert page.url == origin + '/instance/' + entity
                     print('PASS:', version, 'Chinese chart download; expected CPU and memory samples and blank gap')
                 finally:
                     ctx.close()
@@ -137,9 +177,10 @@ def run(binary, root):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--panel-binary', type=Path, required=True)
+    parser.add_argument('--admin-chart', action='store_true', help='activate a disposable theme and test the admin entry')
     args = parser.parse_args()
     if {name for _, name in socket.if_nameindex()} != {'lo'}:
         parser.error('run in a loopback-only network namespace')
     os.umask(0o077)
     with tempfile.TemporaryDirectory(prefix='metric-csv-panel-') as tmp:
-        run(args.panel_binary.resolve(strict=True), Path(tmp))
+        run(args.panel_binary.resolve(strict=True), Path(tmp), args.admin_chart)

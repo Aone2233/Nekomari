@@ -22,6 +22,16 @@ not the operator's session or the Emerald Insights theme. To repeat, run
 `python frontend/script/metric-chart-csv-panel.spec.py --panel-binary /path/to/nekomari`
 with Playwright/Chromium in a network namespace with only loopback enabled.
 
+## Theme-independent admin entry (candidate)
+
+Go to **Admin → Servers → Charts & export** on the node's row. The panel-owned
+route is `/admin/servers/:uuid/charts`. It starts with one hour of historical
+metrics; **Export CSV** uses the loaded chart series and **Export history
+buckets CSV** fetches the retained load buckets for the selected range. It
+neither reads nor saves the public theme's chart template. The public node
+page is unchanged. This entry is not present in the v1.8.1 release. To test
+it on a candidate binary, add `--admin-chart` to the drill above.
+
 ## History bucket endpoints
 
 `GET /api/records/load.csv` and `GET /api/records/ping.csv` return one row per

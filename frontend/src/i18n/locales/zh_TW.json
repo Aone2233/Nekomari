@@ -189,6 +189,8 @@
     "days_other": "{{count}} 天",
     "downsampleAlgorithm": "降取樣",
     "endTime": "結束時間",
+    "historyExport": "圖表與匯出",
+    "nodeUnavailable": "無法載入此節點。",
     "exportCsv": "匯出 CSV",
     "exportRecordsCsv": "匯出歷史聚合桶 CSV",
     "exportBucketsHelp": "匯出聚合桶而非原始取樣；時間範圍兩端不完整的桶會被排除。",

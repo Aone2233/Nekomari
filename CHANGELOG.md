@@ -8,6 +8,11 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- **Node charts and CSV exports in the admin server list.** A third-party
+  theme can replace the public node page and omit its exports. Each node now
+  links to the built-in historical chart under `/admin/servers/:uuid/charts`,
+  with both downloads and no need to switch themes.
+
 - **Documentation index and link check.** `README.md` now lists all 80 top-level
   documents in `docs/` — the 19 it described plus 61 generated entries under
   their own titles — and the two relative links that pointed at nothing are
