@@ -70,6 +70,24 @@ func TestReleaseValidation(t *testing.T) {
 	}
 }
 
+func TestStandardAgentAssetBecomesEligibleOnlyAfterPromotion(t *testing.T) {
+	name := expectedAssetName("linux", "amd64")
+	current, err := parseVersion("v1.8.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := release("v1.8.2", false, true, name, "SHA256SUMS.txt")
+	for _, staged := range []bool{true, false} {
+		r.Prerelease = staged // The same tag, checksums and filenames in both phases.
+		releases := []githubRelease{r}
+		candidate, automatic := selectStableRelease(releases, name, current)
+		_, targeted := findReleaseByTag(releases, r.TagName, name)
+		if automatic == staged || targeted == staged || (automatic && candidate.TagName != r.TagName) {
+			t.Fatalf("prerelease=%v: automatic=%v, targeted=%v, selected=%q", staged, automatic, targeted, candidate.TagName)
+		}
+	}
+}
+
 func TestManualAgentAssetsNeverTriggerAutomaticOrTargetedUpdate(t *testing.T) {
 	for _, name := range []string{
 		"komari-agent-linux-amd64", "komari-agent-linux-arm64",

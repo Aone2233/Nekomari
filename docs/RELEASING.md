@@ -2,12 +2,21 @@
 
 ## Cut a release
 
-**Proposed v1.8.2 policy (not a release):** The admin chart deployment can
-use an explicit version tag and pinned panel image without moving GitHub
-Latest or either image’s `latest` / `1.8` tags. Agent artifacts remain manual
-and a panel rollout does not deploy them. Do not tag the #181 merge: its
-exact CI failed `GO-2026-6278`. A candidate containing the dependency fix
-needs its own green CI and verified published artifacts before OC424 cutover.
+**v1.8.2 staged publication policy (not a rollout record):** Publish the plain
+version tag as a GitHub *prerelease*, not Latest, with standard Agent filenames.
+Merely withholding Latest from a stable release is insufficient: stable Agents
+search the release list. Drafts and prereleases are skipped by both ordinary
+and panel-targeted stable selection. Keep both Docker moving aliases unchanged.
+
+Require green CI on the tagged commit (including the WebSocket fix), published
+amd64/arm64 verification, provenance, checksums and both Docker image checks.
+Before production, retain and restore-test a fresh off-host backup. Upgrade
+the panel by digest, then install the verified Agent explicitly on a canary;
+check the service executable, reported version and fresh samples before
+continuing in batches. Retain per-node rollback binaries. Stop on failure.
+Only after fleet acceptance, promote **the same release ID** (no retag, no
+asset replacement) to stable and GitHub Latest. Verify the Latest API and
+installer asset URLs; never move Docker `latest` or `1.8` for this release.
 
 **v1.8.1 release (2026-11-16):** The [formal release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)
 was published from merge commit `787a4cd19e3750ad4fcd6c25aa273b303c415b7a`.
