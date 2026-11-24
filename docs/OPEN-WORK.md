@@ -28,6 +28,15 @@ and had recent CPU, memory and ping samples. On BERO (amd64) and OC424 (arm64),
 the running executables also matched the published release checksums. See the
 [production verification](./DEPLOY-OC424.md#v181-agent-verification-2026-11-23).
 
+**Admin chart deployment gate (2026-11-24):** #181 merged as `ae10d8c` after
+8/8 PR checks. Its [merge CI](https://github.com/Aone2233/Nekomari/actions/runs/45300595197)
+flagged `GO-2026-6278` in the panel’s Gorilla WebSocket v1.5.3. The nested
+Agent module independently pinned the same version. Do not ship the failed
+commit: verify the dependency fix on both modules and obtain green exact-commit
+CI and verified artifacts before cutover. A fresh off-host encrypted snapshot
+booted with the pinned v1.8.1 image in a network-isolated recovery drill; the
+production panel was not replaced.
+
 **CI follow-up (2026-11-15):** Windows run 43714186713 failed the `series`
 case of `TestLostDeleteAcknowledgementStopsPendingDataFromReturning`: its two
 fixture writes used wall-clock time and could straddle a minute boundary, so

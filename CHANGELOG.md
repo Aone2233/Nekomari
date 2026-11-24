@@ -8,6 +8,11 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Pin the panel and Agent to the upstream Gorilla WebSocket masking-key fix
+  for [GO-2026-6278](https://pkg.go.dev/vuln/GO-2026-6278). Both Go modules
+  previously selected v1.5.3. A dependency update in source does not patch
+  already running binaries.
+
 - **Node charts and CSV exports in the admin server list.** A third-party
   theme can replace the public node page and omit its exports. Each node now
   links to the built-in historical chart under `/admin/servers/:uuid/charts`,
