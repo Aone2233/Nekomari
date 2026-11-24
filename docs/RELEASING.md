@@ -2,6 +2,13 @@
 
 ## Cut a release
 
+**Proposed v1.8.2 policy (not a release):** The admin chart deployment can
+use an explicit version tag and pinned panel image without moving GitHub
+Latest or either image’s `latest` / `1.8` tags. Agent artifacts remain manual
+and a panel rollout does not deploy them. Do not tag the #181 merge: its
+exact CI failed `GO-2026-6278`. A candidate containing the dependency fix
+needs its own green CI and verified published artifacts before OC424 cutover.
+
 **v1.8.1 release (2026-11-16):** The [formal release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)
 was published from merge commit `787a4cd19e3750ad4fcd6c25aa273b303c415b7a`.
 Exact-commit CI [43790273368](https://github.com/Aone2233/Nekomari/actions/runs/43790273368)

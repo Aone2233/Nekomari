@@ -412,10 +412,10 @@ jobs:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          if [ "$RELEASE_TAG" != v1.7.30 ] && [ "$RELEASE_TAG" != v1.8.0 ] && [ "$RELEASE_TAG" != v1.8.1 ]; then
-            echo '::error::this manual-only Agent publication policy is restricted to v1.7.30, v1.8.0 and v1.8.1'
-            exit 1
-          fi
+          case "$RELEASE_TAG" in
+            v1.7.30|v1.8.0|v1.8.1|v1.8.2) ;;
+            *) echo '::error::manual-only Agent publication requires explicit review for this tag'; exit 1 ;;
+          esac
           shopt -s nullglob
           agents=(dist/komari-agent-*)
           if [ "${#agents[@]}" -ne 5 ]; then
@@ -537,7 +537,11 @@ jobs:
             > Installer scripts and panel-requested automatic updates do not target these
             > assets. The previous release remains GitHub's latest installer target.
 
-            For v1.8.1, upgrade the Panel before an Agent: older Panels can
+            In v1.8.2, the admin server list links to per-node historical charts
+            and both CSV exports regardless of the public theme. Deploying the
+            panel does not update any running Agent.
+
+            For v1.8.1 and v1.8.2, upgrade the Panel before an Agent: older Panels can
             interpret the new Agent's unknown probe result as packet loss.
             Known third-party theme limitations include Next Pro 2.0.0
             hydration, LuminaCustom 3.1.2 and Aero 1.4.5 mobile navigation,
