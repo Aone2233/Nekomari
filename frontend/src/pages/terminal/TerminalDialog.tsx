@@ -96,9 +96,9 @@ export function TerminalDialog({
     return (field?.suggestions ?? []).slice(0, 24);
   }, [activeField, fields]);
 
-  const selectedIndex = autoHighlight && activeSuggestion === -1 && activeSuggestions.length > 0
-    ? 0
-    : activeSuggestion;
+  const selectedIndex = activeSuggestion >= 0 && activeSuggestion < activeSuggestions.length
+    ? activeSuggestion
+    : autoHighlight && activeSuggestions.length > 0 ? 0 : -1;
 
   // Reset the field selection while rendering when the dialog opens or its
   // field set changes. This is React's documented "adjust state during render"
@@ -153,8 +153,8 @@ export function TerminalDialog({
             if (event.nativeEvent.isComposing) return;
             // A button's Enter belongs to that button, even when a suggestion is highlighted.
             const confirmKey = shouldSubmitOnEnter(event, { submitting });
-            const onInput = event.target instanceof HTMLInputElement;
-            if (event.key === "Enter" && onInput && selectedIndex >= 0) {
+            const input = event.target instanceof HTMLInputElement ? event.target : null;
+            if (event.key === "Enter" && input && selectedIndex >= 0) {
               event.preventDefault();
               if (submitting) return;
               const field = fields.find((item) => item.key === activeField);
@@ -172,19 +172,15 @@ export function TerminalDialog({
               onSubmit();
               return;
             }
-            if (onInput && activeSuggestions.length > 0 && event.key === "ArrowDown") {
+            if (input && !submitting && activeSuggestions.length > 0 && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
               event.preventDefault();
-              setActiveSuggestion((current) => {
-                const base = autoHighlight && current === -1 ? 0 : current;
-                return (base + 1) % activeSuggestions.length;
-              });
-            }
-            if (onInput && activeSuggestions.length > 0 && event.key === "ArrowUp") {
-              event.preventDefault();
-              setActiveSuggestion((current) => {
-                const base = autoHighlight && current === -1 ? 0 : current;
-                return (base - 1 + activeSuggestions.length) % activeSuggestions.length;
-              });
+              const count = activeSuggestions.length;
+              const nextIndex = event.key === "ArrowDown"
+                ? (selectedIndex + 1) % count
+                : (Math.max(0, selectedIndex) - 1 + count) % count;
+              setActiveSuggestion(nextIndex);
+              const listId = input.getAttribute("aria-controls");
+              document.getElementById(`${listId}-${nextIndex}`)?.scrollIntoView({ block: "nearest" });
             }
           }}
         >
@@ -196,15 +192,23 @@ export function TerminalDialog({
             {fields.length > 0 && (
               <div className="mt-3 grid gap-3">
                 {fields.map((field, fieldIndex) => {
-                  const suggestions = activeField === field.key
-                    ? activeSuggestions
-                    : field.suggestions?.slice(0, 24) ?? [];
+                  const suggestions = activeField === field.key ? activeSuggestions : [];
+                  const inputId = `${fieldId}-${fieldIndex}`;
+                  const listId = `${inputId}-suggestions`;
+                  const hasSuggestions = field.suggestions !== undefined;
+                  const expanded = suggestions.length > 0;
                   return (
                     <div key={field.key} className="block text-xs text-[#bdbdbd]">
-                      {field.label && <label htmlFor={`${fieldId}-${fieldIndex}`} className="mb-1 block">{field.label}</label>}
+                      {field.label && <label htmlFor={inputId} className="mb-1 block">{field.label}</label>}
                       <div className="relative">
                         <input
-                          id={`${fieldId}-${fieldIndex}`}
+                          id={inputId}
+                          role={hasSuggestions ? "combobox" : undefined}
+                          aria-label={hasSuggestions && !field.label ? field.placeholder : undefined}
+                          aria-autocomplete={hasSuggestions ? "list" : undefined}
+                          aria-controls={hasSuggestions ? listId : undefined}
+                          aria-expanded={hasSuggestions ? expanded : undefined}
+                          aria-activedescendant={expanded && selectedIndex >= 0 ? `${listId}-${selectedIndex}` : undefined}
                           ref={fieldIndex === 0 ? firstInputRef : undefined}
                           value={field.value}
                           placeholder={field.placeholder}
@@ -218,11 +222,15 @@ export function TerminalDialog({
                           }}
                           className="h-8 w-full rounded-[4px] border border-[#3c3c3c] bg-[#1e1e1e] px-2 text-xs text-[#eeeeee] outline-none focus:border-[#007acc]"
                         />
-                        {suggestions.length > 0 && (
-                          <div className="absolute inset-x-0 top-full z-10 mt-1 max-h-[min(55vh,480px)] overflow-y-auto overscroll-contain rounded-md border border-neutral-800 bg-[#161616] p-1 shadow-2xl">
+                        {hasSuggestions && (
+                          <div id={listId} role="listbox" aria-label={field.label || field.placeholder} hidden={!expanded} className="absolute inset-x-0 top-full z-10 mt-1 max-h-[min(55vh,480px)] overflow-y-auto overscroll-contain rounded-md border border-neutral-800 bg-[#161616] p-1 shadow-2xl">
                             {suggestions.map((suggestion, index) => (
                               <button
                                 key={suggestion}
+                                id={`${listId}-${index}`}
+                                role="option"
+                                aria-selected={index === selectedIndex}
+                                tabIndex={-1}
                                 type="button"
                                 disabled={submitting}
                                 className={`block w-full truncate rounded-[4px] border-0 px-2 py-1.5 text-left text-xs transition-colors ${
@@ -231,6 +239,7 @@ export function TerminalDialog({
                                     : "bg-transparent text-neutral-200 hover:bg-neutral-800 hover:text-white"
                                 }`}
                                 onMouseEnter={() => setActiveSuggestion(index)}
+                                onMouseDown={(event) => event.preventDefault()}
                                 onClick={() => {
                                   field.onChange(suggestion);
                                   field.onSelectSuggestion?.(suggestion);

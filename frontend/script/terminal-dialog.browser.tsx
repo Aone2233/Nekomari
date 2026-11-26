@@ -46,7 +46,7 @@ export function Fixture() {
         description="Choose a file"
         fields={[{
           key: "path", placeholder: "File path", value, onChange: setValue,
-          suggestions: ["alpha.txt", "beta.txt"], onSelectSuggestion: setSelected,
+          suggestions: value === "many" ? Array.from({ length: 24 }, (_, index) => `file-${index}`) : ["alpha.txt", "beta.txt"], onSelectSuggestion: setSelected,
         }]}
         autoHighlight
         selectSubmits

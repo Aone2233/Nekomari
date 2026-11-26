@@ -92,12 +92,11 @@ class TerminalDialogBrowserTest(unittest.TestCase):
         expect(page.get_by_test_id("results")).to_have_attribute("data-selected", "")
         expect(page.get_by_test_id("outside")).to_be_focused()
 
-    def test_suggestion_button_enter_activates_that_button(self):
+    def test_click_activates_the_chosen_suggestion(self):
         page = self.open_page()
         page.get_by_test_id("outside").click()
         dialog = page.get_by_role("dialog", name="Quick open")
-        dialog.get_by_role("button", name="beta.txt").focus()
-        page.keyboard.press("Enter")
+        dialog.get_by_role("option", name="beta.txt").click()
         expect(page.get_by_test_id("results")).to_have_attribute("data-selected", "beta.txt")
         expect(page.get_by_test_id("results")).to_have_attribute("data-submit", "1")
 
@@ -105,13 +104,37 @@ class TerminalDialogBrowserTest(unittest.TestCase):
         page = self.open_page()
         page.get_by_test_id("outside").click()
         dialog = page.get_by_role("dialog", name="Quick open")
-        field = dialog.get_by_placeholder("File path")
+        field = dialog.get_by_role("combobox", name="File path")
+        popup = dialog.get_by_role("listbox", name="File path")
+        alpha = popup.get_by_role("option", name="alpha.txt")
+        beta = popup.get_by_role("option", name="beta.txt")
         expect(field).to_be_focused()
-        page.keyboard.press("ArrowDown")
+        expect(field).to_have_attribute("aria-expanded", "true")
+        expect(field).to_have_attribute("aria-controls", popup.get_attribute("id"))
+        for key, option in ((None, alpha), ("ArrowDown", beta), ("ArrowUp", alpha), ("ArrowUp", beta)):
+            if key:
+                field.press(key)
+            expect(field).to_have_attribute("aria-activedescendant", option.get_attribute("id"))
+            expect(popup.get_by_role("option", selected=True)).to_have_text(option.inner_text())
+            expect(field).to_be_focused()
+            expect(field).to_have_value("")
         page.keyboard.press("Enter")
         expect(page.get_by_test_id("results")).to_have_attribute("data-selected", "beta.txt")
         expect(page.get_by_test_id("results")).to_have_attribute("data-submit", "1")
         expect(field).to_have_value("beta.txt")
+
+    def test_keyboard_highlight_scrolls_within_long_list(self):
+        page = self.open_page(mobile=True)
+        page.get_by_test_id("outside").click()
+        field = page.get_by_role("combobox", name="File path")
+        field.fill("many")
+        field.press("ArrowUp")
+        popup = page.get_by_role("listbox")
+        last = popup.get_by_role("option", name="file-23", exact=True)
+        expect(last).to_have_attribute("aria-selected", "true")
+        self.assertGreater(popup.evaluate("element => element.scrollTop"), 0)
+        self.assertTrue(last.evaluate("element => element.getBoundingClientRect().bottom <= element.parentElement.getBoundingClientRect().bottom"))
+        expect(field).to_be_focused()
 
     def test_composition_keys_do_not_select_suggestions_or_close(self):
         page = self.open_page()
@@ -173,7 +196,7 @@ class TerminalDialogBrowserTest(unittest.TestCase):
         page.get_by_test_id("outside").click()
         dialog = page.get_by_role("dialog", name="Quick open")
         expect(dialog.get_by_role("button", name="OK")).to_be_disabled()
-        expect(dialog.get_by_role("button", name="alpha.txt")).to_be_disabled()
+        expect(dialog.get_by_role("option", name="alpha.txt")).to_be_disabled()
         page.keyboard.press("Enter")
         expect(page.get_by_test_id("results")).to_have_attribute("data-submit", "0")
         expect(page.get_by_test_id("results")).to_have_attribute("data-selected", "")

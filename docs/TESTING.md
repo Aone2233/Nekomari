@@ -36,6 +36,7 @@ python script/chart-a11y.spec.py
 python script/compiler-static.browser.spec.py
 python script/admin-clock.browser.spec.py
 python script/file-manager.browser.spec.py
+python script/terminal-dialog.browser.spec.py
 python script/selector-state.browser.spec.py
 python script/number-picker.browser.spec.py
 python script/remote-file-tree.browser.spec.py
@@ -49,6 +50,7 @@ python script/client-token.browser.spec.py
 | `compiler-static.browser.spec.py` | `components/PriceTags` | free-to-paid mount reads the clock; missing/invalid expiry stays neutral, renewal and minute ticks update urgency on desktop-light/mobile-dark |
 | `admin-clock.browser.spec.py` | `pages/admin/sessions`, `pages/admin/dashboard` | time-dependent labels sharing one live clock without refetching, expiry boundaries and renewed exclusion, and a mounted dashboard moving its expiry window and urgency |
 | `file-manager.browser.spec.py` | `pages/terminal/FileManagerPanel`, `pages/terminal/FileEditorDialog` | rename/delete refreshing the real directory, ctrl-deselect keeping only the remaining file selected, a stale directory response not replacing a newer node, a delayed read updating its own tab, and a post-reconnect refresh ignoring a prior connection's response |
+| `terminal-dialog.browser.spec.py` | `pages/terminal/TerminalDialog` | focus containment and return, safe destructive default, nested and first-focus Escape, quick-open option identity, scrolling and activation, composition-key guards |
 | `selector-state.browser.spec.py` | `components/SelectorDialog`, `components/NodeSelectorDialog` | cancel/confirm and external value updates, an uncontrolled node dialog's open/cancel/confirm, and a parent-controlled open without a trigger |
 | `number-picker.browser.spec.py` | `components/ui/number-picker`, and the real `pages/admin/log` | one `onChange` per valid keystroke, an out-of-range draft kept then clamped on blur, a `defaultValue` change re-syncing without reporting, an unrelated parent render reporting nothing, and the log page's pagination: page 2 stays page 2, and editing the limit returns to page 1 exactly once |
 | `remote-file-tree.browser.spec.py` | `pages/terminal/RemoteFileTree` | the root listing exactly once on mount, the directory memo (expanding lists once and re-expanding does not re-list), refresh forcing a re-list, reveal expanding and listing its ancestor chain, a root-path change dropping the memo, and selection and context-menu targeting |
@@ -72,12 +74,32 @@ every admin page other than `dashboard` and `log` still has **no** browser
 coverage, and changes there rest on the type checker, lint, the unit tests and
 the build.
 
-`npm run audit:compiler` is an advisory migration inventory and exits nonzero
-while the remaining React Compiler recommendations are unresolved. It is not a
-release gate; the configured `npm run lint` has zero allowed warnings. Read its
-counts from the JSON formatter rather than the default `stylish` output, which
-interleaves each finding's primary and related locations and so overstates the
-total by roughly 5%.
+`npm run audit:compiler` is a separate CI gate from `npm run lint`: configured
+lint rules do not cover every shape the React Compiler rejects.
+
+### Native terminal dialog check
+
+From `frontend/`, run `npm run dev -- --host 127.0.0.1` and open
+`/script/terminal-dialog.browser.html` in a desktop Chromium window. The fixture
+uses the real dialog with synthetic file names and no terminal, RPC or Agent.
+Enable Orca speech and IBus Intelligent Pinyin. Use keyboard focus and Enter to
+open the triggers (rather than focusing a DOM element and clicking it at once).
+
+| Action | Check |
+|---|---|
+| Open delete, then Escape | Orca presents the alert title, warning and Cancel. After Escape it presents the original Open delete button. |
+| Open quick, then Down in the field | The initial option is `alpha.txt`; Orca presents `beta.txt` on Down while focus stays in the empty field. Tab goes to Cancel, not through the list; Enter on Cancel does not select a file. |
+| Reopen quick; type `nihao`, Space, then `nihao`, Escape | With libpinyin on a fresh profile the first candidate commits `你好`; only the second preedit is cancelled. Text stays `你好`, the dialog stays open and submit/selected/cancel counts do not change. A further Escape closes once. |
+
+On 2026-11-26 the native check used Debian 13, Chromium 156, Orca 48.1 via
+AT-SPI2 2.56.2 and IBus/libpinyin on an isolated X11 desktop. On the old
+component the focus and alert controls produced Orca speech, but Down changed
+the highlight to `beta.txt` without producing the filename. The corrected
+component produced that filename in Orca's `SPEECH OUTPUT`. For a soundless
+desktop use Speech Dispatcher's `sd_dummy` module: with a stalled speech backend
+even the known-good controls can go silent. Inspect timestamps in the completed
+log, not the size of the buffered log while Orca is running. This checks Orca's
+generated speech text, not human listening, other screen readers or other IMEs.
 
 ## Nullable expiry in the embedded Panel
 
