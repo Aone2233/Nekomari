@@ -14,13 +14,12 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**v1.8.3 panel slice:** PR #165 merged; the owner authorized advancing deployment
-after the synthetic history-page handoff. Stage the release without changing
-GitHub Latest or any Docker moving alias. Require exact-source CI, artifact
-verification and a fresh off-host recovery drill before the OC424 panel switch.
-No Agent rollout is part of this slice; the wider v1.9 roadmap is not complete.
+**v1.8.3 panel slice (2026-11-26):** OC424 runs the [verified execution-history
+panel](./DEPLOY-OC424.md#v183-panel-cutover-2026-11-26-utc). All 17 registered
+Agents remain on v1.8.2; this panel rollout changed neither their targets nor
+GitHub Latest or any Docker moving alias. The wider v1.9 roadmap is not complete.
 
-**v1.8.2 production (2026-11-24):** OC424 runs the [verified v1.8.2 panel](./DEPLOY-OC424.md#v182-panel-cutover-2026-11-24-utc). All 16 Agents passed the final binary, version and telemetry checks. The same release was promoted to GitHub Latest; Docker aliases were unchanged.
+**v1.8.2 production (2026-11-24, historical):** OC424 ran the [verified v1.8.2 panel](./DEPLOY-OC424.md#v182-panel-cutover-2026-11-24-utc). All 16 Agents then registered passed the final binary, version and telemetry checks. The same release was promoted to GitHub Latest; Docker aliases were unchanged.
 
 **v1.8.1 publication (2026-11-16):** The [formal release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)
 is published from merge commit `787a4cd19e3750ad4fcd6c25aa273b303c415b7a`.

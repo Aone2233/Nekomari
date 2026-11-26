@@ -3,6 +3,33 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.8.3 panel cutover (2026-11-26, UTC)
+
+The panel-only cutover began at 06:25:41. OC424 uses the v1.8.3 index
+`sha256:53da6de04224f626f4ddf5ac3ecf2f9c275c3b9e8765aedbe127b841269fef17`;
+the running arm64 binary matched the release checksum, and both loopback and
+public HTTPS returned `v1.8.3 / 0f4f84d`. Pre/post production checks each
+passed 9/9, including a healthy container with zero restarts and read-only
+SQLite `quick_check`. The database contained 9,163 tasks and 105,784 results
+immediately before cutover and 9,174 / 105,811 at the post-check. No task had
+a missing/nonpositive history order and no result lacked a 32-character hex
+identity. Counts are snapshots, not a proof of identical historical payloads.
+
+All 17 registered identities, credentials, Agent versions and update targets
+compared equal across the cut; the 17 ping-task rows and local Agent process
+were unchanged. Every registered node had new CPU, memory, ping latency and
+loss samples after the switch. No command was dispatched to test history and
+no Agent was upgraded. The working compose file for an image-only rollback is
+retained at `/opt/nekomari/rollbacks/exec-v183-20261126T062541Z-t6h6uuus/previous.yml`.
+
+MAC-WAN verified and booted a fresh pre-cut encrypted archive (SHA-256
+`afcfe0014dfd2bf2eefc8a4f8b5e2ee2dd8e0fee80b5d0a2ce06abf4001ec691`)
+with the pinned v1.8.2 and v1.8.3 panels before cutover. A distinct encrypted
+archive created at 06:27:18 after cutover (SHA-256
+`e961a2d6d8b704b3029f07acf4c08ede608110e242bbb25f2ea8e6425bc59e43`)
+booted with the pinned v1.8.3 panel. All three recovery boots were network
+isolated; these are online backups, not an atomic snapshot across databases.
+
 ## v1.8.2 panel cutover (2026-11-24, UTC)
 
 The staged release (`d58ec32`) went live on OC424 at 02:13. By 02:15:10

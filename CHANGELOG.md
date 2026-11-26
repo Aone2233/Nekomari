@@ -8,23 +8,26 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [1.8.3] — 2026-11-26 (opt-in panel release)
+
 - Register panel shutdown signals before announcing or opening the normal or
   guide HTTP listener. Previously a SIGTERM in that window could skip cleanup
   even though startup was already visible to an operator.
 
-- **Execution-history candidate, not released or deployed.** Add a paged,
+- **Execution history.** Add a paged,
   `tasks:read`-scoped view with explicit bounded command/output reads, warning
   labels and five locales. Earliest-result and completion times use the panel
   language and show seconds and the viewer's time zone. Startup backfills a
   stable task order, including tasks written during a rollback. Synthetic browser, focused Go and isolated
   old/new/old/new startup checks cover the implementation; the rollback-era
-  tasks were SQL fixtures, not Agent-dispatched commands. Acceptance of the
-  history view and the normal release/backup gates still apply.
+  tasks were SQL fixtures, not Agent-dispatched commands. No Agent upgrade is required.
   Unaddressable legacy rows are skipped and counted rather than failing the page, and
   paging continues past them. If a task or result page fails, Retry requests
   that page again; Refresh explicitly starts over. A page's counts come from one aggregate statement, so
   they are exact and the list no longer holds the single main connection for 20
   round trips; see `docs/EXEC-HISTORY-DESIGN.md`.
+
+## [1.8.2] — 2026-11-24
 
 - Pin the panel and Agent to the upstream Gorilla WebSocket masking-key fix
   for [GO-2026-6278](https://pkg.go.dev/vuln/GO-2026-6278). Both Go modules
