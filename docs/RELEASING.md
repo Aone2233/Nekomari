@@ -2,6 +2,17 @@
 
 ## Cut a release
 
+**v1.8.4 terminal dialogs (2026-11-26):** [Release v1.8.4](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.4)
+is an opt-in prerelease from `7003444`, not GitHub Latest. [Exact CI](https://github.com/Aone2233/Nekomari/actions/runs/45835951954)
+passed 8/8, [release and published deployment verification](https://github.com/Aone2233/Nekomari/actions/runs/45837668922)
+10/10 and [image publication](https://github.com/Aone2233/Nekomari/actions/runs/45838918535) 2/2.
+All nine checksums verified, as did the eight binaries' attestations against the
+tag, source SHA and signer workflow. Both architectures' panel and Agent image
+binaries matched the downloads. The published amd64 panel also passed the
+isolated CSV and execution-history browser tests. GitHub Latest stayed on
+v1.8.2 and neither image's `latest` or `1.8` alias changed (Agent `1.8` absent).
+No Agent update is required. See the [production record](./DEPLOY-OC424.md#v184-panel-cutover-2026-11-26-utc).
+
 **v1.8.3 execution-history panel slice (2026-11-26):** [Release v1.8.3](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.3)
 was published as a prerelease from `0f4f84d`, with standard Agent filenames.
 [Exact-source CI](https://github.com/Aone2233/Nekomari/actions/runs/45765821546) passed 8/8,

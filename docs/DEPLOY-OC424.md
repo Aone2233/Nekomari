@@ -3,9 +3,36 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.8.4 panel cutover (2026-11-26, UTC)
+
+At 14:30:54 OC424 switched only the panel, to index
+`sha256:eef738223c1586378133c8cd93d71044f8cf3a4b2fecf58f6fbe89b655bf43ec`.
+Pre/post checks passed 9/9; loopback and public HTTPS returned `v1.8.4 / 7003444`.
+The running arm64 executable matched the published checksum. The admin entry
+and terminal editor chunk served over public HTTPS matched the files embedded
+in the published arm64 binary byte-for-byte. These are asset checks, not an
+interactive production terminal test. The container was healthy with zero restarts.
+
+All 17 registered Agent identities, credentials, versions (`v1.8.2`) and update
+targets, the 17 ping-task rows and the OC424 Agent process compared equal.
+Every node reported fresh CPU, memory, ping latency and loss after the switch.
+Read-only SQLite `quick_check` passed. No terminal or execution RPC was issued.
+The first attempt could not write the root-only rollback directory; it stopped
+before changing compose or restarting anything. With the deployment account's
+existing sudo access, the old compose was saved at
+`/opt/nekomari/rollbacks/dialog-v184-20261126T143054Z-rd9tguzg/previous.yml`.
+For an image-only rollback keep the live databases; do not overwrite newer data.
+
+MAC-WAN booted the fresh 14:00:28 encrypted archive (SHA-256
+`a74bdc5d2f0d0f39d25fd74dafe54662d9aacdf810e31c49841d58bd9d4691b2`)
+with both the pinned old and new panels before cutover. The distinct 14:34:17
+post-cut archive (SHA-256 `6e4f49cfec8dd9918483a85fc4dabd51502cfd3316a094a906e0ff2b3d8541aa`)
+booted with the pinned v1.8.4 panel. All recovery boots were network-isolated;
+these are online backups, not an atomic multi-database snapshot.
+
 ## v1.8.3 panel cutover (2026-11-26, UTC)
 
-The panel-only cutover began at 06:25:41. OC424 uses the v1.8.3 index
+The panel-only cutover began at 06:25:41. OC424 used the v1.8.3 index
 `sha256:53da6de04224f626f4ddf5ac3ecf2f9c275c3b9e8765aedbe127b841269fef17`;
 the running arm64 binary matched the release checksum, and both loopback and
 public HTTPS returned `v1.8.3 / 0f4f84d`. Pre/post production checks each
