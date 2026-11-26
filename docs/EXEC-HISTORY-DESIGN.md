@@ -1,9 +1,8 @@
 # Remote execution history: design and safety contract
 
-Status: PR #165 is ready for review, not released or deployed. Owner acceptance of the
-[two CSV buttons](./METRIC-CSV-EXPORT.md#theme-independent-admin-entry-v182)
-is complete. The history page still needs its own owner acceptance, exact-commit
-CI and the normal release and backup checks.
+Status: PR #165 merged after the owner authorized advancing the panel deployment
+following the synthetic history review handoff. This does not claim an observed
+production history-page session. See [open work](./OPEN-WORK.md) for rollout state.
 
 ## Existing behavior and the actual gap
 
