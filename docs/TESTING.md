@@ -77,6 +77,36 @@ the build.
 `npm run audit:compiler` is a separate CI gate from `npm run lint`: configured
 lint rules do not cover every shape the React Compiler rejects.
 
+### Admin cold start
+
+The installed `metric-chart-csv-panel.spec.py --admin-chart` regression starts
+from a guest deep link. A failed account read must offer Retry, and neither a
+guest nor an unknown session should open the monitoring socket or send protected
+requests. Signing in through the actual form must reveal the requested chart
+without a second document navigation, preserving its query and fragment. The
+server still enforces authorization; the UI gate only avoids unnecessary work.
+
+For a timing comparison, use separate old/candidate panel processes on the same
+disposable installation with 17 synthetic nodes. Start a fresh Chromium process
+per visit, block service workers, disable the HTTP cache and use a 1365×768
+viewport with `zh-CN`. Set 4× CPU slowdown, 150 ms latency, 10 Mibit/s down and
+5 Mibit/s up. Start timing before navigation; stop when the password field is
+visible on `/admin`, or the first fixture node name is visible on authenticated
+`/admin/servers`. Count same-origin JS requests and transfer bytes after another
+2 seconds. Sign in via a separate API context for the latter so setup does not
+warm the browser. Do not run this against a production account.
+
+Three cold visits per route/build (v1.8.4 → candidate, median):
+
+| Route | Visible | JS requests | JS transfer |
+|---|---:|---:|---:|
+| Guest `/admin` | 4,167 → 1,922 ms | 66 → 19 | 501,538 → 234,073 bytes |
+| Signed-in `/admin/servers` | 5,616 → 4,909 ms | 86 → 80 | 440,318 → 419,697 bytes |
+
+All guest visits went from ten 401 responses and two WebSocket attempts to zero
+of each. These are isolated route measurements, not an end-to-end promise for
+the Emerald homepage, a production CDN, or scrolling after load.
+
 ### Native terminal dialog check
 
 From `frontend/`, run `npm run dev -- --host 127.0.0.1` and open

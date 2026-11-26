@@ -8,6 +8,11 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- The admin sign-in screen no longer starts the dashboard, fetches protected
+  settings or opens the monitoring socket before there is a session. Signing
+  in opens the originally requested route without reloading the document.
+  The node list loads install and discovery forms only when opened.
+
 ## [1.8.4] — 2026-11-26 (opt-in panel release)
 
 - Terminal dialogs keep keyboard focus inside the dialog and start destructive

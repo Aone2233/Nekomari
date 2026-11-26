@@ -21,8 +21,8 @@ type LoginDialogProps = {
   onLoginSuccess?: () => void;
 };
 
-const LoginInnerLayout = ({ trigger, autoOpen = false, showSettings = true, info, onLoginSuccess }: LoginDialogProps) => {
-    const { account, loading, error, refresh } = useAccount();
+export const AccountLoginDialog = ({ trigger, autoOpen = false, showSettings = true, info, onLoginSuccess }: LoginDialogProps) => {
+    const { account, loading, error } = useAccount();
     const [t] = useTranslation();
     const [username, setUsername] = React.useState("");
     const [password, setPassword] = React.useState("");
@@ -62,7 +62,6 @@ const LoginInnerLayout = ({ trigger, autoOpen = false, showSettings = true, info
         });
         const data = await res.json();
         if (res.status === 200) {
-          refresh();
           if (typeof onLoginSuccess === "function") {
             onLoginSuccess();
             return
@@ -281,7 +280,7 @@ const LoginInnerLayout = ({ trigger, autoOpen = false, showSettings = true, info
 
 const LoginDialog = (props: LoginDialogProps) => (
   <AccountProvider>
-    <LoginInnerLayout key={props.autoOpen ? "auto" : "manual"} {...props} />
+    <AccountLoginDialog key={props.autoOpen ? "auto" : "manual"} {...props} />
   </AccountProvider>
 );
 
