@@ -14,7 +14,14 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**v1.8.3 panel slice (2026-11-26):** OC424 runs the [verified execution-history
+**v1.8.4 production (2026-11-26):** OC424 runs the [verified terminal-dialog
+panel](./DEPLOY-OC424.md#v184-panel-cutover-2026-11-26-utc). The panel-only
+release changed no Agent or moving default. The next frontend budget slice is
+[tracked in #187](https://github.com/Aone2233/Nekomari/issues/187): cold,
+service-worker-blocked fixture visits loaded 47 JS requests on `/` and 85 on
+`/admin/servers`, against a target below 35. These are not CDN measurements.
+
+**v1.8.3 panel slice (2026-11-26, historical):** OC424 ran the [verified execution-history
 panel](./DEPLOY-OC424.md#v183-panel-cutover-2026-11-26-utc). All 17 registered
 Agents remain on v1.8.2; this panel rollout changed neither their targets nor
 GitHub Latest or any Docker moving alias. The wider v1.9 roadmap is not complete.
@@ -506,7 +513,7 @@ The next bounded releases and operational gates, in order:
    the public theme. The owner confirmed both buttons on 2026-11-26; the CSV
    acceptance gate is closed. See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md).
    Bounded exec-result history shipped in the v1.8.3 panel slice above. The
-   current accessibility candidate is described below; cost forecast, roles UI,
+   v1.8.4 terminal-dialog slice is described below; cost forecast, roles UI,
    frontend budgets and the wider accessibility pass are separate slices.
 
 **Terminal-dialog accessibility slice:** merged PR #167 traps Tab focus, restores the
@@ -526,9 +533,8 @@ arrowing to a file changed only the visual highlight. Quick open now exposes
 the highlighted option of an editable combobox. Orca reported the actual file
 name after Down; IBus/libpinyin committed text and cancelled preedit without
 opening a file or dismissing the dialog. See the [checks and their limits](./TESTING.md#native-terminal-dialog-check).
-This is not cross-platform or human accessibility sign-off. The v1.8.4 panel
-candidate still needs exact-source CI, verified publication, fresh off-host
-restore checks and a digest-pinned cutover; Agent targets must not change.
+This is not cross-platform or human accessibility sign-off. The slice is
+[deployed in v1.8.4](./DEPLOY-OC424.md#v184-panel-cutover-2026-11-26-utc).
 
 **Hostname probe family selection (draft, 2026-11-05):** the reported
 multi-node IPv6 hostname is rejected by the conservative mixed-family guard.
@@ -2216,7 +2222,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | `docs/audits/` has no retention policy or owner, and one tree ships a production-mutating script | `docs/audits/2026-09-30/` | Keep audits as immutable dated evidence, but say so somewhere and decide what stays |
 | The React Compiler rules are advisory until the remaining findings are triaged | `docs/ROADMAP.md` A4, `frontend/script/audit-compiler.mjs` | Now a CI step and currently at 0; adoption needs the triage, not the gate |
-| Terminal dialog accessibility | `frontend/src/pages/terminal/TerminalDialog.tsx` | Unreleased and undeployed; the candidate has mounted keyboard coverage and a [Linux Orca/IBus check](./TESTING.md#native-terminal-dialog-check), not a human or cross-platform acceptance |
+| Terminal dialog accessibility | `frontend/src/pages/terminal/TerminalDialog.tsx` | Deployed in v1.8.4 with mounted keyboard coverage and a [Linux Orca/IBus check](./TESTING.md#native-terminal-dialog-check), not a human or cross-platform acceptance |
 | The mutation-envelope check is re-implemented at ~24 call sites | `frontend/src/lib/`, `frontend/src/pages/admin/` | Only the node table uses the shared helper; the loosest call site does not check `response.ok` at all |
 | Locale strings are injected as raw HTML at 8 sites with `escapeValue: false` | `frontend/src/i18n/config.ts` + 8 components | Today's values are benign markup, but `frontend/crowdin.yml` accepts outside contributions and `dompurify` is already a dependency |
 | Absolute asset URLs ignore the configurable `base` | `frontend/src/components/Flag.tsx` + 2 more | A sub-path deployment gets 404 flags and logos |
