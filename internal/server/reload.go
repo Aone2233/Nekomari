@@ -1,6 +1,10 @@
 package server
 
 import (
+	"context"
+	"errors"
+	"sync"
+
 	logger "github.com/Aone2233/nekomari/utils/log"
 
 	"github.com/Aone2233/nekomari/internal/config"
@@ -27,6 +31,10 @@ type reloadHandler struct {
 type ReloadManager struct {
 	handlers []reloadHandler
 	started  bool
+	mu       sync.Mutex
+	stopping bool
+	active   int
+	drained  chan struct{}
 }
 
 // NewReloadManager 创建一个空的热重载管理器。
@@ -49,11 +57,55 @@ func (m *ReloadManager) Start() {
 		return
 	}
 	m.started = true
-	config.Subscribe(func(event config.ConfigEvent) {
-		for _, h := range m.handlers {
-			m.dispatch(h, event)
+	config.Subscribe(m.handleEvent)
+}
+
+func (m *ReloadManager) handleEvent(event config.ConfigEvent) {
+	m.mu.Lock()
+	if m.stopping {
+		m.mu.Unlock()
+		return
+	}
+	m.active++
+	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		m.active--
+		if m.stopping && m.active == 0 && m.drained != nil {
+			close(m.drained)
+			m.drained = nil
 		}
-	})
+	}()
+	for _, h := range m.handlers {
+		m.dispatch(h, event)
+	}
+}
+
+// StopAndWait rejects queued config events and joins handlers which already
+// started. Handlers must do their work synchronously for this fence to apply.
+func (m *ReloadManager) StopAndWait(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("reload shutdown requires a context")
+	}
+	m.mu.Lock()
+	if !m.stopping {
+		m.stopping = true
+		if m.active > 0 {
+			m.drained = make(chan struct{})
+		}
+	}
+	drained := m.drained
+	m.mu.Unlock()
+	if drained == nil {
+		return nil
+	}
+	select {
+	case <-drained:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // dispatch 执行单个 handler，并隔离 panic，避免一个 handler 影响其它。

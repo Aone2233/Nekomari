@@ -1,0 +1,83 @@
+diff --git a/src/api/client.ts b/src/api/client.ts
+index 3897a15..305aac9 100644
+--- a/src/api/client.ts
++++ b/src/api/client.ts
+@@ -62,7 +62,29 @@ export async function fetchMe(): Promise<KomariMe> {
+   }
+ }
+ 
+-/** /api/records/ping?hours=N — global ping records across all nodes & tasks */
++/** Per-node ping history merged into the legacy PingHistory shape. */
++export async function fetchPingHistoryForNodes(
++  nodes: Array<{ uuid: string }>,
++  hours = 1,
++): Promise<PingHistory> {
++  const tasks = new Map<number, PingTask>()
++  const records: PingRecord[] = []
++  let next = 0
++  const workers = Array.from({ length: Math.min(6, nodes.length) }, async () => {
++    while (next < nodes.length) {
++      const node = nodes[next++]
++      const history = await fetchNodePingHistory(node.uuid, hours)
++      for (const task of history.tasks) tasks.set(task.id, task)
++      for (const record of history.records) {
++        records.push({ ...record, client: record.client || node.uuid })
++      }
++    }
++  })
++  await Promise.all(workers)
++  return { count: records.length, tasks: [...tasks.values()], records }
++}
++
++/** /api/records/ping?hours=N — kept for callers that still want the legacy shape. */
+ export interface PingTask {
+   id: number
+   name: string
+diff --git a/src/hooks/useKomari.ts b/src/hooks/useKomari.ts
+index abd455b..ab2ee5c 100644
+--- a/src/hooks/useKomari.ts
++++ b/src/hooks/useKomari.ts
+@@ -1,5 +1,5 @@
+-import { useEffect, useMemo, useState } from 'react'
+-import { fetchMe, fetchNodes, fetchPingHistory, fetchPublic, openLiveSocket } from '@/api/client'
++import { useEffect, useMemo, useRef, useState } from 'react'
++import { fetchMe, fetchNodes, fetchPingHistoryForNodes, fetchPublic, openLiveSocket } from '@/api/client'
+ import type { PingHistory } from '@/api/client'
+ import { makeOfflineRecord, normalizeNode, normalizeWsRecord, wsRecordEqual } from '@/api/normalize'
+ import type {
+@@ -99,6 +99,7 @@ function mergePingIntoRecords(
+  */
+ export function useKomari(): KomariState {
+   const [state, setState] = useState<KomariState>(INITIAL)
++  const nodesRef = useRef<KomariNode[]>([])
+ 
+   useEffect(() => {
+     let cancelled = false
+@@ -124,21 +125,23 @@ export function useKomari(): KomariState {
+             if (aw !== bw) return aw - bw
+             return (a.name ?? '').localeCompare(b.name ?? '')
+           })
++        nodesRef.current = nodes
+         setState((prev) => ({ ...prev, nodes, config, me }))
++        refreshPing(nodes)
+       })
+       .catch((err) => {
+         if (cancelled) return
+         setState((prev) => ({ ...prev, error: String(err) }))
+       })
+ 
+-    const refreshPing = () => {
+-      fetchPingHistory(1).then((ping) => {
++    const refreshPing = (nodes: KomariNode[]) => {
++      if (nodes.length === 0) return
++      fetchPingHistoryForNodes(nodes, 1).then((ping) => {
+         if (cancelled) return
+         setState((prev) => ({ ...prev, ping }))
+       })
+     }
+-    refreshPing()
+-    const pingTimer = setInterval(refreshPing, 60_000)
++    const pingTimer = setInterval(() => refreshPing(nodesRef.current), 60_000)
+ 
+     const sock = openLiveSocket({
+       onStatus: (conn) => {

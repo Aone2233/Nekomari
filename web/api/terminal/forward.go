@@ -85,7 +85,12 @@ func ForwardTerminal(id string, browser, agent *connection.SafeConn) {
 
 	// 等待错误或主动关闭
 	<-errChan
+	// Terminate and join both halves even if this session was replaced while
+	// forwarding. Otherwise the detached half can outlive storage shutdown.
+	browser.Abort()
+	agent.Abort()
 	suspendSession(id, browser, agent)
+	<-errChan
 	disconnect_time := time.Now()
 	auditlog.Log(requesterIp, userUUID, "disconnected, terminal id:"+id+", duration:"+disconnect_time.Sub(established_time).String(), "terminal")
 }

@@ -3,6 +3,7 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -34,6 +35,21 @@ func readManifest(dir string) (models.Plugin, error) {
 
 // validateManifest checks the fields the server relies on and fills in
 // defaults.
+// validPluginIcon accepts either a plugin-local path or an absolute http(s)
+// icon URL. The URL form is already used by market plugins and previously
+// slipped through on Unix; validating it explicitly keeps Windows and Linux
+// behavior identical.
+func validPluginIcon(icon string) bool {
+	icon = strings.TrimSpace(icon)
+	if icon == "" {
+		return true
+	}
+	if parsed, err := url.Parse(icon); err == nil && parsed.IsAbs() {
+		return (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
+	}
+	return filepath.IsLocal(icon)
+}
+
 func validateManifest(info *models.Plugin) error {
 	if info.Short == "" {
 		return fmt.Errorf("plugin short is required")
@@ -50,8 +66,8 @@ func validateManifest(info *models.Plugin) error {
 	if !filepath.IsLocal(info.Entry) {
 		return fmt.Errorf("plugin entry %q must be a relative path inside the plugin directory", info.Entry)
 	}
-	if info.Icon != "" && !filepath.IsLocal(info.Icon) {
-		return fmt.Errorf("plugin icon %q must be a relative path inside the plugin directory", info.Icon)
+	if info.Icon != "" && !validPluginIcon(info.Icon) {
+		return fmt.Errorf("plugin icon %q must be a relative path inside the plugin directory or an http(s) URL", info.Icon)
 	}
 	for i := range info.Pages {
 		if err := validatePage(&info.Pages[i]); err != nil {

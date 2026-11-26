@@ -3,10 +3,12 @@ package metricstore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/Aone2233/nekomari/pkg/metric"
+	logger "github.com/Aone2233/nekomari/utils/log"
 )
 
 const panelHistoryEntity = "_nekomari_panel"
@@ -203,7 +205,14 @@ func writePanelSampleWithPools(ctx context.Context, s *metric.Store, sample Pane
 			metric.Point{MetricName: MetricPanelThemeMemory, EntityID: panelHistoryEntity, Timestamp: sample.At, Value: memory})
 	}
 	points = append(points, poolPoints...)
-	return s.WriteBatch(ctx, points)
+	if err := s.WriteBatch(ctx, points); err != nil {
+		var accepted *metric.WriteAcceptedError
+		if !errors.As(err, &accepted) {
+			return err
+		}
+		logger.Errorf("metricstore", "panel history accepted but maintenance failed: %v", err)
+	}
+	return nil
 }
 
 // ReadPanelHistory accepts only the two fixed windows exposed by the admin

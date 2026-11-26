@@ -308,3 +308,42 @@ func TestRunExpandsLegacyPingAllClientsTasks(t *testing.T) {
 		t.Fatalf("unexpected clients json: %s", raw)
 	}
 }
+
+func TestRunPreservesEmptyPinnedAssignmentsAtRestart(t *testing.T) {
+	db := openTestDB(t, "migrations_pinned_empty_assignments")
+	if err := db.AutoMigrate(&models.Client{}, &models.PingTask{}); err != nil {
+		t.Fatal(err)
+	}
+	node := models.Client{UUID: "migration-node", Token: "migration-token"}
+	if err := db.Create(&node).Error; err != nil {
+		t.Fatal(err)
+	}
+	pinned := models.PingTask{Name: "pinned", Type: "tcp", Target: "host.test:80", TargetFamily: "ipv6",
+		PinnedGeneration: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", DefaultOn: true, Clients: models.StringArray{}, Interval: 60}
+	legacy := models.PingTask{Name: "legacy", Type: "tcp", Target: "host.test:80", DefaultOn: true, Clients: models.StringArray{}, Interval: 60}
+	if err := db.Create(&pinned).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&legacy).Error; err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := Run(Context{DB: db}); err != nil {
+			t.Fatal(err)
+		}
+		var got models.PingTask
+		if err := db.Take(&got, pinned.Id).Error; err != nil {
+			t.Fatal(err)
+		}
+		if len(got.Clients) != 0 || got.PinnedGeneration != pinned.PinnedGeneration || !got.DefaultOn {
+			t.Fatalf("restart changed pinned assignment: %+v", got)
+		}
+		got = models.PingTask{}
+		if err := db.Take(&got, legacy.Id).Error; err != nil {
+			t.Fatal(err)
+		}
+		if len(got.Clients) != 1 || got.Clients[0] != node.UUID {
+			t.Fatalf("legacy all-clients expansion changed: %+v", got)
+		}
+	}
+}

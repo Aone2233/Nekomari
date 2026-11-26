@@ -7,6 +7,7 @@ import (
 
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/panellock"
 	"github.com/Aone2233/nekomari/utils"
 	logger "github.com/Aone2233/nekomari/utils/log"
 	"github.com/Aone2233/nekomari/web/backup"
@@ -22,11 +23,11 @@ import (
 // database: Bootstrap's first steps are ./data recovery and dbcore.Initialize, and a test
 // that ran those would be about the database rather than about this decision. theme is the
 // configured theme key (config.ThemeKey / Settings.Theme).
-func prewarmDefaultThemeCacheIfBuiltIn(theme string) {
+func prewarmDefaultThemeCacheIfBuiltIn(theme string) <-chan struct{} {
 	if theme != public.DefaultTheme {
-		return
+		return nil
 	}
-	public.PrewarmDefaultThemeCache()
+	return public.PrewarmDefaultThemeCacheDone()
 }
 
 // Bootstrap initializes the data directory, primary database, and settings.
@@ -36,6 +37,24 @@ func (a *App) Bootstrap() error {
 	// a soft limit installed after them would only constrain the next spike.
 	applyMemoryLimit()
 
+	if err := os.MkdirAll("./data", os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create data directory: %w", err)
+	}
+	lease, err := panellock.Acquire("./data")
+	if err != nil {
+		return fmt.Errorf("cannot start panel: %w", err)
+	}
+	// Publish a staged restore only after all other registered resources have
+	// drained, and before releasing the data-directory lease.
+	a.addCleanHandoff("publish-pending-restore", func(context.Context) error {
+		if err := a.handoffFailure(); err != nil {
+			return err
+		}
+		if err := backup.PublishPendingRestore(); err != nil {
+			return err
+		}
+		return lease.Close()
+	})
 	if err := os.MkdirAll("./data/theme", os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create theme directory: %w", err)
 	}
@@ -64,7 +83,7 @@ func (a *App) Bootstrap() error {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
 	a.dbReady = true
-	a.addCleanup("database", func(context.Context) error { return dbcore.Close() })
+	a.addCriticalCleanup("database", func(context.Context) error { return dbcore.Close() })
 
 	gin.SetMode(gin.ReleaseMode)
 	settings, err := config.GetManyAs[config.Settings]()
@@ -87,12 +106,21 @@ func (a *App) Bootstrap() error {
 	// Asynchronous and best-effort on purpose: Bootstrap must not wait for the write, and a
 	// cache that cannot be built (read-only data directory, full disk) logs once from
 	// web/public and falls back to the in-memory archive — no request is affected either way.
-	prewarmDefaultThemeCacheIfBuiltIn(a.settings.Theme)
+	if done := prewarmDefaultThemeCacheIfBuiltIn(a.settings.Theme); done != nil {
+		a.addCriticalCleanup("theme-cache-prewarm", func(ctx context.Context) error {
+			select {
+			case <-done:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
+	}
 
 	uploadCtx, stopUploads := context.WithCancel(context.Background())
 	uploadDone := make(chan struct{})
 	go func() { defer close(uploadDone); upload.DefaultStore.RunCleanup(uploadCtx) }()
-	a.addCleanup("upload-cleanup", func(ctx context.Context) error {
+	a.addCriticalCleanup("upload-cleanup", func(ctx context.Context) error {
 		stopUploads()
 		select {
 		case <-uploadDone:

@@ -2,12 +2,147 @@ package metric
 
 import (
 	"context"
+	"errors"
 	"math"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 )
+
+func TestImportRollupsRejectsInvalidBucketBoundariesAtomically(t *testing.T) {
+	ctx := t.Context()
+	policy := RollupPolicy{Tiers: []RollupTier{{Interval: time.Minute, Retention: time.Hour}}}
+	store := openRollupTransferTestStore(t, filepath.Join(t.TempDir(), "boundaries.db"), policy)
+	if err := store.CreateMetric(ctx, Definition{Name: "boundaries", RetentionDays: 1}); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 7, 27, 10, 0, 0, 0, time.UTC)
+	valid := constantTransferRollup("boundaries", "node", base, time.Minute, 7, base)
+	cases := map[string]func(*PersistedRollup){
+		"misaligned bucket":     func(r *PersistedRollup) { r.Bucket = base.Add(time.Second) },
+		"submillisecond bucket": func(r *PersistedRollup) { r.Bucket = base.Add(time.Nanosecond) },
+		"first before bucket":   func(r *PersistedRollup) { r.FirstTime = base.Add(-time.Second) },
+		"last at bucket end":    func(r *PersistedRollup) { r.LastTime = base.Add(time.Minute) },
+		"invalid metric UTF-8":  func(r *PersistedRollup) { r.MetricName = string([]byte{0xff}) },
+		"invalid entity UTF-8":  func(r *PersistedRollup) { r.EntityID = string([]byte{0xff}) },
+		"time range overflow": func(r *PersistedRollup) {
+			r.Bucket = time.UnixMilli(math.MaxInt64 - math.MaxInt64%time.Minute.Milliseconds()).UTC()
+			r.FirstTime, r.LastTime = r.Bucket, r.Bucket
+		},
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			invalid := valid
+			invalid.EntityID = "invalid"
+			mutate(&invalid)
+			if err := store.ImportRollups(ctx, []PersistedRollup{valid, invalid}); !errors.Is(err, ErrInvalidArgument) {
+				t.Fatalf("invalid import = %v", err)
+			}
+			rows, _ := exportAllTestRollups(t, store, "boundaries", 10)
+			if len(rows) != 0 {
+				t.Fatalf("invalid batch partially imported: %+v", rows)
+			}
+		})
+	}
+	if err := store.ImportRollups(ctx, []PersistedRollup{valid}); err != nil {
+		t.Fatalf("valid import = %v", err)
+	}
+}
+
+func TestImportRollupsRoundTripsBeforeUnixEpoch(t *testing.T) {
+	ctx := t.Context()
+	policy := RollupPolicy{Tiers: []RollupTier{
+		{Interval: time.Minute, Retention: 24 * time.Hour},
+		{Interval: 5 * time.Minute, Retention: 7 * 24 * time.Hour},
+	}, Compression: 30}
+	source := openRollupTransferTestStore(t, filepath.Join(t.TempDir(), "source.db"), policy)
+	target := openRollupTransferTestStore(t, filepath.Join(t.TempDir(), "target.db"), policy)
+	for _, store := range []*Store{source, target} {
+		if err := store.CreateMetric(ctx, Definition{Name: "pre-epoch", RetentionDays: 30}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	at := time.Unix(-30, 0).UTC()
+	if err := source.ReplaceRollupPoints(ctx, 5*time.Minute, []Point{{MetricName: "pre-epoch", EntityID: "node", Timestamp: at, Value: 7}}); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ := exportAllTestRollups(t, source, "pre-epoch", 10)
+	if len(rows) != 2 {
+		t.Fatalf("exported %d rows, want minute and five-minute buckets", len(rows))
+	}
+	if err := target.ImportRollups(ctx, rows); err != nil {
+		t.Fatalf("import pre-epoch rollups: %v", err)
+	}
+	got, _ := exportAllTestRollups(t, target, "pre-epoch", 10)
+	if !reflect.DeepEqual(got, rows) {
+		t.Fatalf("pre-epoch import changed aggregates: got %+v, want %+v", got, rows)
+	}
+	if err := target.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestImportRollupsPreservingExistingRefusesConflictAtomically(t *testing.T) {
+	ctx := t.Context()
+	policy := RollupPolicy{Tiers: []RollupTier{{Interval: time.Minute, Retention: 24 * time.Hour}}}
+	s := openRollupTransferTestStore(t, filepath.Join(t.TempDir(), "preserve.db"), policy)
+	if err := s.CreateMetric(ctx, Definition{Name: "sample", RetentionDays: 1}); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 7, 27, 10, 0, 0, 0, time.UTC)
+	original := constantTransferRollup("sample", "node", base, time.Minute, 7, base)
+	if err := s.ImportRollups(ctx, []PersistedRollup{original}); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := exportAllTestRollups(t, s, "sample", 10)
+	same := original
+	same.CreatedAt = base.Add(time.Hour)
+	if err := s.ImportRollupsPreservingExisting(ctx, []PersistedRollup{same}); err != nil {
+		t.Fatalf("same aggregate should be idempotent: %v", err)
+	}
+	after, _ := exportAllTestRollups(t, s, "sample", 10)
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("idempotent import rewrote target: before=%+v after=%+v", before, after)
+	}
+	newRow := constantTransferRollup("sample", "another", base, time.Minute, 5, base)
+	conflict := constantTransferRollup("sample", "node", base, time.Minute, 9, base)
+	if err := s.ImportRollupsPreservingExisting(ctx, []PersistedRollup{newRow, conflict}); !errors.Is(err, ErrImportConflict) {
+		t.Fatalf("conflicting import = %v", err)
+	}
+	after, _ = exportAllTestRollups(t, s, "sample", 10)
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("conflicting batch changed target: before=%+v after=%+v", before, after)
+	}
+	if err := s.ImportRollupsPreservingExisting(ctx, []PersistedRollup{newRow, newRow}); !errors.Is(err, ErrImportConflict) {
+		t.Fatalf("duplicate import = %v", err)
+	}
+	if err := s.ImportRollupsPreservingExisting(ctx, []PersistedRollup{newRow}); err != nil {
+		t.Fatalf("new rollup import = %v", err)
+	}
+	variable := constantTransferRollup("sample", "variable", base, time.Minute, 1, base)
+	variable.Count, variable.Sum, variable.SumSq, variable.Min, variable.Max = 2, 4, 10, 1, 3
+	variable.FirstValue, variable.LastValue = 1, 3
+	variable.FirstTime, variable.LastTime = base.Add(time.Second), base.Add(2*time.Second)
+	digest := NewTDigest(30)
+	digest.Add(1, 1)
+	digest.Add(3, 1)
+	variable.Digest = digest.Encode()
+	if err := s.ImportRollupsPreservingExisting(ctx, []PersistedRollup{variable}); err != nil {
+		t.Fatalf("variable rollup import = %v", err)
+	}
+	if err := s.ImportRollupsPreservingExisting(ctx, []PersistedRollup{variable}); err != nil {
+		t.Fatalf("variable rollup retry = %v", err)
+	}
+	changedDigest := NewTDigest(30)
+	changedDigest.Add(1, 1)
+	changedDigest.Add(2, 1)
+	changedDigest.Add(3, 1)
+	variable.Digest = changedDigest.Encode()
+	if err := s.ImportRollupsPreservingExisting(ctx, []PersistedRollup{variable}); !errors.Is(err, ErrImportConflict) {
+		t.Fatalf("changed percentile sketch = %v", err)
+	}
+}
 
 func TestRollupTransferRoundTrip(t *testing.T) {
 	ctx := context.Background()

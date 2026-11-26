@@ -8,6 +8,137 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Register panel shutdown signals before announcing or opening the normal or
+  guide HTTP listener. Previously a SIGTERM in that window could skip cleanup
+  even though startup was already visible to an operator.
+
+- **Execution-history candidate, not released or deployed.** Add a paged,
+  `tasks:read`-scoped view with explicit bounded command/output reads, warning
+  labels and five locales. Earliest-result and completion times use the panel
+  language and show seconds and the viewer's time zone. Startup backfills a
+  stable task order, including tasks written during a rollback. Synthetic browser, focused Go and isolated
+  old/new/old/new startup checks cover the implementation; the rollback-era
+  tasks were SQL fixtures, not Agent-dispatched commands. Acceptance of the
+  history view and the normal release/backup gates still apply.
+  Unaddressable legacy rows are skipped and counted rather than failing the page, and
+  paging continues past them. If a task or result page fails, Retry requests
+  that page again; Refresh explicitly starts over. A page's counts come from one aggregate statement, so
+  they are exact and the list no longer holds the single main connection for 20
+  round trips; see `docs/EXEC-HISTORY-DESIGN.md`.
+
+- Pin the panel and Agent to the upstream Gorilla WebSocket masking-key fix
+  for [GO-2026-6278](https://pkg.go.dev/vuln/GO-2026-6278). Both Go modules
+  previously selected v1.5.3. A dependency update in source does not patch
+  already running binaries.
+
+- **Node charts and CSV exports in the admin server list.** A third-party
+  theme can replace the public node page and omit its exports. Each node now
+  links to the built-in historical chart under `/admin/servers/:uuid/charts`,
+  with both downloads and no need to switch themes.
+
+- **Documentation index and link check.** `README.md` now lists all 80 top-level
+  documents in `docs/` — the 19 it described plus 61 generated entries under
+  their own titles — and the two relative links that pointed at nothing are
+  fixed. `script/docs-index.mjs` checks every tracked markdown file in CI, so the
+  next unlisted document or dead link fails a check instead of a reader's time.
+  Dated records under `docs/audits/` are checked but not listed.
+
+### v1.8.1 candidate — probe correctness
+
+- Build CI and release artifacts with Go 1.27.4 to address GO-2026-6859 in
+  `net/http`; the earlier 1.27.3 compiler is affected.
+
+- Correct Linux CPU guest accounting and reject counter-reset intervals; align
+  the independent calibration harness.
+- On Linux amd64/arm64, measure ICMP round-trip time between kernel software
+  transmit and receive timestamps when available, avoiding userspace scheduling
+  in the measured interval. Other platforms and unsupported sockets retain the
+  existing measurement. A reply without usable timing is unknown, not retried.
+- Honor ordinary probe IP preference; reject advanced options on pinned tasks,
+  whose separate protocol cannot execute them. Flag old pinned tasks whose
+  saved options are ignored. Older Agents can ignore options.
+- Ordinary ICMP, TCP and HTTP hostname probes now use the Agent's configured
+  custom DNS resolver, as pinned probes already do. Previously they always
+  used the system resolver; upgrading an Agent can therefore change the
+  address and path probed when custom DNS is configured. Without custom DNS,
+  the system resolver remains in use.
+- Measure HTTP TTFB from request write and report completed connection status
+  separately from response success. HTTP probes omit DNS phase timing when no
+  hostname was resolved or a lookup failed, omit final TLS timing when
+  the last connection is plain HTTP or the handshake fails, and omit TTFB
+  when only an informational response arrives before timeout. Local probe setup failures report
+  unknown rather than packet loss on a compatible Panel; recent reasons are
+  inspectable. HTTP deadlines reached while DNS is still pending are also
+  classified as unknown, including after a redirect; a late DNS answer no
+  longer starts a new TCP connection after the request has ended. If the
+  final redirect target cannot resolve, an earlier TCP connection no longer
+  fabricates a final-hop reachability result.
+- Refresh quality-page ages and expose failures; forecast read errors no longer
+  appear as empty zero-risk results. See `docs/V1.8.1-CURRENT-STATUS.md` for
+  pending real-world acceptance and release policy.
+- Answer `HEAD /` with the same public theme shell headers as `GET /`, so
+  themes that check their home page no longer receive a misleading 404.
+- Known third-party theme limitations remain: Next Pro 2.0.0 hydration,
+  LuminaCustom 3.1.2 and Aero 1.4.5 mobile navigation, btop-terminal 1.0.3
+  live status, and Light 1.1.1 status after reconnection. These observations
+  also reproduce with the official v1.7.30 Panel in the documented fixtures;
+  not all interactions or real devices were tested. See
+  `docs/V1.8.1-THEME-SMOKE.md` for the original archives and controls.
+
+### v1.7.30 release candidate
+
+- Family-pinned hostname monitoring resolves on each compatible Agent and
+  records IPv4/IPv6 separately; unsupported or POST-only Agents are skipped,
+  not counted as packet loss. Existing legacy tasks retain their history and
+  must not be converted in place. On OC424, owner-created task 30 has produced
+  real IPv6 TCP latency and loss samples on MegaBox and Riven; the older
+  Frankfurt Agent remains unsupported. Owner chart acceptance is pending.
+- A bounded, target-free retirement hint lets a compatible Agent establish a
+  new challenge promptly after an authenticated HTTP POST. The hint itself
+  grants no capability, and a lost hint falls back to normal renewal. Brief
+  synchronous retries tolerate transient metric-store lock contention while
+  the same task, credential and session fences remain held; samples can still
+  be skipped, not interpreted as loss, under disconnection or saturation.
+- Configuration imports now use transactional review. Schema 1/2 documents with
+  tasks or maintenance windows are refused, and only site name and description
+  are mutable settings. This is an intentional compatibility restriction.
+- The candidate has a non-destructive recovery boundary: do not boot an older
+  panel on databases containing pinned tasks or overwrite live data with an
+  older backup. Restore drills and their limitations are documented in
+  `docs/MAC-WAN-BACKUP.md` and `docs/PING-FAMILY-ROLLBACK-DRAFT.md`.
+- The `v1.7.30` release policy publishes checksum-verified Agent binaries under
+  `manual-komari-agent-*` only. It does not move GitHub's latest release or the
+  Agent image's moving aliases; nodes need an explicitly staged Agent upgrade.
+  Other releases must review their own policy before publication.
+
+## [v1.8.0] - 2026-11-08
+
+- **Probe truth release.** Ping tasks can opt into 1–10 attempts per cycle
+  (default 3 for new tasks) and report `attempts`, `success`, `loss_pct`,
+  `min/avg/max` and RFC3550 jitter. Legacy tasks keep the single-probe path and
+  exact old wire shape.
+- **HTTP phase reporting.** HTTP tasks record DNS/TCP/TLS/TTFB/total, final
+  status, redirects, TLS expiry, `reachable` and `available`. `legacy` mode
+  keeps 4xx/5xx as failure; `status_aware` separates reachability from HTTP
+  availability.
+- **Host detail.** CPU uses an explicit `/proc/stat` interval and optional
+  cgroup fields; RAM exposes available/cached/buffers/zswap; disk exposes
+  per-mount top-20 detail; boot-id is hashed for restart detection; TCP
+  counters are stored alongside the retransmit percentage.
+- **Retention and quality.** New installs default to 30-day node metrics and
+  7-day ping/HTTP metrics. A preset RPC/UI applies 7/30/90/365-day windows
+  without re-enabling disabled metrics. An admin probe-quality page shows last
+  report age, unknown-field ratio, CPU interval, cgroup/disk/TCP/boot-id
+  presence.
+- **Compatibility.** 26/26 market plugin archives install and 25/26 load
+  (one known synthetic-domain fixture skip); plugin notification channels and
+  jsruntime TLS are additive. 64/64 theme manifests and install/reinstall
+  gates pass. All new fields are optional; old Agents/Panels remain compatible.
+- **Verification.** OC424 scratch acceptance against a copied production
+  dataset passes `panel-upgrade-check` 9/9, migrations, authenticated quality/
+  ping/retention checks and 0 ERROR. Theme browser, external provider delivery,
+  LAN ICMP and `tc netem` loss remain explicit open gates.
+
 ## [v1.7.29] - 2026-11-05
 
 - **CSV correctness patch, published and deployed on OC424 at approximately

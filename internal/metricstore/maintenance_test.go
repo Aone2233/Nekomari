@@ -113,6 +113,7 @@ func TestInspectStorageRequiresInitializedStore(t *testing.T) {
 }
 
 func TestCloseStoreContextCancelsMigrationBeforeTakingStoreLock(t *testing.T) {
+	prepareRecoveryTest(t)
 	s, err := metric.Open(context.Background(), metric.SQLite(":memory:"))
 	if err != nil {
 		t.Fatalf("open metric store: %v", err)

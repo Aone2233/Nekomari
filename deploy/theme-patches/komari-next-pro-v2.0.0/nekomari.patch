@@ -1,0 +1,27 @@
+diff --git a/theme/src/components/NavBar.tsx b/theme/src/components/NavBar.tsx
+index 86074aa..6973505 100644
+--- a/theme/src/components/NavBar.tsx
++++ b/theme/src/components/NavBar.tsx
+@@ -20,7 +20,7 @@ const NavBar = () => {
+       <div className="container mx-auto flex h-16 md:h-20 items-center justify-between px-4">
+         {/* Logo and Title */}
+         <div className="flex items-center gap-2">
+-          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-all">
++          <Link href="/" prefetch={false} className="flex items-center gap-3 hover:opacity-80 transition-all">
+             {themeConfig.logoImageUrl ? (
+               <div className="h-8 w-8 rounded-lg overflow-hidden shadow-md ring-1 ring-black/8 bg-white/0">
+                 <img src={themeConfig.logoImageUrl} alt="logo" className="h-full w-full object-cover" />
+diff --git a/theme/src/components/providers.tsx b/theme/src/components/providers.tsx
+index d119d64..6a26021 100644
+--- a/theme/src/components/providers.tsx
++++ b/theme/src/components/providers.tsx
+@@ -16,6 +16,9 @@ import { MobileTouchFeedback } from "@/components/MobileTouchFeedback"
+ import "@/i18n/config"
+ 
+ export function Providers({ children }: { children: React.ReactNode }) {
++  const [hydrated, setHydrated] = React.useState(false)
++  React.useEffect(() => { setHydrated(true) }, [])
++  if (!hydrated) return null
+   return (
+     <NextThemesProvider
+       attribute="class"

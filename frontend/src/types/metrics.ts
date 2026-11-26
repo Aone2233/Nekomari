@@ -83,6 +83,11 @@ export type PingMetricStat = {
   loss: number | null;
   valid_known?: boolean;
   loss_approximate?: boolean;
+  /** Additive v1.8 multi-probe summary; absent for old Agents. */
+  attempts?: number | null;
+  success?: number | null;
+  loss_pct?: number | null;
+  jitter_ms?: number | null;
   min?: number | null;
   max?: number | null;
   avg?: number | null;

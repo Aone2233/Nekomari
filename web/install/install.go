@@ -13,15 +13,16 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/database/accounts"
 	"github.com/Aone2233/nekomari/database/models"
 	appconfig "github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/lifecycle"
 	"github.com/Aone2233/nekomari/internal/metricstore"
 	logger "github.com/Aone2233/nekomari/utils/log"
 	"github.com/Aone2233/nekomari/web/api"
 	"github.com/Aone2233/nekomari/web/backup"
 	"github.com/Aone2233/nekomari/web/upload"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -98,13 +99,13 @@ func (c *Controller) finalizeBackupUpload(session upload.Session) (upload.Result
 		return upload.Result{}, fmt.Errorf("open merged backup: %w", err)
 	}
 	defer archive.Close()
-	if err := backup.SaveUploadedBackup(archive, session.Metadata.Filename); err != nil {
+	if err := backup.StageUploadedBackup(archive, session.Metadata.Filename); err != nil {
 		return upload.Result{}, err
 	}
 	go func() {
-		logger.InfoArgs("install", "Backup uploaded, restarting service to restore it on startup...")
+		logger.InfoArgs("install", "Backup uploaded, requesting a clean restart to restore it...")
 		time.Sleep(2 * time.Second)
-		os.Exit(0)
+		lifecycle.RequestRestart(lifecycle.RestartForBackupRestore)
 	}()
 	return upload.Result{Message: "backup uploaded; restarting to restore", Data: gin.H{}}, nil
 }

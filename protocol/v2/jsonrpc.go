@@ -7,20 +7,25 @@ import (
 )
 
 const (
-	Version               = "2.0"
-	MethodAgentReport     = "agent.report"
-	MethodAgentBasicInfo  = "agent.basicInfo"
-	MethodAgentPingResult = "agent.pingResult"
-	MethodAgentTaskResult = "agent.taskResult"
-	MethodAgentExec       = "agent.exec"
-	MethodAgentPing       = "agent.ping"
-	MethodAgentMessage    = "agent.message"
-	MethodAgentEvent      = "agent.event"
-	MethodAgentTerminal   = "agent.terminal.request"
-	MethodAgentPull       = "agent.pull"
-	MethodAgentFile       = "agent.file"
-	MethodAgentFileResult = "agent.file.result"
-	MethodAgentUnlock     = "agent.unlock"
+	Version                      = "2.0"
+	MethodAgentReport            = "agent.report"
+	MethodAgentBasicInfo         = "agent.basicInfo"
+	MethodAgentPingResult        = "agent.pingResult"
+	MethodAgentTaskResult        = "agent.taskResult"
+	MethodAgentExec              = "agent.exec"
+	MethodAgentPing              = "agent.ping"
+	MethodAgentPingFamilySession = "agent.pingFamily.session.v1"
+	MethodAgentPingFamilyPermit  = "agent.pingFamily.permit.v1"
+	MethodAgentPingFamilyRetired = "agent.pingFamily.retired.v1"
+	MethodAgentPingFamilyProbe   = "agent.pingFamily.probe.v1"
+	MethodAgentPingFamilyResult  = "agent.pingFamily.result.v1"
+	MethodAgentMessage           = "agent.message"
+	MethodAgentEvent             = "agent.event"
+	MethodAgentTerminal          = "agent.terminal.request"
+	MethodAgentPull              = "agent.pull"
+	MethodAgentFile              = "agent.file"
+	MethodAgentFileResult        = "agent.file.result"
+	MethodAgentUnlock            = "agent.unlock"
 	// MethodAgentUpdate 让面板指定一个节点要运行的版本（roadmap H6）。
 	//
 	// 这份文件与 agent/protocol/v2/jsonrpc.go 是同一协议的两份副本（面板与 agent 是两个模块，无法共享
@@ -28,6 +33,60 @@ const (
 	// agent 说 unknown method」。
 	MethodAgentUpdate = "agent.update"
 )
+
+type PingFamilySessionParams struct {
+	Action    string `json:"action"`
+	Version   int    `json:"version"`
+	Instance  string `json:"instance"`
+	Challenge string `json:"challenge,omitempty"`
+}
+
+type PingFamilySessionResult struct {
+	Challenge string `json:"challenge"`
+}
+
+type PingFamilyPermitParams struct {
+	Instance   string `json:"instance"`
+	Session    string `json:"session"`
+	DispatchID string `json:"dispatch_id"`
+	Sequence   uint64 `json:"sequence"`
+}
+
+type PingFamilyPermitResult struct {
+	DispatchID      string `json:"dispatch_id"`
+	Sequence        uint64 `json:"sequence"`
+	FreshnessTicket string `json:"freshness_ticket"`
+}
+
+// PingFamilyProbeParams is separate from legacy agent.ping. Old Agents must
+// reject this method rather than ignore a family field and probe unpinned.
+type PingFamilyProbeParams struct {
+	TaskID           uint   `json:"task_id"`
+	Type             string `json:"type"`
+	Target           string `json:"target"`
+	Reference        string `json:"reference,omitempty"`
+	Family           string `json:"family"`
+	ConfigGeneration string `json:"config_generation"`
+	Instance         string `json:"instance"`
+	Session          string `json:"session"`
+	DispatchID       string `json:"dispatch_id"`
+	FreshnessTicket  string `json:"freshness_ticket"`
+}
+
+// A diagnostic omits both value fields; an attempted probe carries both.
+type PingFamilyResultParams struct {
+	TaskID           uint   `json:"task_id"`
+	ConfigGeneration string `json:"config_generation"`
+	Instance         string `json:"instance"`
+	Session          string `json:"session"`
+	DispatchID       string `json:"dispatch_id"`
+	Role             string `json:"role"`
+	PingType         string `json:"ping_type"`
+	Family           string `json:"family,omitempty"`
+	Value            *int   `json:"value,omitempty"`
+	ValueUS          *int64 `json:"value_us,omitempty"`
+	Diagnostic       string `json:"diagnostic,omitempty"`
+}
 
 // UnlockParams 是 agent.unlock 的负载：探针从自己的出口测得的解锁结论。
 //
@@ -162,22 +221,31 @@ type Report struct {
 	Process     int               `json:"process"`
 	// Backup 是可选的备份新鲜度上报。agent 未配置备份状态文件时为 nil，
 	// 因此不影响未使用该功能的部署，也不会写入任何 point。
-	Backup                *BackupReport     `json:"backup,omitempty"`
-	Message               string            `json:"message"`
-	Method                string            `json:"method,omitempty"`
-	UpdatedAt             time.Time         `json:"updated_at"`
-	SampledAt             time.Time         `json:"sampled_at,omitempty"`
-	ReceivedAt            time.Time         `json:"received_at,omitempty"`
-	SampleIntervalSeconds float64           `json:"sample_interval_seconds,omitempty"`
-	CounterEpoch          string            `json:"counter_epoch,omitempty"`
-	Quality               map[string]string `json:"quality,omitempty"`
+	Backup                *BackupReport `json:"backup,omitempty"`
+	Message               string        `json:"message"`
+	Method                string        `json:"method,omitempty"`
+	UpdatedAt             time.Time     `json:"updated_at"`
+	SampledAt             time.Time     `json:"sampled_at,omitempty"`
+	ReceivedAt            time.Time     `json:"received_at,omitempty"`
+	SampleIntervalSeconds float64       `json:"sample_interval_seconds,omitempty"`
+	CounterEpoch          string        `json:"counter_epoch,omitempty"`
+	// BootIDHash is a hash of the Linux boot id. It is empty when unavailable
+	// (non-Linux, unreadable procfs) and must never be treated as a restart.
+	BootIDHash string            `json:"boot_id_hash,omitempty"`
+	Quality    map[string]string `json:"quality,omitempty"`
 }
 
 // BoundedPayload limits retained strings and GPU cardinality before queueing.
 func (r Report) BoundedPayload() bool {
-	size := len(r.UUID) + len(r.CPU.Name) + len(r.CPU.Arch) + len(r.Message) + len(r.Method) + len(r.CounterEpoch)
-	if len(r.CounterEpoch) > 128 || len(r.Quality) > 16 {
+	size := len(r.UUID) + len(r.CPU.Name) + len(r.CPU.Arch) + len(r.Message) + len(r.Method) + len(r.CounterEpoch) + len(r.BootIDHash)
+	if len(r.CounterEpoch) > 128 || len(r.BootIDHash) > 128 || len(r.Quality) > 16 {
 		return false
+	}
+	if len(r.Disk.Mounts) > 64 {
+		return false
+	}
+	for _, mount := range r.Disk.Mounts {
+		size += len(mount.Device) + len(mount.Mountpoint) + len(mount.FSType)
 	}
 	for key, value := range r.Quality {
 		size += len(key) + len(value)
@@ -216,6 +284,17 @@ type CPUReport struct {
 	Cores int     `json:"cores,omitempty"`
 	Arch  string  `json:"arch,omitempty"`
 	Usage float64 `json:"usage,omitempty"`
+	// IntervalSeconds is the actual interval the host usage was averaged over.
+	// Empty/zero means the Agent could not state it; the Panel then treats the
+	// sample as unknown rather than presenting an unqualified percentage.
+	IntervalSeconds float64          `json:"interval_seconds,omitempty"`
+	Cgroup          *CgroupCPUReport `json:"cgroup,omitempty"`
+}
+
+type CgroupCPUReport struct {
+	UsagePercent          *float64 `json:"usage_percent,omitempty"`
+	QuotaCores            *float64 `json:"quota_cores,omitempty"`
+	ThrottledSecondsTotal *float64 `json:"throttled_seconds_total,omitempty"`
 }
 
 type GPUDetailReport struct {
@@ -235,6 +314,13 @@ type GPUDeviceInfo struct {
 type RamReport struct {
 	Total int64 `json:"total"`
 	Used  int64 `json:"used"`
+	// Additive detail from /proc/meminfo. Pointers keep "not collected"
+	// distinct from a measured zero.
+	Available *int64 `json:"available,omitempty"`
+	Cached    *int64 `json:"cached,omitempty"`
+	Buffers   *int64 `json:"buffers,omitempty"`
+	Zswap     *int64 `json:"zswap,omitempty"`
+	Mode      string `json:"mode,omitempty"`
 }
 
 type LoadReport struct {
@@ -246,12 +332,28 @@ type LoadReport struct {
 type DiskReport struct {
 	Total int64 `json:"total"`
 	Used  int64 `json:"used"`
+	// Mounts is the additive per-mount detail. It is capped by the Agent and
+	// may be partial; missing mounts are not zero. The sum above remains the
+	// compatibility value.
+	Mounts []DiskMountReport `json:"mounts,omitempty"`
+}
+
+type DiskMountReport struct {
+	Device     string `json:"device,omitempty"`
+	Mountpoint string `json:"mountpoint"`
+	FSType     string `json:"fstype,omitempty"`
+	Total      int64  `json:"total"`
+	Used       int64  `json:"used"`
 }
 
 type NetworkReport struct {
 	TCPRetransPercent *float64 `json:"tcp_retrans_percent,omitempty"`
-	Up                int64    `json:"up"`
-	Down              int64    `json:"down"`
+	// Additive TCP counters. Empty means the Agent could not read
+	// /proc/net/snmp; a measured zero is a present pointer to 0.
+	TCPOutSegs     *uint64 `json:"tcp_outsegs,omitempty"`
+	TCPRetransSegs *uint64 `json:"tcp_retranssegs,omitempty"`
+	Up             int64   `json:"up"`
+	Down           int64   `json:"down"`
 	// TotalUp / TotalDown 是内核自开机以来的累计字节数：单调，可以做差得到"这段时间用了多少"。
 	TotalUp   int64 `json:"totalUp"`
 	TotalDown int64 `json:"totalDown"`
@@ -272,6 +374,40 @@ type BasicInfoParams struct {
 	Info map[string]interface{} `json:"info"`
 }
 
+// HTTPProbeReport is the additive HTTP phase breakdown. Every field is a
+// pointer so an absent measurement is distinguishable from a measured zero.
+type HTTPProbeReport struct {
+	DNSUS         *int64   `json:"dns_us,omitempty"`
+	TCPUS         *int64   `json:"tcp_us,omitempty"`
+	TLSUS         *int64   `json:"tls_us,omitempty"`
+	TTFBUS        *int64   `json:"ttfb_us,omitempty"`
+	TotalUS       *int64   `json:"total_us,omitempty"`
+	StatusCode    *int     `json:"status_code,omitempty"`
+	Redirects     *int     `json:"redirects,omitempty"`
+	TLSExpiryDays *float64 `json:"tls_expiry_days,omitempty"`
+	Reachable     *bool    `json:"reachable,omitempty"`
+	Available     *bool    `json:"available,omitempty"`
+}
+
+// PingProbeStats is the additive multi-probe summary. Old Agents omit it;
+// old Panels ignore it. A measured zero (success=0, loss_pct=0) is distinct
+// from an absent field because every field is a pointer.
+type PingProbeStats struct {
+	Attempts       *int             `json:"attempts,omitempty"`
+	Success        *int             `json:"success,omitempty"`
+	LossPct        *float64         `json:"loss_pct,omitempty"`
+	MinUS          *int64           `json:"min_us,omitempty"`
+	AvgUS          *int64           `json:"avg_us,omitempty"`
+	MaxUS          *int64           `json:"max_us,omitempty"`
+	JitterUS       *int64           `json:"jitter_us,omitempty"`
+	HTTP           *HTTPProbeReport `json:"http,omitempty"`
+	ResolvedIP     string           `json:"resolved_ip,omitempty"`
+	ResolvedFamily string           `json:"resolved_family,omitempty"`
+	ProbeMode      string           `json:"probe_mode,omitempty"`
+	ProbeStatus    string           `json:"probe_status,omitempty"`
+	ProbeReason    string           `json:"probe_reason,omitempty"`
+}
+
 type PingResultParams struct {
 	TaskID   uint   `json:"task_id"`
 	PingType string `json:"ping_type"`
@@ -290,6 +426,21 @@ type PingResultParams struct {
 	// 「同一任务、不同路径」拆成两条序列。旧 agent 不发该字段，此时为空，
 	// 行为与改动前完全一致。
 	Family string `json:"family,omitempty"`
+	// Additive v1.8 probe-truth fields. Omitted by old Agents; zero values are
+	// always accompanied by the pointer, so `success=0` is not an absent field.
+	Attempts       *int             `json:"attempts,omitempty"`
+	Success        *int             `json:"success,omitempty"`
+	LossPct        *float64         `json:"loss_pct,omitempty"`
+	MinUS          *int64           `json:"min_us,omitempty"`
+	AvgUS          *int64           `json:"avg_us,omitempty"`
+	MaxUS          *int64           `json:"max_us,omitempty"`
+	JitterUS       *int64           `json:"jitter_us,omitempty"`
+	HTTP           *HTTPProbeReport `json:"http,omitempty"`
+	ResolvedIP     string           `json:"resolved_ip,omitempty"`
+	ResolvedFamily string           `json:"resolved_family,omitempty"`
+	ProbeMode      string           `json:"probe_mode,omitempty"`
+	ProbeStatus    string           `json:"probe_status,omitempty"`
+	ProbeReason    string           `json:"probe_reason,omitempty"`
 }
 
 type TaskResultParams struct {
@@ -317,6 +468,14 @@ type PingParams struct {
 	// Reference 非空时，agent 会在同一周期额外探测该目标，
 	// 并以 role="reference" 上报，用于主机 vs 网关的路径归因。
 	Reference string `json:"ping_reference,omitempty"`
+	// Additive v1.8 fields. Zero/empty means legacy single-probe behavior, so an
+	// old panel talking to a new agent is unchanged.
+	ProbeAttempts       int    `json:"probe_attempts,omitempty"`
+	ProbeSpacingMS      int    `json:"probe_spacing_ms,omitempty"`
+	ProbeTimeoutMS      int    `json:"probe_timeout_ms,omitempty"`
+	HTTPMode            string `json:"http_mode,omitempty"`
+	HTTPExpectedStatus  string `json:"http_expected_status,omitempty"`
+	IPVersionPreference string `json:"ip_version_preference,omitempty"`
 }
 
 type MessageParams struct {

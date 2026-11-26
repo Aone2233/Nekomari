@@ -29,6 +29,43 @@ digest-pinned image containing `/app/nekomari` and `curl`. A local Unix-socket
 Docker endpoint is checked **before decryption**; remote/unknown contexts and
 SSH/TCP endpoints, including loopback TCP, fail closed.
 
+### UI ZIP handoff failures (local draft, not deployed)
+
+The draft upload flow stages a validated ZIP as `.backup-pending-*.zip` and
+publishes `data/backup.zip` only after a clean shutdown. A failed shutdown keeps
+the staged name inert; it is intentionally not automatically deleted. The
+hard link creating `backup.zip` can succeed before a subsequent directory sync
+fails. In that case the error explicitly says publication is uncertain, and an
+automatic restart can still apply the ZIP. Do not infer the outcome from the
+exit code alone, retry the upload blindly, or start an older binary over it.
+
+For an incident, stop the supervisor and **verify the panel and all writers are
+stopped before examining or moving anything**. Preserve the full data directory
+and existing encrypted backups separately; inspect logs and the presence,
+ownership, inode, size and hashes of `data/backup.zip` and any
+`.backup-pending-*.zip` without printing archive contents or credentials.
+Retain the panel lock file. Decide whether to proceed with recovery only after
+validating the intended archive and testing a separate restore. A pending ZIP
+alone is not proof of a consistent main/metric/assets snapshot. Never rename it
+to `backup.zip` or remove either name as an automatic cleanup step. If a
+published ZIP remains, the next server startup can destructively restore it.
+The draft tests cover scratch files, not a crash-proof production runbook; the
+deployed v1.7.29 binary has different behavior.
+
+The same local draft revalidates a published `backup.zip` at startup and writes
+`data/.restore-in-progress` only after retaining an independent pre-restore
+snapshot under `data/backup/`. Once that journal exists, do not replace the
+ZIP or remove the journal/snapshot to force startup: the new binary resumes only
+the journaled ZIP while the snapshot is readable and matches its recorded
+SHA-256. If either archive is missing, changed or invalid, startup remains stopped
+for operator inspection. The draft also refuses a symlinked snapshot directory
+and any symlink or special source entry instead of creating a misleading raw
+snapshot; an operator must first inspect and independently preserve such data.
+Preserve these files and the entire data directory;
+an older binary does not understand the journal. A successful extraction syncs
+files and directories before consuming the ZIP. This still does not prove an
+atomic main-DB/metric-DB/filesystem snapshot or fence external writers.
+
 The new format is `nekomari-offhost-v1`: gzip/USTAR inside native age X25519
 encryption, with a `*.tar.gz.age` archive and `.sha256` sidecar. It is not the
 Panel's UI ZIP format or the old off-host `*.tar.zst` format.
@@ -100,6 +137,20 @@ These commands are **templates**, not executed production configuration.
 Install the script at a controlled path and prepare a dedicated `0700` work
 directory owned by the snapshot user. Use encrypted storage or sufficiently
 large tmpfs according to the threat model.
+
+**Metric-memory limitation (identified 2026-11-07):** this external producer
+reads SQLite directly. It captures committed WAL pages but cannot see reports
+still queued inside the running panel or minute/coarse summaries held only in
+that process. A successful integrity check or isolated boot therefore does not
+prove zero loss of the latest accepted observations. The draft panel-download
+snapshot path is separate and is not wired into this producer. A local restore
+test found that an earlier draft could prematurely seal an unfinished parent
+and lose its pre-snapshot contribution after new writes; the revision keeps
+open parents reconstructible from verified durable children and rejects
+conflicting ancestors. That local safeguard does not coordinate the databases,
+filesystem or separate processes. Until a reviewed coordination protocol is
+installed and tested, treat the actual metric RPO as unmeasured; do not use
+these backups as proof of a zero-loss rollback boundary.
 
 ```bash
 python3 /usr/local/lib/nekomari/encrypted_backup.py create \

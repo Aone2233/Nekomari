@@ -241,6 +241,8 @@ export default function MetricsSettings() {
         onSave={saveMetricSettings}
       />
 
+      <RetentionPresetCard />
+
       <MetricRetentionTable
         defaultRetentionDays={toNumber(
           settings.metric_retention_days,
@@ -308,6 +310,76 @@ export default function MetricsSettings() {
       <MigrationCard />
 
     </Flex>
+  );
+}
+
+function RetentionPresetCard() {
+  const { t } = useTranslation();
+  const { call } = useRPC2Call();
+  const [nodeDays, setNodeDays] = React.useState(30);
+  const [pingDays, setPingDays] = React.useState(7);
+  const [saving, setSaving] = React.useState(false);
+
+  const apply = async () => {
+    setSaving(true);
+    try {
+      await call("admin:applyRetentionPreset", { node_days: nodeDays, ping_days: pingDays });
+      toast.success(t("settings.metrics.preset_applied", "Retention preset applied"));
+      window.location.reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const options = [7, 30, 90, 365];
+  return (
+    <SettingCard
+      title={
+        <Flex align="center" gap="2">
+          <Timer size={16} />
+          {t("settings.metrics.preset_title", "Retention presets")}
+        </Flex>
+      }
+      description={t(
+        "settings.metrics.preset_description",
+        "Apply node and ping windows in one step. Disabled metrics stay disabled. Existing per-metric overrides follow the selected preset.",
+      )}
+      direction="column"
+      className="km-setting-card"
+    >
+      <Flex direction="column" gap="3" className="w-full pt-3">
+        <Flex gap="3" wrap="wrap" align="center">
+          <label className="text-sm">{t("settings.metrics.preset_node", "Node metrics")}</label>
+          <select
+            className="rounded border border-gray-300 bg-transparent px-2 py-1 text-sm"
+            value={nodeDays}
+            onChange={(event) => setNodeDays(Number(event.target.value))}
+            disabled={saving}
+          >
+            {options.map((days) => (
+              <option key={days} value={days}>{days} days</option>
+            ))}
+          </select>
+          <label className="text-sm">{t("settings.metrics.preset_ping", "Ping metrics")}</label>
+          <select
+            className="rounded border border-gray-300 bg-transparent px-2 py-1 text-sm"
+            value={pingDays}
+            onChange={(event) => setPingDays(Number(event.target.value))}
+            disabled={saving}
+          >
+            {options.map((days) => (
+              <option key={days} value={days}>{days} days</option>
+            ))}
+          </select>
+          <Button disabled={saving} onClick={() => void apply()}>
+            <Save size={14} />
+            {t("settings.metrics.preset_apply", "Apply")}
+          </Button>
+        </Flex>
+      </Flex>
+    </SettingCard>
   );
 }
 

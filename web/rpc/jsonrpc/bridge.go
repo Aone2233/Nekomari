@@ -140,6 +140,14 @@ func renderResponse(c *gin.Context, cfg *bindConfig, resp *rpc.JsonRpcResponse) 
 		if key := resp.Error.LocalizationKey(); key != "" {
 			out["error_key"] = key
 		}
+		// Do not forward arbitrary RPC error data, which may contain private
+		// details. Only this explicit mutation outcome is part of REST.
+		if data, ok := resp.Error.Data.(rpc.CommittedErrorData); ok && data.Committed {
+			out["committed"] = true
+			if data.TaskID != 0 {
+				out["task_id"] = data.TaskID
+			}
+		}
 		c.JSON(rpcErrorHTTPStatus(resp.Error.Code), out)
 		return
 	}

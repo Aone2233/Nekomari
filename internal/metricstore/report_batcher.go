@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	logger "github.com/Aone2233/nekomari/utils/log"
@@ -32,6 +33,7 @@ type reportTrafficValues struct {
 	uptimeLast  float64
 	hasUptime   bool
 	restarts    float64
+	bootIDHash  string
 }
 
 var reportTrafficStates sync.Map
@@ -53,6 +55,7 @@ const (
 var (
 	reportBatcherMu sync.Mutex
 	reportBatcher   *reportBatchWorker
+	reportClosing   atomic.Bool
 )
 
 var (
@@ -81,11 +84,14 @@ type reportBatchWorker struct {
 
 // StartReportBatcher starts the shared report writer. Exact samples are kept in
 // the short raw window while the same writes update in-memory minute buckets.
-func StartReportBatcher() {
+func StartReportBatcher() error {
 	reportBatcherMu.Lock()
 	defer reportBatcherMu.Unlock()
+	if reportClosing.Load() {
+		return ErrReportBatchStopped
+	}
 	if reportBatcher != nil {
-		return
+		return nil
 	}
 	worker := &reportBatchWorker{
 		queue:     make(chan v2.Report, reportBatchQueueSize),
@@ -95,10 +101,33 @@ func StartReportBatcher() {
 	}
 	reportBatcher = worker
 	go worker.run()
+	return nil
+}
+
+// QuiesceReportBatcher fences new report admissions before stopping the
+// worker. Unlike StopReportBatcher alone, successful quiescence also prevents
+// later writes from falling back to synchronous ingest during shutdown.
+// Once set, the fence is retained even if draining fails: shutdown is not a
+// reversible operation, and an unsuccessful drain must not admit more work.
+func QuiesceReportBatcher(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("quiesce report batcher requires a context")
+	}
+	if err := reportAdmissions.Acquire(ctx); err != nil {
+		return fmt.Errorf("wait for report admissions during shutdown: %w", err)
+	}
+	defer reportAdmissions.Release()
+	reportBatcherMu.Lock()
+	reportClosing.Store(true)
+	reportBatcherMu.Unlock()
+	return StopReportBatcher(ctx)
 }
 
 // StopReportBatcher stops the report writer after flushing all queued reports.
 func StopReportBatcher(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("stop report batcher requires a context")
+	}
 	reportBatcherMu.Lock()
 	worker := reportBatcher
 	if worker == nil {
@@ -111,20 +140,29 @@ func StopReportBatcher(ctx context.Context) error {
 	reportBatcherMu.Unlock()
 
 	request := reportBatchRequest{ctx: ctx, done: make(chan error, 1), stop: true}
-	select {
-	case worker.requests <- request:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	select {
-	case err := <-request.done:
-		<-worker.done
+	finish := func() error {
 		reportBatcherMu.Lock()
 		if reportBatcher == worker {
 			reportBatcher = nil
 		}
 		reportBatcherMu.Unlock()
-		return err
+		return nil
+	}
+	select {
+	case worker.requests <- request:
+	case <-worker.done:
+		return finish()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	select {
+	case err := <-request.done:
+		if err != nil {
+			return err
+		}
+		return finish()
+	case <-worker.done:
+		return finish()
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -166,6 +204,21 @@ func FlushReportBatch(ctx context.Context) error {
 // summaries using the same server receive time. Traffic deltas remain summable
 // after rollup.
 func WriteReport(ctx context.Context, report v2.Report) (v2.Report, error) {
+	if ctx == nil {
+		return v2.Report{}, fmt.Errorf("report write requires a context")
+	}
+	// A transition or migration must not hold a credential guard open while
+	// it drains the store; the Agent may retry a refused observation.
+	if !reportAdmissions.TryAcquireShared() {
+		return v2.Report{}, metric.ErrWriteUnavailable
+	}
+	defer reportAdmissions.ReleaseShared()
+	if err := ctx.Err(); err != nil {
+		return v2.Report{}, err
+	}
+	if reportClosing.Load() {
+		return v2.Report{}, ErrReportBatchStopped
+	}
 	if !report.BoundedPayload() {
 		return v2.Report{}, fmt.Errorf("report payload exceeds retained data limits")
 	}
@@ -247,6 +300,10 @@ func (w *reportBatchWorker) run() {
 			if request.stop {
 				if err != nil {
 					logger.Errorf("metricstore", "failed to flush metric report batch during shutdown: %v", err)
+					// Keep accepted records available for a later stop attempt; the
+					// admission side remains stopped until a successful drain.
+					request.done <- err
+					continue
 				}
 				close(w.done)
 				request.done <- err
@@ -254,6 +311,12 @@ func (w *reportBatchWorker) run() {
 			}
 			request.done <- err
 		case <-ticker.C:
+			w.mu.Lock()
+			stopping := w.stopping
+			w.mu.Unlock()
+			if stopping {
+				continue
+			}
 			if time.Now().Before(retryAt) {
 				continue
 			}
@@ -351,10 +414,52 @@ func writePendingReports(ctx context.Context, pending *[]v2.Report) error {
 		_, err := writeReportBatch(writeCtx, (*pending)[:batchSize])
 		cancel()
 		if err != nil {
+			if errors.Is(err, metric.ErrRawHistoryUnavailable) {
+				return isolatePendingReports(ctx, pending)
+			}
 			return err
 		}
 		clear((*pending)[:batchSize])
 		*pending = (*pending)[batchSize:]
+	}
+	return nil
+}
+
+// A single ambiguous historical identity must not indefinitely block unrelated
+// nodes. Keep it and later reports for the same node, preserving their order;
+// neither the accepted record nor its traffic baseline may be silently skipped.
+func isolatePendingReports(ctx context.Context, pending *[]v2.Report) error {
+	input := *pending
+	kept := make([]v2.Report, 0, len(input))
+	blocked := make(map[string]struct{})
+	var first error
+	for i, report := range input {
+		if _, found := blocked[report.UUID]; found {
+			kept = append(kept, report)
+			continue
+		}
+		writeCtx, cancel := context.WithTimeout(ctx, reportBatchWriteTimeout)
+		_, err := writeReportBatch(writeCtx, []v2.Report{report})
+		cancel()
+		if errors.Is(err, metric.ErrRawHistoryUnavailable) {
+			if first == nil {
+				first = err
+			}
+			blocked[report.UUID] = struct{}{}
+			kept = append(kept, report)
+			continue
+		}
+		if err != nil {
+			kept = append(kept, input[i:]...)
+			clear(input)
+			*pending = kept
+			return errors.Join(first, err)
+		}
+	}
+	clear(input)
+	*pending = kept
+	if first != nil {
+		return fmt.Errorf("%d accepted reports waiting on ambiguous history for %d nodes: %w", len(kept), len(blocked), first)
 	}
 	return nil
 }
@@ -369,10 +474,54 @@ func writePendingPingRecords(ctx context.Context, pending *[]models.PingRecord) 
 		err := writePingRecords(writeCtx, (*pending)[:batchSize])
 		cancel()
 		if err != nil {
+			if errors.Is(err, metric.ErrRawHistoryUnavailable) {
+				return isolatePendingPingRecords(ctx, pending)
+			}
 			return err
 		}
 		clear((*pending)[:batchSize])
 		*pending = (*pending)[batchSize:]
+	}
+	return nil
+}
+
+func isolatePendingPingRecords(ctx context.Context, pending *[]models.PingRecord) error {
+	type series struct {
+		client, protocol, role, family string
+		task                           uint
+	}
+	input := *pending
+	kept := make([]models.PingRecord, 0, len(input))
+	blocked := make(map[series]struct{})
+	var first error
+	for i, record := range input {
+		key := series{client: record.Client, protocol: record.PingType, role: record.Role, family: record.Family, task: record.TaskId}
+		if _, found := blocked[key]; found {
+			kept = append(kept, record)
+			continue
+		}
+		writeCtx, cancel := context.WithTimeout(ctx, reportBatchWriteTimeout)
+		err := writePingRecords(writeCtx, []models.PingRecord{record})
+		cancel()
+		if errors.Is(err, metric.ErrRawHistoryUnavailable) {
+			if first == nil {
+				first = err
+			}
+			blocked[key] = struct{}{}
+			kept = append(kept, record)
+			continue
+		}
+		if err != nil {
+			kept = append(kept, input[i:]...)
+			clear(input)
+			*pending = kept
+			return errors.Join(first, err)
+		}
+	}
+	clear(input)
+	*pending = kept
+	if first != nil {
+		return fmt.Errorf("%d accepted ping records waiting on ambiguous history for %d series: %w", len(kept), len(blocked), first)
 	}
 	return nil
 }
@@ -461,9 +610,21 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 		// A large, durable uptime regression means the OS rebooted. Count it
 		// once per detected event and rebase so the post-reboot climb does not
 		// re-trigger. Skipped/out-of-order samples never reach this point.
+		restartDetected := false
+		hadBootEvidence := values.bootIDHash != ""
+		if report.BootIDHash != "" && values.bootIDHash != "" && report.BootIDHash != values.bootIDHash {
+			restartDetected = true
+		}
+		if report.BootIDHash != "" {
+			values.bootIDHash = report.BootIDHash
+		}
 		if validReportUptime(report) {
 			uptime := float64(report.Uptime)
-			if values.hasUptime && uptime < values.uptimeLast-restartDetectDecreaseSeconds {
+			if !restartDetected && !hadBootEvidence && values.hasUptime && uptime < values.uptimeLast-restartDetectDecreaseSeconds {
+				// Fallback only when boot-id evidence is unavailable.
+				restartDetected = true
+			}
+			if restartDetected {
 				values.restarts++
 				points = append(points, metric.Point{
 					MetricName: MetricRestarts,
@@ -471,11 +632,19 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 					Timestamp:  report.UpdatedAt,
 					Value:      values.restarts,
 				})
-				values.uptimeLast = uptime
-			} else if !values.hasUptime || uptime > values.uptimeLast {
+			}
+			if !values.hasUptime || uptime > values.uptimeLast || restartDetected {
 				values.uptimeLast = uptime
 			}
 			values.hasUptime = true
+		} else if restartDetected {
+			values.restarts++
+			points = append(points, metric.Point{
+				MetricName: MetricRestarts,
+				EntityID:   report.UUID,
+				Timestamp:  report.UpdatedAt,
+				Value:      values.restarts,
+			})
 		}
 		values.timestamp = report.UpdatedAt
 		values.hasUp = true
@@ -495,7 +664,14 @@ func writeReportBatch(ctx context.Context, reports []v2.Report) ([]v2.Report, er
 	}
 
 	if err := s.WriteBatch(ctx, points); err != nil {
-		return nil, err
+		var accepted *metric.WriteAcceptedError
+		if !errors.As(err, &accepted) {
+			return nil, err
+		}
+		// Retrying would reapply a batch already owned by the store. Keep the
+		// report counters in step with it and surface the maintenance failure;
+		// compaction or shutdown will retry, or report an uncertain commit.
+		logger.Errorf("metricstore", "report batch accepted but maintenance failed: %v", err)
 	}
 	for state, values := range pendingStates {
 		state.mu.Lock()

@@ -1,0 +1,389 @@
+{
+  "catalog_updated_at": "2026-11-03T12:32:58.588Z",
+  "items": [
+    {
+      "short": "ASCII",
+      "version": "1.0",
+      "archive_sha256": "1215c4caf798dba5a0ab50754bb9a9c6c93b55e10ee224fa246ddb0301dae96a",
+      "manifest_sha256": "5b14da020ebf4143a97b0d60ca7c1db77aa2eedd8e866b2afad92e4142cf8a53"
+    },
+    {
+      "short": "AdhesiveNote",
+      "version": "1.0.0",
+      "archive_sha256": "94f69c657413e7b3204cfea0bce94f1ee5deb1f897364664b27367b592d49c80",
+      "manifest_sha256": "b23f6d517ad9e154ad7b86af5f6ec18b946dc347be73b538937ef3e2f936fb5a"
+    },
+    {
+      "short": "AnimalIsland",
+      "version": "1.0.6",
+      "archive_sha256": "ec4b71cb8679e69919f1653f5ed8803881738e243b931cb6b38c6e8d0b749c13",
+      "manifest_sha256": "ac3c9acbc4599dd6e202d3a0726c64fc699b2a3e0d9044531eb10abca96e5586"
+    },
+    {
+      "short": "Bocchi",
+      "version": "1.0.0",
+      "archive_sha256": "a0d1a576a7a728480e5fc4ff50015958f40ef88052e992297883cfdab19f2224",
+      "manifest_sha256": "b0a01a3ffd1ec82f9e721294507f9bbe7de840c4f03544f5092a9e58c6617e13"
+    },
+    {
+      "short": "Butterfly",
+      "version": "1.5.0",
+      "archive_sha256": "e86b4485711912cb4eaebb5ad9cb06c602213b52066899a860729143cd7eeb05",
+      "manifest_sha256": "ab7d7da4bc4917306ffed5e761c388c2db7a878b8c65c39eff6233a0facf0a44"
+    },
+    {
+      "short": "Commander",
+      "version": "1.5.6",
+      "archive_sha256": "a851ab842a69f0859f561773c261222795c0fb831126e9082165c1b85d07be8a",
+      "manifest_sha256": "1394f495e6a614804a52c378da59b823ce9133a5b1c3d972f5fbf2a07f4bd3ae"
+    },
+    {
+      "short": "Emerald",
+      "version": "1.0.16",
+      "archive_sha256": "f7fdf4f0af5849b425d7e1c4e91e50d39573c4de41136eb436e66cf8e5fe7794",
+      "manifest_sha256": "74f82cfdbf7cb8e444dccc5a34419fbabbcf6a6f2813392d15bf8df11ac352e1"
+    },
+    {
+      "short": "Enhanced",
+      "version": "1.1.1",
+      "archive_sha256": "ef9aec3d569fe4f9ab7f75393e8079649c17ab31fa53e68669f67fb5153fba68",
+      "manifest_sha256": "796bb2d0e28d10078e0a21791208c06e2a842f044739f920c6a8476c78c652d0"
+    },
+    {
+      "short": "Glass",
+      "version": "1.1.1",
+      "archive_sha256": "d71e30a48fb0484a412ea84ca20290d564b63cf82f61c5f964664c90faf39e97",
+      "manifest_sha256": "09d796cc5038d145a11f8ffdc575abe566d5ac7a6f64d29efd20c8fbaf4af712"
+    },
+    {
+      "short": "Glassmorphism",
+      "version": "3.4.4",
+      "archive_sha256": "bd8c755410d445bd3a95a84c6453c3dfdd21a372d1693841aa1ea51b155a109f",
+      "manifest_sha256": "1f2cf0a566554cf53d0f0cbfe3f59e455c518efc5ab4a4708fcad9ac28886fdc"
+    },
+    {
+      "short": "GlassmorphismTS",
+      "version": "3.3.19",
+      "archive_sha256": "20a4871882eb8deffa136c9e7bfa3a1825ded19395352997c9cc334891125abe",
+      "manifest_sha256": "e74b835de0febce1567ed3d2bfa341aec015046eb68cfec99bbb069405cb7256"
+    },
+    {
+      "short": "GloriaUniverse",
+      "version": "1.5.8",
+      "archive_sha256": "9d5db8016d50c356f371077c6c5b300ae105065aba8c6e377f2d1e6e382c14ff",
+      "manifest_sha256": "7d68f5da8ac65872502022d579cc543d61ab4458876ef7f4cf335a3e15f53acb"
+    },
+    {
+      "short": "Hotaru",
+      "version": "1.0.0",
+      "archive_sha256": "b5d86521b2614b2ddd85ec049a80f2e9e739a1de77992fd43a15db049facd5d2",
+      "manifest_sha256": "ce96261c4b6b2630893f341f0afacc3f98f66f5b3d3c4c456c7dfb2b38eb2776"
+    },
+    {
+      "short": "Junimo",
+      "version": "2.0.2",
+      "archive_sha256": "3c44d18ced122b70a0b7b68d9a887d3ca1f1b0f556d274cbc3605313433f4818",
+      "manifest_sha256": "70923da5dbabbcd7c6a551f7c0c8f77732c6f4a7b5d1130e525e50781a92ee54"
+    },
+    {
+      "short": "Kumo",
+      "version": "1.3.2",
+      "archive_sha256": "52915687bfa3c5540a1faae6d37215106772badea042d5b971482227d77e248a",
+      "manifest_sha256": "60c41cdba515b3d875b11c2f9f93ccfde4b33d436db3d1182b349e9023f66153"
+    },
+    {
+      "short": "LeoNetLab",
+      "version": "1.6.0",
+      "archive_sha256": "384707c2f5b210f62b418ad01574f72a89b5cf2aba9abd3feadafc0d67dcb6f7",
+      "manifest_sha256": "b24ac88c1cb05d048ce759dc85c60a1d317813287c8c32e49af0aee95360af63"
+    },
+    {
+      "short": "Lumina",
+      "version": "1.1.6",
+      "archive_sha256": "a8847c40ee59bc3ab8d9f9173f34d4aa8a2a1f51ada8b5075901a677352038a5",
+      "manifest_sha256": "790e41a9222df2e750cc0a5f7adcfd9aceacd1951555d491a387655d558867ae"
+    },
+    {
+      "short": "LuminaCustom",
+      "version": "3.1.2",
+      "archive_sha256": "56784c204656a6310867ca6671f210dfcbaef935c1d41c537765fa882cbdd001",
+      "manifest_sha256": "38aaf4b8457717141712499a5901946efa6d8644ea8aa93479f555861582d563"
+    },
+    {
+      "short": "LuminaLite",
+      "version": "3.0.2",
+      "archive_sha256": "b3f42d338efd0fdd4dec8fdf7be1295bd5022c3a16efee5670d4285c55c38840",
+      "manifest_sha256": "1bbd255e56c66898bb27c51b9de18dd3909b716d00d01cb5e930812caedeb625"
+    },
+    {
+      "short": "LuminaPlus",
+      "version": "1.3.6",
+      "archive_sha256": "07deac75bcaef949fb136259b37ace0ed16b83103872577d2d65d81ab3fc3013",
+      "manifest_sha256": "4845d217da8953b1f984095d66c4eb394b56aec5af336256698424cea020133f"
+    },
+    {
+      "short": "Material",
+      "version": "1.4.1",
+      "archive_sha256": "94095b443924c739a379e146335a64987167b303fd7197eba689a208e4a5bddd",
+      "manifest_sha256": "d66ea919e9114a114c9b0cc19600f543e917c1e2676cef2111966ecb3a4e77f0"
+    },
+    {
+      "short": "MiStatus",
+      "version": "2.6.0",
+      "archive_sha256": "581f98b26b7f7d0474362e36b7d00cc29a29c29d2ad2a624d680dd99f2e6a7bf",
+      "manifest_sha256": "889964b66ec285fb4773aa9a529b4bf9a37539e149961c72e3aa45de7597a2f4"
+    },
+    {
+      "short": "Mikus",
+      "version": "2.0.6",
+      "archive_sha256": "189f29ea9e911655686d8c11b76b47f6363e108469725cfe53a4afaa0098db4f",
+      "manifest_sha256": "6903b33ada6c019326082e5d7d41ce38e67a42e41a38575a86521611bb3cc204"
+    },
+    {
+      "short": "Minecraft",
+      "version": "1.1.0",
+      "archive_sha256": "fc570ac30746a352d30b2ffc20e9dcfb0cd766e4a84523b6c755fd9723a86304",
+      "manifest_sha256": "9155958a320cb526e71efc8a0969c8e18745b6d4c92cad6d599e7d232bdc9f9e"
+    },
+    {
+      "short": "Mochi",
+      "version": "1.1.8",
+      "archive_sha256": "60e2f2e42ae8a8921972adeec74c5920e7501d1c6ca3a070149ecf01f7e092b4",
+      "manifest_sha256": "71b034d5e043107c29a85c12b2a0aeb565141dca85800e3cf955afaa0c2a50ca"
+    },
+    {
+      "short": "Naive",
+      "version": "1.1.2",
+      "archive_sha256": "0162cbb775e86fd900f49980ccb0f37335015dca27a22709313dbbfb7421a12d",
+      "manifest_sha256": "725dbacb912c18b7ac4d82b9c3786b442c9de871a0a52122f0d823f57b67a291"
+    },
+    {
+      "short": "NanoMuse",
+      "version": "2.1.0",
+      "archive_sha256": "a9155710b7f1d7180ef7298cb783666acc51fffbb241da598fb5114f666e38ad",
+      "manifest_sha256": "260434c5278fc416119ead6fc25075c15956b3fae5a945408b9223ee130eea90"
+    },
+    {
+      "short": "PurCarte",
+      "version": "1.2.5",
+      "archive_sha256": "a63d5294d92fb5ed1ff66134ccca5d7b0fb2f76d9ec258ba41e5e46dd33a9c31",
+      "manifest_sha256": "86897b0ccb4d464221b537bab220485e14582a46680a88284398b33b4985d884"
+    },
+    {
+      "short": "PurCarte-Plus",
+      "version": "2026.08.20.1",
+      "archive_sha256": "fd3dafbea8ab4e67dd5989007db0c68f5bc2d749716162bbb506870b40898479",
+      "manifest_sha256": "627747da7e3820341742f3c66d03592dce56440d656841dea5d89a27c84f8def"
+    },
+    {
+      "short": "Reze",
+      "version": "1.2.2",
+      "archive_sha256": "992e48439c596db04e98f2169f17d46ff0d86543555a5cd693e1433860e701f3",
+      "manifest_sha256": "099282622a802087dbdd8c10606966a09d3e454ddab8edf4f74ff40520a2f9aa"
+    },
+    {
+      "short": "SAO",
+      "version": "1.3.4",
+      "archive_sha256": "44b7e226c02ba411863493799c772e02113cb9d5216902846f5e2cad1f157af1",
+      "manifest_sha256": "7b41b6f657a94f2be22359fab3e0bb3f982bbbae2826ad7178f24a88b5979cb4"
+    },
+    {
+      "short": "ServerSentry",
+      "version": "1.0.4",
+      "archive_sha256": "820d0de25082ae8cf73e60e91c2dac78bbd32da60c3f0c92e88e3cd2b9a8646c",
+      "manifest_sha256": "434c228a26da41c0b327ccc1f791bbc01b2eb457b44876493e6a86664a620d7c"
+    },
+    {
+      "short": "ServerStatus",
+      "version": "1.0.18",
+      "archive_sha256": "50398035ab1179bb2df3c04857057072b0f955d65166811da1655d7d6e3441cc",
+      "manifest_sha256": "6dfca77da949e90676930f83bdac34579cdf08b8c6a970bef936112d238a6652"
+    },
+    {
+      "short": "Slate",
+      "version": "0.1.11",
+      "archive_sha256": "66ba1d6f040d2a8f0d011e6fde89fa48ce4d4e0210fbc0e78c884c5af2767caa",
+      "manifest_sha256": "485c8c0f0eebbdd89f7bcde5160c4bb01798c78d8148739fffe9eb7446849947"
+    },
+    {
+      "short": "StatusWall",
+      "version": "2.6.3",
+      "archive_sha256": "1cf1b2631c2fe14bdc6694ad3c7e550c7b47197c5a6ab009ba85e8626121bfb6",
+      "manifest_sha256": "225483befd6ee331cc19b6d899fe6874ffb1e839ad5f1e68caa9a269f4983cc3"
+    },
+    {
+      "short": "Transit",
+      "version": "1.2.0",
+      "archive_sha256": "242700981ef3a03327063230b59fedaed42fde41b2e4cd3aaadac3a1e6e6d348",
+      "manifest_sha256": "a44301fe2bcc69b7df5c2447ce8259a92b9c9be56db1eaebd9bfcc5d65f3128b"
+    },
+    {
+      "short": "Zen",
+      "version": "1.0.7",
+      "archive_sha256": "074ee3739978b8d62458a995ad9ba471e5b8bce254ebbe4ef93105d6cd163df9",
+      "manifest_sha256": "294509d6c25f58630b5030f9e2ccae95194b05c16cf500937840c69b389f40ed"
+    },
+    {
+      "short": "aemeath",
+      "version": "1.9.1",
+      "archive_sha256": "142688600ae6876a5a0fe024a2507530b7d05cac627694237ef220a70be38b93",
+      "manifest_sha256": "2606046cf3068d5d94a05ee4964e809710e593b49dbd758f16ee6d6487eb4334"
+    },
+    {
+      "short": "aero",
+      "version": "1.4.5",
+      "archive_sha256": "fd27cf3e0dae2bad8d58a31a3ed303a101816cc43626a7b9a0a1c6fb19758233",
+      "manifest_sha256": "90ea5b41685a34a91dc04e9de12b3d7a0e900c9be3311d1bf7d6ad3db42a5da5"
+    },
+    {
+      "short": "amg-race-control",
+      "version": "1.1.0",
+      "archive_sha256": "7d813a61d0436e4c5db01854b55221a788ee332912d493c0cd30843ecf762d5a",
+      "manifest_sha256": "7a0ae3d851a72411ad1af24b725cbcfe0c3decc67d183d77ce3c4812dd16ab4e"
+    },
+    {
+      "short": "blueprint",
+      "version": "0.1.19",
+      "archive_sha256": "87387d05a217a0a7daf63f44485fe5a93ccfbc5de15e0f150fa2f638f51ad877",
+      "manifest_sha256": "01c30f6701df2c54f5b7bcceb0b50421ce04a6a35c402e07aafa595d6194e0a5"
+    },
+    {
+      "short": "btop-minimal",
+      "version": "1.6.6",
+      "archive_sha256": "928876b246fc6d8f78534aea6740d61fb92714973343688dca3ca914d15a2bc8",
+      "manifest_sha256": "99638bd7355ef5199ea2e837df2f1a64475ccdc2963b6955cde5cd71b88f80f4"
+    },
+    {
+      "short": "btop-terminal",
+      "version": "1.0.3",
+      "archive_sha256": "81344fc9c58e7e69d0bcda4a84b8e30f705c931719d0c9843f30cc47fed73344",
+      "manifest_sha256": "94667f785720b42eb73c1ea59bb0ae6e1c9fca84a452a1866ec42cefe675b521"
+    },
+    {
+      "short": "emerald-globe-pro",
+      "version": "1.0.13",
+      "archive_sha256": "3554ee3e1af05bd04726dea8b9554ed645e98391f163b2e031002787f30c6330",
+      "manifest_sha256": "be8b8683517447968013f06220b1f1c781425e369d2e28e1ff56d85a4fdd4067"
+    },
+    {
+      "short": "emerald-insights",
+      "version": "2.0.5",
+      "archive_sha256": "c8a268936d862df2aea5fa29d76ac02cb1465236a3512d56691ab3c5775bcd6e",
+      "manifest_sha256": "7ca0932335ba1e63f9c7a0df706844ba92c0923b28771972637e74bb2966ba88"
+    },
+    {
+      "short": "glassmorphism-plus",
+      "version": "3.0.0",
+      "archive_sha256": "fd9db2205af02aa0177ad4185b58fec7a317888af4abaa5df1944751c5b01a08",
+      "manifest_sha256": "ec6751b26b9130013c30a3503e915eaba63968b546eaf20f3f5a9ed804c89e04"
+    },
+    {
+      "short": "horizon",
+      "version": "1.10.0",
+      "archive_sha256": "31a3ad69ed3fb29f9f8aba591578b90bf31219c44153c60bc1f1e3e525afa684",
+      "manifest_sha256": "629cb63a4edeaedb5bab42be929e8068886bdaec57cd8eff9d62c131b6327f41"
+    },
+    {
+      "short": "ink",
+      "version": "0.6.14",
+      "archive_sha256": "9703c7d84a5501b0731affad1e9babc608ea4b20a15e54dcecbd8ece11c85ebd",
+      "manifest_sha256": "ab46a6a44268179656e2f683c0c27351a0641cb91db0e7881dc265ca38ef40ca"
+    },
+    {
+      "short": "komari-1999",
+      "version": "1.0.1",
+      "archive_sha256": "af44b99a0255f8e2b38880358d7fbc5efb8c83306a7e236eeaef84913ea907bc",
+      "manifest_sha256": "432f7226ed307900a922d9f628ab3836f635f222958195713af498e8d127a21e"
+    },
+    {
+      "short": "komari-deer",
+      "version": "0.1.0",
+      "archive_sha256": "6b77652e3472cc0ac5ede3e10eaa511e3f7e3251181ef3f930ecf06dc0283b6f",
+      "manifest_sha256": "506af2d6d9be3ac9bc0646f620fece9366f453915c3c4c61c9642a09476d0d64"
+    },
+    {
+      "short": "komari-mdui",
+      "version": "1.0.0",
+      "archive_sha256": "4bcf25e12ef56d4ed57127bf4a8b1972bbd4a56d2594b8eb5b9242e480ac1a6d",
+      "manifest_sha256": "dcf0ff6502e2140521c95037ac61b88e66e20e271027758e1128e36be276e067"
+    },
+    {
+      "short": "komari-next-pro",
+      "version": "2.0.0",
+      "archive_sha256": "e557a5fe89eab5ec0b553f631511e499a01b611481e13771e8c5d3f8268b50ba",
+      "manifest_sha256": "497a1cd9a789dd189e31d8823eccd9a78043aab3df9fe36e59e04c80a3b62dd0"
+    },
+    {
+      "short": "komari-theme-carbon",
+      "version": "0.2.0",
+      "archive_sha256": "b78909a8f85367dabe080fadf04660356bf394ab8d03d4f6af56e1db21547bdc",
+      "manifest_sha256": "826f9135cb2194f9bbee1eaaacdba7654e48bc14f844eb5ba29f56cc0eb01263"
+    },
+    {
+      "short": "komarihome",
+      "version": "1.0.2",
+      "archive_sha256": "695473ae9ef6295eeefd837d1b6eddfa05ac1c7002d01ad58f59c4ea521c95e5",
+      "manifest_sha256": "b45f83b63c68abd1c4447f1efffe06516209dca80bccba52390fd716e68b97c4"
+    },
+    {
+      "short": "light",
+      "version": "1.1.1",
+      "archive_sha256": "c4b9bdb72eccca0f101aa05557d81e7bf27b283832f796a51fff3f6134e10d26",
+      "manifest_sha256": "ea9507f8ae429a7b792ac1f646ecd7da54308071c18bc5517092cb49afb92e07"
+    },
+    {
+      "short": "miku39",
+      "version": "1.4.5",
+      "archive_sha256": "27c5122b14de2a07da70d13936bf5d72ad525315a4c04ec808b1680b0736579b",
+      "manifest_sha256": "005ddee43b9770d22b7c8562acc09c2eb80559913f9efe68f023f9a6f7d3c5b9"
+    },
+    {
+      "short": "minimal",
+      "version": "1.0.1",
+      "archive_sha256": "8914ca86b20ab4f975008aaa46990055cb50b92ee96d89f3742b3b17709f3773",
+      "manifest_sha256": "b1d947c983de4f9ab6b4edf6c1b6f3bd3c5523938246c83761d0e52aaea0538f"
+    },
+    {
+      "short": "next",
+      "version": "1.4.20",
+      "archive_sha256": "6f9eaad8484d3d2b963ca37ee0d569566f132fa7199a4c3d8781db2296b07492",
+      "manifest_sha256": "023adbbf6b42a562911f397d11d07948956b1f22e229cbc7f3320a0df800c1f7"
+    },
+    {
+      "short": "nezha-BITJEBE",
+      "version": "1.1.7",
+      "archive_sha256": "3cb85f96581c6caf8e85c6bdec0c1f6bd1df37e5a16b8326a39ab6c8b9678936",
+      "manifest_sha256": "2f67e007abf266b4d901751a841ba0276594b50b374d5e96a361a10ed51d64dd"
+    },
+    {
+      "short": "nezha-minimal",
+      "version": "1.1.20",
+      "archive_sha256": "1d8193d03f67e147abe2a4fc161dacb22499ed8db76e93ec7fdd54f2dabde8c2",
+      "manifest_sha256": "27e84acde1fb979210c366d04f9a237e24df0c0a4a1f4a0337b280c2a0a3c4b7"
+    },
+    {
+      "short": "omarchy",
+      "version": "1.0.4",
+      "archive_sha256": "12b4eed3ada4da4d8aa7cd4d8dd97c1bef589492cb24f5cc6e184bac246a6ead",
+      "manifest_sha256": "7b2e450a253754202863a979c45b4e0a82592b62efbc08cd499da15fc1790521"
+    },
+    {
+      "short": "paper",
+      "version": "26.09.14",
+      "archive_sha256": "b4b33068c61236ebae6d460c113f0a0b6bde53ee802ba34de8ded6527eb7fb2a",
+      "manifest_sha256": "8d55b7b2a2ffa8e781d81fda531b7fe3a899ef489e654763f4f89a2cf60ac726"
+    },
+    {
+      "short": "ran",
+      "version": "2.1.2",
+      "archive_sha256": "4ea93085644626a5208fcd66204aab7c9da6f910214881b903825f91cd760791",
+      "manifest_sha256": "e4c03e02bbc63a105fe67a48751a9fe5f5b3ddaa092fa4cbb653a3dd3d5dfc33"
+    },
+    {
+      "short": "webstack-observatory",
+      "version": "1.2.3",
+      "archive_sha256": "3fe45607b154d856153e1dafb499e9ec300b919e354f415edd9bf6c0f793e82a",
+      "manifest_sha256": "5cfcbe3ead76cff72f2f0e48bd386d0290f8b0458842cd02d386a39f41d7180b"
+    }
+  ]
+}

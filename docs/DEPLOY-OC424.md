@@ -3,6 +3,325 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.8.2 panel cutover (2026-11-24, UTC)
+
+The staged release (`d58ec32`) went live on OC424 at 02:13. By 02:15:10
+production checks passed 9/9 and public HTTPS returned the same version and hash.
+The pinned panel index is
+`sha256:cc875c0a8ad21170017c8c74d1b604f3fef3f1c19cdd25a6f1e7741e433353cf`.
+The amd64 and arm64 panel/Agent image binaries matched the release assets.
+Client identities, update targets and ping task rows survived cutover; all 16
+nodes had new CPU and ping loss samples. The public theme remained Emerald
+Insights. Both admin downloads were exercised with the published binary in a
+scratch panel, not in a production administrator's browser session.
+
+MAC-WAN verified and booted the pre-cut encrypted archive (SHA-256
+`90695f58734d0a538597ea3a09ccece89e6c6a219b29585665f24ce59001ef5f`)
+with both v1.8.1 and v1.8.2, then the distinct post-cut archive
+(`0da9c3c11b676fb1b89d9824ac6fca5d95889c3f8f86df4b0a07d3eb13fa4dbb`)
+with v1.8.2. All three boots were network-isolated. These were online snapshots,
+not an atomic boundary across databases and queued samples. The prior compose
+is retained under `/opt/nekomari/rollbacks/chart-v182-20261124T021300Z-MNGvfMfz/`.
+
+BERO (amd64) passed the Agent canary at 02:19:50 and OC424's separate arm64
+Agent passed at 02:36:39. Both retained rollback binaries. The running executable
+matched the release asset; the panel recorded v1.8.2 and new CPU, memory, ping
+latency and ping loss samples. OC424's Agent upgrade did not restart the panel.
+The remaining Agents were upgraded in batches. MAC-WAN was last: its root
+service passed the process and telemetry checks at 03:41:21. At 03:42:34
+the final check confirmed the expected 16 node identities, v1.8.2 versions,
+matching running binaries and fresh CPU, memory, ping latency and loss samples
+for every node in the preceding five minutes. No rollout targets were left
+pending. This is fleet acceptance for this release, not a zero-loss claim.
+
+## v1.8.1 Agent verification (2026-11-23)
+
+At 14:35 UTC the production panel reported **v1.8.1 / 787a4cd** and all
+**16 registered clients** reported Agent **v1.8.1**. To distinguish current
+telemetry from idle registrations, a read-only query joined the registered
+client IDs to one-minute metric rollups. In the preceding five minutes every
+node had a stored sample for each of `cpu.usage`, `memory.used`, `ping.latency_ms`
+and `ping.loss`; the newest sample in each node/metric pair was under two
+minutes old. This does not establish coverage of every task or zero loss.
+
+On BERO (Linux amd64) and OC424 (Linux arm64), the Agent systemd unit's
+`MainPID` identified the running executable. For each, `/proc/<pid>/exe --version`
+printed `v1.8.1`, and the SHA-256 of that same executable matched both the
+architecture-specific `manual-komari-agent-linux-*` entry in the [official
+release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)'s
+`SHA256SUMS.txt` and its release asset digest. The other 14 have panel-reported
+versions and recent telemetry, not a process-level checksum verification.
+No Agent was installed or restarted and no production settings were changed
+by this check; it does not date or reconstruct the intervening upgrades.
+
+## v1.8.1 panel deployment (2026-11-16 10:35 Asia/Shanghai)
+
+At this checkpoint production ran **v1.8.1 / 787a4cd**, image
+`ghcr.io/aone2233/nekomari:v1.8.1@sha256:b1ff8aa19d8d1e1572cda509670c5d3c74ac0861266cbc12481b2b582ada196d`.
+The [formal release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)
+and its verification are recorded in [`RELEASING.md`](./RELEASING.md).
+
+A fresh online encrypted pre-snapshot was received on MAC-WAN at
+`manual/v181-pre-20261116T023158Z/oc424-20261116T023158244674Z-db4334b2a02c.tar.gz.age`
+(264,520,921 bytes, SHA-256
+`1b5633c9c3dd458d70ceec11ca6e624afd18a9fe5d66ed3b0999d6a8d3bab418`).
+Authenticated extraction and isolated, network-free boot drills passed with
+both v1.8.0 and v1.8.1. The old compose and container inspection are retained
+at `/opt/nekomari/backups/v1.8.1-cutover-20261116T023510Z/`, and the old
+image remains available. The initial preparation created an additional private
+backup directory at `v1.8.1-cutover-20261116T023453Z`; a permissions command
+failed before any compose or container modification, and the subsequent
+preparation succeeded in the separately named directory above.
+
+After the panel-only cutover, `panel-upgrade-check.sh` passed **9/9**, including
+healthy, zero restarts, v1.8.1/787a4cd, successful public API and root page,
+database `quick_check`, three upgrade archives and zero ERROR lines. Public
+HTTPS reported the same version. All 14 complete client rows and 14 task rows
+had unchanged ordered digests across the switch; the separate deletion table
+contained one tombstone, which did not match a current task. In the following
+five-minute observation, CPU and ping rollups
+included 14 distinct entities. No production Agent was upgraded by this work.
+
+The separate post-snapshot
+`manual/v181-post-20261116T023529Z/oc424-20261116T023529441977Z-3749115e7478.tar.gz.age`
+(269,362,107 bytes, SHA-256
+`a1ec986cce977430a37d3ba30ea8b046493299b3a55ad62e55ad7012fc7f506e`)
+passed authenticated verification and an isolated v1.8.1 boot drill. Both
+snapshots are online and are not atomic across stores or in-memory queues;
+restoring an older snapshot over current production would discard later data.
+On inspection, MAC-WAN's backup and health timers were both enabled and active;
+their actual state differs from older records and this deployment did not alter
+them. A successful timer/service result is not proof of alert delivery or
+independent-media recovery.
+
+## v1.8.0 Probe Truth release (2026-11-09 10:32 Asia/Shanghai)
+
+At this historical checkpoint production ran **v1.8.0 / a92a242**, image
+`ghcr.io/aone2233/nekomari:v1.8.0@sha256:119f7aab805d46cf947008be9003ead4d508cbb1abd08534cec5551a4b659e9f`.
+The release was built from tag `v1.8.0` on merge commit `a92a242`; main CI was
+8/8 and the release workflow run `42550381372` finished 10/10. Its arm64 binary
+SHA-256 `a844fe74198e5dd7d81b46b902b8ce04a275b61722f64f8487d39c29bcc73c89`
+matches the published `SHA256SUMS.txt`.
+
+Before switching, a fresh encrypted snapshot was received on MAC-WAN at
+`manual/v180-pre-20261109T0230Z/oc424-pre.tar.gz.age` (245,230,973 bytes,
+SHA-256 `d8c5bf371f575578132c056a3372fdca6be0eba428215e91d0d1fe9fbddec40b`).
+Both databases passed `quick_check`. The old compose/container state is at
+`/opt/nekomari/backups/v1.8.0-cutover-20261109T0232Z/`; the old v1.7.30 image
+remains locally available. The compose image line was then pin-updated and the
+container recreated.
+
+Post-switch verification:
+
+- `panel-upgrade-check.sh`: **9 passed, 0 failed, 0 skipped** (healthy, 0
+  restarts, `/api/version` v1.8.0/a92a242, `/api/public` success, `/` 200,
+  `quick_check` ok, 3 upgrade archives, 0 ERROR lines in 5 minutes).
+- 14 clients and 13 ping tasks preserved; all 14 Agents still report v1.7.30
+  (panel-only release, no Agent rollout).
+- Public HTTPS returns v1.8.0 with valid TLS.
+- No ERROR lines in the observed panel logs.
+
+A separate post snapshot was received at
+`manual/v180-post-20261109T0233Z/oc424-post.tar.gz.age` (245,110,016 bytes,
+SHA-256 `c8c053e0086f1f5af9e784c0c534bff0c7e2421270c1a72ba466024d40d44b18`).
+It passed authenticated decryption, `quick_check`, and an isolated amd64
+v1.8.0 boot drill: `/api/version` v1.8.0/a92a242, 14 clients, 13 tasks, 0
+restarts. These are online snapshots, not cross-store atomic or proof of every
+in-memory sample.
+
+The release workflow initially refused the tag because its manual-only Agent
+policy was hardcoded to v1.7.30. The policy was widened for v1.8.0 and the
+workflow was dispatched from `fix/v1.8-release-policy`; that workflow-only fix
+was merged to main as `5dd1522`, whose CI went 8/8 after one flaky IPv6 rerun.
+Theme browser visual checks, external
+provider delivery, LAN ICMP and `tc netem` loss remain open.
+
+## Education IPv6 ICMP-only (2026-11-08 19:36 Asia/Shanghai)
+
+The owner chose one ICMP probe rather than the two `dual` primary legs. After
+the pre-change encrypted backup and isolated restore, the existing task 28 was
+changed from `dual` to `icmp` in a guarded offline transaction and the same
+v1.7.30 panel container restarted to reload its scheduler. The task ID, both
+node assignments, target, 60-second interval, empty reference, other 12 tasks,
+and all 14 client UUID/token pairs were preserved. The local config snapshot is
+`/opt/nekomari/rollbacks/task28-icmp-20261108T113604Z-MawagsBl`; do not
+restore the whole older database over live changes. MegaBox and HK04 have each
+reported fresh ICMP results since 19:36:05; no TCP or reference results arrived
+after the change during the observation period. Old metrics remain stored.
+
+The active upstream Emerald Insights v2.0.6 plus local compatibility patch now
+hides retired primary protocol series when the task's current single protocol
+is known. Dual/auto/unknown modes are not reduced, and enabled reference series
+remain independently controlled. It does not rewrite history; dimensionless
+legacy APIs cannot always distinguish old protocols. Public chart and index
+assets match tested ZIP SHA-256
+`4b6487f0cff286d6ed7b9bffaa39f9c6653ec96dcb21981863717196cec9d918`.
+84 theme tests, build/typecheck, changed-file lint and desktop/mobile browser
+fixtures passed. The previous theme tree/assets remain at
+`/opt/nekomari/rollbacks/emerald-v206-current-protocol-20261108T113715Z`.
+Signed-in MegaBox/HK04 page acceptance remains the owner's check; reinstalling
+the marketplace theme will replace the patch.
+
+MAC-WAN's pre-change encrypted backup
+`manual/v1730-release-post-20261108T113226Z/oc424-20261108T113226257686Z-f0263633671e.tar.gz.age`
+has SHA-256 `b3706cb03abdf1ae43c3ac3104eb94c26888630e17a69183dd12468fc4f95d34`.
+The post-change backup
+`manual/v1730-release-post-20261108T113740Z/oc424-20261108T113740646225Z-335873c4553e.tar.gz.age`
+has SHA-256 `542c14486d7892c6fcae82270cfc241ab1caa46c77b7fbdbe034c1932c044145`.
+Both passed isolated v1.7.30 restore drills. Online snapshots are not atomic
+across databases or in-memory queues; backup/health timers remain absent or
+inactive by owner design.
+
+## Reference-probe cleanup (2026-11-08 08:18 UTC)
+
+Historical checkpoint; task 28's later ICMP-only change above supersedes the
+description of its dual main legs. The owner clarified that unlisted extra probes should stop, not just be
+relabelled. The only nonempty reference in the 13 configured ping tasks was
+task 28. Its task edit form had a reference field, but the task list did not
+show it. After a verified encrypted pre-backup, the panel was briefly stopped,
+the exact task roster and client identity digest were rechecked, only task 28's
+reference field was cleared in an offline transaction, and the same pinned
+v1.7.30 container was restarted to reload the in-memory schedule. No task,
+node, token, assignment, main target, protocol, or historical metric was
+removed. Both assigned nodes subsequently reported fresh IPv6 ICMP and TCP
+primary series; their last reference reports remained before the 08:18:44 UTC
+configuration change for over three minutes. A 30-day read-only inventory of
+all nodes found no unassigned or missing-task ping series; only these two
+task-28 reference groups were obsolete. The rollback record is
+`/opt/nekomari/rollbacks/task28-reference-20261108T081843Z-5GgNHSMr`.
+Its DB snapshot is not a license to overwrite newer live data.
+
+The existing online Emerald Insights theme remains based on v2.0.6 with the
+local patch. Reference-role series are hidden by default, including retained
+historical series. The managed `showPingReference` switch can opt back in; it
+only affects the detail chart and does not start/stop probes. The theme does
+not remove reference support from the Agent or panel for other installations.
+The actually deployed tested ZIP has SHA-256
+`8923beefc031c3cffec7810c99538e439256c15f6e66d35b2fbb88b0af3d43c5`;
+public chart and index assets match it. Previous assets and the prior theme
+tree remain in `/opt/nekomari/rollbacks/emerald-v206-no-ref-20261108T082010Z`.
+82 theme tests, build/typecheck, changed-file lint and desktop/mobile Chromium
+fixtures passed with the switch both off and on. The owner's signed-in visual
+acceptance is still pending; home-card legacy aggregates can still mix retained
+roles/protocols within their window.
+
+HKHKT was upgraded over `MAC-WAN -> OC424 -> HKHKT` to the verified manual
+v1.7.30 Agent. OpenRC and its disabled-auto-update policy remain unchanged; its
+CPU and ping samples resumed, and all 14 clients now report v1.7.30. The
+previous binary and unit copy are on HKHKT under
+`/root/nekomari-agent/v1730-agent-hkhkt-20261108`.
+
+MAC-WAN's pre-change encrypted snapshot
+`manual/v1730-release-post-20261108T081146Z/oc424-20261108T081146375268Z-fa7e7af82a99.tar.gz.age`
+has SHA-256 `9300e4c4b54900dfefb226f735d0f3bb14d37aca1624902d588f1254f26fff7c`.
+The post-change snapshot
+`manual/v1730-release-post-20261108T082128Z/oc424-20261108T082128245772Z-2738c19451f8.tar.gz.age`
+has SHA-256 `2614827978a1d7ac5276aa93b734d60fe829a492a80ce43497faeec36b31c891`.
+Both passed network-isolated v1.7.30 restoration drills. These are online
+snapshots rather than atomic cross-database/in-memory handoffs. Automatic
+backup/health timers remain absent/inactive by owner design.
+
+## v1.7.30 release checkpoint (2026-11-08, Asia/Shanghai)
+
+The production panel runs the published **v1.7.30/1a77f04**, pinned to OCI
+index `sha256:f93becf6d2da2dc4b46e1604d0e8884a6c40187e1c6eeb1944620af80d7b476a`.
+The arm64 and amd64 image binaries match the corresponding release assets.
+The panel is healthy with zero restarts; the post-rollout check passes 9/9,
+both SQLite `quick_check`s pass, and all 14 registered clients have fresh CPU
+data. The 14 UUID/token pairs and 13 ping tasks were preserved. The prior
+candidate image and compose are retained at
+`/opt/nekomari/rollbacks/v1.7.30-20261108T060225Z-lQLBNIZ4`. Do not restore
+old DBs over the live databases or blindly downgrade a panel with pinned tasks.
+
+The release tag points to `1a77f04074fb197cbc54e348b9dab87bdf79a16e`; the
+release commit's CI passed 8/8. Release workflow
+[42451434798](https://github.com/Aone2233/Nekomari/actions/runs/42451434798)
+built and attested the assets but failed when looking up its draft by tag, so
+its two deploy-verification jobs were skipped. The original draft and assets
+were independently verified and published by draft ID; the published amd64 and
+arm64 assets each passed a 23/23 isolated install/report check. Docker workflow
+[42452235853](https://github.com/Aone2233/Nekomari/actions/runs/42452235853)
+passed 2/2. `main` subsequently received the draft-ID and image-alias fixes plus
+the theme source patch at `f19493ac35436299762c7f0fb12f5c3cc79c08d4`; exact
+branch CI [42453671851](https://github.com/Aone2233/Nekomari/actions/runs/42453671851)
+and main CI [42458525061](https://github.com/Aone2233/Nekomari/actions/runs/42458525061)
+both passed 8/8. These follow-up commits do not change the released tag.
+
+The Agent assets are intentionally `manual-` prefixed. A metadata-action default
+briefly moved `nekomari-agent:latest` to v1.7.30 despite that policy; the
+reviewed alias was restored by guarded workflow
+[42452727020](https://github.com/Aone2233/Nekomari/actions/runs/42452727020).
+Both Agent `latest` and `1.7` again point to the prior index
+`sha256:7fce2571fe38a1ef4a5e2f22dde530c8953cab6987398715d9670a1cf9c8fe0c`.
+The subsequent workflow fix disables implicit `latest`; the actual metadata
+action was exercised with Agent and panel rules. The GitHub latest release
+remains v1.7.29 by design.
+
+**Agents at the earlier release checkpoint (superseded above).** MegaBox, Riven, HK04, BERO, OC424, MAC-WAN, Frankfurt, ATT,
+Lightlayer, SB01, QWRT, PZYC and Windows-WAN were individually upgraded to the
+checksum-verified manual v1.7.30 binary, with old binaries and service/task
+configuration retained locally. Each subsequently reported new CPU and ping
+samples. MAC-WAN's `cap_net_raw=ep` was preserved; QWRT's procd, SB01's OpenRC
+and Windows' SYSTEM scheduled-task supervision were retained. HKHKT remains
+online on v1.6.24 because the known SSH paths timed out; do not claim a full
+fleet upgrade. Task 30 now has actual IPv6 samples from all three assigned
+nodes. A recent 15-minute interval had 14/15 MegaBox loss buckets and 15/15
+Riven/Frankfurt, with a MegaBox `permit_write` warning at 15:37 China time:
+missing data is not packet loss, and this intermittent gap is not fully fixed.
+
+**Theme at the earlier release checkpoint (superseded above).** Official Emerald Insights v2.0.6 remains active with the local
+compatibility patch, not a replacement theme. The updated tested ZIP hash is
+`8db889bd761bbbb577780632a4974782b76a951c4aa23728fbd643ae6a0f7567`;
+the publicly served chart bytes match it. Legacy empty role now labels a primary
+target; `reference` labels the same task's auxiliary probe. Curves, assignments,
+history and the existing theme configuration are unchanged. The prior theme is
+retained at `/opt/nekomari/rollbacks/emerald-v206-role-20261108T060359Z`;
+old hashed assets remain available. A marketplace reinstall overwrites the
+patch. Owner signed-in visual acceptance remains open, and the home-card
+unpartitioned aggregate is not a reliable per-path measurement.
+
+**Recovery.** MAC-WAN pre-switch archive
+`manual/v1730-release-pre-final-20261108T055832Z/oc424-20261108T055832525611Z-bb0bd2675abd.tar.gz.age`
+has SHA-256 `55cbecb5bef53a217088aa378f2c50646e8fe0d9f1cd4a83423c3c3be4a0de3d`.
+The final post-fleet archive
+`manual/v1730-fleet-final-post-20261108T074549Z/oc424-20261108T074549937292Z-08831bac3a71.tar.gz.age`
+has SHA-256 `f59ba6e6d9f97e7a2cc8ef279bf724100b86abf266146c74e0b70c75188eccb9`.
+Both passed checksum and network-isolated restore drills on MAC-WAN using the
+digest-pinned official v1.7.30 amd64 image. Archives are online snapshots, not
+an atomic cross-database or zero-in-memory-RPO guarantee. The prior scheduled
+backup and health timer units are absent/inactive by owner design, so automatic
+backup and alerting are not verified; do not silently recreate or start them.
+PZYC's pre-existing `/dev/null` is a regular root-owned mode-755 file rather
+than a character device; it was not modified as part of this rollout.
+
+## Theme checkpoint (2026-11-06 10:52 UTC)
+
+The active `emerald-insights` theme was atomically exchanged from official
+v2.0.5 to the official v2.0.6 source plus the local compatibility patch at
+[`deploy/theme-patches/emerald-insights-v2.0.6`](../deploy/theme-patches/emerald-insights-v2.0.6/README.md).
+This is **not** an unmodified official release: the manifest retains the same
+short and v2.0.6 so existing settings are not switched. A later online update
+will replace the patch. The tested bundle SHA-256 is
+`12d7a267899f390dfa596417ba3d140e0ed4a3ae1acf22086140cfa6b12342e2`.
+The online original and candidate assets are retained for already-open pages.
+The pre-switch tree is under
+`/opt/nekomari/rollbacks/emerald-20261106T1055Z/original` (with a second
+`original-swap` copy); roll back the theme only, never restore old databases
+over the live ones. The prepared, syntax-checked (not production-executed)
+`rollback-theme.sh` verifies the original file hashes, retains candidate assets,
+and exchanges the theme tree; inspect its preconditions before using it.
+
+The panel remains `v1.7.29/94e1973`, healthy with zero restarts. Both SQLite
+quick checks pass, 14/14 registered nodes have recent retained CPU buckets,
+and the 14 UUID/token pairs match the newly owner-confirmed pre-change
+baseline. Origin and public endpoints serve the new index and both new/old
+chart assets. Chromium renders the served bundle with mocked responses; it
+does not establish authenticated production-page acceptance. The owner still
+needs to check HK04 and MegaBox after a full reload.
+
+Fresh encrypted pre/post archives are on MAC-WAN; details and the unrelated
+scheduled-lock failure are in [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
+
 **Security/backup supersession, 2026-10-28 23:53 Asia/Shanghai:** the owner reports OVH
 has been relinquished. OVH is not a current trusted receiver or test host;
 historical plaintext backup exposure and replacement backup/health gates are
@@ -56,6 +375,21 @@ is still open; no public-page check substitutes for it.
   recorded compose and recreate only the panel; never replace live databases
   with an older snapshot. MAC-WAN direct SSH timed out; the existing pinned
   reverse tunnel worked. See [`MAC-WAN-BACKUP.md`](./MAC-WAN-BACKUP.md).
+
+### Read-only identity and execution-record recheck (04:02 UTC)
+
+The 13 live UUID/token pairs still match the prior audited digest
+`55bc6191…d2bde`; no credential value was printed. No new node/token is
+detected relative to that snapshot, although a change later reversed cannot be
+ruled out. The earlier inconsistent digest has no established explanation.
+All six currently retained task parents have matching retained execution audit
+entries; the latest retained result creation and audit both date from
+2026-10-25, with no later entry since the v1.7.29 switch. Three older results
+from 2026-10-20 have no finish time, which does not prove active execution.
+Logs/results can be removed or expire, and host-side activity outside the
+panel is not covered; this is not a complete forensic audit. The largest
+retained command and result are 3,100 and 14,406 bytes respectively. No
+production credentials, nodes, tasks or panel configuration were changed.
 
 ## Pre-release recheck (2026-11-05)
 

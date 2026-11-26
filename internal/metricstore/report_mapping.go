@@ -55,6 +55,55 @@ func reportMetricPoints(report v2.Report) []metric.Point {
 		filtered = append(filtered, point)
 	}
 	points = filtered
+	qualityOK := func(key string) bool {
+		q, exists := report.Quality[key]
+		return !exists || q == "ok"
+	}
+	if report.CPU.IntervalSeconds > 0 && qualityOK("cpu") {
+		points = append(points, metric.Point{MetricName: MetricCPUInterval, EntityID: entityID, Timestamp: ts, Value: report.CPU.IntervalSeconds})
+	}
+	if report.CPU.Cgroup != nil && qualityOK("cgroup") {
+		cg := report.CPU.Cgroup
+		if cg.UsagePercent != nil {
+			points = append(points, metric.Point{MetricName: MetricCPUCgroupUsage, EntityID: entityID, Timestamp: ts, Value: *cg.UsagePercent})
+		}
+		if cg.QuotaCores != nil {
+			points = append(points, metric.Point{MetricName: MetricCPUCgroupQuota, EntityID: entityID, Timestamp: ts, Value: *cg.QuotaCores})
+		}
+		if cg.ThrottledSecondsTotal != nil {
+			points = append(points, metric.Point{MetricName: MetricCPUCgroupThrottled, EntityID: entityID, Timestamp: ts, Value: *cg.ThrottledSecondsTotal})
+		}
+	}
+	if qualityOK("ram") {
+		for name, value := range map[string]*int64{
+			MetricRAMAvailable: report.Ram.Available, MetricRAMCached: report.Ram.Cached,
+			MetricRAMBuffers: report.Ram.Buffers, MetricRAMZswap: report.Ram.Zswap,
+		} {
+			if value != nil {
+				points = append(points, metric.Point{MetricName: name, EntityID: entityID, Timestamp: ts, Value: float64(*value)})
+			}
+		}
+	}
+	if qualityOK("disk") {
+		for _, mount := range report.Disk.Mounts {
+			tags := map[string]string{
+				"mountpoint": mount.Mountpoint, "device": mount.Device, "fstype": mount.FSType,
+			}
+			points = append(points,
+				metric.Point{MetricName: MetricDiskMountUsed, EntityID: entityID, Timestamp: ts, Value: float64(mount.Used), Tags: tags},
+				metric.Point{MetricName: MetricDiskMountTotal, EntityID: entityID, Timestamp: ts, Value: float64(mount.Total), Tags: tags},
+			)
+		}
+	}
+	if report.Network.TCPOutSegs != nil && qualityOK("network") {
+		points = append(points, metric.Point{MetricName: MetricTCPOutSegs, EntityID: entityID, Timestamp: ts, Value: float64(*report.Network.TCPOutSegs)})
+	}
+	if report.Network.TCPRetransSegs != nil && qualityOK("network") {
+		points = append(points, metric.Point{MetricName: MetricTCPRetransSegs, EntityID: entityID, Timestamp: ts, Value: float64(*report.Network.TCPRetransSegs)})
+	}
+	if report.Network.TCPRetransPercent != nil && qualityOK("net_rate") {
+		points = append(points, metric.Point{MetricName: MetricTCPRetransPct, EntityID: entityID, Timestamp: ts, Value: *report.Network.TCPRetransPercent})
+	}
 	// The wire decoder cannot distinguish an omitted uptime field from zero,
 	// even if a malformed report claims quality=ok. Treat both as unknown.
 	quality, hasQuality := report.Quality["uptime"]

@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/@komari-monitor/plugin-sdk/schema/komari-plugin.schema.json",
+  "name": {
+    "zh_cn": "1.5.x 后台 404 修复",
+    "en": "1.5.x Admin 404 Fix"
+  },
+  "short": "fix-1-5-0-theme-404",
+  "author":"Akizon77",
+  "description": {
+    "zh_cn": "修复1.5.0使用第三方主题进入后台404",
+    "en": "Fix 404 error when accessing the admin panel with third-party themes in 1.5.0"
+  },
+  "version": "1.0.0",
+  "entry": "script.js",
+  "permissions": {
+    "allowRoutes": true,
+    "allowHooks": true
+  }
+}

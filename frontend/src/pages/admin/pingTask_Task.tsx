@@ -41,6 +41,9 @@ import { MenuIcon, MoreHorizontal, Pencil, Radar, Trash } from "lucide-react";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { ApiResponseError, requireApiSuccess } from "@/lib/apiResponse";
+import { PingFamilyDiagnostic } from "./PingFamilyDiagnostic";
+import { PingUnknownDiagnostic } from "./PingUnknownDiagnostic";
 
 /**
  * 目标预检结果。后端 admin:netcheck 返回 pkg/netcheck.Report。
@@ -242,8 +245,19 @@ const Row = ({
     default_on: task.default_on || false,
     interval: task.interval || 60,
     reference: task.reference || "",
+    probe_attempts: task.probe_attempts || 0,
+    probe_spacing_ms: task.probe_spacing_ms || 200,
+    probe_timeout_ms: task.probe_timeout_ms || 0,
+    http_mode: task.http_mode || "legacy",
+    http_expected_status: task.http_expected_status || "200-399",
+    ip_version_preference: task.ip_version_preference || "auto",
   });
   const [probe, setProbe] = React.useState<ProbeState | null>(null);
+  const hasIgnoredPinnedOptions = !!task.target_family && (
+    (task.probe_attempts ?? 0) !== 0 || (task.probe_spacing_ms ?? 0) !== 0 ||
+    (task.probe_timeout_ms ?? 0) !== 0 || !!task.http_mode ||
+    !!task.http_expected_status || !!task.ip_version_preference
+  );
 
   // 目标预检：在保存前先探测目标，避免选了目标不答应的协议
   // （监测任务类型是每个任务一个，选错会恒定 100% 丢包）
@@ -299,25 +313,30 @@ const Row = ({
             default_on: newForm.default_on,
             clients: newForm.clients,
             interval: newForm.interval,
+            ...(!task.target_family ? { probe_attempts: newForm.probe_attempts,
+            probe_spacing_ms: newForm.probe_spacing_ms,
+            probe_timeout_ms: newForm.probe_timeout_ms,
+            http_mode: newForm.http_mode,
+            http_expected_status: newForm.http_expected_status,
+            ip_version_preference: newForm.ip_version_preference } : {}),
           },
         ],
       }),
     })
-      .then((res) => {
-        if (!res.ok) {
-          return res.json().then((data) => {
-            throw new Error(data?.message || t("common.error"));
-          });
-        }
-        return res.json();
-      })
+      .then((response) => requireApiSuccess(response, t("common.error")))
       .then(() => {
         setEditOpen(false);
         toast.success(t("common.updated_successfully"));
         refresh();
       })
       .catch((error) => {
-        toast.error(error.message);
+        if (error instanceof ApiResponseError && error.committed) {
+          setEditOpen(false);
+          refresh();
+          toast.error(error.message, { duration: 15000 });
+        } else {
+          toast.error(error.message);
+        }
       })
       .finally(() => setEditSaving(false));
   };
@@ -336,21 +355,20 @@ const Row = ({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: [task.id] }),
     })
-      .then((res) => {
-        if (!res.ok) {
-          return res.json().then((data) => {
-            throw new Error(data?.message || t("common.error"));
-          });
-        }
-        return res.json();
-      })
+      .then((response) => requireApiSuccess(response, t("common.error")))
       .then(() => {
         setDeleteOpen(false);
         toast.success(t("common.deleted_successfully"));
         refresh();
       })
       .catch((error) => {
-        toast.error(error.message);
+        if (error instanceof ApiResponseError && error.committed) {
+          setDeleteOpen(false);
+          refresh();
+          toast.error(error.message, { duration: 15000 });
+        } else {
+          toast.error(error.message);
+        }
       })
       .finally(() => setDeleteLoading(false));
   };
@@ -421,7 +439,14 @@ const Row = ({
           </NodeSelectorDialog>
         </Flex>
       </TableCell>
-      <TableCell>{task.target}</TableCell>
+      <TableCell>
+        {task.target}{task.target_family && ` (${task.target_family.toUpperCase()})`}
+        {task.target_family && <div className="mt-1"><PingFamilyDiagnostic
+          key={JSON.stringify([task.id, task.target_family, task.type, task.target, task.reference, task.clients])}
+          task={task} /></div>}
+        {hasIgnoredPinnedOptions && <div role="note" className="mt-1 text-xs text-amber-11">{t("ping.pinnedSavedOptionsIgnored")}</div>}
+        {!task.target_family && task.id && <div className="mt-1"><PingUnknownDiagnostic taskID={task.id} /></div>}
+      </TableCell>
       <TableCell>{task.type}</TableCell>
       <TableCell>{task.interval}</TableCell>
       <TableCell className="flex items-center gap-2">
@@ -450,6 +475,7 @@ const Row = ({
               <label>{t("common.type")}</label>
               <Select.Root
                 value={form.type}
+                disabled={!!task.target_family}
                 onValueChange={(v) =>
                   setForm((f) => ({ ...f, type: v as any }))
                 }
@@ -470,12 +496,18 @@ const Row = ({
               <label>{t("ping.target")}</label>
               <TextField.Root
                 value={form.target}
+                disabled={!!task.target_family}
                 onChange={(e) => {
                   setForm((f) => ({ ...f, target: e.target.value }));
                   setProbe(null); // 目标改了，旧结论作废
                 }}
                 required
               />
+              <Text size="1" color="gray">
+                {task.target_family
+                  ? t("ping.family_locked", { family: task.target_family.toUpperCase() })
+                  : t("ping.family_legacy_edit_hint")}
+              </Text>
               <Flex align="center" gap="2" wrap="wrap">
                 <Button
                   type="button"
@@ -518,6 +550,7 @@ const Row = ({
               </label>
               <TextField.Root
                 value={form.reference}
+                disabled={!!task.target_family}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, reference: e.target.value }))
                 }
@@ -565,6 +598,58 @@ const Row = ({
                 }
                 required
               />
+              {task.target_family ? <Text size="2" color="gray">{t("ping.pinnedOptionsUnsupported", "Advanced probe options are not supported for family-pinned tasks.")}</Text> : <details className="rounded border border-gray-200 p-3">
+                <summary className="cursor-pointer text-sm font-medium">
+                  {t("ping.probeTruth", "Probe truth (optional)")}
+                </summary>
+                <Flex direction="column" gap="2" className="mt-3">
+                  <Text size="2" color="amber">{t("ping.legacyOptionsWarning", "Older Agents may ignore these settings. IP preference and unknown-error reporting require v1.8.1; Agent version alone does not prove capability.")}</Text>
+                  <label className="text-sm">{t("ping.probeAttempts", "Attempts per cycle (0 = legacy single probe)")}</label>
+                  <TextField.Root
+                    type="number"
+                    min={0}
+                    max={10}
+                    value={form.probe_attempts}
+                    onChange={(e) => setForm((f) => ({ ...f, probe_attempts: Number(e.target.value) }))}
+                  />
+                  <label className="text-sm">{t("ping.probeSpacing", "Spacing between attempts (ms)")}</label>
+                  <TextField.Root
+                    type="number"
+                    min={50}
+                    max={1000}
+                    value={form.probe_spacing_ms}
+                    onChange={(e) => setForm((f) => ({ ...f, probe_spacing_ms: Number(e.target.value) }))}
+                  />
+                  <label className="text-sm">{t("ping.httpMode", "HTTP mode")}</label>
+                  <Select.Root
+                    value={form.http_mode}
+                    onValueChange={(value) => setForm((f) => ({ ...f, http_mode: value as typeof f.http_mode }))}
+                  >
+                    <Select.Trigger />
+                    <Select.Content>
+                      <Select.Item value="legacy">legacy (4xx/5xx = failure)</Select.Item>
+                      <Select.Item value="status_aware">status_aware (reachable separately)</Select.Item>
+                    </Select.Content>
+                  </Select.Root>
+                  <label className="text-sm">{t("ping.httpExpected", "Expected HTTP status (e.g. 200-399)")}</label>
+                  <TextField.Root
+                    value={form.http_expected_status}
+                    onChange={(e) => setForm((f) => ({ ...f, http_expected_status: e.target.value }))}
+                  />
+                  <label className="text-sm">{t("ping.ipPreference", "IP version preference")}</label>
+                  <Select.Root
+                    value={form.ip_version_preference}
+                    onValueChange={(value) => setForm((f) => ({ ...f, ip_version_preference: value as typeof f.ip_version_preference }))}
+                  >
+                    <Select.Trigger />
+                    <Select.Content>
+                      <Select.Item value="auto">auto</Select.Item>
+                      <Select.Item value="4">IPv4</Select.Item>
+                      <Select.Item value="6">IPv6</Select.Item>
+                    </Select.Content>
+                  </Select.Root>
+                </Flex>
+              </details>}
               <Flex gap="2" justify="end" className="mt-4">
                 <Dialog.Close>
                   <Button

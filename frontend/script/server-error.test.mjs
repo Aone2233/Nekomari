@@ -38,13 +38,14 @@ const { assertApiSuccess, requireApiSuccess } = load('apiResponse');
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
 
 test('every explicit handler key has distinct nonempty text in all five locales', () => {
-  const files = ['admin.client.go', 'admin.apikey.go', 'bridge.go'];
+  const files = ['admin.client.go', 'admin.apikey.go', 'bridge.go', 'admin.ping.go', 'admin.configxport_apply.go', 'admin.configxport_review.go'];
   const used = new Set();
   for (const file of files) {
     const source = readFileSync(new URL(`../../web/rpc/jsonrpc/${file}`, import.meta.url), 'utf8');
     for (const match of source.matchAll(/rpc\.MakeLocalizedError\(rpc\.\w+,[^\n]*, "([a-z0-9_]+)"\)/g)) used.add(match[1]);
+    for (const match of source.matchAll(/rpc\.MakeCommittedError\(rpc\.\w+,[^\n]*, "([a-z0-9_]+)",/g)) used.add(match[1]);
   }
-  assert.equal(used.size, 14);
+  assert.equal(used.size, 20);
   const english = resources.en.translation.server_errors;
   assert.deepEqual(Object.keys(english).sort(), [...used].sort());
   for (const [language, resource] of Object.entries(resources)) {

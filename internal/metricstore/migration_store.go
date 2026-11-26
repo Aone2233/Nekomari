@@ -2,6 +2,7 @@ package metricstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -11,18 +12,20 @@ import (
 
 const storeMigrationBatchSize = 500
 
+var errStoreMigrationDefinitionConflict = errors.New("metric store migration definition conflict")
+
 // configFromFingerprint 从目标指纹（driver|dsn）重建一个 MetricStoreConfig，
 // 用于以只读方式打开“上一次的 metrics 目标库”。表前缀、保留天数、连接数等
 // 沿用当前配置（切换后端时这些通常不变）。
 func configFromFingerprint(fingerprint string, base *MetricStoreConfig) (*MetricStoreConfig, error) {
 	idx := strings.Index(fingerprint, "|")
 	if idx < 0 {
-		return nil, fmt.Errorf("invalid target fingerprint: %q", fingerprint)
+		return nil, fmt.Errorf("invalid target fingerprint")
 	}
 	driver := fingerprint[:idx]
 	dsn := fingerprint[idx+1:]
 	if strings.TrimSpace(driver) == "" {
-		return nil, fmt.Errorf("empty driver in target fingerprint: %q", fingerprint)
+		return nil, fmt.Errorf("empty driver in target fingerprint")
 	}
 	return &MetricStoreConfig{
 		Driver:                           driver,
@@ -64,7 +67,7 @@ type storeMigrationObserver func(currentMetric string, metricIndex, totalMetrics
 
 // 观察者 observe（为 nil 时行为与旧版本完全一致）。WebUI/API 手动触发的迁移传入
 // 回调以实时更新进度。
-func migrateBetweenStores(ctx context.Context, src, dst *metric.Store, observe storeMigrationObserver) (int64, error) {
+func migrateBetweenStores(ctx context.Context, src, dst *metric.Store, reserved map[string]struct{}, observe storeMigrationObserver) (int64, error) {
 	if src == nil || dst == nil {
 		return 0, fmt.Errorf("source or destination metric store is nil")
 	}
@@ -81,18 +84,24 @@ func migrateBetweenStores(ctx context.Context, src, dst *metric.Store, observe s
 			observe(def.Name, i, len(defs), 0)
 		}
 		// 目标库先建立指标定义，保证后续写入的指标存在。
-		if err := dst.UpsertMetric(ctx, def); err != nil {
-			return total, fmt.Errorf("upsert metric %q on target: %w", def.Name, err)
+		if err := ensureMigrationDefinition(ctx, dst, def); err != nil {
+			return total, fmt.Errorf("check metric %q on target: %w", def.Name, err)
 		}
 		if def.RetentionDays == 0 {
 			continue
 		}
 		var migrated int64
 		_, err := src.ExportRollups(ctx, def.Name, storeMigrationBatchSize, func(batch []metric.PersistedRollup) error {
-			if err := dst.ImportRollups(ctx, batch); err != nil {
+			filtered := batch[:0]
+			for _, row := range batch {
+				if !isReservedPingRollup(row, reserved) {
+					filtered = append(filtered, row)
+				}
+			}
+			if err := dst.ImportRollupsPreservingExisting(ctx, filtered); err != nil {
 				return fmt.Errorf("write metric %q rollup batch to target: %w", def.Name, err)
 			}
-			count := int64(len(batch))
+			count := int64(len(filtered))
 			migrated += count
 			total += count
 			if observe != nil {
@@ -109,4 +118,20 @@ func migrateBetweenStores(ctx context.Context, src, dst *metric.Store, observe s
 	}
 
 	return total, nil
+}
+
+// A destination that has already accepted observations owns its retention and
+// schema. Importing an older definition must not silently disable or rewrite it.
+func ensureMigrationDefinition(ctx context.Context, dst *metric.Store, source metric.Definition) error {
+	current, err := dst.GetMetric(ctx, source.Name)
+	if err != nil {
+		if errors.Is(err, metric.ErrNotFound) {
+			return dst.CreateMetric(ctx, source)
+		}
+		return err
+	}
+	if current.Type != source.Type || current.Unit != source.Unit || current.RetentionDays != source.RetentionDays {
+		return errStoreMigrationDefinitionConflict
+	}
+	return nil
 }

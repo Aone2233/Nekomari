@@ -6,26 +6,85 @@ import (
 )
 
 const (
-	Version               = "2.0"
-	MethodAgentReport     = "agent.report"
-	MethodAgentBasicInfo  = "agent.basicInfo"
-	MethodAgentPingResult = "agent.pingResult"
-	MethodAgentTaskResult = "agent.taskResult"
-	MethodAgentExec       = "agent.exec"
-	MethodAgentPing       = "agent.ping"
-	MethodAgentMessage    = "agent.message"
-	MethodAgentEvent      = "agent.event"
-	MethodAgentTerminal   = "agent.terminal.request"
-	MethodAgentPull       = "agent.pull"
-	MethodAgentFile       = "agent.file"
-	MethodAgentFileResult = "agent.file.result"
-	MethodAgentUnlock     = "agent.unlock"
+	Version                      = "2.0"
+	MethodAgentReport            = "agent.report"
+	MethodAgentBasicInfo         = "agent.basicInfo"
+	MethodAgentPingResult        = "agent.pingResult"
+	MethodAgentTaskResult        = "agent.taskResult"
+	MethodAgentExec              = "agent.exec"
+	MethodAgentPing              = "agent.ping"
+	MethodAgentPingFamilySession = "agent.pingFamily.session.v1"
+	MethodAgentPingFamilyPermit  = "agent.pingFamily.permit.v1"
+	MethodAgentPingFamilyRetired = "agent.pingFamily.retired.v1"
+	MethodAgentPingFamilyProbe   = "agent.pingFamily.probe.v1"
+	MethodAgentPingFamilyResult  = "agent.pingFamily.result.v1"
+	MethodAgentMessage           = "agent.message"
+	MethodAgentEvent             = "agent.event"
+	MethodAgentTerminal          = "agent.terminal.request"
+	MethodAgentPull              = "agent.pull"
+	MethodAgentFile              = "agent.file"
+	MethodAgentFileResult        = "agent.file.result"
+	MethodAgentUnlock            = "agent.unlock"
 	// MethodAgentUpdate 让面板指定这个节点要运行的版本（roadmap H6）。
 	//
 	// 走事件通道而不是配置：agent 的配置是部署级的（环境变量/systemd），面板没有运行时通道能改它，
 	// 而事件队列是既有的面板→agent 指令路径 —— 能立刻送达在线节点，也能留在队列里等离线节点回来。
 	MethodAgentUpdate = "agent.update"
 )
+
+type PingFamilySessionParams struct {
+	Action    string `json:"action"`
+	Version   int    `json:"version"`
+	Instance  string `json:"instance"`
+	Challenge string `json:"challenge,omitempty"`
+}
+
+type PingFamilySessionResult struct {
+	Challenge string `json:"challenge"`
+}
+
+type PingFamilyPermitParams struct {
+	Instance   string `json:"instance"`
+	Session    string `json:"session"`
+	DispatchID string `json:"dispatch_id"`
+	Sequence   uint64 `json:"sequence"`
+}
+
+type PingFamilyPermitResult struct {
+	DispatchID      string `json:"dispatch_id"`
+	Sequence        uint64 `json:"sequence"`
+	FreshnessTicket string `json:"freshness_ticket"`
+}
+
+// PingFamilyProbeParams is separate from legacy agent.ping. Old Agents must
+// reject this method rather than ignore a family field and probe unpinned.
+type PingFamilyProbeParams struct {
+	TaskID           uint   `json:"task_id"`
+	Type             string `json:"type"`
+	Target           string `json:"target"`
+	Reference        string `json:"reference,omitempty"`
+	Family           string `json:"family"`
+	ConfigGeneration string `json:"config_generation"`
+	Instance         string `json:"instance"`
+	Session          string `json:"session"`
+	DispatchID       string `json:"dispatch_id"`
+	FreshnessTicket  string `json:"freshness_ticket"`
+}
+
+// A diagnostic omits both value fields; an attempted probe carries both.
+type PingFamilyResultParams struct {
+	TaskID           uint   `json:"task_id"`
+	ConfigGeneration string `json:"config_generation"`
+	Instance         string `json:"instance"`
+	Session          string `json:"session"`
+	DispatchID       string `json:"dispatch_id"`
+	Role             string `json:"role"`
+	PingType         string `json:"ping_type"`
+	Family           string `json:"family,omitempty"`
+	Value            *int   `json:"value,omitempty"`
+	ValueUS          *int64 `json:"value_us,omitempty"`
+	Diagnostic       string `json:"diagnostic,omitempty"`
+}
 
 type Request struct {
 	JSONRPC string      `json:"jsonrpc"`
@@ -125,6 +184,54 @@ type reportParams struct {
 	AckEventIDs []string        `json:"ack_event_ids,omitempty"`
 }
 
+// PingParams mirrors the panel's dispatch shape. Additive v1.8 fields are
+// zero/empty for legacy tasks.
+type PingParams struct {
+	TaskID              uint   `json:"ping_task_id"`
+	Type                string `json:"ping_type"`
+	Target              string `json:"ping_target"`
+	Reference           string `json:"ping_reference,omitempty"`
+	ProbeAttempts       int    `json:"probe_attempts,omitempty"`
+	ProbeSpacingMS      int    `json:"probe_spacing_ms,omitempty"`
+	ProbeTimeoutMS      int    `json:"probe_timeout_ms,omitempty"`
+	HTTPMode            string `json:"http_mode,omitempty"`
+	HTTPExpectedStatus  string `json:"http_expected_status,omitempty"`
+	IPVersionPreference string `json:"ip_version_preference,omitempty"`
+}
+
+// HTTPProbeReport is the additive HTTP phase breakdown. Pointers keep an
+// absent measurement distinct from a measured zero.
+type HTTPProbeReport struct {
+	DNSUS         *int64   `json:"dns_us,omitempty"`
+	TCPUS         *int64   `json:"tcp_us,omitempty"`
+	TLSUS         *int64   `json:"tls_us,omitempty"`
+	TTFBUS        *int64   `json:"ttfb_us,omitempty"`
+	TotalUS       *int64   `json:"total_us,omitempty"`
+	StatusCode    *int     `json:"status_code,omitempty"`
+	Redirects     *int     `json:"redirects,omitempty"`
+	TLSExpiryDays *float64 `json:"tls_expiry_days,omitempty"`
+	Reachable     *bool    `json:"reachable,omitempty"`
+	Available     *bool    `json:"available,omitempty"`
+}
+
+// PingProbeStats is the additive multi-probe summary. The zero value means
+// "old single-probe Agent" and writes no new wire fields.
+type PingProbeStats struct {
+	Attempts       *int             `json:"attempts,omitempty"`
+	Success        *int             `json:"success,omitempty"`
+	LossPct        *float64         `json:"loss_pct,omitempty"`
+	MinUS          *int64           `json:"min_us,omitempty"`
+	AvgUS          *int64           `json:"avg_us,omitempty"`
+	MaxUS          *int64           `json:"max_us,omitempty"`
+	JitterUS       *int64           `json:"jitter_us,omitempty"`
+	HTTP           *HTTPProbeReport `json:"http,omitempty"`
+	ResolvedIP     string           `json:"resolved_ip,omitempty"`
+	ResolvedFamily string           `json:"resolved_family,omitempty"`
+	ProbeMode      string           `json:"probe_mode,omitempty"`
+	ProbeStatus    string           `json:"probe_status,omitempty"`
+	ProbeReason    string           `json:"probe_reason,omitempty"`
+}
+
 func BuildPingResultPayload(taskID uint, pingType string, value int, finishedAt time.Time) interface{} {
 	return BuildPingResultPayloadWithRoleAndFamily(taskID, pingType, "", "", value, finishedAt)
 }
@@ -147,7 +254,7 @@ func BuildPingResultPayloadWithRole(taskID uint, pingType, role string, value in
 // 本函数保持旧签名与旧线缆形状（没有 value_us）：value 是毫秒，这是旧面板唯一认识的
 // 单位。真实测量路径请用 BuildPingResultPayloadWithRoleFamilyAndMicros 附带微秒值。
 func BuildPingResultPayloadWithRoleAndFamily(taskID uint, pingType, role, family string, value int, finishedAt time.Time) interface{} {
-	return buildPingResultPayload(taskID, pingType, role, family, value, nil, finishedAt)
+	return buildPingResultPayload(taskID, pingType, role, family, value, nil, PingProbeStats{}, finishedAt)
 }
 
 // BuildPingResultPayloadWithRoleFamilyAndMicros 在带 role/family 的负载上再附加微秒精度。
@@ -165,11 +272,18 @@ func BuildPingResultPayloadWithRoleAndFamily(taskID uint, pingType, role, family
 //
 // 本函数是 agent 真实测量路径唯一该用的构建函数。
 func BuildPingResultPayloadWithRoleFamilyAndMicros(taskID uint, pingType, role, family string, value int, valueUS int64, finishedAt time.Time) interface{} {
-	return buildPingResultPayload(taskID, pingType, role, family, value, &valueUS, finishedAt)
+	return buildPingResultPayload(taskID, pingType, role, family, value, &valueUS, PingProbeStats{}, finishedAt)
+}
+
+// BuildPingResultPayloadWithStats is the v1.8 additive path: the legacy
+// value/value_us fields are unchanged, and the multi-probe/HTTP/address fields
+// are written only when the corresponding pointer or string is present.
+func BuildPingResultPayloadWithStats(taskID uint, pingType, role, family string, value int, valueUS int64, stats PingProbeStats, finishedAt time.Time) interface{} {
+	return buildPingResultPayload(taskID, pingType, role, family, value, &valueUS, stats, finishedAt)
 }
 
 // buildPingResultPayload 组装 ping 结果通知；valueUS 为 nil 时不写 value_us（旧形状）。
-func buildPingResultPayload(taskID uint, pingType, role, family string, value int, valueUS *int64, finishedAt time.Time) interface{} {
+func buildPingResultPayload(taskID uint, pingType, role, family string, value int, valueUS *int64, stats PingProbeStats, finishedAt time.Time) interface{} {
 	params := map[string]interface{}{
 		"task_id":     taskID,
 		"ping_type":   pingType,
@@ -185,11 +299,89 @@ func buildPingResultPayload(taskID uint, pingType, role, family string, value in
 	if valueUS != nil {
 		params["value_us"] = *valueUS
 	}
+	if stats.Attempts != nil {
+		params["attempts"] = *stats.Attempts
+	}
+	if stats.Success != nil {
+		params["success"] = *stats.Success
+	}
+	if stats.LossPct != nil {
+		params["loss_pct"] = *stats.LossPct
+	}
+	if stats.MinUS != nil {
+		params["min_us"] = *stats.MinUS
+	}
+	if stats.AvgUS != nil {
+		params["avg_us"] = *stats.AvgUS
+	}
+	if stats.MaxUS != nil {
+		params["max_us"] = *stats.MaxUS
+	}
+	if stats.JitterUS != nil {
+		params["jitter_us"] = *stats.JitterUS
+	}
+	if stats.HTTP != nil {
+		params["http"] = buildHTTPProbeReportPayload(stats.HTTP)
+	}
+	if stats.ResolvedIP != "" {
+		params["resolved_ip"] = stats.ResolvedIP
+	}
+	if stats.ResolvedFamily != "" {
+		params["resolved_family"] = stats.ResolvedFamily
+	}
+	if stats.ProbeStatus != "" {
+		params["probe_status"] = stats.ProbeStatus
+	}
+	if stats.ProbeReason != "" {
+		params["probe_reason"] = stats.ProbeReason
+	}
+	if stats.ProbeMode != "" {
+		params["probe_mode"] = stats.ProbeMode
+	}
 	return Request{
 		JSONRPC: Version,
 		Method:  MethodAgentPingResult,
 		Params:  params,
 	}
+}
+
+// buildHTTPProbeReportPayload keeps the nested HTTP keys out of the top-level
+// ping-builder contract test. The shared HTTPProbeReport struct is compared
+// across the two protocol copies; this helper only decides which present
+// pointers reach the wire.
+func buildHTTPProbeReportPayload(http *HTTPProbeReport) map[string]interface{} {
+	out := map[string]interface{}{}
+	if http.DNSUS != nil {
+		out["dns_us"] = *http.DNSUS
+	}
+	if http.TCPUS != nil {
+		out["tcp_us"] = *http.TCPUS
+	}
+	if http.TLSUS != nil {
+		out["tls_us"] = *http.TLSUS
+	}
+	if http.TTFBUS != nil {
+		out["ttfb_us"] = *http.TTFBUS
+	}
+	if http.TotalUS != nil {
+		out["total_us"] = *http.TotalUS
+	}
+	if http.StatusCode != nil {
+		out["status_code"] = *http.StatusCode
+	}
+	if http.Redirects != nil {
+		out["redirects"] = *http.Redirects
+	}
+	if http.TLSExpiryDays != nil {
+		out["tls_expiry_days"] = *http.TLSExpiryDays
+	}
+	if http.Reachable != nil {
+		out["reachable"] = *http.Reachable
+	}
+	if http.Available != nil {
+		out["available"] = *http.Available
+	}
+	return out
 }
 
 func BindParams(raw interface{}, target interface{}) error {

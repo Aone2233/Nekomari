@@ -2,15 +2,25 @@ package monitoring
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/shirou/gopsutil/v4/disk"
 )
 
 type DiskInfo struct {
-	Total uint64 `json:"total"`
-	Used  uint64 `json:"used"`
-	Valid bool   `json:"-"`
+	Total  uint64      `json:"total"`
+	Used   uint64      `json:"used"`
+	Mounts []DiskMount `json:"mounts,omitempty"`
+	Valid  bool        `json:"-"`
+}
+
+type DiskMount struct {
+	Device     string `json:"device,omitempty"`
+	Mountpoint string `json:"mountpoint"`
+	FSType     string `json:"fstype,omitempty"`
+	Total      uint64 `json:"total"`
+	Used       uint64 `json:"used"`
 }
 
 func Disk() DiskInfo {
@@ -35,12 +45,16 @@ func Disk() DiskInfo {
 					} else {
 						diskinfo.Total += u.Total
 						diskinfo.Used += u.Used
+						diskinfo.Mounts = append(diskinfo.Mounts, DiskMount{
+							Mountpoint: mountpoint, FSType: u.Fstype, Total: u.Total, Used: u.Used,
+						})
 					}
 				}
 			}
 		} else {
 			// 使用默认逻辑，排除临时文件系统和网络驱动器
 			deviceMap := make(map[string]*disk.UsageStat)
+			partMap := make(map[string]disk.PartitionStat)
 
 			for _, part := range usage {
 				if isPhysicalDisk(part) {
@@ -63,18 +77,29 @@ func Disk() DiskInfo {
 					if existing, ok := deviceMap[deviceID]; ok {
 						if u.Total > existing.Total {
 							deviceMap[deviceID] = u
+							partMap[deviceID] = part
 						}
 					} else {
 						deviceMap[deviceID] = u
+						partMap[deviceID] = part
 					}
 				}
 			}
 
-			for _, u := range deviceMap {
+			for deviceID, u := range deviceMap {
 				diskinfo.Total += u.Total
 				diskinfo.Used += u.Used
+				part := partMap[deviceID]
+				diskinfo.Mounts = append(diskinfo.Mounts, DiskMount{
+					Device: part.Device, Mountpoint: part.Mountpoint, FSType: part.Fstype,
+					Total: u.Total, Used: u.Used,
+				})
 			}
 		}
+	}
+	sort.Slice(diskinfo.Mounts, func(i, j int) bool { return diskinfo.Mounts[i].Used > diskinfo.Mounts[j].Used })
+	if len(diskinfo.Mounts) > 20 {
+		diskinfo.Mounts = diskinfo.Mounts[:20]
 	}
 	diskinfo.Valid = diskinfo.Valid && diskinfo.Total > 0 && diskinfo.Used <= diskinfo.Total
 	return diskinfo

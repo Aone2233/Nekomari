@@ -444,7 +444,14 @@ func migrateLegacyPingAllClientsExpansion(db *gorm.DB) error {
 	}
 
 	var pingTasks []legacyPingTask
-	if err := db.Table("ping_tasks").Select("id, clients").Where("all_clients = ?", true).Scan(&pingTasks).Error; err != nil {
+	query := db.Table("ping_tasks").Select("id, clients").Where("all_clients = ?", true)
+	// An empty assignment on a pinned task is intentional. Re-expanding it on
+	// startup would silently add every existing node without an incarnation
+	// change. The column does not exist on the legacy schemas this migrates.
+	if hasTableColumn(db, "ping_tasks", "target_family") {
+		query = query.Where("target_family IS NULL OR target_family = ?", "")
+	}
+	if err := query.Scan(&pingTasks).Error; err != nil {
 		return fmt.Errorf("find legacy all_clients ping tasks: %w", err)
 	}
 	if len(pingTasks) == 0 {

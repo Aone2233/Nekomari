@@ -21,6 +21,8 @@
 #   port     default: 25799
 #   version  default: the tag in the repo's latest release
 #   arch     default: the host's architecture (amd64 | arm64)
+#   NEKOMARI_MANUAL_AGENT_ASSET=1  select the published manual Agent asset;
+#            pass an explicit version when the release does not move Latest.
 #
 # arch 是参数而不是常量，因为参考面板主机是 arm64 而这里曾经只验 amd64：发布产物
 # 里 arm64 与 darwin 的交叉编译路径（release.yml 用 gcc-aarch64-linux-gnu）在发布
@@ -43,6 +45,11 @@ case "$ARCH" in
 esac
 SRV_ASSET="nekomari-linux-${ARCH}"
 AG_ASSET="komari-agent-linux-${ARCH}"
+# Opt-in builds keep the updater's exact filename off the public release. The
+# smoke test downloads the actual renamed asset rather than manufacturing one.
+if [ "${NEKOMARI_MANUAL_AGENT_ASSET:-0}" = 1 ]; then
+  AG_ASSET="manual-${AG_ASSET}"
+fi
 
 SRV=""; AG=""; WORK=""; OWN_WORK=0
 cleanup() {

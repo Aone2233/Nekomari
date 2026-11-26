@@ -1,0 +1,11 @@
+{
+  "description": "Sanitized legacy dual-protocol task and a newer family-pinned task; values are illustrative.",
+  "legacy_task": { "task_id": "28", "name": "Education IPv6", "interval": 60, "type": "dual" },
+  "pinned_task": { "task_id": "30", "name": "IPv6 TCP", "interval": 60, "type": "tcp" },
+  "series": [
+    { "task_id": "28", "family": "ipv6", "protocol": "icmp", "value": 192 },
+    { "task_id": "28", "family": "ipv6", "protocol": "tcp", "value": 195 },
+    { "task_id": "28", "family": "ipv6", "protocol": "icmp", "role": "reference", "value": 2 },
+    { "task_id": "30", "family": "ipv6", "protocol": "tcp", "role": "primary", "value": 164 }
+  ]
+}

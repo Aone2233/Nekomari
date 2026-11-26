@@ -173,6 +173,18 @@ a regression. Run them as root on a host with IPv6:
 sudo env "PATH=$PATH" go test -run 'TestICMPPing|TestTCPPing|TestHTTPPing' ./server/
 ```
 
+`TestICMPLoopbackCalibration` is an opt-in field comparison:
+`(cd agent && NEKOMARI_ICMP_SEPARATE_REFERENCE=1 go test ./server -run '^TestICMPLoopbackCalibration$' -count=1 -v)`.
+It requires an available ICMP socket and system `ping`. It compares an Agent
+median with a system-ping average from a separate group of packets, so the
+result can change with scheduling and cannot establish per-packet accuracy.
+It failed once after the timestamp change (1 µs versus 73 µs, exceeding the
+50 µs tolerance); that failure is retained in the calibration record. The
+same-packet capture comparison described there checks the measurement boundary
+more directly but shares the kernel software clock and is not a hardware
+reference. Live netem and physical-LAN tests additionally require an isolated
+network and independent capture/counters; they are not run by the normal suite.
+
 ### Why the three GeoIP ones are skipped in CI, and how they fail
 
 They are not broken — each passes on its own, from a machine that can reach the
@@ -312,6 +324,28 @@ These are hermetic (no network) unless noted:
 | `utils` — `TestFilterClientsByTargetFamily` | the filter: drops mismatches and deleted nodes, keeps order, passes everything through for a hostname target |
 
 ## Known failures in unprivileged environments
+
+The opt-in `NEKOMARI_ORDINARY_EXEC_E2E=1 go test -race ./web/api/client
+-run '^TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage$' -count=1`
+builds an actual Agent and runs it with a disposable Panel in an isolated
+Linux network namespace. It needs permission to create that namespace and
+uses no production data or external network. Its DNS-failure case verifies
+the scheduler, authenticated WebSocket, metrics and SLA chain; it does not
+stand in for a production deployment or other local failure types.
+
+The separate opt-in `NEKOMARI_ORDINARY_PERMISSION_E2E=1 go test -race
+./web/api/client -run '^TestOrdinaryAgentExecutableICMPPermissionUnknown$'
+-count=1` additionally requires root, a writable network-namespace-scoped
+`ping_group_range`, and the ability to run the disposable Agent as UID/GID
+65534. It restricts ping sockets inside the new namespace, drops supplementary
+groups and checks the actual scheduler-to-metric-store/SLA path. It does not
+change the host network namespace or prove behavior on other platforms.
+The same opt-in also enables `TestOrdinaryAgentExecutableICMPMultiPermissionUnknown`
+and `TestOrdinaryAgentExecutableICMPMultiControl`. They configure three attempts:
+the unprivileged case checks unknown without latency, loss, attempt, success or
+loss-percentage points and without an SLA outage; a permitted loopback control
+checks that the actual scheduler and Agent produce three successes and zero
+percent loss. The tests do not count individual socket calls in the denied case.
 
 A full `go test ./...` reports two failures on a host where the test process cannot
 write its own temporary directory — observed on a systemd service with a confined

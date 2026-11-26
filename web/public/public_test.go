@@ -6,11 +6,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -62,6 +63,26 @@ func TestShellIsCacheableAndCookieIndependent(t *testing.T) {
 	}
 	if plain.Body.Len() == 0 {
 		t.Fatal("shell body is empty")
+	}
+	head := httptest.NewRecorder()
+	router.ServeHTTP(head, httptest.NewRequest(http.MethodHead, "/", nil))
+	if head.Code != http.StatusOK || head.Body.Len() != 0 {
+		t.Fatalf("HEAD / status/body = %d/%d, want 200/0", head.Code, head.Body.Len())
+	}
+	for _, header := range []string{"ETag", "Cache-Control", "Content-Type"} {
+		if got, want := head.Header().Get(header), plain.Header().Get(header); got == "" || got != want {
+			t.Errorf("HEAD %s = %q, GET = %q", header, got, want)
+		}
+	}
+	if got, want := head.Header().Get("Content-Length"), strconv.Itoa(plain.Body.Len()); got != want {
+		t.Errorf("HEAD Content-Length = %q, GET body length = %q", got, want)
+	}
+	conditionalHead := httptest.NewRequest(http.MethodHead, "/", nil)
+	conditionalHead.Header.Set("If-None-Match", etag)
+	conditionalHeadResponse := httptest.NewRecorder()
+	router.ServeHTTP(conditionalHeadResponse, conditionalHead)
+	if conditionalHeadResponse.Code != http.StatusNotModified || conditionalHeadResponse.Body.Len() != 0 {
+		t.Fatalf("conditional HEAD status/body = %d/%d, want 304/0", conditionalHeadResponse.Code, conditionalHeadResponse.Body.Len())
 	}
 
 	for _, language := range []string{"zh-CN", "ja-JP", "en-US"} {

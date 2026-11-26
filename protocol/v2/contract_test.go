@@ -45,6 +45,8 @@ const (
 // 副本同时消失，集合比较依然通过，而这个功能其实已经没了。
 var requiredPingWireFields = []string{
 	"task_id", "ping_type", "value", "value_us", "finished_at", "role", "family",
+	"attempts", "success", "loss_pct", "min_us", "avg_us", "max_us", "jitter_us",
+	"http", "resolved_ip", "resolved_family", "probe_mode",
 }
 
 // repoFile 从当前包的目录向上找到 go.mod，再拼出仓库内相对路径。

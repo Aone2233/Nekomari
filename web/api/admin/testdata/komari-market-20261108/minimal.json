@@ -1,0 +1,209 @@
+{
+  "name": "Minimal",
+  "short": "minimal",
+  "description": "三种界面风格（Apple / Vercel / 经典）由管理员在后台切换，支持网格与表格双视图 / Three interface styles (Apple, Vercel, Classic) chosen by the admin, with grid and table views.",
+  "version": "1.0.1",
+  "author": "lizhenmiao",
+  "url": "https://github.com/lizhenmiao/komari-theme-minimal",
+  "preview": "preview.png",
+  "configuration": {
+    "type": "managed",
+    "icon": "Palette",
+    "name": {
+      "zh-CN": "Minimal 设置",
+      "zh-TW": "Minimal 設定",
+      "en": "Minimal Settings"
+    },
+    "data": [
+      {
+        "type": "title",
+        "name": { "zh-CN": "外观", "zh-TW": "外觀", "en": "Appearance" }
+      },
+      {
+        "key": "style",
+        "type": "select",
+        "name": { "zh-CN": "界面风格", "zh-TW": "介面風格", "en": "Interface style" },
+        "options": "apple,vercel,classic",
+        "default": "apple",
+        "help": {
+          "zh-CN": "apple：浅色大圆角卡片、环形仪表。vercel：深色为主、极简细线、趋势曲线。classic：1.0 版的单色卡片与分段仪表条。访客看到的是这里选的风格，不能自行切换。",
+          "zh-TW": "apple：淺色大圓角卡片、環形儀表。vercel：深色為主、極簡細線、趨勢曲線。classic：1.0 版的單色卡片與分段儀表條。訪客看到的是這裡選的風格，不能自行切換。",
+          "en": "apple: light rounded cards with activity rings. vercel: monochrome, hairline borders, trend lines. classic: the 1.0 cards with segmented bars. Visitors see what you pick here and cannot switch it themselves."
+        }
+      },
+      {
+        "key": "defaultAppearance",
+        "type": "select",
+        "name": { "zh-CN": "默认明暗", "zh-TW": "預設明暗", "en": "Default appearance" },
+        "options": "system,light,dark",
+        "default": "system",
+        "help": {
+          "zh-CN": "访客首次访问时的明暗。system 跟随访客的系统设置。访客自己切换过之后以其本地选择为准。",
+          "zh-TW": "訪客首次造訪時的明暗。system 跟隨訪客的系統設定。訪客自己切換過之後以其本機選擇為準。",
+          "en": "Light or dark on a visitor's first visit. system follows their OS setting. A visitor's own choice takes precedence afterwards."
+        }
+      },
+      {
+        "key": "defaultView",
+        "type": "select",
+        "name": { "zh-CN": "默认视图", "zh-TW": "預設檢視", "en": "Default view" },
+        "options": "grid,table",
+        "default": "grid",
+        "help": {
+          "zh-CN": "首页初始视图。访客切换后以其本地选择为准。",
+          "zh-TW": "首頁初始檢視。訪客切換後以其本機選擇為準。",
+          "en": "Initial home view. A visitor's own choice takes precedence afterwards."
+        }
+      },
+      {
+        "key": "refreshInterval",
+        "type": "number",
+        "name": { "zh-CN": "刷新间隔（秒）", "zh-TW": "重新整理間隔（秒）", "en": "Refresh interval (s)" },
+        "default": 2,
+        "help": {
+          "zh-CN": "实时数据轮询间隔。服务端不主动推送，此值决定请求频率。标签页隐藏时自动暂停。",
+          "zh-TW": "即時資料輪詢間隔。伺服端不主動推送，此值決定請求頻率。標籤頁隱藏時自動暫停。",
+          "en": "Live poll interval. The server does not push, so this sets request frequency. Paused while the tab is hidden."
+        }
+      },
+      {
+        "type": "title",
+        "name": { "zh-CN": "卡片指标", "zh-TW": "卡片指標", "en": "Card metrics" }
+      },
+      {
+        "key": "showAttention",
+        "type": "switch",
+        "name": {
+          "zh-CN": "显示「需要注意」板块",
+          "zh-TW": "顯示「需要注意」板塊",
+          "en": "Show the attention panel"
+        },
+        "default": true,
+        "help": {
+          "zh-CN": "首页顶部列出离线、占用过高、配额用尽、临近到期的节点。仅 apple 与 vercel 风格有这个板块；关闭后卡片上的提示与顶栏计数照常显示。",
+          "zh-TW": "首頁頂部列出離線、占用過高、配額用盡、臨近到期的節點。僅 apple 與 vercel 風格有這個板塊；關閉後卡片上的提示與頂欄計數照常顯示。",
+          "en": "Lists nodes that are offline, running hot, out of quota, or expiring soon at the top of the home page. Only the apple and vercel styles have this panel; card badges and the navbar count stay either way."
+        }
+      },
+      {
+        "key": "showDisk",
+        "type": "switch",
+        "name": { "zh-CN": "显示磁盘", "zh-TW": "顯示磁碟", "en": "Show disk" },
+        "default": true
+      },
+      {
+        "key": "showLoad",
+        "type": "switch",
+        "name": { "zh-CN": "显示负载", "zh-TW": "顯示負載", "en": "Show load average" },
+        "default": true
+      },
+      {
+        "key": "showSparkline",
+        "type": "switch",
+        "name": { "zh-CN": "显示迷你趋势图", "zh-TW": "顯示迷你趨勢圖", "en": "Show sparkline" },
+        "default": true,
+        "help": {
+          "zh-CN": "每张卡片一条趋势线。节点较多时会增加历史查询量，已启用服务端降采样。",
+          "zh-TW": "每張卡片一條趨勢線。節點較多時會增加歷史查詢量，已啟用伺服端降採樣。",
+          "en": "One trend line per card. Adds history queries when node count is high; server-side downsampling is used."
+        }
+      },
+      {
+        "key": "showTraffic",
+        "type": "switch",
+        "name": { "zh-CN": "显示流量配额", "zh-TW": "顯示流量配額", "en": "Show traffic quota" },
+        "default": true,
+        "help": {
+          "zh-CN": "按节点的 traffic_limit_type（sum/max/min/up/down）分别计算。",
+          "zh-TW": "依節點的 traffic_limit_type（sum/max/min/up/down）分別計算。",
+          "en": "Computed per node according to traffic_limit_type (sum/max/min/up/down)."
+        }
+      },
+      {
+        "key": "showExpiry",
+        "type": "switch",
+        "name": { "zh-CN": "显示到期时间", "zh-TW": "顯示到期時間", "en": "Show expiry" },
+        "default": true
+      },
+      {
+        "key": "showPrice",
+        "type": "switch",
+        "name": { "zh-CN": "显示价格", "zh-TW": "顯示價格", "en": "Show price" },
+        "default": false,
+        "help": {
+          "zh-CN": "价格对所有访客公开。不需要公开账单信息时请关闭。",
+          "zh-TW": "價格對所有訪客公開。不需要公開帳單資訊時請關閉。",
+          "en": "Price is visible to every visitor. Leave off if billing info should stay private."
+        }
+      },
+      {
+        "type": "title",
+        "name": { "zh-CN": "网络延迟", "zh-TW": "網路延遲", "en": "Latency" }
+      },
+      {
+        "key": "showPing",
+        "type": "switch",
+        "name": { "zh-CN": "显示延迟与丢包", "zh-TW": "顯示延遲與丟包", "en": "Show latency and loss" },
+        "default": true
+      },
+      {
+        "key": "featuredPingTasks",
+        "type": "pingtasks",
+        "name": { "zh-CN": "卡片上展示的探测任务", "zh-TW": "卡片上展示的探測任務", "en": "Ping tasks shown on cards" },
+        "default": "[]",
+        "help": {
+          "zh-CN": "选 2-3 个，例如电信/联通/移动，会在卡片上并排显示。留空则仅在详情页展示全部任务。",
+          "zh-TW": "選 2-3 個，例如中華/遠傳/台哥大，會在卡片上並排顯示。留空則僅在詳情頁展示全部任務。",
+          "en": "Pick 2-3 tasks to show side by side on each card. Empty means detail page only."
+        }
+      },
+      {
+        "type": "title",
+        "name": { "zh-CN": "历史图表", "zh-TW": "歷史圖表", "en": "History charts" }
+      },
+      {
+        "key": "historyHours",
+        "type": "number",
+        "name": { "zh-CN": "默认时间范围（小时）", "zh-TW": "預設時間範圍（小時）", "en": "Default range (hours)" },
+        "default": 4
+      },
+      {
+        "key": "maxPoints",
+        "type": "number",
+        "name": { "zh-CN": "每图最大点数", "zh-TW": "每圖最大點數", "en": "Max points per chart" },
+        "default": 500,
+        "help": {
+          "zh-CN": "由服务端降采样后返回。调高会增加传输量，调低会丢失细节。",
+          "zh-TW": "由伺服端降採樣後回傳。調高會增加傳輸量，調低會遺失細節。",
+          "en": "Downsampled server-side. Higher costs bandwidth, lower loses detail."
+        }
+      },
+      {
+        "type": "title",
+        "name": { "zh-CN": "其他", "zh-TW": "其他", "en": "Other" }
+      },
+      {
+        "key": "featuredNodes",
+        "type": "nodes",
+        "name": { "zh-CN": "置顶节点", "zh-TW": "置頂節點", "en": "Pinned nodes" },
+        "default": "[]",
+        "help": {
+          "zh-CN": "这些节点始终排在最前，其余按权重排序。",
+          "zh-TW": "這些節點始終排在最前，其餘按權重排序。",
+          "en": "Always sorted first; the rest follow node weight."
+        }
+      },
+      {
+        "key": "footerHtml",
+        "type": "richtext",
+        "name": { "zh-CN": "自定义页脚", "zh-TW": "自訂頁尾", "en": "Custom footer" },
+        "default": "",
+        "help": {
+          "zh-CN": "追加在页脚版权行之后。",
+          "zh-TW": "追加在頁尾版權行之後。",
+          "en": "Appended after the footer credit line."
+        }
+      }
+    ]
+  }
+}

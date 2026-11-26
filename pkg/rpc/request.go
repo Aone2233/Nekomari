@@ -15,6 +15,30 @@ type JsonRpcRequest struct {
 	Method  string `json:"method"`           // 方法名；以 "rpc." 前缀的为保留内部方法
 	Params  any    `json:"params,omitempty"` // 参数(位置数组或命名对象)
 	ID      any    `json:"id,omitempty"`     // 字符串 / 数值 / null；Notification 时省略
+
+	rawJSON json.RawMessage
+}
+
+// UnmarshalJSON retains the original request for handlers that must validate
+// ambiguous keys or exact numeric values before decoding their parameters.
+func (r *JsonRpcRequest) UnmarshalJSON(data []byte) error {
+	type request JsonRpcRequest
+	var decoded request
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*r = JsonRpcRequest(decoded)
+	r.rawJSON = append(json.RawMessage(nil), data...)
+	return nil
+}
+
+// RawJSON is unavailable for programmatically constructed requests. The copy
+// prevents a handler from changing the bytes retained for another consumer.
+func (r *JsonRpcRequest) RawJSON() json.RawMessage {
+	if r == nil {
+		return nil
+	}
+	return append(json.RawMessage(nil), r.rawJSON...)
 }
 
 // NewRequest 创建一个普通请求（带 id）

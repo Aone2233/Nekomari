@@ -1,7 +1,9 @@
 package messageSender
 
 import (
+	"context"
 	"errors"
+	"strings"
 
 	"github.com/Aone2233/nekomari/internal/config"
 )
@@ -13,6 +15,17 @@ func SendOperationalNotice(message, title string) error {
 	enabled, err := config.GetAs[bool](config.NotificationEnabledKey)
 	if err != nil || !enabled {
 		return errors.New("operational notifications unavailable")
+	}
+	method, err := config.GetAs[string](config.NotificationMethodKey, "none")
+	if err != nil {
+		return errors.New("operational notifications unavailable")
+	}
+	if strings.HasPrefix(method, "plugin:") {
+		found, err := CallNotificationChannel(context.Background(), method, Notification{Title: title, Message: message})
+		if !found || err != nil {
+			return errors.New("operational notification delivery failed")
+		}
+		return nil
 	}
 	mu.Lock()
 	defer mu.Unlock()

@@ -2,10 +2,12 @@ package tasks
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
+	"gorm.io/gorm"
 )
 
 func CreateTask(taskId string, clients []string, command string) error {
@@ -15,9 +17,6 @@ func CreateTask(taskId string, clients []string, command string) error {
 		TaskId:  taskId,
 		Clients: models.StringArray(clients),
 		Command: command,
-	}
-	if err := db.Create(&task).Error; err != nil {
-		return err
 	}
 	var taskResults []models.TaskResult
 	for _, client := range clients {
@@ -30,10 +29,22 @@ func CreateTask(taskId string, clients []string, command string) error {
 			CreatedAt:  time.Now().UTC(),
 		})
 	}
-	if len(taskResults) > 0 {
-		return db.Create(&taskResults).Error
-	}
-	return nil
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&task).Error; err != nil {
+			return err
+		}
+		ordered := tx.Exec(`UPDATE tasks SET history_order = max(coalesce((SELECT max(history_order) FROM tasks), 0), 0) + 1 WHERE task_id = ? AND coalesce((SELECT max(history_order) FROM tasks), 0) < 9223372036854775807`, taskId)
+		if ordered.Error != nil {
+			return ordered.Error
+		}
+		if ordered.RowsAffected != 1 {
+			return errors.New("task history order exhausted")
+		}
+		if len(taskResults) > 0 {
+			return tx.Create(&taskResults).Error
+		}
+		return nil
+	})
 }
 func GetTaskByTaskId(taskId string) (*models.Task, error) {
 	var task models.Task

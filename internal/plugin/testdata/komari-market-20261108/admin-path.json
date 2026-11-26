@@ -1,0 +1,27 @@
+{
+  "name": "自定义后台路径",
+  "short": "admin-path",
+  "description": "自定义 Komari 后台页面路径，并关闭原 /admin 入口。",
+  "author": "Kristen",
+  "version": "1.0.0",
+  "url": "https://github.com/Grandova/Backend-Customize-path-For-Komari",
+  "entry": "script.js",
+  "icon": "icon.svg",
+  "permissions": {
+    "allowHooks": true,
+    "timeout": 5
+  },
+  "configuration": {
+    "type": "managed",
+    "name": "后台路径设置",
+    "data": [
+      {
+        "key": "adminPath",
+        "name": "后台路径",
+        "type": "string",
+        "default": "",
+        "help": "例如 /console-k7p9，只填写路径。支持字母、数字、短横线、下划线和多级目录。保存后立即生效，请通过新路径重新进入后台；留空恢复 /admin。"
+      }
+    ]
+  }
+}

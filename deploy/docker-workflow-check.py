@@ -56,7 +56,8 @@ EXPECTED_REPOSITORY = "Aone2233/Nekomari"
 # The policy, verbatim from docs/RELEASING.md: latest requires a non-prerelease
 # tag AND a verified release run. The `== 'true'` comparison is load-bearing --
 # GitHub treats any non-empty string as true, and the string "false" is not empty.
-EXPECTED_LATEST_ENABLE = "!contains(steps.tag.outputs.tag, '-') && steps.tag.outputs.release_verified == 'true'"
+EXPECTED_MINOR_ENABLE = "matrix.package == 'nekomari' && steps.tag.outputs.tag != 'v1.8.1' && steps.tag.outputs.tag != 'v1.8.2'"
+EXPECTED_LATEST_ENABLE = "!contains(steps.tag.outputs.tag, '-') && steps.tag.outputs.release_verified == 'true' && " + EXPECTED_MINOR_ENABLE
 
 # Expressions in a `run:` script whose value a git ref name can influence.
 TAINTED_EXPRESSION = re.compile(
@@ -113,10 +114,21 @@ def normalize(expression: str) -> str:
 
 def check_latest_policy(docker_yml: Path, workflow: dict, problems: list) -> None:
     try:
-        tags = steps_by_name(workflow["jobs"]["build-and-push"])["Derive image metadata"]["with"]["tags"]
+        metadata = steps_by_name(workflow["jobs"]["build-and-push"])["Derive image metadata"]["with"]
+        tags = metadata["tags"]
     except KeyError as exc:
         problems.append(f"{docker_yml}: no `Derive image metadata` step with a `tags:` block ({exc}); the latest policy cannot be found")
         return
+
+    if "latest=false" not in [line.strip() for line in metadata.get("flavor", "").splitlines()]:
+        problems.append(
+            f"{docker_yml}: metadata flavor must explicitly set latest=false; "
+            "semver tags otherwise generate an implicit latest regardless of the raw tag rule"
+        )
+
+    minor = [line.strip() for line in tags.splitlines() if 'pattern={{major}}.{{minor}}' in line]
+    if minor != ['type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }},enable=${{ ' + EXPECTED_MINOR_ENABLE + ' }}']:
+        problems.append(f"{docker_yml}: opt-in releases must not move the major.minor alias")
 
     match = None
     for line in tags.splitlines():
@@ -185,6 +197,8 @@ class Case:
 
 CASES = [
     Case("workflow_run success", "workflow_run", "success", "v1.6.9", True, "true", True),
+    Case("v1.8.1 keeps moving tags", "workflow_run", "success", "v1.8.1", True, "true", False),
+    Case("v1.8.2 keeps moving tags", "workflow_run", "success", "v1.8.2", True, "true", False),
     Case("workflow_run failure", "workflow_run", "failure", "v1.6.9", True, "false", False),
     Case("workflow_run timed_out", "workflow_run", "timed_out", "v1.6.9", True, "false", False),
     Case("workflow_run action_required", "workflow_run", "action_required", "v1.6.9", True, "false", False),
@@ -247,7 +261,7 @@ def substitute(raw: str, case: Case, workflow_env: dict, matrix_row: dict) -> st
     return re.sub(r"\$\{\{\s*(.*?)\s*\}\}", replace, raw)
 
 
-def eval_github_expression(expr: str, case: Case, verified: str) -> bool:
+def eval_github_expression(expr: str, case: Case, verified: str, package: str = "nekomari") -> bool:
     """Evaluate the two boolean expressions, atom by atom.
 
     Only the atoms these expressions actually use are translated; anything left
@@ -261,6 +275,9 @@ def eval_github_expression(expr: str, case: Case, verified: str) -> bool:
         "github.event.workflow_run.conclusion == 'success'": case.conclusion == "success",
         "!contains(steps.tag.outputs.tag, '-')": "-" not in case.tag,
         "steps.tag.outputs.release_verified == 'true'": verified == "true",
+        "matrix.package == 'nekomari'": package == "nekomari",
+        "steps.tag.outputs.tag != 'v1.8.1'": case.tag != "v1.8.1",
+        "steps.tag.outputs.tag != 'v1.8.2'": case.tag != "v1.8.2",
     }
     for atom, value in replacements.items():
         translated = translated.replace(atom, repr(value))
@@ -392,6 +409,8 @@ def check_truth_table(docker_yml: Path, workflow: dict, bash: str, quiet: bool, 
             problems.append(
                 f"{docker_yml}: agent row produced image={outputs.get('image')!r} (exit {code}), want {expected!r}"
             )
+        if eval_github_expression(EXPECTED_LATEST_ENABLE, good, "true", "nekomari-agent"):
+            problems.append(f"{docker_yml}: manual-only Agent image would move latest")
 
     if not quiet:
         print("truth table (every `release_verified` value below came from running the")

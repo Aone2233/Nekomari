@@ -8,7 +8,6 @@ import (
 
 	"github.com/Aone2233/nekomari/database/clients"
 	"github.com/Aone2233/nekomari/database/models"
-	"github.com/Aone2233/nekomari/database/tasks"
 	"github.com/Aone2233/nekomari/internal/metricstore"
 	v2 "github.com/Aone2233/nekomari/protocol/v2"
 	logger "github.com/Aone2233/nekomari/utils/log"
@@ -75,21 +74,36 @@ func ingestBasicInfo(uuid string, info map[string]interface{}, fallbackIP string
 	return saveClientBasicInfo(info, uuid, fallbackIP)
 }
 
-// ingestPingResult 保存一条 ping 探测结果。
-// pingType 是实际使用的探测协议（icmp/tcp/http）；双协议并列探测时
-// 同一任务会先后上报多条不同协议的结果，必须保留该字段以示区分。
-// family 是本次测量实际使用的地址族（"ipv4"/"ipv6"），空值表示 agent 未上报
-// 或无法判断 —— 此时保持改动前的行为，不额外区分。
-func ingestPingResult(uuid string, taskID uint, pingType, role, family string, value int, valueUS int64) error {
-	return tasks.SavePingRecord(newPingRecord(uuid, taskID, pingType, role, family, value, valueUS, time.Now().UTC()))
-}
-
 // newPingRecord 把一条上报结果组装成 PingRecord。
 //
 // 单独成函数是为了可测：ValueUS 与 Value 的共存关系（微秒精度优先、0 表示旧 agent）
 // 是这次改动的契约，而落库与聚合那一侧由 metricstore 的用例覆盖。
 func newPingRecord(uuid string, taskID uint, pingType, role, family string, value int, valueUS int64, at time.Time) models.PingRecord {
-	return models.PingRecord{
+	return newPingRecordWithStats(uuid, taskID, pingType, role, family, value, valueUS, nil, at)
+}
+
+// pingStatsFromParams returns nil for a legacy single-probe payload, so the
+// metric writer can keep the exact old point set.
+func pingStatsFromParams(params v2.PingResultParams) *v2.PingProbeStats {
+	if params.Attempts == nil && params.Success == nil && params.LossPct == nil &&
+		params.MinUS == nil && params.AvgUS == nil && params.MaxUS == nil &&
+		params.JitterUS == nil && params.HTTP == nil &&
+		params.ResolvedIP == "" && params.ResolvedFamily == "" && params.ProbeMode == "" && params.ProbeStatus == "" && params.ProbeReason == "" {
+		return nil
+	}
+	return &v2.PingProbeStats{
+		Attempts: params.Attempts, Success: params.Success, LossPct: params.LossPct,
+		MinUS: params.MinUS, AvgUS: params.AvgUS, MaxUS: params.MaxUS,
+		JitterUS: params.JitterUS, HTTP: params.HTTP,
+		ResolvedIP: params.ResolvedIP, ResolvedFamily: params.ResolvedFamily,
+		ProbeMode: params.ProbeMode, ProbeStatus: params.ProbeStatus, ProbeReason: params.ProbeReason,
+	}
+}
+
+// newPingRecordWithStats carries the additive v1.8 probe summary. A nil stats
+// pointer is the exact legacy record shape.
+func newPingRecordWithStats(uuid string, taskID uint, pingType, role, family string, value int, valueUS int64, stats *v2.PingProbeStats, at time.Time) models.PingRecord {
+	rec := models.PingRecord{
 		Client:   uuid,
 		TaskId:   taskID,
 		PingType: pingType,
@@ -99,4 +113,39 @@ func newPingRecord(uuid string, taskID uint, pingType, role, family string, valu
 		ValueUS:  valueUS,
 		Time:     at,
 	}
+	if stats == nil {
+		return rec
+	}
+	rec.ProbeStatus, rec.ProbeReason = stats.ProbeStatus, stats.ProbeReason
+	if stats.Attempts != nil {
+		rec.Attempts = *stats.Attempts
+	}
+	if stats.Success != nil {
+		rec.Success = *stats.Success
+	}
+	if stats.LossPct != nil {
+		rec.LossPct = *stats.LossPct
+	}
+	if stats.MinUS != nil {
+		rec.MinUS = *stats.MinUS
+	}
+	if stats.AvgUS != nil {
+		rec.AvgUS = *stats.AvgUS
+	}
+	if stats.MaxUS != nil {
+		rec.MaxUS = *stats.MaxUS
+	}
+	if stats.JitterUS != nil {
+		rec.JitterUS = *stats.JitterUS
+	}
+	if http := stats.HTTP; http != nil {
+		rec.HTTP = &models.PingHTTPObservation{
+			DNSUS: http.DNSUS, TCPUS: http.TCPUS, TLSUS: http.TLSUS,
+			TTFBUS: http.TTFBUS, TotalUS: http.TotalUS,
+			StatusCode: http.StatusCode, Redirects: http.Redirects,
+			TLSExpiryDays: http.TLSExpiryDays,
+			Reachable:     http.Reachable, Available: http.Available,
+		}
+	}
+	return rec
 }

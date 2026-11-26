@@ -1,17 +1,21 @@
 package jsonrpc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Aone2233/nekomari/database/auditlog"
 	"github.com/Aone2233/nekomari/database/dbcore"
 	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/database/tasks"
 	"github.com/Aone2233/nekomari/internal/clientguard"
 	"github.com/Aone2233/nekomari/internal/config"
 	"github.com/Aone2233/nekomari/internal/configxport"
+	"github.com/Aone2233/nekomari/internal/pingguard"
 	"github.com/Aone2233/nekomari/pkg/rpc"
 	"github.com/Aone2233/nekomari/pkg/secretcmp"
 	"github.com/Aone2233/nekomari/utils"
@@ -52,6 +56,16 @@ func init() {
 		Returns: "Document; secrets_included is true",
 	})
 	rpc.MarkSensitive("admin:exportConfigSecrets")
+	RegisterWithGroupAndMeta("exportConfigText", rpc.RoleAdmin, adminExportConfigText, &rpc.MethodMeta{
+		Name: "admin:exportConfigText", Summary: "Export the credential-free document as exact JSON text",
+		Returns: "JSON text; preserves integer precision in browser clients",
+	})
+	RegisterWithGroupAndMeta("exportConfigSecretsText", rpc.RoleAdmin, adminExportConfigSecretsText, &rpc.MethodMeta{
+		Name: "admin:exportConfigSecretsText", Summary: "Export the credential-bearing document as exact JSON text; requires sensitive-operation 2FA",
+		Params:  []rpc.ParamMeta{{Name: "2fa_code", Type: "string", Required: false, Description: "One-time password; required when the account has 2FA enabled"}},
+		Returns: "JSON text; preserves integer precision in browser clients",
+	})
+	rpc.MarkSensitive("admin:exportConfigSecretsText")
 	RegisterWithGroupAndMeta("planConfigImport", rpc.RoleAdmin, adminPlanConfigImport, &rpc.MethodMeta{
 		Name:    "admin:planConfigImport",
 		Summary: "Report what importing a document would do, without applying it",
@@ -68,6 +82,8 @@ func init() {
 		},
 		Returns: "ImportPlan, the same report the dry run produces for the same document",
 	})
+	// Import can change multiple entities and restore credentials.
+	rpc.MarkSensitive("admin:importConfig")
 }
 
 func adminExportConfig(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
@@ -95,6 +111,27 @@ func adminExportConfigSecrets(ctx context.Context, _ *rpc.JsonRpcRequest) (any, 
 	return exportConfiguration(ctx, true)
 }
 
+func adminExportConfigText(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	document, jerr := adminExportConfig(ctx, req)
+	return encodeExportText(document, jerr)
+}
+
+func adminExportConfigSecretsText(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	document, jerr := adminExportConfigSecrets(ctx, req)
+	return encodeExportText(document, jerr)
+}
+
+func encodeExportText(document any, jerr *rpc.JsonRpcError) (any, *rpc.JsonRpcError) {
+	if jerr != nil {
+		return nil, jerr
+	}
+	encoded, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return nil, rpc.MakeError(rpc.InternalError, "Failed to encode configuration", nil)
+	}
+	return string(encoded), nil
+}
+
 func exportConfiguration(ctx context.Context, includeSecrets bool) (any, *rpc.JsonRpcError) {
 	document, err := configxport.Export(exportStore{}, includeSecrets, utils.CurrentVersion)
 	if err != nil {
@@ -109,23 +146,66 @@ func exportConfiguration(ctx context.Context, includeSecrets bool) (any, *rpc.Js
 	return document, nil
 }
 
-// bindDocument reads the document from the request.
-//
-// Read as raw JSON and parsed by `configxport.Parse` rather than bound into the struct directly,
-// because the parse is what refuses an unknown schema — and a document bound into a struct would
-// have unknown fields dropped silently, which is the partial application the version check exists
-// to prevent.
-func bindDocument(req *rpc.JsonRpcRequest) (configxport.Document, *rpc.JsonRpcError) {
-	var params struct {
-		Document json.RawMessage `json:"document"`
+// rawImportDocument accepts only a named parameter object and operates on the
+// original request. A map that has already been decoded cannot prove that the
+// original JSON had no duplicate keys or retain integers above 2^53.
+func rawImportDocument(req *rpc.JsonRpcRequest) ([]byte, error) {
+	raw := req.RawJSON()
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("original JSON request is required")
 	}
-	if err := req.BindParams(&params); err != nil {
+	if err := configxport.RejectAmbiguousJSON(raw); err != nil {
+		return nil, err
+	}
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &envelope); err != nil || envelope == nil {
+		return nil, fmt.Errorf("request must be an object")
+	}
+	for key := range envelope {
+		switch key {
+		case "jsonrpc", "method", "params", "id":
+		default:
+			return nil, fmt.Errorf("unknown request field")
+		}
+	}
+	var params map[string]json.RawMessage
+	if err := json.Unmarshal(envelope["params"], &params); err != nil || params == nil {
+		return nil, fmt.Errorf("params must be an object")
+	}
+	for key := range params {
+		switch key {
+		case "document", "document_json", "review_token", "2fa_code", "two_factor_code", "otp":
+		default:
+			return nil, fmt.Errorf("unknown import parameter")
+		}
+	}
+	document, objectGiven := params["document"]
+	text, textGiven := params["document_json"]
+	if objectGiven == textGiven {
+		return nil, fmt.Errorf("exactly one document or document_json is required")
+	}
+	if textGiven {
+		var original string
+		if err := json.Unmarshal(text, &original); err != nil {
+			return nil, fmt.Errorf("document_json must be a string")
+		}
+		document = []byte(original)
+	}
+	if trimmed := bytes.TrimSpace(document); len(trimmed) == 0 || trimmed[0] != '{' {
+		return nil, fmt.Errorf("document must be an object")
+	}
+	return document, nil
+}
+
+// bindDocument parses original bytes before checking any database state. The
+// import handlers remain disabled until the remaining transaction and rollout
+// gates are complete.
+func bindDocument(req *rpc.JsonRpcRequest) (configxport.Document, *rpc.JsonRpcError) {
+	raw, err := rawImportDocument(req)
+	if err != nil {
 		return configxport.Document{}, rpc.MakeError(rpc.InvalidParams, "Invalid request body: "+err.Error(), nil)
 	}
-	if len(params.Document) == 0 {
-		return configxport.Document{}, rpc.MakeError(rpc.InvalidParams, "document is required", nil)
-	}
-	document, err := configxport.Parse(params.Document)
+	document, err := configxport.Parse(raw)
 	if err != nil {
 		return configxport.Document{}, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
 	}
@@ -138,7 +218,36 @@ func bindDocument(req *rpc.JsonRpcRequest) (configxport.Document, *rpc.JsonRpcEr
 			return configxport.Document{}, rpc.MakeError(rpc.InvalidParams, err.Error(), nil)
 		}
 	}
+	for _, record := range document.PingTasks {
+		if hasReservedPingFamilyField(record) {
+			return configxport.Document{}, rpc.MakeError(rpc.InvalidParams, "family-pinned task import is not available yet", nil)
+		}
+	}
+	// Planning is not an atomic transaction across all entities. Refuse before
+	// any writes when draft pinned tasks exist, even if the document omits the
+	// pin or the planner fails to identify their numeric IDs.
+	var pinned int64
+	if err := dbcore.GetDBInstance().Model(&models.PingTask{}).
+		Where("target_family <> ? OR pinned_generation <> ?", "", "").Count(&pinned).Error; err != nil {
+		return configxport.Document{}, rpc.MakeError(rpc.InternalError, "failed to inspect family-pinned tasks", nil)
+	}
+	if pinned != 0 {
+		return configxport.Document{}, rpc.MakeError(rpc.InvalidParams, "configuration import is unavailable while family-pinned tasks exist", nil)
+	}
 	return document, nil
+}
+
+// Import maps are passed to GORM on updates. Reject alternate spellings too,
+// rather than allowing an imported map to set a draft's internal incarnation.
+func hasReservedPingFamilyField(record map[string]any) bool {
+	for key := range record {
+		key = strings.ToLower(strings.Trim(key, "`\"[] "))
+		switch strings.ReplaceAll(key, "_", "") {
+		case "targetfamily", "pinnedgeneration":
+			return true
+		}
+	}
+	return false
 }
 
 // Existing-node imports may carry an unchanged secret from a secrets export,
@@ -170,32 +279,12 @@ func importedClientMetadata(ctx context.Context, id string, record map[string]an
 	return payload, nil
 }
 
-func adminPlanConfigImport(_ context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
-	document, rpcErr := bindDocument(req)
-	if rpcErr != nil {
-		return nil, rpcErr
-	}
-	plan, err := configxport.Plan(exportStore{}, document)
-	if err != nil {
-		return nil, rpc.MakeError(rpc.InternalError, "Failed to plan the import: "+err.Error(), nil)
-	}
-	return plan, nil
+func adminPlanConfigImport(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
+	return reviewedDraftConfigImportRPC(ctx, req, dbcore.ReadyDBInstance(), true, tasks.ReloadPingSchedule)
 }
 
 func adminImportConfig(ctx context.Context, req *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
-	document, rpcErr := bindDocument(req)
-	if rpcErr != nil {
-		return nil, rpcErr
-	}
-	plan, err := configxport.Apply(configApplier{}, document)
-	if err != nil {
-		return nil, rpc.MakeError(rpc.InternalError, "Failed to import configuration: "+err.Error(), nil)
-	}
-	actor, ip := auditActor(ctx)
-	auditlog.Log(ip, actor, fmt.Sprintf(
-		"import configuration: creates=%d updates=%d unchanged=%d not-deleted=%d",
-		plan.Creates, plan.Updates, plan.Unchanged, plan.Removals), "warn")
-	return plan, nil
+	return reviewedDraftConfigImportRPC(ctx, req, dbcore.ReadyDBInstance(), false, tasks.ReloadPingSchedule)
 }
 
 // configApplier is the store plus writes, which is what `configxport.Applier` asks for.
@@ -249,6 +338,9 @@ func applyRecord(entity, identity string, record map[string]any, create bool) er
 			return db.Model(&models.Client{}).Where("uuid = ?", identity).Updates(metadata).Error
 		})
 	case "ping_tasks":
+		if hasReservedPingFamilyField(payload) {
+			return fmt.Errorf("family-pinned task import is not available yet")
+		}
 		if create {
 			delete(payload, "id")
 			var task models.PingTask
@@ -258,7 +350,20 @@ func applyRecord(entity, identity string, record map[string]any, create bool) er
 			return db.Create(&task).Error
 		}
 		delete(payload, "id")
-		return db.Model(&models.PingTask{}).Where("id = ?", identity).Updates(payload).Error
+		id, err := strconv.ParseUint(identity, 10, 0)
+		if err != nil || id == 0 {
+			return fmt.Errorf("invalid ping task ID")
+		}
+		return pingguard.With(context.Background(), uint(id), func() error {
+			var task models.PingTask
+			if err := db.Select("id", "target_family").Take(&task, id).Error; err != nil {
+				return err
+			}
+			if task.TargetFamily != "" {
+				return fmt.Errorf("family-pinned task import is not available yet")
+			}
+			return db.Model(&models.PingTask{}).Where("id = ?", id).Updates(payload).Error
+		})
 	case "maintenance_windows":
 		if create {
 			delete(payload, "id")

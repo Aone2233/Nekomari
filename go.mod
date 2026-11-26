@@ -8,9 +8,9 @@ require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/google/uuid v1.6.0
-	github.com/gorilla/websocket v1.5.3
+	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/klauspost/compress v1.18.7
+	github.com/klauspost/compress v1.20.2
 	github.com/mattn/go-sqlite3 v1.14.27
 	github.com/oschwald/maxminddb-golang v1.13.1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
@@ -31,7 +31,7 @@ require golang.org/x/crypto v0.57.0
 
 // HTTP Proxy bypass using IPv6 Zone IDs in golang.org/x/net #2
 // golang.org/x/net vulnerable to Cross-site Scripting #4
-require golang.org/x/net v0.60.0 // indirect
+require golang.org/x/net v0.60.0
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect

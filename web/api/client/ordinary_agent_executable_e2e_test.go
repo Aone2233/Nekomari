@@ -1,0 +1,446 @@
+//go:build linux
+
+package client
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/Aone2233/nekomari/cmd/flags"
+	"github.com/Aone2233/nekomari/database/dbcore"
+	"github.com/Aone2233/nekomari/database/models"
+	"github.com/Aone2233/nekomari/internal/config"
+	"github.com/Aone2233/nekomari/internal/metricstore"
+	"github.com/Aone2233/nekomari/internal/scheduler"
+	"github.com/Aone2233/nekomari/internal/sla"
+	"github.com/Aone2233/nekomari/pkg/metric"
+	"github.com/Aone2233/nekomari/utils"
+	agentRuntime "github.com/Aone2233/nekomari/web/agent"
+	"github.com/Aone2233/nekomari/web/api"
+	"github.com/gin-gonic/gin"
+	"golang.org/x/net/dns/dnsmessage"
+)
+
+// Actual executable, scheduler, authenticated WebSocket and persistent metric
+// store; no network access beyond isolated loopback. Its reserved invalid
+// hostname cannot resolve in that namespace and must be reported as unknown
+// rather than loss; the test makes no claim about a particular DNS server.
+func TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_EXEC_E2E") != "1" {
+		t.Skip("requires Linux network namespace privileges")
+	}
+	ordinaryAgentExecutableFixture(t, "dns")
+}
+
+func TestOrdinaryAgentExecutableCustomDNSFailure(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_CUSTOM_DNS_E2E") != "1" {
+		t.Skip("requires Linux network namespace privileges")
+	}
+	ordinaryAgentExecutableFixture(t, "custom-dns")
+}
+
+func TestOrdinaryAgentExecutableHTTPDNSDeadline(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_HTTP_DNS_E2E") != "1" {
+		t.Skip("requires Linux network namespace privileges")
+	}
+	ordinaryAgentExecutableFixture(t, "http-dns")
+}
+
+func TestOrdinaryAgentExecutableRedirectDNSDeadline(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_REDIRECT_DNS_E2E") != "1" {
+		t.Skip("requires Linux network namespace privileges")
+	}
+	ordinaryAgentExecutableFixture(t, "redirect-dns")
+}
+
+func TestOrdinaryAgentExecutableICMPPermissionUnknown(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_PERMISSION_E2E") != "1" {
+		t.Skip("requires root, Linux network namespace privileges, and UID/GID 65534")
+	}
+	ordinaryAgentExecutableFixture(t, "permission")
+}
+
+func TestOrdinaryAgentExecutableICMPMultiPermissionUnknown(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_PERMISSION_E2E") != "1" {
+		t.Skip("requires root, Linux network namespace privileges, and UID/GID 65534")
+	}
+	ordinaryAgentExecutableFixture(t, "permission-multi")
+}
+
+func TestOrdinaryAgentExecutableICMPMultiControl(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_PERMISSION_E2E") != "1" {
+		t.Skip("requires root and Linux network namespace privileges")
+	}
+	ordinaryAgentExecutableFixture(t, "icmp-multi-control")
+}
+
+func ordinaryAgentExecutableFixture(t *testing.T, scenario string) {
+	t.Helper()
+	const marker = "NEKOMARI_ORDINARY_EXEC_CHILD"
+	runPattern := "^TestOrdinaryAgentExecutableUnknownDoesNotBecomeSLAOutage$"
+	if scenario == "tls" {
+		runPattern = "^TestOrdinaryAgentExecutableTLSFailureMetric$"
+	} else if scenario == "1xx" {
+		runPattern = "^TestOrdinaryAgentExecutableInformationalTimeoutMetric$"
+	} else if scenario == "custom-dns" {
+		runPattern = "^TestOrdinaryAgentExecutableCustomDNSFailure$"
+	} else if scenario == "http-dns" {
+		runPattern = "^TestOrdinaryAgentExecutableHTTPDNSDeadline$"
+	} else if scenario == "redirect-dns" {
+		runPattern = "^TestOrdinaryAgentExecutableRedirectDNSDeadline$"
+	} else if scenario == "permission" {
+		runPattern = "^TestOrdinaryAgentExecutableICMPPermissionUnknown$"
+	} else if scenario == "permission-multi" {
+		runPattern = "^TestOrdinaryAgentExecutableICMPMultiPermissionUnknown$"
+	} else if scenario == "icmp-multi-control" {
+		runPattern = "^TestOrdinaryAgentExecutableICMPMultiControl$"
+	}
+	if os.Getenv(marker) != "1" {
+		_, source, _, ok := runtime.Caller(0)
+		if !ok {
+			t.Fatal("locate Agent module")
+		}
+		root := filepath.Clean(filepath.Join(filepath.Dir(source), "..", "..", ".."))
+		binary := filepath.Join(t.TempDir(), "komari-agent")
+		build := exec.CommandContext(t.Context(), "go", "build", "-race", "-o", binary, ".")
+		build.Dir = filepath.Join(root, "agent")
+		if out, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("build Agent: %v\n%s", err, out)
+		}
+		cmd := exec.CommandContext(t.Context(), "unshare", "--net", "--", os.Args[0], "-test.run="+runPattern, "-test.v", "-test.timeout=60s")
+		cmd.Dir = t.TempDir()
+		cmd.Env = append(os.Environ(), marker+"=1", "NEKOMARI_ORDINARY_EXEC_BINARY="+binary)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("isolated executable fixture: %v\n%s", err, out)
+		}
+		return
+	}
+	if out, err := exec.CommandContext(t.Context(), "ip", "link", "set", "lo", "up").CombinedOutput(); err != nil {
+		t.Fatalf("loopback: %v %s", err, out)
+	}
+	if scenario == "permission" || scenario == "permission-multi" {
+		// This sysctl is network-namespace scoped. Restrict ping sockets only
+		// in this disposable namespace, and run the Agent without CAP_NET_RAW.
+		if err := os.WriteFile("/proc/sys/net/ipv4/ping_group_range", []byte("0 0\n"), 0o644); err != nil {
+			t.Fatalf("restrict isolated ping sockets: %v", err)
+		}
+	}
+	flags.DatabaseType = flags.DatabaseTypeSQLite
+	flags.DatabaseFile = filepath.Join("data", "komari.db")
+	if err := os.MkdirAll("data", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	db := dbcore.GetDBInstance()
+	if err := config.Set(metricstore.MetricDBDSNKey, filepath.Join("data", "metrics.db")); err != nil {
+		t.Fatal(err)
+	}
+	if err := metricstore.InitializeStore(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := metricstore.CloseStoreContext(ctx); err != nil {
+			t.Error(err)
+		}
+		if err := dbcore.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	const id = "ordinary-fixture-node"
+	// This credential exists only inside the disposable database and process.
+	var randomToken [24]byte
+	if _, err := rand.Read(randomToken[:]); err != nil {
+		t.Fatal(err)
+	}
+	token := hex.EncodeToString(randomToken[:])
+	if err := db.Create(&models.Client{UUID: id, Token: token, Name: id}).Error; err != nil {
+		t.Fatal(err)
+	}
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(api.IdentityMiddleware())
+	group := router.Group("/api/clients", api.RequireRole(api.RoleClient))
+	group.POST("/v2/rpc", UploadV2RPC)
+	var sockets sync.WaitGroup
+	group.GET("/v2/rpc", func(c *gin.Context) { sockets.Add(1); defer sockets.Done(); WebSocketV2RPC(c) })
+	panel := httptest.NewServer(router)
+	defer func() { panel.Close(); sockets.Wait() }()
+	cmd := exec.Command(os.Getenv("NEKOMARI_ORDINARY_EXEC_BINARY"), "--endpoint", panel.URL, "--disable-auto-update", "--disable-web-ssh", "--interval", "1")
+	var dnsQueries atomic.Int32
+	if scenario == "custom-dns" || scenario == "http-dns" || scenario == "redirect-dns" {
+		listener, err := net.ListenPacket("udp4", net.JoinHostPort(net.IPv4(127, 0, 0, 1).String(), "0"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dnsDone := make(chan struct{})
+		go func() {
+			defer close(dnsDone)
+			buf := make([]byte, 4096)
+			for {
+				n, peer, err := listener.ReadFrom(buf)
+				if err != nil {
+					return
+				}
+				var request dnsmessage.Message
+				if request.Unpack(buf[:n]) != nil || len(request.Questions) != 1 {
+					continue
+				}
+				if request.Questions[0].Name.String() == "invalid.invalid." {
+					dnsQueries.Add(1)
+					if scenario == "http-dns" || scenario == "redirect-dns" {
+						continue // The real HTTP deadline must expire during DNS.
+					}
+				}
+				answer := dnsmessage.Message{Header: dnsmessage.Header{ID: request.ID, Response: true, Authoritative: true, RecursionAvailable: true, RCode: dnsmessage.RCodeNameError}, Questions: request.Questions}
+				if encoded, err := answer.Pack(); err == nil {
+					_, _ = listener.WriteTo(encoded, peer)
+				}
+			}
+		}()
+		defer func() { _ = listener.Close(); <-dnsDone }()
+		cmd.Args = append(cmd.Args, "--custom-dns", listener.LocalAddr().String())
+	}
+	cmd.Dir = t.TempDir()
+	cmd.Env = append(os.Environ(), "AGENT_TOKEN="+token, "HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "NO_PROXY=*")
+	if scenario == "permission" || scenario == "permission-multi" {
+		// t.TempDir's ancestors are private to root. Copy only the test Agent to
+		// a disposable, traversable directory, and give its workdir to the
+		// unprivileged process. No host Agent or sysctl outside this namespace changes.
+		dir, err := os.MkdirTemp("", "nekomari-permission-agent-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(dir) })
+		if err := os.Chmod(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		binary := filepath.Join(dir, "komari-agent")
+		data, err := os.ReadFile(os.Getenv("NEKOMARI_ORDINARY_EXEC_BINARY"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(binary, data, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		work := filepath.Join(dir, "work")
+		if err := os.Mkdir(work, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chown(work, 65534, 65534); err != nil {
+			t.Fatal(err)
+		}
+		cmd.Path, cmd.Args[0], cmd.Dir = binary, binary, work
+		cmd.Env = append(cmd.Env, "HOME="+work)
+		// Drop supplementary groups too: retaining group 0 would still permit
+		// a datagram ping socket under the namespace's 0..0 group range.
+		cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: 65534, Gid: 65534}}
+	}
+	output := &bytes.Buffer{}
+	cmd.Stdout = output
+	cmd.Stderr = output
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	defer func() {
+		_ = cmd.Process.Signal(os.Interrupt)
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			_ = cmd.Process.Kill()
+			<-done
+		}
+		ResetClientState(id)
+		if t.Failed() {
+			t.Logf("Agent output: %s", output.String())
+		}
+	}()
+	task := models.PingTask{Name: "unknown fixture", Type: "tcp", Target: "invalid.invalid:80", Interval: 2, Clients: models.StringArray{id}}
+	if scenario == "permission" || scenario == "permission-multi" {
+		task = models.PingTask{Name: "ICMP permission fixture", Type: "icmp", Target: "127.0.0.1", Interval: 2, Clients: models.StringArray{id}}
+	}
+	if scenario == "permission-multi" || scenario == "icmp-multi-control" {
+		task.Type, task.Target = "icmp", net.IPv4(127, 0, 0, 1).String()
+		task.ProbeAttempts, task.ProbeSpacingMS = 3, 200
+	}
+	if scenario == "tls" {
+		tlsTarget := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+		defer tlsTarget.Close()
+		task = models.PingTask{Name: "TLS failure fixture", Type: "http", Target: tlsTarget.URL, Interval: 2, Clients: models.StringArray{id}, HTTPMode: "status_aware"}
+	}
+	if scenario == "1xx" {
+		target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusEarlyHints)
+			<-r.Context().Done()
+		}))
+		defer target.Close()
+		task = models.PingTask{Name: "informational timeout fixture", Type: "http", Target: target.URL, Interval: 2, Clients: models.StringArray{id}, HTTPMode: "status_aware", ProbeTimeoutMS: 300}
+	}
+	if scenario == "http-dns" {
+		task = models.PingTask{Name: "HTTP DNS deadline fixture", Type: "http", Target: "http://invalid.invalid/", Interval: 2, Clients: models.StringArray{id}, HTTPMode: "status_aware", ProbeTimeoutMS: 300}
+	}
+	var redirects atomic.Int32
+	if scenario == "redirect-dns" {
+		target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			redirects.Add(1)
+			http.Redirect(w, r, "http://invalid.invalid/", http.StatusFound)
+		}))
+		defer target.Close()
+		task = models.PingTask{Name: "redirect DNS deadline fixture", Type: "http", Target: target.URL, Interval: 2, Clients: models.StringArray{id}, HTTPMode: "status_aware", ProbeTimeoutMS: 300}
+	}
+	if err := db.Create(&task).Error; err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for !agentRuntime.IsAgentOnline(id) {
+		if time.Now().After(deadline) {
+			t.Fatal("Agent did not connect")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	schedule := scheduler.NewManager()
+	mgr := utils.NewPingTaskManagerWithScheduler(schedule, nil)
+	if err := mgr.Reload([]models.PingTask{task}); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		mgr.Stop()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := schedule.StopAndWait(ctx); err != nil {
+			t.Errorf("drain scheduler: %v", err)
+		}
+	}()
+	store := metricstore.GetStore()
+	query := func(name string) []metric.Point {
+		t.Helper()
+		p, err := store.Query(t.Context(), metric.Query{MetricName: name, EntityID: id, Tags: map[string]string{"task_id": fmt.Sprint(task.Id)}, Start: time.Now().Add(-time.Minute), End: time.Now().Add(time.Minute)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	if scenario == "icmp-multi-control" {
+		for len(query(metricstore.MetricPingAttempts)) == 0 {
+			if time.Now().After(deadline) {
+				t.Fatal("multi-attempt control result not received")
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if points := query(metricstore.MetricPingAttempts); points[0].Value != 3 {
+			t.Fatalf("control attempts: %+v", points)
+		}
+		if points := query(metricstore.MetricPingSuccess); len(points) == 0 || points[0].Value != 3 {
+			t.Fatalf("control successes: %+v", points)
+		}
+		if points := query(metricstore.MetricPingLossPct); len(points) == 0 || points[0].Value != 0 {
+			t.Fatalf("control loss percentage: %+v", points)
+		}
+		return
+	}
+	if scenario == "tls" || scenario == "1xx" {
+		for len(query(metricstore.MetricHTTPReachable)) == 0 {
+			if time.Now().After(deadline) {
+				t.Fatalf("%s result not received", scenario)
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		wantReachable := float64(0)
+		if scenario == "1xx" {
+			wantReachable = 1
+		}
+		if points := query(metricstore.MetricHTTPReachable); len(points) == 0 || points[0].Value != wantReachable {
+			t.Fatalf("%s reachability: %+v", scenario, points)
+		}
+		if points := query(metricstore.MetricHTTPTTFB); scenario == "1xx" && len(points) != 0 {
+			t.Fatalf("informational-only response produced TTFB: %+v", points)
+		}
+		if points := query(metricstore.MetricHTTPTLS); len(points) != 0 {
+			t.Fatalf("%s unexpectedly produced TLS timing: %+v", scenario, points)
+		}
+		if points := query(metricstore.MetricHTTPTCP); len(points) == 0 {
+			t.Fatal("completed TCP attempt missing")
+		}
+		return
+	}
+	for len(query(metricstore.MetricPingUnknown)) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("unknown result not received")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	wantReason := "dns_failure"
+	if scenario == "permission" || scenario == "permission-multi" {
+		wantReason = "permission_denied"
+	}
+	if points := query(metricstore.MetricPingUnknown); len(points) == 0 || points[0].Tags["reason"] != wantReason {
+		t.Fatalf("unknown points: %+v", points)
+	}
+	if (scenario == "custom-dns" || scenario == "http-dns" || scenario == "redirect-dns") && dnsQueries.Load() == 0 {
+		t.Fatal("configured DNS did not receive the task hostname")
+	}
+	if points := query(metricstore.MetricPingLoss); len(points) != 0 {
+		t.Fatalf("unknown produced loss: %+v", points)
+	}
+	if points := query(metricstore.MetricPingLatency); len(points) != 0 {
+		t.Fatalf("unknown produced latency: %+v", points)
+	}
+	for _, name := range []string{metricstore.MetricPingAttempts, metricstore.MetricPingSuccess, metricstore.MetricPingLossPct} {
+		if points := query(name); len(points) != 0 {
+			t.Fatalf("unknown produced %s: %+v", name, points)
+		}
+	}
+	if scenario == "http-dns" || scenario == "redirect-dns" {
+		if scenario == "redirect-dns" {
+			if redirects.Load() == 0 || len(query(metricstore.MetricHTTPTCP)) == 0 {
+				t.Fatal("first redirect hop did not connect")
+			}
+		} else if points := query(metricstore.MetricHTTPTCP); len(points) != 0 {
+			t.Fatalf("initial DNS deadline produced TCP timing: %+v", points)
+		}
+		for _, metricName := range []string{metricstore.MetricHTTPDNS, metricstore.MetricHTTPReachable} {
+			if points := query(metricName); len(points) != 0 {
+				t.Fatalf("DNS deadline unexpectedly produced %s: %+v", metricName, points)
+			}
+		}
+	}
+	now := time.Now().UTC()
+	report, err := sla.Build(t.Context(), sla.ReportRequest{Reader: store, EntityIDs: []string{id}, Start: now.Add(-time.Minute), End: now.Add(time.Minute), Interval: time.Minute, Now: now})
+	if err != nil || len(report.Nodes) != 1 || report.Nodes[0].HasReport || len(report.Nodes[0].Tasks) != 0 {
+		t.Fatalf("unknown became SLA outage: %+v err=%v", report, err)
+	}
+}
+
+// Reuse the isolated actual-Agent fixture for an untrusted TLS endpoint and
+// assert the final metrics, not just the Agent's in-process observation.
+func TestOrdinaryAgentExecutableTLSFailureMetric(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_TLS_E2E") != "1" {
+		t.Skip("requires Linux network namespace privileges")
+	}
+	ordinaryAgentExecutableFixture(t, "tls")
+}
+
+// An interim HTTP response followed by timeout must not persist TTFB.
+func TestOrdinaryAgentExecutableInformationalTimeoutMetric(t *testing.T) {
+	if os.Getenv("NEKOMARI_ORDINARY_1XX_E2E") != "1" {
+		t.Skip("requires Linux network namespace privileges")
+	}
+	ordinaryAgentExecutableFixture(t, "1xx")
+}

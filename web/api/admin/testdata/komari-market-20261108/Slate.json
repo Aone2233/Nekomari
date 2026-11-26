@@ -1,0 +1,345 @@
+{
+  "name": "Slate",
+  "short": "Slate",
+  "description": "A restrained Komari theme with a table-first home",
+  "version": "0.1.11",
+  "author": "DouDou",
+  "url": "https://github.com/xkrfer/komari-theme-slate",
+  "preview": "preview.png",
+  "configuration": {
+    "type": "managed",
+    "name": {
+      "zh-CN": "Slate 设置",
+      "en": "Slate Settings"
+    },
+    "data": [
+      {
+        "type": "title",
+        "name": {
+          "zh-CN": "基础设置",
+          "en": "General"
+        }
+      },
+      {
+        "key": "defaultAppearance",
+        "name": {
+          "zh-CN": "默认外观",
+          "en": "Default appearance"
+        },
+        "type": "select",
+        "options": "system,light,dark",
+        "default": "system",
+        "help": {
+          "zh-CN": "访客未设置本地外观时使用",
+          "en": "Used when the visitor has no local appearance"
+        }
+      },
+      {
+        "key": "defaultView",
+        "name": {
+          "zh-CN": "访客默认视图",
+          "en": "Visitor default view"
+        },
+        "type": "select",
+        "options": "table,cards,map",
+        "default": "table",
+        "help": {
+          "zh-CN": "仅约束桌面首次访问；手机仍默认卡片",
+          "en": "Desktop first visit only; mobile still defaults to cards"
+        }
+      },
+      {
+        "key": "defaultLanguage",
+        "name": {
+          "zh-CN": "默认语言",
+          "en": "Default language"
+        },
+        "type": "select",
+        "options": "auto,zh-CN,en",
+        "default": "auto",
+        "help": {
+          "zh-CN": "访客未设置本地语言时使用；auto 跟随浏览器语言",
+          "en": "Used when the visitor has no local language; auto follows the browser"
+        }
+      },
+      {
+        "key": "defaultSort",
+        "name": {
+          "zh-CN": "节点默认排序",
+          "en": "Default node sort"
+        },
+        "type": "select",
+        "options": "name,status,region,uptime,cpu,memory,disk,speed",
+        "default": "name",
+        "help": {
+          "zh-CN": "访客未设置本地排序字段时使用",
+          "en": "Used when the visitor has no locally stored sort field"
+        }
+      },
+      {
+        "key": "defaultSortDirection",
+        "name": {
+          "zh-CN": "默认排序方向",
+          "en": "Default sort direction"
+        },
+        "type": "select",
+        "options": "asc,desc",
+        "default": "asc",
+        "help": {
+          "zh-CN": "访客未设置本地排序方向时使用",
+          "en": "Used when the visitor has no locally stored sort direction"
+        }
+      },
+      {
+        "type": "title",
+        "name": {
+          "zh-CN": "首页",
+          "en": "Home page"
+        }
+      },
+      {
+        "key": "showStats",
+        "name": {
+          "zh-CN": "显示顶部统计卡片",
+          "en": "Show summary cards"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "enableMap",
+        "name": {
+          "zh-CN": "启用地图视图",
+          "en": "Enable map view"
+        },
+        "type": "switch",
+        "default": true,
+        "help": {
+          "zh-CN": "关闭后将隐藏地图入口，并自动回退到可用视图",
+          "en": "Hides the map entry and falls back to an available view when disabled"
+        }
+      },
+      {
+        "type": "title",
+        "name": {
+          "zh-CN": "节点列表",
+          "en": "Node list"
+        }
+      },
+      {
+        "key": "showCardPing",
+        "name": {
+          "zh-CN": "卡片显示延迟与丢包",
+          "en": "Show card latency and loss"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showCardTags",
+        "name": {
+          "zh-CN": "显示节点标签",
+          "en": "Show node tags"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showCardBilling",
+        "name": {
+          "zh-CN": "显示账单信息",
+          "en": "Show billing information"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showResourceTotals",
+        "name": {
+          "zh-CN": "显示资源已用与总量",
+          "en": "Show resource usage totals"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showCardTraffic",
+        "name": {
+          "zh-CN": "显示网络流量",
+          "en": "Show network traffic"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showCardSwap",
+        "name": {
+          "zh-CN": "显示 Swap 指标",
+          "en": "Show Swap metric"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showUptime",
+        "name": {
+          "zh-CN": "显示运行时间",
+          "en": "Show uptime"
+        },
+        "type": "switch",
+        "default": true,
+        "help": {
+          "zh-CN": "同时控制表格运行时间列和卡片运行时间",
+          "en": "Controls uptime in both the table and node cards"
+        }
+      },
+      {
+        "key": "uptimeRefreshSeconds",
+        "name": {
+          "zh-CN": "运行时间刷新间隔（秒）",
+          "en": "Uptime refresh interval (seconds)"
+        },
+        "type": "number",
+        "default": 1,
+        "help": {
+          "zh-CN": "允许 1–60 秒，超出范围时回退为 1 秒",
+          "en": "Accepts 1–60 seconds; invalid values fall back to 1 second"
+        }
+      },
+      {
+        "type": "title",
+        "name": {
+          "zh-CN": "表格列",
+          "en": "Table columns"
+        },
+        "help": {
+          "zh-CN": "全部关闭时保留名称列；运行时间列还需开启“显示运行时间”",
+          "en": "If all columns are disabled, the name column remains visible. Uptime also requires Show uptime."
+        }
+      },
+      {
+        "key": "showTablePing",
+        "name": {
+          "zh-CN": "显示线路延迟与丢包列",
+          "en": "Show network latency and loss column"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showTableName",
+        "name": {
+          "zh-CN": "显示名称列",
+          "en": "Show name column"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showTableStatus",
+        "name": {
+          "zh-CN": "显示状态列",
+          "en": "Show status column"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showTableSystem",
+        "name": {
+          "zh-CN": "显示系统列",
+          "en": "Show system column"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showTableUptime",
+        "name": {
+          "zh-CN": "显示运行时间列",
+          "en": "Show uptime column"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showTableCpu",
+        "name": {
+          "zh-CN": "显示CPU列",
+          "en": "Show cpu column"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showTableMemory",
+        "name": {
+          "zh-CN": "显示内存列",
+          "en": "Show memory column"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showTableDisk",
+        "name": {
+          "zh-CN": "显示磁盘列",
+          "en": "Show disk column"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showTableSpeed",
+        "name": {
+          "zh-CN": "显示网速列",
+          "en": "Show speed column"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "key": "showTableTraffic",
+        "name": {
+          "zh-CN": "显示总流量列",
+          "en": "Show total traffic column"
+        },
+        "type": "switch",
+        "default": true
+      },
+      {
+        "type": "title",
+        "name": {
+          "zh-CN": "游客显示",
+          "en": "Guest display"
+        }
+      },
+      {
+        "key": "guestShowPrice",
+        "name": {
+          "zh-CN": "向游客显示价格",
+          "en": "Show prices to guests"
+        },
+        "type": "switch",
+        "default": false,
+        "help": {
+          "zh-CN": "登录用户不受此选项影响",
+          "en": "This option does not affect signed-in users"
+        }
+      },
+      {
+        "key": "guestShowExpiration",
+        "name": {
+          "zh-CN": "向游客显示到期状态",
+          "en": "Show expiration to guests"
+        },
+        "type": "switch",
+        "default": false,
+        "help": {
+          "zh-CN": "登录用户不受此选项影响",
+          "en": "This option does not affect signed-in users"
+        }
+      }
+    ]
+  }
+}

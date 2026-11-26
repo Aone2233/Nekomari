@@ -2,6 +2,56 @@
 
 ## Cut a release
 
+**v1.8.2 publication evidence (2026-11-24):** [Release ID 456220909](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.2) was published as a prerelease at `d58ec32`. [Exact CI](https://github.com/Aone2233/Nekomari/actions/runs/45307225895), [release verification](https://github.com/Aone2233/Nekomari/actions/runs/45308351923) and [image publication](https://github.com/Aone2233/Nekomari/actions/runs/45310050142) passed; the checksums and attestations of all eight binaries were verified. After acceptance of all 16 Agents, GitHub Latest was moved from v1.7.29 to v1.8.2; verification completed at 03:42:37 UTC. The release ID, git tag and attachment IDs/digests were unchanged. All five Agent installer URLs under `releases/latest/download/` selected the v1.8.2 files. Neither image’s `latest` or `1.8` alias changed (the Agent `1.8` alias remained absent).
+
+**v1.8.2 staged publication policy (not a rollout record):** Publish the plain
+version tag as a GitHub *prerelease*, not Latest, with standard Agent filenames.
+Merely withholding Latest from a stable release is insufficient: stable Agents
+search the release list. Drafts and prereleases are skipped by both ordinary
+and panel-targeted stable selection. Keep both Docker moving aliases unchanged.
+
+Require green CI on the tagged commit (including the WebSocket fix), published
+amd64/arm64 verification, provenance, checksums and both Docker image checks.
+Before production, retain and restore-test a fresh off-host backup. Upgrade
+the panel by digest, then install the verified Agent explicitly on a canary;
+check the service executable, reported version and fresh samples before
+continuing in batches. Retain per-node rollback binaries. Stop on failure.
+Only after fleet acceptance, promote **the same release ID** (no retag, no
+asset replacement) to stable and GitHub Latest. Verify the Latest API and
+installer asset URLs; never move Docker `latest` or `1.8` for this release.
+
+**v1.8.1 release (2026-11-16):** The [formal release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)
+was published from merge commit `787a4cd19e3750ad4fcd6c25aa273b303c415b7a`.
+Exact-commit CI [43790273368](https://github.com/Aone2233/Nekomari/actions/runs/43790273368)
+passed 8/8, release [43791367420](https://github.com/Aone2233/Nekomari/actions/runs/43791367420)
+10/10, and Docker [43792078669](https://github.com/Aone2233/Nekomari/actions/runs/43792078669)
+2/2. The nine published checksums, including the SBOM, passed; all eight
+binary attestations verified against the release workflow, tag and commit.
+An independent local test using the published amd64 artifacts passed 23/23;
+the optional authenticated existing-panel smoke was not run. Extracted amd64
+panel and Agent image binaries matched their published release assets.
+
+Version-specific multi-architecture image indexes are panel
+`sha256:b1ff8aa19d8d1e1572cda509670c5d3c74ac0861266cbc12481b2b582ada196d`
+and Agent `sha256:b0dbfeb386493f4f0456789726dd0388429d20c3710cd29ab368993f9512f1aa`.
+Agent binaries remain `manual-komari-agent-*`; GitHub Latest remains v1.7.29
+and Docker moving tags were not advanced. Upgrade the panel before any Agent.
+The owner excepted confirmed third-party theme defects, not candidate
+regressions or unverified interactions; see [`COMPATIBILITY-V1.8.md`](./COMPATIBILITY-V1.8.md).
+Publication alone is not production deployment or an Agent rollout.
+
+**v1.7.30 staged policy:** Agent binaries are published as
+`manual-komari-agent-<os>-<arch>` and are not matched by the existing Agent's
+automatic or panel-requested updater. GitHub's `latest` release and the Agent
+image's `latest`/major.minor aliases stay on their previous values. The explicit
+`v1.7.30` panel and Agent image tags remain available. Install a manual Agent
+only after checking its checksum, node-specific service/capabilities and a
+retained rollback binary. The standard installer and panel-targeted update do
+not resolve these manual assets. The release workflow intentionally refuses to
+reuse this policy for another tag without review. A valid pinned task also
+precludes a blind downgrade to an older panel; see
+[`PING-FAMILY-ROLLBACK-DRAFT.md`](./PING-FAMILY-ROLLBACK-DRAFT.md).
+
 **Latest delivery: v1.7.27 (2026-11-04).** Immutable `24faa9d`, pull-request
 CI41773313554 and exact merge CI41774384405 8/8, release41775304251 10/10,
 and Docker41775869827 2/2. The node chart page gets an Export CSV button
@@ -201,7 +251,7 @@ Two consequences worth remembering when the fleet does move:
 
 ## Container images
 
-CI and release builds pin Go 1.27.3 independently of the `go.mod` minimum.
+CI and release builds pin Go 1.27.4 independently of the `go.mod` minimum. This fixes GO-2026-6859 in the standard library.
 Update both workflows together when applying compiler security patches. Every
 server/agent executable must pass `govulncheck -mode=binary` (tool v1.8.0) before
 artifact upload. Local source scanning alone does not verify the compiler used
@@ -454,7 +504,15 @@ confirms the node reports. It cleans up after itself.
 ```bash
 bash deploy/deploy-verify.sh                 # latest release, throwaway temp dir
 bash deploy/deploy-verify.sh /tmp/dv 25799 v0.1.2   # explicit dir/port/tag
+NEKOMARI_MANUAL_AGENT_ASSET=1 bash deploy/deploy-verify.sh "" 25799 v1.8.1  # after publication
 ```
+
+The manual-asset flag is required for v1.8.1: it checks the published
+`manual-komari-agent-*` filename and checksum. Without the explicit version,
+the script selects GitHub Latest, which this release intentionally does not
+move. The release workflow uses the same flag for its native amd64 and arm64
+published-artifact checks; running these checks against v1.8.1 is possible
+only after its artifacts exist.
 
 This runs automatically in CI as the `verify` job, after `release`. It exists
 because `build` only proves the code compiles and `release` only proves the assets

@@ -1,0 +1,31 @@
+{
+  "name": {
+    "zh_CN": "Telegram 通知",
+    "zh_TW": "Telegram 通知",
+    "en": "Telegram Notification",
+    "ja_JP": "Telegram 通知",
+    "id_ID": "Notifikasi Telegram"
+  },
+  "short": "telegram-notification-plugin",
+  "description": {
+    "zh_CN": "通过 Telegram Bot 发送 Komari 通知",
+    "zh_TW": "透過 Telegram Bot 傳送 Komari 通知",
+    "en": "Send Komari notifications through a Telegram bot",
+    "ja_JP": "Telegram Bot で Komari 通知を送信します",
+    "id_ID": "Kirim notifikasi Komari melalui bot Telegram"
+  },
+  "author": {
+    "zh_CN": "Akizon77",
+    "zh_TW": "Akizon77",
+    "en": "Akizon77",
+    "ja_JP": "Akizon77",
+    "id_ID": "Akizon77"
+  },
+  "version": "1.0.0",
+  "komari": ">=1.6.0",
+  "entry": "script.js",
+  "icon": "icon.webp",
+  "permissions": {
+    "timeout": 30
+  }
+}

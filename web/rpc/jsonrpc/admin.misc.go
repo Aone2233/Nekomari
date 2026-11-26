@@ -357,10 +357,12 @@ func toInt(v any, fallback int) int {
 }
 
 func adminClearAllRecords(ctx context.Context, _ *rpc.JsonRpcRequest) (any, *rpc.JsonRpcError) {
-
-	records.DeleteAll()
-	tasks.DeleteAllPingRecords()
+	err := errors.Join(records.DeleteAll(), tasks.DeleteAllPingRecords())
 	actor, ip := auditActor(ctx)
+	if err != nil {
+		auditlog.Log(ip, actor, "clear all records partially failed", "warn")
+		return nil, rpc.MakeError(rpc.InternalError, "Clearing records failed or was incomplete; refresh and retry.", nil)
+	}
 	auditlog.Log(ip, actor, "clear all records", "info")
 	return nil, nil
 }

@@ -11,8 +11,10 @@ const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const states = { DISCONNECTED: 'disconnected', CONNECTED: 'connected' };
+let httpResponse;
 vm.runInNewContext(compiled, {
-  exports,
+  exports, AbortSignal, AbortController, setTimeout, clearTimeout,
+  fetch: async () => httpResponse,
   require(name) {
     if (name === '../types/rpc2') return { RPC2ConnectionState: states };
     if (name === '../i18n/config') return { default: { t: value => value } };
@@ -38,6 +40,31 @@ test('uses HTTP when no WebSocket request has been sent', async () => {
   const client = new exports.RPC2Client('/api/rpc2', { autoConnect: false });
   client.callViaHTTP = async () => 'ok';
   assert.equal(await client.call('public:getVersion'), 'ok');
+});
+
+test('preserves an explicit committed outcome over HTTP and WebSocket', async () => {
+  const payload = { code: -32051, message: 'saved but reload failed', data: {
+    committed: true, error_key: 'config_import_schedule_pending',
+  } };
+  const check = error => {
+    assert.equal(error.name, 'RPC2Error');
+    assert.equal(error.code, -32051);
+    assert.equal(error.committed, true);
+    assert.equal(error.errorKey, 'config_import_schedule_pending');
+    assert.equal(error.data, payload.data);
+    return true;
+  };
+  const client = new exports.RPC2Client('/api/rpc2', { autoConnect: false });
+  httpResponse = { ok: true, json: async () => ({ jsonrpc: '2.0', id: 1, error: payload }) };
+  await assert.rejects(client.callViaHTTP('admin:importConfig', {}), check);
+  const wsError = await new Promise(resolve => {
+    client.pendingRequests.set(2, { resolve: () => assert.fail('unexpected success'), reject: resolve });
+    client.handleMessage({ jsonrpc: '2.0', id: 2, error: payload });
+  });
+  check(wsError);
+  const uncertain = new exports.RPC2Error({ code: -32603, message: 'error', data: { committed: 'true', error_key: '../bad' } });
+  assert.equal(uncertain.committed, false);
+  assert.equal(uncertain.errorKey, undefined);
 });
 
 // The old client stopped after 5 attempts at a fixed 3 s interval, so a panel restart longer

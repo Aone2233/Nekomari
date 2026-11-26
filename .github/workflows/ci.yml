@@ -46,8 +46,10 @@ jobs:
           python script/admin-clock.browser.spec.py
           python script/node-details.browser.spec.py
           python script/admin-mutations.browser.spec.py
+          python script/ping-family.browser.spec.py
           python script/offline-notification.browser.spec.py
           python script/load-preview.browser.spec.py
+          python script/exec-history.browser.spec.py
           python script/file-manager.browser.spec.py
           python script/terminal-dialog.browser.spec.py
           python script/selector-state.browser.spec.py
@@ -63,6 +65,7 @@ jobs:
           python script/maintenance.browser.spec.py
           python script/config-export.browser.spec.py
           python script/forecast.browser.spec.py
+          python script/probe-state.browser.spec.py
           python script/account-sso-2fa.browser.spec.py
           python script/api-keys.browser.spec.py
           python script/client-token.browser.spec.py
@@ -81,7 +84,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27.3'
+          go-version: '1.27.4'
           cache: true
           cache-dependency-path: go.sum
       - uses: actions/setup-node@v7
@@ -104,6 +107,10 @@ jobs:
         run: |
           python -m pip install -r script/requirements-browser.txt
           python -m playwright install --with-deps chromium
+      - name: Exercise isolated pinned browser-to-Agent workflow
+        env:
+          NEKOMARI_PINNED_BROWSER_E2E: '1'
+        run: go test -race ./web/rpc/jsonrpc -run '^TestPinnedBrowserThroughSchedulerAndRealAgents$' -count=1 -timeout 5m -v
       - name: Boot the server, install an account, and walk every route
         run: |
           mkdir -p smoke
@@ -118,6 +125,27 @@ jobs:
           curl -sf -X POST http://127.0.0.1:25774/api/install/complete \
             -H 'Content-Type: application/json' \
             -d '{"username":"admin","password":"E2e-verify1","sitename":"Nekomari CI","description":"CI smoke instance","metric_dsn":"./smoke/metrics.db"}'
+          # Installation closes the guide listener before starting the normal
+          # server. Wait for its API, not the guide's earlier redirect.
+          python - <<'PY'
+          import json
+          import time
+          import urllib.error
+          import urllib.request
+
+          deadline = time.monotonic() + 60
+          while time.monotonic() < deadline:
+              try:
+                  with urllib.request.urlopen('http://127.0.0.1:25774/api/version', timeout=2) as response:
+                      body = json.load(response)
+                  if body.get('status') == 'success' and isinstance(body.get('data', {}).get('version'), str):
+                      break
+              except (OSError, ValueError, AttributeError, urllib.error.URLError):
+                  pass
+              time.sleep(0.25)
+          else:
+              raise SystemExit('normal server API never became ready after installation')
+          PY
           cd frontend && python script/panel-smoke.spec.py http://127.0.0.1:25774
           # The cd above leaves this shell inside frontend for the rest of the step.
           python script/admin-write-paths.spec.py http://127.0.0.1:25774
@@ -138,12 +166,17 @@ jobs:
         run: python3 -W error::ResourceWarning deploy/sla-generations-smoke.py --panel-binary ./nekomari
       - name: Check SLA span explanations in both embedded pages
         run: python -W error::ResourceWarning frontend/script/sla-span-panel.spec.py --panel-binary ./nekomari
+      - name: Check both admin chart downloads under a replacement public theme
+        run: |
+          sudo unshare -n sh -ec 'ip link set lo up; exec sudo -u "$1" -H "$2" -W error::ResourceWarning frontend/script/metric-chart-csv-panel.spec.py --panel-binary ./nekomari --admin-chart' sh "$(id -un)" "$(command -v python)"
       - name: Check incomplete traffic forecast directions in a synthetic Panel
         run: python3 -W error::ResourceWarning deploy/forecast-direction-smoke.py --panel-binary ./nekomari
       - name: Test saved alert rule preview on an isolated Panel
         run: python3 -W error::ResourceWarning deploy/load-preview-smoke.py --panel-binary ./nekomari
       - name: Check saved alert rule preview in the embedded admin UI
         run: python -W error::ResourceWarning frontend/script/load-preview-panel.spec.py --panel-binary ./nekomari
+      - name: Check execution history in the embedded admin UI
+        run: python -W error::ResourceWarning frontend/script/exec-history-panel.spec.py --panel-binary ./nekomari
       - name: Check nullable price expiry in the embedded admin UI
         run: python frontend/script/price-expiry.spec.py --panel-binary ./nekomari
       - name: Check uptime history ingestion and embedded admin UI
@@ -158,6 +191,8 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y age
+          NEKOMARI_SHUTDOWN_ENCRYPTED_E2E=1 go test -race ./internal/server \
+            -run '^TestShutdownDrainsScheduledAndQueuedMetricsToDisk$' -count=1 -timeout 2m
           context=$(mktemp -d)
           image="nekomari-restore-ci:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           trap 'rm -rf "$context"; docker image rm "$image" >/dev/null 2>&1 || true' EXIT
@@ -200,7 +235,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27.3'
+          go-version: '1.27.4'
           cache: true
           cache-dependency-path: go.sum
       - name: Verify recovery bindings, sealed parents and aligned reads on both backends
@@ -238,6 +273,11 @@ jobs:
         run: python3 -W error::ResourceWarning deploy/hermes_nodes_test.py
       - name: Test the 50-node capacity harness statistics (offline)
         run: python3 -W error::ResourceWarning deploy/capacity50_test.py
+      - name: Test forecast fixture calendar boundaries (offline)
+        run: python3 -W error::ResourceWarning deploy/forecast_direction_test.py
+      - name: Test independent CPU calibration reference (offline)
+        working-directory: deploy/calibrate
+        run: python3 -m unittest test_probe_calibrate.py
       - name: Test encrypted backups with throwaway identities (offline)
         run: |
           sudo apt-get update -qq
@@ -273,6 +313,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
@@ -280,6 +323,7 @@ jobs:
         run: |
           python -m pip install --quiet pyyaml
           python deploy/docker-workflow-check.py
+          python deploy/manual-agent-release-contract.py
 
       - name: Check that every `with:` input still exists on the pinned action
         # 这条检查的是「major 升级把某个 with: 输入删掉/改名」——那种失败只在
@@ -287,6 +331,9 @@ jobs:
         # action.yml 逐个核对；读不到（composite/local）只打印，不算问题，
         # 所以网络抖动不会让它变红。
         run: python deploy/check-action-inputs.py
+
+      - name: Check the documentation index and relative links
+        run: node script/docs-index.mjs
 
       - name: Check the published documentation site
         # site/README.md 说这一步 "not optional"：mkdocs --strict 能发现坏链，但
@@ -305,7 +352,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: '1.27.3'
+          go-version: '1.27.4'
           cache-dependency-path: |
             go.sum
             agent/go.sum
@@ -339,7 +386,7 @@ jobs:
         uses: actions/setup-go@v7
         with:
           # Pin the patched release compiler, independently of module minimums.
-          go-version: '1.27.3'
+          go-version: '1.27.4'
           cache: true
           # Both modules are built from this one job.
           cache-dependency-path: |

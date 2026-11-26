@@ -1,0 +1,94 @@
+{
+  "name": {
+    "zh_CN": "网络流量预测",
+    "en": "NetForecast"
+  },
+  "short": "net-forecast",
+  "description": {
+    "zh_CN": "全节点30天进出站流量增量堆叠柱状图与计费规则自适应累计折线图，直连核心数据库，预测重置日流量并提供超限告警",
+    "en": "All-nodes 30-day stacked bar and billing-adaptive cumulative charts, directly synced with core database, forecasting reset day usage and exhaustion alerts"
+  },
+  "author": "livingfree2023",
+  "version": "26.1021.6",
+  "icon": "assets/icon.svg",
+  "entry": "script.js",
+  "permissions": {
+    "node": true,
+    "allowRoutes": true,
+    "allowSystemRPC": true,
+    "allowHTMLInject": true,
+    "timeout": 30
+  },
+  "configuration": {
+    "type": "managed",
+    "data": [
+      {
+        "key": "default_reset_day",
+        "name": {
+          "zh_CN": "默认每月重置日 (1-31)",
+          "en": "Default Monthly Reset Day (1-31)"
+        },
+        "type": "number",
+        "default": 1
+      },
+      {
+        "key": "warning_threshold",
+        "name": {
+          "zh_CN": "流量告警阈值百分比 (%)",
+          "en": "Warning Threshold Percentage (%)"
+        },
+        "type": "number",
+        "default": 90
+      },
+      {
+        "key": "auto_collect_cron",
+        "name": {
+          "zh_CN": "流量采集频率",
+          "en": "Collection Cron"
+        },
+        "type": "string",
+        "default": "*/10 * * * *"
+      },
+      {
+        "key": "enable_floating_widget",
+        "name": {
+          "zh_CN": "启用前台流量预测浮出层小组件",
+          "en": "Enable Floating Widget on Frontend"
+        },
+        "type": "boolean",
+        "default": true
+      },
+      {
+        "key": "timezone_offset",
+        "name": {
+          "zh_CN": "统计基准时区 (UTC 偏移小时数，默认 8 即北京时间 UTC+8)",
+          "en": "Timezone Offset (Hours relative to UTC, default 8 for UTC+8)"
+        },
+        "type": "number",
+        "default": 8
+      }
+    ]
+  },
+  "pages": [
+    {
+      "file": "pages/admin.html",
+      "title": {
+        "zh_CN": "流量预测",
+        "en": "NetForecast"
+      },
+      "icon": "assets/icon.svg",
+      "type": "iframe",
+      "visibility": "admin"
+    },
+    {
+      "file": "pages/public.html",
+      "title": {
+        "zh_CN": "流量预测看板",
+        "en": "Traffic Forecast"
+      },
+      "icon": "assets/icon.svg",
+      "type": "iframe",
+      "visibility": "public"
+    }
+  ]
+}

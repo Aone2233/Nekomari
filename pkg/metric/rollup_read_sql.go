@@ -20,6 +20,7 @@ type rollupReadPlan struct {
 	StartMilli   int64
 	EndMilli     int64
 	Fields       rollupReadFields
+	Labels       bool
 }
 
 type rollupReadFields uint16
@@ -106,8 +107,8 @@ func (d sqliteDialect) renderRollupRead(tables tables, indexName string, plan ro
 		hint = " INDEXED BY " + indexName
 	}
 	return renderedSQL{
-		Query: fmt.Sprintf("SELECT %s FROM %s r%s WHERE r.resolution_id = %s AND r.bucket_milli >= %s AND r.bucket_milli <= %s AND r.series_id IN (SELECT CAST(value AS INTEGER) FROM json_each(%s)) ORDER BY r.bucket_milli ASC, r.series_id ASC, r.label_id ASC",
-			rollupReadColumns(plan.Fields), tables.rollups, hint,
+		Query: fmt.Sprintf("SELECT %s FROM %s r%s%s WHERE r.resolution_id = %s AND r.bucket_milli >= %s AND r.bucket_milli <= %s AND r.series_id IN (SELECT CAST(value AS INTEGER) FROM json_each(%s)) ORDER BY r.bucket_milli ASC, r.series_id ASC, r.label_id ASC",
+			rollupReadColumns(plan.Fields, plan.Labels), tables.rollups, hint, rollupReadLabelJoin(tables, plan.Labels),
 			d.placeholder(1), d.placeholder(2), d.placeholder(3), d.placeholder(4)),
 		Args: args,
 	}
@@ -125,8 +126,8 @@ func (d mysqlDialect) renderRollupRead(tables tables, indexName string, plan rol
 		hint = " FORCE INDEX (" + indexName + ")"
 	}
 	return renderedSQL{
-		Query: fmt.Sprintf("SELECT %s FROM %s r%s WHERE r.resolution_id = %s AND r.bucket_milli >= %s AND r.bucket_milli <= %s AND r.series_id IN (%s) ORDER BY r.bucket_milli ASC, r.series_id ASC, r.label_id ASC",
-			rollupReadColumns(plan.Fields), tables.rollups, hint,
+		Query: fmt.Sprintf("SELECT %s FROM %s r%s%s WHERE r.resolution_id = %s AND r.bucket_milli >= %s AND r.bucket_milli <= %s AND r.series_id IN (%s) ORDER BY r.bucket_milli ASC, r.series_id ASC, r.label_id ASC",
+			rollupReadColumns(plan.Fields, plan.Labels), tables.rollups, hint, rollupReadLabelJoin(tables, plan.Labels),
 			d.placeholder(1), d.placeholder(2), d.placeholder(3), strings.Join(seriesPlaceholders, ", ")),
 		Args: args,
 	}
@@ -135,15 +136,25 @@ func (d mysqlDialect) renderRollupRead(tables tables, indexName string, plan rol
 func (d postgresDialect) renderRollupRead(tables tables, _ string, plan rollupReadPlan) renderedSQL {
 	args := []any{plan.ResolutionID, plan.StartMilli, plan.EndMilli, plan.SeriesIDs}
 	return renderedSQL{
-		Query: fmt.Sprintf("SELECT %s FROM %s r WHERE r.resolution_id = %s AND r.bucket_milli >= %s AND r.bucket_milli <= %s AND r.series_id = ANY(%s::bigint[]) ORDER BY r.bucket_milli ASC, r.series_id ASC, r.label_id ASC",
-			rollupReadColumns(plan.Fields), tables.rollups,
+		Query: fmt.Sprintf("SELECT %s FROM %s r%s WHERE r.resolution_id = %s AND r.bucket_milli >= %s AND r.bucket_milli <= %s AND r.series_id = ANY(%s::bigint[]) ORDER BY r.bucket_milli ASC, r.series_id ASC, r.label_id ASC",
+			rollupReadColumns(plan.Fields, plan.Labels), tables.rollups, rollupReadLabelJoin(tables, plan.Labels),
 			d.placeholder(1), d.placeholder(2), d.placeholder(3), d.placeholder(4)),
 		Args: args,
 	}
 }
 
-func rollupReadColumns(fields rollupReadFields) string {
+func rollupReadLabelJoin(tables tables, labels bool) string {
+	if labels {
+		return " JOIN " + tables.labels + " l ON l.id = r.label_id"
+	}
+	return ""
+}
+
+func rollupReadColumns(fields rollupReadFields, labels bool) string {
 	columns := []string{"r.series_id", "r.bucket_milli", "r.count"}
+	if labels {
+		columns = append(columns, "l.labels_hash")
+	}
 	if fields&rollupReadSum != 0 {
 		columns = append(columns, "r.sum")
 	}
