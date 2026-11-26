@@ -64,6 +64,9 @@ func (a *App) runGuideServer(controller guideController, cfg guideServerConfig) 
 	server := newHTTPServer(a.listenAddr, r)
 	a.engine = r
 	a.server = server
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(quit)
 	serverErr := make(chan error, 1)
 	logger.Infof("server", cfg.logMessage, a.listenAddr)
 	go func() {
@@ -71,10 +74,6 @@ func (a *App) runGuideServer(controller guideController, cfg guideServerConfig) 
 			serverErr <- err
 		}
 	}()
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(quit)
 
 	select {
 	case err := <-serverErr:

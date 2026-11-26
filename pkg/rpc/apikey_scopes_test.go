@@ -9,7 +9,7 @@ func TestAPIKeyScopesNeverProvideAnAdministratorEscape(t *testing.T) {
 		"admin:exportConfigSecrets", "admin:importConfig", "admin:getPluginConfiguration", "admin:setPluginEnabled",
 		"client:report", "admin:newUnreviewedMethod", "plugin:privileged",
 		"admin:rotateClientToken", "admin:queryPanelMetrics", "admin:getRequestMetrics", "admin:getFleetFreshness",
-		"admin:listTaskHistory", "admin:readTaskHistoryText", "public:exportMetrics", "public:getSlaReportPage"} {
+		"public:exportMetrics", "public:getSlaReportPage"} {
 		if CheckPrincipal(all, method) || APIKeySensitiveGrant(all, method) {
 			t.Errorf("all scopes allowed privileged escape %s", method)
 		}

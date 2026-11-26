@@ -31,7 +31,7 @@ require golang.org/x/crypto v0.57.0
 
 // HTTP Proxy bypass using IPv6 Zone IDs in golang.org/x/net #2
 // golang.org/x/net vulnerable to Cross-site Scripting #4
-require golang.org/x/net v0.60.0 // indirect
+require golang.org/x/net v0.60.0
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect

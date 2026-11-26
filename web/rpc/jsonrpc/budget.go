@@ -43,13 +43,17 @@ const (
 	// charts, and four public charts queued behind an admin query. It also carries
 	// no metric read budget: it runs raw SQL against arbitrary tables, not metric
 	// rollups, so "narrow the metric query" would be the wrong instruction.
-	adminQuerySlotsCapacity = 2
-	adminQueryQueueWait     = 5 * time.Second
-	adminQueryWorkDeadline  = 20 * time.Second
+	adminQuerySlotsCapacity   = 2
+	adminQueryQueueWait       = 5 * time.Second
+	adminQueryWorkDeadline    = 20 * time.Second
+	historyQuerySlotsCapacity = 2
+	historyQueryQueueWait     = 5 * time.Second
+	historyQueryWorkDeadline  = 10 * time.Second
 )
 
 var querySlots = make(chan struct{}, querySlotsCapacity)
 var adminQuerySlots = make(chan struct{}, adminQuerySlotsCapacity)
+var historyQuerySlots = make(chan struct{}, historyQuerySlotsCapacity)
 var rpcConnections = make(chan struct{}, 256)
 
 type queryClass int
@@ -58,6 +62,7 @@ const (
 	queryUnbudgeted queryClass = iota
 	queryMetricHistory
 	queryAdminConsole
+	queryExecHistory
 )
 
 func classifyQuery(method string) queryClass {
@@ -68,6 +73,8 @@ func classifyQuery(method string) queryClass {
 		return queryMetricHistory
 	case "admin:dbQuery":
 		return queryAdminConsole
+	case "admin:listExecHistory", "admin:getExecHistoryDetail", "admin:readExecHistoryChunk":
+		return queryExecHistory
 	}
 	return queryUnbudgeted
 }
@@ -80,9 +87,17 @@ func queryBudget(ctx context.Context, method string) (context.Context, func(), *
 	if class == queryUnbudgeted {
 		return ctx, func() {}, nil
 	}
+	if err := ctx.Err(); err != nil {
+		if class == queryExecHistory {
+			return ctx, func() {}, rpc.MakeError(rpc.Cancelled, "query canceled", nil)
+		}
+		return ctx, func() {}, rpc.MakeError(rpc.Unavailable, "query canceled", nil)
+	}
 	slots, wait, deadline := querySlots, queryQueueWait, queryWorkDeadline
 	if class == queryAdminConsole {
 		slots, wait, deadline = adminQuerySlots, adminQueryQueueWait, adminQueryWorkDeadline
+	} else if class == queryExecHistory {
+		slots, wait, deadline = historyQuerySlots, historyQueryQueueWait, historyQueryWorkDeadline
 	}
 	if err := acquireQuerySlot(ctx, slots, wait); err != nil {
 		// A no-op release, so a caller that defers it unconditionally cannot panic
@@ -91,10 +106,17 @@ func queryBudget(ctx context.Context, method string) (context.Context, func(), *
 	}
 	bounded, cancel := context.WithTimeout(ctx, deadline)
 	release := func() { cancel(); <-slots }
-	if class == queryAdminConsole {
+	if class == queryAdminConsole || class == queryExecHistory {
 		return bounded, release, nil
 	}
 	return metric.WithReadBudgetBytes(bounded, maxMetricTotalPoints, maxMetricTotalBytes), release, nil
+}
+
+// Batching individually bounded secret responses would otherwise multiply the
+// per-request cap by 32 in the shared JSON-RPC transport.
+func isExecHistoryMethod(method string) bool {
+	return method == "admin:listExecHistory" ||
+		method == "admin:getExecHistoryDetail" || method == "admin:readExecHistoryChunk"
 }
 
 // acquireQuerySlot takes a slot immediately when one is free and otherwise waits

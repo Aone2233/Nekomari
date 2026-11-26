@@ -32,6 +32,10 @@ neither reads nor saves the public theme's chart template. The public node
 page is unchanged. This entry is not present in the v1.8.1 release. To test
 it on the v1.8.2 panel binary, add `--admin-chart` to the drill above.
 
+On 2026-11-26 the owner confirmed acceptance of both CSV buttons. This closes
+the production UI check for these two exports; it does not establish that
+exported traffic agrees with the provider's billing records.
+
 ## History bucket endpoints
 
 `GET /api/records/load.csv` and `GET /api/records/ping.csv` return one row per

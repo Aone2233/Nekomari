@@ -498,9 +498,9 @@ The next bounded releases and operational gates, in order:
    separate isolated v1.8.1 browser check. Neither is an owner click on an
    export button: the deployed Emerald Insights node page has neither control.
    The deployed v1.8.2 admin node-row entry provides both buttons independently of
-   the public theme. Production owner on-page acceptance is still open.
-   See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md). After the v1.8.1
-   verification gates: bounded exec-result history, designed separately in
+   the public theme. The owner confirmed both buttons on 2026-11-26; the CSV
+   acceptance gate is closed. See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md).
+   Next: bounded exec-result history, designed separately in
    [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md). Later slices include
    the cost-forecast column, roles UI, frontend budgets and an a11y pass.
 
@@ -1497,6 +1497,52 @@ The local draft now protects that variable and adds a deterministic delayed-DNS
 race regression and loopback success check; both pass with `-race`, alongside
 the pinned tests. They do not constitute an Agent release or a fleet rollout.
 
+**Unreleased development (2026-11-05).** The remote-execution history UI and
+bounded, `tasks:read`-scoped RPC implementation are under verification on an
+independent branch; they are not deployed. Targeted Go and synthetic browser
+checks pass. A disposable, network-isolated built panel also shows synthetic
+history via the real admin UI and backend in English desktop/light and Chinese
+mobile/dark. A network-isolated synthetic v1.7.29/candidate/rollback/candidate
+startup drill preserves old and rollback-era task data; rollback-era rows were
+injected as SQL fixtures, not dispatched to an agent. CSV owner acceptance and
+the normal release/backup gates remain open; this is not a production rollout.
+An additional scratch stress check showed SQLite may materialize an entire
+legacy output despite the 16 KiB response cap. The next candidate uses SQLite
+incremental blob reads on the same connection and snapshot to preserve bounded
+access to large TEXT/BLOB records; malformed non-text values fail closed. A
+16 MiB connection limit still guards other materialized fields. See the design
+document for local measurements, security boundaries and remaining portability
+gates. Commit `3db976c` passed 8/8 CI and native OC424 ARM64 synthetic tests.
+A subsequent audit reproduced a stale result cursor silently retargeting a
+duplicate after a table rebuild and rowid renumbering. The unreleased follow-up
+adds indexed stable result identities and rollback-compatible insert/backfill
+handling; its new head requires its own CI and fresh platform verification.
+CSV owner acceptance remains a separate release gate.
+
+**Read-only production identity/task recheck (2026-11-05 04:02 UTC):** 13
+current node UUID/token pairs match the previously audited `55bc6191…d2bde`
+snapshot; this does not rule out an intervening change subsequently reversed.
+All six retained task parents have matching retained audit entries; the latest
+task-result creation and execution audit are dated 2026-10-25, and none are
+newer than the v1.7.29 switch. Three 2026-10-20 results lack a completion time,
+which does not establish they are still executing. These checks cannot prove
+the absence of deleted or unrecorded activity; the old digest discrepancy
+remains unexplained. No production credential, node or task was changed.
+
+**Reconciliation onto v1.8.1 main (2026-11-17).** The six commits above now sit on
+`codex/exec-history-implementation`, replayed onto current main. Three files conflicted:
+`CHANGELOG.md`, this file (both kept both sides' additions) and the committed
+`web/public/defaultTheme/dist.tar.zst`, which was regenerated from the merged sources rather
+than merged. `go build ./...`, `go vet ./...` and the database/tasks, dbcore, sqlitetune,
+pkg/rpc, web/rpc/jsonrpc and web/router suites pass locally, as do frontend lint and the 219
+frontend tests. 8/8 CI evidence exists for `706685c`, `89b900c`, `34ee5e4` and `32c8485`;
+the work is draft PR #165, and anything pushed after this paragraph must bring its own run. A later review found that one malformed legacy row failed the whole page and
+could not be paged past; unaddressable rows are now skipped and counted in
+`skipped_malformed`, and the next cursor now comes from the last row fetched, so a page of
+nothing but bad rows still advances (see the design contract for what counts as unaddressable
+and when the response reports `blocked` instead of a cursor). Nothing is deployed or
+released; owner acceptance and the release, backup and deploy gates remain open.
+
 **Prior backup close-out (2026-11-03).** The v1.7.22 post and v1.7.23
 pre/post archives reached MAC-WAN with matching sidecars, `incoming/` holds
 the two older verified copies, and four isolated restore drills pass (see
@@ -2120,7 +2166,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Most agents still run as root; only MAC is non-root | `docs/DEPLOY-OC424.md` | The NOSLA pattern (unprivileged user + `AmbientCapabilities=CAP_NET_RAW`) works; Alpine has no `setcap`. OpenRC install support shipped in v1.6.25, but moving users is still a fleet-wide change |
 | Windows local builds can fail on a locked esbuild temp file | Windows dev environment | The build itself is deterministic on Windows: two builds with a project-local `TEMP`/`TMP` were byte-identical (819 files, diff 0). With the system `%TEMP%`, esbuild sometimes cannot delete its temp file ("Access is denied"); CI's Windows runner is unaffected. Not a source change — a dev-environment workaround until the temp cleaner/AV exclusion is settled |
 | Encrypted backup follow-up | `docs/ENCRYPTED-BACKUPS.md`; `docs/MAC-WAN-BACKUP.md` | MAC-WAN's encrypted daily timer is active and has run repeatedly; the newest scheduled archive is 2026-11-16T03:30:16Z, about 258 MB, and the 15-minute health timer reported `status=ok` for it. The v1.8.1 cutover added pre and post archives that passed isolated v1.8.0 and v1.8.1 boot drills. Owner-reported offline download is not independent-media restore. Live incident delivery and a stronger drill policy remain open; keep all old plaintext and manual rollback copies until explicit deletion approval |
-| Execution history sits on an unmerged branch that main has left 184 commits behind | branch `codex/exec-history-implementation`; `docs/EXEC-HISTORY-DESIGN.md` | The v1.9.0 slice is already implemented there — 6 commits, 33 files, +3156/−26, including the bounded history RPC, incremental reads of large result fields, keyset pagination that survives a stale cursor, and all five locales. Rebase cost was measured on 2026-11-16 by replaying it onto current main: only three files conflict — CHANGELOG.md, docs/OPEN-WORK.md and the built defaultTheme dist.tar.zst — with no source conflicts, and the replayed branch builds with CGO, vets clean and passes the database/tasks, dbcore, sqlitetune, pkg/rpc and web/rpc/jsonrpc suites. What remains is re-applying the two documents' additions instead of taking main's copy, and a frontend build, which needs npm ci. It is a two-document reconciliation, not greenfield work |
+| Bounded execution history is implemented, not released or deployed | [PR #165](https://github.com/Aone2233/Nekomari/pull/165); [design and rollback evidence](./EXEC-HISTORY-DESIGN.md) | Ready for review. The [synthetic UI drill](./EXEC-HISTORY-DESIGN.md#acceptance) covers paging and can produce desktop/mobile views for the owner. Exact-commit CI and owner acceptance of the history view are separate gates. Fresh backups and published-artifact verification remain release gates; no Agent rollout is needed for this feature. |
 | OIDC + 2FA makes SSO login fail-closed with no way for the browser to answer the challenge | `docs/ROADMAP.md` §F12 | Deliberately shipped as a gate, not half a state machine. Needs a one-time pending token plus a code prompt; production impact is zero while OIDC is off |
 | `sso_id` survives a password change, and `DeleteAllSessions()` is global | `database/accounts/` | Policy questions now that the SSO path requires TOTP; recommendation was (b)+(c) in the audit report |
 | A committed admin password from the SECRETS incident still has to be changed | `docs/SECRETS.md` incident 4 | An ops action on the live panel, not a repository change |

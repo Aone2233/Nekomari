@@ -8,6 +8,24 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Register panel shutdown signals before announcing or opening the normal or
+  guide HTTP listener. Previously a SIGTERM in that window could skip cleanup
+  even though startup was already visible to an operator.
+
+- **Execution-history candidate, not released or deployed.** Add a paged,
+  `tasks:read`-scoped view with explicit bounded command/output reads, warning
+  labels and five locales. Earliest-result and completion times use the panel
+  language and show seconds and the viewer's time zone. Startup backfills a
+  stable task order, including tasks written during a rollback. Synthetic browser, focused Go and isolated
+  old/new/old/new startup checks cover the implementation; the rollback-era
+  tasks were SQL fixtures, not Agent-dispatched commands. Acceptance of the
+  history view and the normal release/backup gates still apply.
+  Unaddressable legacy rows are skipped and counted rather than failing the page, and
+  paging continues past them. If a task or result page fails, Retry requests
+  that page again; Refresh explicitly starts over. A page's counts come from one aggregate statement, so
+  they are exact and the list no longer holds the single main connection for 20
+  round trips; see `docs/EXEC-HISTORY-DESIGN.md`.
+
 - Pin the panel and Agent to the upstream Gorilla WebSocket masking-key fix
   for [GO-2026-6278](https://pkg.go.dev/vuln/GO-2026-6278). Both Go modules
   previously selected v1.5.3. A dependency update in source does not patch
@@ -24,6 +42,7 @@ Nekomari's own.
   fixed. `script/docs-index.mjs` checks every tracked markdown file in CI, so the
   next unlisted document or dead link fails a check instead of a reader's time.
   Dated records under `docs/audits/` are checked but not listed.
+
 ### v1.8.1 candidate — probe correctness
 
 - Build CI and release artifacts with Go 1.27.4 to address GO-2026-6859 in
