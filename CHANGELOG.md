@@ -21,7 +21,8 @@ Nekomari's own.
   tasks were SQL fixtures, not Agent-dispatched commands. Acceptance of the
   history view and the normal release/backup gates still apply.
   Unaddressable legacy rows are skipped and counted rather than failing the page, and
-  paging continues past them. A page's counts come from one aggregate statement, so
+  paging continues past them. If a task or result page fails, Retry requests
+  that page again; Refresh explicitly starts over. A page's counts come from one aggregate statement, so
   they are exact and the list no longer holds the single main connection for 20
   round trips; see `docs/EXEC-HISTORY-DESIGN.md`.
 

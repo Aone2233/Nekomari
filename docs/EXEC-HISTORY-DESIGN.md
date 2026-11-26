@@ -1,6 +1,6 @@
 # Remote execution history: design and safety contract
 
-Status: draft PR #165, not released or deployed. Owner acceptance of the
+Status: PR #165 is ready for review, not released or deployed. Owner acceptance of the
 [two CSV buttons](./METRIC-CSV-EXPORT.md#theme-independent-admin-entry-v182)
 is complete. The history page still needs its own owner acceptance, exact-commit
 CI and the normal release and backup checks.
@@ -280,6 +280,17 @@ was done in an isolated scratch tree so the packer's staging-directory cleanup
 could not remove unrelated workspace files.
 
 ## Acceptance
+
+The [embedded-panel drill](../frontend/script/exec-history-panel.spec.py)
+seeds 22 tasks, with 21 results on the oldest task. It interrupts the first
+request for the next task page and the next result page, then checks that
+**Retry** sends the same cursor and displays the missing rows. It also navigates
+back without fetching command or output chunks. **Refresh**, unlike Retry,
+returns to the first page when a cursor no longer works. The earlier happy-path
+checks did not distinguish retrying a failed page from reloading the previous
+one. To save synthetic screenshots for owner review, pass `--review-dir` with
+a new directory path alongside `--panel-binary`. Do not use a production
+database or mistake these screenshots for owner sign-off.
 
 Use synthetic tasks and outputs, never a real production exec. Cover admin,
 `tasks:read`, unrelated scoped key and guest access; pagination and ties; empty,

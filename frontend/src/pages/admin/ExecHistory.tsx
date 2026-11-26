@@ -146,10 +146,10 @@ function TaskDetail({ taskID, id }: { taskID: string; id: string }) {
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
 
-  const fetchDetail = useCallback(async (cursorValue: string, stack: string[], controller: AbortController) => {
+  const fetchDetail = useCallback(async (cursorValue: string, controller: AbortController) => {
     return readHistory("admin:getExecHistoryDetail", { task_id: taskID, cursor: cursorValue }, detailSchema, controller.signal).then((value) => {
       if (value.task_id !== taskID) throw new Error("mismatched task");
-      if (!controller.signal.aborted) { setDetail(value); setCursorStack(stack); }
+      if (!controller.signal.aborted) setDetail(value);
     }).catch(() => {
       if (!controller.signal.aborted) setError(true);
     }).finally(() => {
@@ -164,13 +164,14 @@ function TaskDetail({ taskID, id }: { taskID: string; id: string }) {
     setLoading(true);
     setError(false);
     setDetail(null);
-    void fetchDetail(cursorValue, stack, controller);
+    setCursorStack(stack);
+    void fetchDetail(cursorValue, controller);
   };
 
   useEffect(() => {
     const controller = new AbortController();
     request.current = controller;
-    void fetchDetail("", [""], controller);
+    void fetchDetail("", controller);
     return () => controller.abort();
   }, [fetchDetail]);
   return <div id={id} className="min-w-0 space-y-3 border-t border-[var(--gray-a5)] pt-3">
@@ -229,9 +230,10 @@ export default function ExecHistory() {
     const controller = new AbortController();
     request.current = controller;
     setLoading(true); setError(false); setPage(null); setSelected(null);
+    setCursorStack(stack); setCursorIndex(index);
     try {
       const value = await readHistory("admin:listExecHistory", { cursor: cursorValue }, pageSchema, controller.signal);
-      if (!controller.signal.aborted) { setPage(value); setCursorStack(stack); setCursorIndex(index); }
+      if (!controller.signal.aborted) setPage(value);
     } catch {
       if (!controller.signal.aborted) setError(true);
     } finally {
@@ -252,7 +254,11 @@ export default function ExecHistory() {
         <Text size="2" color="orange">{t("execHistory.warning")}</Text>
         <Text size="2" color="gray">{t("execHistory.ordering")}</Text>
         {loading && <Text size="2" role="status">{t("execHistory.loading")}</Text>}
-        {error && <Flex gap="2" align="center"><Text size="2" color="red" role="alert">{t("execHistory.error")}</Text><Button size="1" onClick={() => void load(cursorStack[cursorIndex], cursorStack, cursorIndex)}>{t("execHistory.retry")}</Button></Flex>}
+        {error && <Flex gap="2" align="center" wrap="wrap">
+          <Text size="2" color="red" role="alert">{t("execHistory.error")}</Text>
+          <Button size="1" onClick={() => void load(cursorStack[cursorIndex], cursorStack, cursorIndex)}>{t("execHistory.retry")}</Button>
+          {cursorIndex > 0 && <Button size="1" variant="soft" onClick={() => void load("", [""], 0)}>{t("execHistory.refresh")}</Button>}
+        </Flex>}
         {page && <>
           {page.skipped_malformed > 0 && <Text size="2" color="orange" role="status">{t("execHistory.skippedMalformed", { count: page.skipped_malformed })}</Text>}
           {page.blocked && <Text size="2" color="orange" role="status">{t("execHistory.blocked")}</Text>}

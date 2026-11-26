@@ -179,6 +179,22 @@ class ExecHistoryBrowserTest(unittest.TestCase):
         expect(history).to_contain_text("deleted-node")
         self.assertLessEqual(self.page.evaluate("document.documentElement.scrollWidth"), 390)
 
+    def test_failed_list_retry_stays_on_target_and_refresh_returns_to_newest(self):
+        history = self.page.get_by_test_id("exec-history")
+        history.get_by_role("button", name="View history").click()
+        expect(history).to_contain_text("task-current")
+        self.page.evaluate("window.failList = true")
+        history.get_by_role("button", name="Older tasks").click()
+        expect(history.get_by_role("alert")).to_be_visible()
+        history.get_by_role("button", name="Retry").click()
+        expect(history.get_by_role("alert")).to_be_visible()
+        cursors = self.page.evaluate("window.requests.filter(r => r.method === 'admin:listExecHistory').map(r => r.params.cursor)")
+        self.assertEqual(cursors, ["", "task-current", "task-current"])
+        self.page.evaluate("window.failList = false")
+        history.get_by_role("button", name="Refresh", exact=True).click()
+        expect(history).to_contain_text("task-current")
+        expect(history.get_by_role("button", name="Newer tasks")).to_be_disabled()
+
     def test_expired_detail_cursor_can_return_to_first_page(self):
         history = self.page.get_by_test_id("exec-history")
         self.page.evaluate("window.detailPaging = true")
@@ -193,6 +209,8 @@ class ExecHistoryBrowserTest(unittest.TestCase):
         expect(alert).to_contain_text("could not be read")
         alert.locator("..").get_by_role("button", name="Retry").click()
         expect(alert).to_contain_text("could not be read")
+        cursors = self.page.evaluate("window.requests.filter(r => r.method === 'admin:getExecHistoryDetail').map(r => r.params.cursor)")
+        self.assertEqual(cursors, ["", "page-2", "page-3", "page-3"])
         alert.locator("..").get_by_role("button", name="Refresh", exact=True).click(timeout=5000)
         expect(history).to_contain_text("deleted-node")
         self.assertEqual(self.page.evaluate("window.requests.filter(r => r.method === 'admin:getExecHistoryDetail').at(-1).params.cursor"), "")
