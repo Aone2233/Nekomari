@@ -239,6 +239,16 @@ under a replacement public theme and the read-only history view in English
 desktop and Chinese mobile layouts. These checks did not use production data,
 dispatch a command or constitute owner acceptance of the history view.
 
+The next exact commit, `d6f1b5b`, passed PR CI 8/8 but only five of six local
+rollback drills: the first candidate stop after rollback exited on SIGTERM
+instead of draining. Both the normal and guide servers launched the listener
+before subscribing to SIGTERM. A Linux subprocess test sending SIGTERM at the
+startup announcement reproduced the unclean exit in both modes; it does not
+locate the precise delivery instant in the original drill. Registering before
+the announcement and listener makes both modes reach cleanup at that boundary.
+This change does not provide graceful shutdown during earlier bootstrap phases
+or change the published v1.8.2 executable used for the rollback boots.
+
 To repeat with the [drill](../deploy/experiments/exec-history-rollback.py),
 use Python 3.11+ and Linux/amd64. Supply the official v1.8.2 `nekomari-linux-amd64`
 and a candidate built with CGO and `utils.VersionHash` set to its commit. Run as

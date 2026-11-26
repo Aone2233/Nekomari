@@ -166,6 +166,9 @@ func (a *App) Run() error {
 	// response: plugin hooks can still rewrite the body, then the registered
 	// head/body fragments are embedded into every text/html page.
 	a.server = newHTTPServer(a.listenAddr, plugin.HTMLInjectHandler(plugin.WrapHandler(a.engine)))
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(quit)
 	serverErr := make(chan error, 1)
 	logger.Infof("server", "Starting server on %s ...", a.listenAddr)
 	go func() {
@@ -174,9 +177,6 @@ func (a *App) Run() error {
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(quit)
 	select {
 	case err := <-serverErr:
 		a.onFatal(err)

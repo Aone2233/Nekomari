@@ -8,6 +8,10 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Register panel shutdown signals before announcing or opening the normal or
+  guide HTTP listener. Previously a SIGTERM in that window could skip cleanup
+  even though startup was already visible to an operator.
+
 - **Execution-history candidate, not released or deployed.** Add a paged,
   `tasks:read`-scoped view with explicit bounded command/output reads, warning
   labels and five locales. Startup backfills a stable task order, including
