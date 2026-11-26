@@ -76,7 +76,8 @@ def run(binary):
                     browser = pw.chromium.launch(headless=True)
                     try:
                         for locale, width, appearance in [("en-US", 1280, "light"), ("zh-CN", 390, "dark")]:
-                            context = browser.new_context(locale=locale, viewport={"width": width, "height": 900},
+                            context = browser.new_context(locale="en-US", timezone_id="America/New_York",
+                                                          viewport={"width": width, "height": 900},
                                                           color_scheme=appearance, service_workers="block")
                             try:
                                 assert context.request.post(origin + "/api/login", data={"username": username,
@@ -107,9 +108,17 @@ def run(binary):
                                                     exact=True).click()
                                 expect(history).to_contain_text("synthetic-history")
                                 task = history.locator(".rt-Card").filter(has_text="synthetic-history").last
+                                created, finished = page.evaluate('''language => {
+                                    const clock = new Intl.DateTimeFormat(language, {year: 'numeric', month: '2-digit',
+                                        day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+                                        timeZoneName: 'short', timeZone: 'America/New_York'});
+                                    return ['2026-11-05T02:00:00Z', '2026-11-05T02:00:01Z'].map(iso => clock.format(new Date(iso)));
+                                }''', locale)
+                                expect(task).to_contain_text(created)
                                 task.get_by_role("button", name="View details" if locale == "en-US" else "查看详情",
                                                  exact=True).click()
                                 expect(task).to_contain_text("node")
+                                expect(task).to_contain_text(finished)
                                 task.get_by_role("button", name="Show command" if locale == "en-US" else "显示命令",
                                                  exact=True).click()
                                 expect(task.locator("pre").first).to_contain_text("<script>synthetic-command</script>")

@@ -4,6 +4,8 @@ import { History } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { useNodeDetails } from "@/contexts/NodeDetailsContext";
+import { formatTimeWithSeconds } from "@/components/status/slaFormat";
+import { normalizeLanguage } from "@/utils/language";
 
 const nonnegative = z.number().int().nonnegative();
 const taskCursor = z.string().min(1).max(1024).regex(/^[A-Za-z0-9_-]+$/);
@@ -55,9 +57,9 @@ async function readHistory<T>(method: string, params: object, schema: z.ZodType<
   return parsed.data.result;
 }
 
-function formatTime(value: string | null): string | null {
-  if (value === null || !Number.isFinite(Date.parse(value))) return null;
-  return new Date(value).toLocaleString();
+function historyTime(value: string, language: string, unknown: string): string {
+  if (!Number.isFinite(Date.parse(value))) return unknown;
+  return formatTimeWithSeconds(value, normalizeLanguage(language) || undefined);
 }
 
 function ChunkViewer({ taskID, kind, resultCursor }: { taskID: string; kind: "command" | "output"; resultCursor?: string }) {
@@ -135,7 +137,7 @@ function ChunkViewer({ taskID, kind, resultCursor }: { taskID: string; kind: "co
 }
 
 function TaskDetail({ taskID, id }: { taskID: string; id: string }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { nodeDetail } = useNodeDetails();
   const [detail, setDetail] = useState<Detail | null>(null);
   const [cursorStack, setCursorStack] = useState<string[]>([""]);
@@ -192,7 +194,7 @@ function TaskDetail({ taskID, id }: { taskID: string; id: string }) {
           <Flex direction="column" gap="2">
             <Flex align="center" gap="2" wrap="wrap"><Text weight="medium" className="break-all">{name}{result.client_truncated ? "…" : ""}</Text><Badge color={state === "failed" ? "red" : state === "success" ? "green" : "gray"}>{t(`execHistory.${state}`)}</Badge></Flex>
             {result.exit_code !== null && <Text size="1" color="gray">{t("execHistory.exitCode", { code: result.exit_code })}</Text>}
-            {result.finished_at && <Text size="1" color="gray">{t("execHistory.finishedAt", { time: formatTime(result.finished_at) ?? t("execHistory.unknown") })}</Text>}
+            {result.finished_at && <Text size="1" color="gray">{t("execHistory.finishedAt", { time: historyTime(result.finished_at, i18n.language, t("execHistory.unknown")) })}</Text>}
             {result.output_available ? <ChunkViewer taskID={taskID} kind="output" resultCursor={result.cursor} /> :
               <Text size="2" color="orange">{t("execHistory.unsupportedField")}</Text>}
           </Flex>
@@ -211,7 +213,7 @@ function TaskDetail({ taskID, id }: { taskID: string; id: string }) {
 }
 
 export default function ExecHistory() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState<Page | null>(null);
   const [cursorStack, setCursorStack] = useState<string[]>([""]);
@@ -262,7 +264,7 @@ export default function ExecHistory() {
                 <Button size="1" variant="soft" aria-expanded={selected === task.task_id} aria-controls={selected === task.task_id ? detailPanelID : undefined} onClick={() => setSelected(selected === task.task_id ? null : task.task_id)}>{t(selected === task.task_id ? "execHistory.hideDetails" : "execHistory.showDetails")}</Button>
               </Flex>
               <Text size="2" color="gray">{t("execHistory.targets", { count: task.target_count ?? t("execHistory.unknown") })} · {t("execHistory.counts", { pending: task.pending_count, success: task.success_count, failed: task.failed_count, unknown: task.unknown_count })}</Text>
-              <Text size="1" color="gray">{task.earliest_result_time ? t("execHistory.earliest", { time: formatTime(task.earliest_result_time) ?? t("execHistory.unknown") }) : t("execHistory.timeUnknown")}</Text>
+              <Text size="1" color="gray">{task.earliest_result_time ? t("execHistory.earliest", { time: historyTime(task.earliest_result_time, i18n.language, t("execHistory.unknown")) }) : t("execHistory.timeUnknown")}</Text>
               {task.status !== "retained" && <Text size="1" color="orange">{t(task.status === "no_retained_results" ? "execHistory.noRetained" : "execHistory.incomplete")}</Text>}
               {task.time_incomplete && task.earliest_result_time && <Text size="1" color="gray">{t("execHistory.timeIncomplete")}</Text>}
               {selected === task.task_id && <TaskDetail key={task.task_id} id={detailPanelID} taskID={task.task_id} />}

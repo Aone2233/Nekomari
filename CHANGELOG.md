@@ -14,8 +14,9 @@ Nekomari's own.
 
 - **Execution-history candidate, not released or deployed.** Add a paged,
   `tasks:read`-scoped view with explicit bounded command/output reads, warning
-  labels and five locales. Startup backfills a stable task order, including
-  tasks written during a rollback. Synthetic browser, focused Go and isolated
+  labels and five locales. Earliest-result and completion times use the panel
+  language and show seconds and the viewer's time zone. Startup backfills a
+  stable task order, including tasks written during a rollback. Synthetic browser, focused Go and isolated
   old/new/old/new startup checks cover the implementation; the rollback-era
   tasks were SQL fixtures, not Agent-dispatched commands. Acceptance of the
   history view and the normal release/backup gates still apply.
