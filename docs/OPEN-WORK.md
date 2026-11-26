@@ -505,9 +505,30 @@ The next bounded releases and operational gates, in order:
    The deployed v1.8.2 admin node-row entry provides both buttons independently of
    the public theme. The owner confirmed both buttons on 2026-11-26; the CSV
    acceptance gate is closed. See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md).
-   Next: bounded exec-result history, designed separately in
-   [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md). Later slices include
-   the cost-forecast column, roles UI, frontend budgets and an a11y pass.
+   Bounded exec-result history shipped in the v1.8.3 panel slice above. The
+   current accessibility candidate is described below; cost forecast, roles UI,
+   frontend budgets and the wider accessibility pass are separate slices.
+
+**Unreleased terminal-dialog accessibility candidate (2026-11-05):** the
+independent `codex/terminal-dialog-focus` branch traps Tab focus, restores the
+previous element where possible, and defaults destructive dialogs to Cancel.
+It also fixes the separately reproducible quick-open bug where Enter on Cancel
+could select a highlighted suggestion and open a file. Mounted Chromium tests
+exercise the actual file-manager delete and editor quick-open paths with stubbed
+RPC, plus suggestion buttons, disabled submission, nested dialogs and mobile.
+Follow-up preserves deliberate post-close focus and checks that submitting Go
+to Line/Column focuses the real Monaco editor with the requested cursor;
+cancelling still returns to the launcher. On 2026-11-26,
+PR CI left a nested child open on Escape. Sending Escape at its first focus
+also reproduced that result locally. The follow-up routes Escape to the dialog
+containing the focused target before the document capture handler; composing
+Escape still belongs to the input method. A desktop Orca check then found that
+arrowing to a file changed only the visual highlight. Quick open now exposes
+the highlighted option of an editable combobox. Orca reported the actual file
+name after Down; IBus/libpinyin committed text and cancelled preedit without
+opening a file or dismissing the dialog. See the [checks and their limits](./TESTING.md#native-terminal-dialog-check).
+This is not cross-platform or human accessibility sign-off. The dialog changes
+are separate from the v1.8.3 panel slice and not deployed.
 
 **Hostname probe family selection (draft, 2026-11-05):** the reported
 multi-node IPv6 hostname is rejected by the conservative mixed-family guard.
@@ -2195,7 +2216,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 |---|---|---|
 | `docs/audits/` has no retention policy or owner, and one tree ships a production-mutating script | `docs/audits/2026-09-30/` | Keep audits as immutable dated evidence, but say so somewhere and decide what stays |
 | The React Compiler rules are advisory until the remaining findings are triaged | `docs/ROADMAP.md` A4, `frontend/script/audit-compiler.mjs` | Now a CI step and currently at 0; adoption needs the triage, not the gate |
-| `TerminalDialog` claims modality it does not enforce | `frontend/src/pages/terminal/TerminalDialog.tsx` | `aria-modal="true"` with no Tab trap, and focus is not returned to the trigger on close. The destructive half — Enter on the focused *Cancel* button running the confirm action — is fixed (the decision moved into `dialogKeys.ts`, which is unit-tested); a Tab trap needs a decision about focus order across the suggestion list |
+| Terminal dialog accessibility | `frontend/src/pages/terminal/TerminalDialog.tsx` | Unreleased and undeployed; the candidate has mounted keyboard coverage and a [Linux Orca/IBus check](./TESTING.md#native-terminal-dialog-check), not a human or cross-platform acceptance |
 | The mutation-envelope check is re-implemented at ~24 call sites | `frontend/src/lib/`, `frontend/src/pages/admin/` | Only the node table uses the shared helper; the loosest call site does not check `response.ok` at all |
 | Locale strings are injected as raw HTML at 8 sites with `escapeValue: false` | `frontend/src/i18n/config.ts` + 8 components | Today's values are benign markup, but `frontend/crowdin.yml` accepts outside contributions and `dompurify` is already a dependency |
 | Absolute asset URLs ignore the configurable `base` | `frontend/src/components/Flag.tsx` + 2 more | A sub-path deployment gets 404 flags and logos |

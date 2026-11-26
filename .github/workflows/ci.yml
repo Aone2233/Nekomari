@@ -51,6 +51,7 @@ jobs:
           python script/load-preview.browser.spec.py
           python script/exec-history.browser.spec.py
           python script/file-manager.browser.spec.py
+          python script/terminal-dialog.browser.spec.py
           python script/selector-state.browser.spec.py
           python script/number-picker.browser.spec.py
           python script/remote-file-tree.browser.spec.py

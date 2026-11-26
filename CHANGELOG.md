@@ -8,6 +8,11 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- Terminal dialogs keep keyboard focus inside the dialog and start destructive
+  confirmations on Cancel. In Go to File, the file name announced by a screen
+  reader follows the arrow-key highlight; Tab goes directly to Cancel, and
+  Enter there cancels instead of opening the highlighted file.
+
 ## [1.8.3] — 2026-11-26 (opt-in panel release)
 
 - Register panel shutdown signals before announcing or opening the normal or
