@@ -407,21 +407,25 @@ jobs:
         run: ls -la dist
 
       - name: Stage opt-in Agent assets
+        id: stage_agents
         shell: bash
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           set -euo pipefail
-          if [ "$RELEASE_TAG" != v1.7.30 ] && [ "$RELEASE_TAG" != v1.8.0 ] && [ "$RELEASE_TAG" != v1.8.1 ]; then
-            echo '::error::this manual-only Agent publication policy is restricted to v1.7.30, v1.8.0 and v1.8.1'
-            exit 1
-          fi
+          case "$RELEASE_TAG" in
+            v1.7.30|v1.8.0|v1.8.1) prefix=manual- ;;
+            v1.8.2) prefix='' ;; # standard filenames, initially published only as a prerelease
+            *) echo '::error::manual-only Agent publication requires explicit review for this tag'; exit 1 ;;
+          esac
           shopt -s nullglob
           agents=(dist/komari-agent-*)
           if [ "${#agents[@]}" -ne 5 ]; then
             echo "::error::expected five Agent binaries, found ${#agents[@]}"
             exit 1
           fi
+          printf 'prefix=%s\n' "$prefix" >> "$GITHUB_OUTPUT"
+          if [ -z "$prefix" ]; then exit 0; fi
           for f in "${agents[@]}"; do
             mv -- "$f" "$(dirname "$f")/manual-$(basename "$f")"
           done
@@ -489,7 +493,7 @@ jobs:
         with:
           subject-path: |
             dist/nekomari-*
-            dist/manual-komari-agent-*
+            dist/${{ steps.stage_agents.outputs.prefix }}komari-agent-*
 
       - name: Refuse an existing release
         env:
@@ -512,6 +516,7 @@ jobs:
           name: ${{ needs.resolve.outputs.tag }}
           draft: true
           make_latest: false
+          prerelease: ${{ needs.resolve.outputs.tag == 'v1.8.2' }}
           overwrite_files: false
           fail_on_unmatched_files: true
           generate_release_notes: true
@@ -527,17 +532,20 @@ jobs:
             | File | What |
             |---|---|
             | `nekomari-<os>-<arch>` | Server + web panel (default theme embedded) |
-            | `manual-komari-agent-<os>-<arch>` | Opt-in monitoring agent (probe) |
+            | `${{ steps.stage_agents.outputs.prefix }}komari-agent-<os>-<arch>` | Monitoring agent (probe) |
             | `sbom.spdx.json` | SPDX SBOM for the binaries above (syft) |
             | `SHA256SUMS.txt` | Checksums for every attached file |
 
-            > Agent binaries are intentionally prefixed `manual-` for this release.
-            > Existing Agents will not auto-update to them; install a checksum-verified
-            > binary explicitly after reviewing the node and retaining its old binary.
-            > Installer scripts and panel-requested automatic updates do not target these
-            > assets. The previous release remains GitHub's latest installer target.
+            > v1.8.2 ships standard Agent filenames. Stable Agent self-update and GitHub
+            > Latest skip the initial prerelease. Once the same release is promoted,
+            > default installers and stable updates can select it. Earlier releases
+            > with manual-prefixed assets still require an explicit install.
 
-            For v1.8.1, upgrade the Panel before an Agent: older Panels can
+            In v1.8.2, the admin server list links to per-node historical charts
+            and both CSV exports regardless of the public theme. Deploying the
+            panel does not update any running Agent.
+
+            For v1.8.1 and v1.8.2, upgrade the Panel before an Agent: older Panels can
             interpret the new Agent's unknown probe result as packet loss.
             Known third-party theme limitations include Next Pro 2.0.0
             hydration, LuminaCustom 3.1.2 and Aero 1.4.5 mobile navigation,
@@ -557,7 +565,7 @@ jobs:
 
             ```bash
             ./nekomari-<os>-<arch> server              # then open http://localhost:25774
-            ./manual-komari-agent-<os>-<arch> -e https://your-panel -t <token>
+            ./${{ steps.stage_agents.outputs.prefix }}komari-agent-<os>-<arch> -e https://your-panel -t <token>
             ```
 
             ### New in this fork
@@ -619,13 +627,18 @@ jobs:
               "manual-komari-agent-windows-amd64.exe", "manual-komari-agent-darwin-amd64",
               "manual-komari-agent-darwin-arm64", "SHA256SUMS.txt", "sbom.spdx.json",
           }
-          if release["tag_name"] != sys.argv[2] or not release["draft"] or release["prerelease"]:
+          staged = sys.argv[2] == "v1.8.2"
+          if staged:
+              expected = {name.removeprefix("manual-") for name in expected}
+          if release["tag_name"] != sys.argv[2] or not release["draft"] or release["prerelease"] != staged:
               raise SystemExit("unexpected draft release state")
           if len(names) != len(expected) or set(names) != expected:
               raise SystemExit("unexpected release asset set: " + repr(names))
           PY
           id=$(python3 -c 'import json; print(json.load(open("/tmp/draft-release.json"))["id"])')
-          gh api --method PATCH "repos/${RELEASE_REPO}/releases/${id}" -F draft=false -f make_latest=false >/dev/null
+          staged=false
+          if [ "$RELEASE_TAG" = v1.8.2 ]; then staged=true; fi
+          gh api --method PATCH "repos/${RELEASE_REPO}/releases/${id}" -F draft=false -f make_latest=false -F prerelease="$staged" >/dev/null
           gh api "repos/${RELEASE_REPO}/releases/tags/${RELEASE_TAG}" --jq '[.draft,.prerelease,.tag_name] | @tsv'
 
   # 发布后的部署验证：真的把 Release 产物当成"用户拿到的东西"跑一遍。
@@ -673,4 +686,6 @@ jobs:
           # Give the Release a moment to become downloadable, then run the same
           # script a user would: no source tree, no local build, only the assets.
           sleep 20
-          NEKOMARI_MANUAL_AGENT_ASSET=1 bash deploy/deploy-verify.sh "" 25799 "${{ needs.resolve.outputs.tag }}" "${{ matrix.arch }}"
+          tag="${{ needs.resolve.outputs.tag }}"
+          if [ "$tag" != v1.8.2 ]; then export NEKOMARI_MANUAL_AGENT_ASSET=1; fi
+          bash deploy/deploy-verify.sh "" 25799 "$tag" "${{ matrix.arch }}"

@@ -17,8 +17,9 @@ from urllib.error import URLError
 from urllib.request import build_opener, ProxyHandler, Request
 
 
-OLD_HASH = '787a4cd'
-OLD_SHA256 = 'c1c3dd43a77191206b0665e0e11547575091495a7946dd4312ef2e1f07bcabdd'
+OLD_VERSION = 'v1.8.2'
+OLD_HASH = 'd58ec32'
+OLD_SHA256 = 'e26d95ea0c4003a4755cab123e903809ef518c8bfeea425a7abac10ae8fce1d8'
 
 
 def check(ok, message):
@@ -65,7 +66,7 @@ def drill(old, candidate, candidate_hash, root):
                 version = wait('/api/version')
                 check(version['hash'] == expected, 'unexpected panel build')
                 if binary == old:
-                    check(version['version'] == 'v1.8.1', 'unexpected release')
+                    check(version['version'] == OLD_VERSION, 'unexpected release')
                 with closing(sqlite3.connect(root / 'data/komari.db')) as db:
                     db.execute('pragma foreign_keys=on')
                     yield db
@@ -82,7 +83,6 @@ def drill(old, candidate, candidate_hash, root):
             check(code == 0, f'{expected}: unexpected exit {code}')
 
     def seed(db, key):
-        # Only columns that exist in v1.8.1. No execution API or connected Agent.
         with db:
             db.execute('insert into tasks(task_id,clients,command) values(?,?,?)',
                        (key, '["fixture-node"]', 'command marker ' + key))
@@ -124,7 +124,7 @@ def drill(old, candidate, candidate_hash, root):
         check(after[:1] == before and after[1][2] == identity, 'forward migration changed an identity or old row')
     with boot(candidate, candidate_hash) as db:
         check(snapshot(db, keys) == after, 'second candidate startup was not idempotent')
-    print('PASS: v1.8.1 -> candidate -> v1.8.1 + legacy SQL insert -> candidate -> candidate; '
+    print(f'PASS: {OLD_VERSION} -> candidate -> {OLD_VERSION} + legacy SQL insert -> candidate -> candidate; '
           'orders, identities, contents, quick_check and clean stops verified')
 
 

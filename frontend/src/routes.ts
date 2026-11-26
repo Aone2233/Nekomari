@@ -58,6 +58,10 @@ export const routes: RouteObject[] = [
         element: React.createElement(Admin),
       },
       {
+        path: "servers/:uuid/charts",
+        element: React.createElement(lazy(() => import("./pages/admin/NodeCharts"))),
+      },
+      {
         path: "uptime-history",
         element: React.createElement(lazy(() => import("./pages/admin/uptime-history"))),
       },

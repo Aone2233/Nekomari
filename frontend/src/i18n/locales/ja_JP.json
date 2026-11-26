@@ -189,6 +189,8 @@
     "days_other": "{{count}} 日",
     "downsampleAlgorithm": "ダウンサンプル",
     "endTime": "終了時刻",
+    "historyExport": "チャートとエクスポート",
+    "nodeUnavailable": "このノードを読み込めませんでした。",
     "exportCsv": "CSV エクスポート",
     "exportRecordsCsv": "履歴の集計バケットを CSV 出力",
     "exportBucketsHelp": "生サンプルではなく集計バケットです。期間の両端にある不完全なバケットは除外します。",

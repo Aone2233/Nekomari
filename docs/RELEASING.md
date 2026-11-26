@@ -2,6 +2,24 @@
 
 ## Cut a release
 
+**v1.8.2 publication evidence (2026-11-24):** [Release ID 456220909](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.2) was published as a prerelease at `d58ec32`. [Exact CI](https://github.com/Aone2233/Nekomari/actions/runs/45307225895), [release verification](https://github.com/Aone2233/Nekomari/actions/runs/45308351923) and [image publication](https://github.com/Aone2233/Nekomari/actions/runs/45310050142) passed; the checksums and attestations of all eight binaries were verified. After acceptance of all 16 Agents, GitHub Latest was moved from v1.7.29 to v1.8.2; verification completed at 03:42:37 UTC. The release ID, git tag and attachment IDs/digests were unchanged. All five Agent installer URLs under `releases/latest/download/` selected the v1.8.2 files. Neither image’s `latest` or `1.8` alias changed (the Agent `1.8` alias remained absent).
+
+**v1.8.2 staged publication policy (not a rollout record):** Publish the plain
+version tag as a GitHub *prerelease*, not Latest, with standard Agent filenames.
+Merely withholding Latest from a stable release is insufficient: stable Agents
+search the release list. Drafts and prereleases are skipped by both ordinary
+and panel-targeted stable selection. Keep both Docker moving aliases unchanged.
+
+Require green CI on the tagged commit (including the WebSocket fix), published
+amd64/arm64 verification, provenance, checksums and both Docker image checks.
+Before production, retain and restore-test a fresh off-host backup. Upgrade
+the panel by digest, then install the verified Agent explicitly on a canary;
+check the service executable, reported version and fresh samples before
+continuing in batches. Retain per-node rollback binaries. Stop on failure.
+Only after fleet acceptance, promote **the same release ID** (no retag, no
+asset replacement) to stable and GitHub Latest. Verify the Latest API and
+installer asset URLs; never move Docker `latest` or `1.8` for this release.
+
 **v1.8.1 release (2026-11-16):** The [formal release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)
 was published from merge commit `787a4cd19e3750ad4fcd6c25aa273b303c415b7a`.
 Exact-commit CI [43790273368](https://github.com/Aone2233/Nekomari/actions/runs/43790273368)

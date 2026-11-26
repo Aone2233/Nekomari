@@ -13,13 +13,22 @@ Nekomari's own.
   labels and five locales. Startup backfills a stable task order, including
   tasks written during a rollback. Synthetic browser, focused Go and isolated
   old/new/old/new startup checks cover the implementation; the rollback-era
-  tasks were SQL fixtures, not Agent-dispatched commands. The CSV owner
-  acceptance and normal release/backup gates still apply. Rebased onto v1.8.1 main on
-  2026-11-17; the embedded default theme was regenerated from the merged sources.
+  tasks were SQL fixtures, not Agent-dispatched commands. Acceptance of the
+  history view and the normal release/backup gates still apply.
   Unaddressable legacy rows are skipped and counted rather than failing the page, and
   paging continues past them. A page's counts come from one aggregate statement, so
   they are exact and the list no longer holds the single main connection for 20
   round trips; see `docs/EXEC-HISTORY-DESIGN.md`.
+
+- Pin the panel and Agent to the upstream Gorilla WebSocket masking-key fix
+  for [GO-2026-6278](https://pkg.go.dev/vuln/GO-2026-6278). Both Go modules
+  previously selected v1.5.3. A dependency update in source does not patch
+  already running binaries.
+
+- **Node charts and CSV exports in the admin server list.** A third-party
+  theme can replace the public node page and omit its exports. Each node now
+  links to the built-in historical chart under `/admin/servers/:uuid/charts`,
+  with both downloads and no need to switch themes.
 
 - **Documentation index and link check.** `README.md` now lists all 80 top-level
   documents in `docs/` — the 19 it described plus 61 generated entries under

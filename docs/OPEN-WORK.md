@@ -14,19 +14,29 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
+**v1.8.2 production (2026-11-24):** OC424 runs the [verified v1.8.2 panel](./DEPLOY-OC424.md#v182-panel-cutover-2026-11-24-utc). All 16 Agents passed the final binary, version and telemetry checks. The same release was promoted to GitHub Latest; Docker aliases were unchanged.
+
 **v1.8.1 publication (2026-11-16):** The [formal release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.1)
 is published from merge commit `787a4cd19e3750ad4fcd6c25aa273b303c415b7a`.
 Exact-commit CI passed 8/8, the release workflow 10/10 and Docker publication
 2/2. Published checksums and binary attestations verified; a separate local
 deployment check passed 23/23. See [`RELEASING.md`](./RELEASING.md) for the
-release evidence and limitations. OC424 now runs the pinned v1.8.1 panel;
+release evidence and limitations. OC424 then ran the pinned v1.8.1 panel;
 fresh pre/post encrypted archives and isolated recovery drills passed. See
 [`DEPLOY-OC424.md`](./DEPLOY-OC424.md). That cutover did not upgrade any Agents.
 
-**Agent verification (2026-11-23):** All 16 registered nodes now report v1.8.1
+**Agent verification (2026-11-23):** All 16 registered nodes then reported v1.8.1
 and had recent CPU, memory and ping samples. On BERO (amd64) and OC424 (arm64),
 the running executables also matched the published release checksums. See the
 [production verification](./DEPLOY-OC424.md#v181-agent-verification-2026-11-23).
+
+**Admin chart deployment gate (2026-11-24):** #181 merged as `ae10d8c` after
+8/8 PR checks. Its [merge CI](https://github.com/Aone2233/Nekomari/actions/runs/45300595197)
+flagged `GO-2026-6278` in the panel’s Gorilla WebSocket v1.5.3. The nested
+Agent module independently pinned the same version. That failed commit was
+not deployed. #182 fixed both dependencies; the release commit passed
+[exact CI](https://github.com/Aone2233/Nekomari/actions/runs/45307225895)
+and the later cutover is recorded above.
 
 **CI follow-up (2026-11-15):** Windows run 43714186713 failed the `series`
 case of `TestLostDeleteAcknowledgementStopsPendingDataFromReturning`: its two
@@ -482,10 +492,15 @@ The next bounded releases and operational gates, in order:
    and five-locale button. Deployed on OC424 with upgrade9/9, identical
    client rows, fresh pre/post archives and two passing isolated restore
    drills. The v1.7.29 correction replaces misleading v1.7.28 reconstructed
-   history rows with retained bucket data and is now deployed. Owner on-page
-   acceptance of both Export CSV and Export history-bucket CSV remains open.
-   See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md). After the v1.8.1
-   verification gates: bounded exec-result history, designed separately in
+   history rows with retained bucket data and is now deployed. On 2026-11-23
+   the owner downloaded MegaBox’s load-history CSV via its URL and confirmed
+   the bucket headers and data rows. The built-in chart CSV button passed a
+   separate isolated v1.8.1 browser check. Neither is an owner click on an
+   export button: the deployed Emerald Insights node page has neither control.
+   The deployed v1.8.2 admin node-row entry provides both buttons independently of
+   the public theme. The owner confirmed both buttons on 2026-11-26; the CSV
+   acceptance gate is closed. See [`METRIC-CSV-EXPORT.md`](./METRIC-CSV-EXPORT.md).
+   Next: bounded exec-result history, designed separately in
    [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md). Later slices include
    the cost-forecast column, roles UI, frontend budgets and an a11y pass.
 
@@ -2151,7 +2166,7 @@ that `ROADMAP.md` §F had and lost when it was frozen.
 | Most agents still run as root; only MAC is non-root | `docs/DEPLOY-OC424.md` | The NOSLA pattern (unprivileged user + `AmbientCapabilities=CAP_NET_RAW`) works; Alpine has no `setcap`. OpenRC install support shipped in v1.6.25, but moving users is still a fleet-wide change |
 | Windows local builds can fail on a locked esbuild temp file | Windows dev environment | The build itself is deterministic on Windows: two builds with a project-local `TEMP`/`TMP` were byte-identical (819 files, diff 0). With the system `%TEMP%`, esbuild sometimes cannot delete its temp file ("Access is denied"); CI's Windows runner is unaffected. Not a source change — a dev-environment workaround until the temp cleaner/AV exclusion is settled |
 | Encrypted backup follow-up | `docs/ENCRYPTED-BACKUPS.md`; `docs/MAC-WAN-BACKUP.md` | MAC-WAN's encrypted daily timer is active and has run repeatedly; the newest scheduled archive is 2026-11-16T03:30:16Z, about 258 MB, and the 15-minute health timer reported `status=ok` for it. The v1.8.1 cutover added pre and post archives that passed isolated v1.8.0 and v1.8.1 boot drills. Owner-reported offline download is not independent-media restore. Live incident delivery and a stronger drill policy remain open; keep all old plaintext and manual rollback copies until explicit deletion approval |
-| Execution history is implemented and replayed onto current main, but not released or deployed | branch `codex/exec-history-implementation`; `docs/EXEC-HISTORY-DESIGN.md` | The v1.9.0 slice was replayed onto v1.8.1 main on 2026-11-17: 13 commits, 35 files (32 of them source), no source conflicts. Only CHANGELOG.md, docs/OPEN-WORK.md and the built defaultTheme `dist.tar.zst` conflicted; the documents keep both sides' additions and the archive was regenerated from the merged sources rather than merged (`npm install && npm run build`, then `node script/embed-theme.mjs`, 1138 files). The replayed tree builds with CGO, vets clean and passes the database/tasks, dbcore, sqlitetune, pkg/rpc, web/rpc/jsonrpc and web/router suites, plus frontend lint and 219 frontend tests. 8/8 CI evidence exists for `706685c`, `89b900c`, `34ee5e4` and `32c8485` (runs 43987832874, 43989372866, 44003074054, 44005959823); every later head needs its own run. The measured list cost replaced the per-parent queries: on a scratch database of 20 tasks x 1,000 results a page fell from 31-38 ms to 3.8-6.6 ms (8-9x), which also shortens how long the page holds the single main connection. Counts are now exact; the 1,000-row ceiling and `counts_truncated` are gone, and the contract records both. The 2026-11-17 review's malformed-row defect is fixed there: unaddressable rows are skipped and counted in `skipped_malformed`, the next cursor is minted from the last row actually fetched so a page of nothing but bad rows still advances, and a boundary that cannot travel sets `blocked` instead of disappearing. What remains is owner on-page acceptance of the history view and the normal release, backup and deploy gates; it is not deployed and involves no Agent rollout |
+| Bounded execution history is implemented, not released or deployed | [Draft PR #165](https://github.com/Aone2233/Nekomari/pull/165); [design and rollback evidence](./EXEC-HISTORY-DESIGN.md) | The candidate incorporates v1.8.2 main (`7fccca6`); the regenerated embedded UI passed both the admin CSV and history browser checks. The v1.8.2 rollback drill passed on synthetic data. Review the combined change, run CI on the exact commit, and obtain owner acceptance of the history view. Fresh backups and published-artifact verification remain release gates; no Agent rollout is needed for this feature. |
 | OIDC + 2FA makes SSO login fail-closed with no way for the browser to answer the challenge | `docs/ROADMAP.md` §F12 | Deliberately shipped as a gate, not half a state machine. Needs a one-time pending token plus a code prompt; production impact is zero while OIDC is off |
 | `sso_id` survives a password change, and `DeleteAllSessions()` is global | `database/accounts/` | Policy questions now that the SSO path requires TOTP; recommendation was (b)+(c) in the audit report |
 | A committed admin password from the SECRETS incident still has to be changed | `docs/SECRETS.md` incident 4 | An ops action on the live panel, not a repository change |

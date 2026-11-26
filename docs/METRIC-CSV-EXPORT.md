@@ -1,10 +1,40 @@
 # Metric CSV exports
 
 The fixes described here were released in v1.7.29 and deployed on OC424 on
-2026-11-05. Owner acceptance in the signed-in browser remains open. The
+2026-11-05. The
 published v1.7.28 record CSV schema differs; do not treat that version's
 reconstructed records as raw observations or use them for traffic billing.
-See `OPEN-WORK.md` for current delivery state.
+See [OPEN-WORK.md](./OPEN-WORK.md) for current delivery state.
+
+**Verification (2026-11-23):** The owner downloaded the load-history CSV for
+MegaBox in the production browser using the endpoint URL and confirmed
+`bucket_start_utc`, `sample_count` and data rows. This was not a chart-button
+click: the installed Emerald Insights node page has neither built-in export
+button. No production theme change or copy of the downloaded data was needed.
+
+Separately, the [browser drill](../frontend/script/metric-chart-csv-panel.spec.py)
+ran against the checksum-verified v1.8.1 Linux amd64 panel (`787a4cd`) with its
+embedded default theme and a fresh synthetic store. In a signed-in Chinese
+browser it selected the one-hour window, clicked **导出 CSV** and parsed the
+actual attachment. CPU and memory values matched the seeded minute buckets;
+a missing CPU sample was empty, not zero. This tests the published button,
+not the operator's session or the Emerald Insights theme. To repeat, run
+`python frontend/script/metric-chart-csv-panel.spec.py --panel-binary /path/to/nekomari`
+with Playwright/Chromium in a network namespace with only loopback enabled.
+
+## Theme-independent admin entry (v1.8.2)
+
+Go to **Admin → Servers → Charts & export** on the node's row. The panel-owned
+route is `/admin/servers/:uuid/charts`. It starts with one hour of historical
+metrics; **Export CSV** uses the loaded chart series and **Export history
+buckets CSV** fetches the retained load buckets for the selected range. It
+neither reads nor saves the public theme's chart template. The public node
+page is unchanged. This entry is not present in the v1.8.1 release. To test
+it on the v1.8.2 panel binary, add `--admin-chart` to the drill above.
+
+On 2026-11-26 the owner confirmed acceptance of both CSV buttons. This closes
+the production UI check for these two exports; it does not establish that
+exported traffic agrees with the provider's billing records.
 
 ## History bucket endpoints
 

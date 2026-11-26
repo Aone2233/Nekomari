@@ -1,10 +1,9 @@
 # Remote execution history: design and safety contract
 
-Status: implemented on branch `codex/exec-history-implementation`, replayed onto v1.8.1
-main on 2026-11-17; not released or deployed. 8/8 CI evidence exists for `706685c`,
-`89b900c`, `34ee5e4` and `32c8485` (runs 43987832874, 43989372866, 44003074054,
-44005959823); a later head needs its own run. Owner on-page acceptance of the history page and of the
-two CSV downloads, and the normal release/backup gates, remain open.
+Status: draft PR #165, not released or deployed. Owner acceptance of the
+[two CSV buttons](./METRIC-CSV-EXPORT.md#theme-independent-admin-entry-v182)
+is complete. The history page still needs its own owner acceptance, exact-commit
+CI and the normal release and backup checks.
 
 ## Existing behavior and the actual gap
 
@@ -229,15 +228,26 @@ The harness also refused a non-isolated network and detected substitution of
 the old executable for the candidate. This checks clean process transitions,
 not production data, Agent execution, a crash, or an off-host restore.
 
+**v1.8.2 rollback check (2026-11-26).** After integrating main `7fccca6`,
+the same five boots passed three times against the published Linux/amd64
+v1.8.2 panel (`d58ec32`, SHA-256 checked against the release manifest). Each
+run used a fresh synthetic database, an unprivileged account and a loopback-only
+network. The candidate was built with CGO and Go 1.27.4 from Git tree
+`2034764d5c72` (a local tree stamp, not a release commit). Separate browser
+checks against that same embedded binary exercised both admin CSV downloads
+under a replacement public theme and the read-only history view in English
+desktop and Chinese mobile layouts. These checks did not use production data,
+dispatch a command or constitute owner acceptance of the history view.
+
 To repeat with the [drill](../deploy/experiments/exec-history-rollback.py),
-use Python 3.11+ and Linux/amd64. Supply the official v1.8.1 `nekomari-linux-amd64`
+use Python 3.11+ and Linux/amd64. Supply the official v1.8.2 `nekomari-linux-amd64`
 and a candidate built with CGO and `utils.VersionHash` set to its commit. Run as
 an unprivileged user in a fresh network namespace with only loopback enabled
 (on hosts allowing unprivileged user namespaces):
 
 ```sh
 unshare -Urn sh -ec 'ip link set lo up; exec python3 deploy/experiments/exec-history-rollback.py "$@"' \
-  sh /path/to/v1.8.1/nekomari-linux-amd64 /path/to/candidate "$(git rev-parse --short=7 HEAD)"
+  sh /path/to/v1.8.2/nekomari-linux-amd64 /path/to/candidate "$(git rev-parse --short=7 HEAD)"
 ```
 
 A separate network-isolated disposable panel was built with the current

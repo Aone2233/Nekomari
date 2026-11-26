@@ -226,10 +226,13 @@ jobs:
               (cd ctx && grep -F "  nekomari-linux-$arch" SHA256SUMS.txt | sha256sum -c -)
             done
           elif [ "$PACKAGE" = nekomari-agent ]; then
-            gh release download "$TAG" --repo "$REPO" --pattern 'manual-komari-agent-linux-*' --dir ctx
+            prefix=manual-
+            if [ "$TAG" = v1.8.2 ]; then prefix=''; fi
+            gh release download "$TAG" --repo "$REPO" --pattern "${prefix}komari-agent-linux-*" --dir ctx
             for arch in amd64 arm64; do
-              (cd ctx && grep -F "  manual-komari-agent-linux-$arch" SHA256SUMS.txt | sha256sum -c -)
-              mv "ctx/manual-komari-agent-linux-$arch" "ctx/komari-agent-linux-$arch"
+              name="${prefix}komari-agent-linux-$arch"
+              (cd ctx && awk -v asset="$name" '$2 == asset' SHA256SUMS.txt | sha256sum --strict -c -)
+              if [ -n "$prefix" ]; then mv "ctx/$name" "ctx/komari-agent-linux-$arch"; fi
             done
           else
             echo "::error::unsupported image package $PACKAGE"
@@ -241,7 +244,7 @@ jobs:
       # remains available for explicit deployment, but its moving aliases stay
       # on the last auto-update-compatible release.
       - name: Verify manual Agent publication policy
-        if: matrix.package == 'nekomari-agent'
+        if: matrix.package == 'nekomari-agent' && steps.tag.outputs.tag != 'v1.8.2'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
@@ -285,9 +288,9 @@ jobs:
           # 而 "false" 正是非空字符串。
           tags: |
             type=raw,value=${{ steps.tag.outputs.tag }}
-            type=raw,value=latest,enable=${{ !contains(steps.tag.outputs.tag, '-') && steps.tag.outputs.release_verified == 'true' && matrix.package == 'nekomari' && steps.tag.outputs.tag != 'v1.8.1' }}
+            type=raw,value=latest,enable=${{ !contains(steps.tag.outputs.tag, '-') && steps.tag.outputs.release_verified == 'true' && matrix.package == 'nekomari' && steps.tag.outputs.tag != 'v1.8.1' && steps.tag.outputs.tag != 'v1.8.2' }}
             type=semver,pattern={{version}},value=${{ steps.tag.outputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }},enable=${{ matrix.package == 'nekomari' && steps.tag.outputs.tag != 'v1.8.1' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }},enable=${{ matrix.package == 'nekomari' && steps.tag.outputs.tag != 'v1.8.1' && steps.tag.outputs.tag != 'v1.8.2' }}
 
       # 冒烟测试：镜像必须真的能跑起来。
       #
