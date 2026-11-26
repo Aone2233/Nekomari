@@ -509,8 +509,7 @@ The next bounded releases and operational gates, in order:
    current accessibility candidate is described below; cost forecast, roles UI,
    frontend budgets and the wider accessibility pass are separate slices.
 
-**Unreleased terminal-dialog accessibility candidate (2026-11-05):** the
-independent `codex/terminal-dialog-focus` branch traps Tab focus, restores the
+**Terminal-dialog accessibility slice:** merged PR #167 traps Tab focus, restores the
 previous element where possible, and defaults destructive dialogs to Cancel.
 It also fixes the separately reproducible quick-open bug where Enter on Cancel
 could select a highlighted suggestion and open a file. Mounted Chromium tests
@@ -527,8 +526,9 @@ arrowing to a file changed only the visual highlight. Quick open now exposes
 the highlighted option of an editable combobox. Orca reported the actual file
 name after Down; IBus/libpinyin committed text and cancelled preedit without
 opening a file or dismissing the dialog. See the [checks and their limits](./TESTING.md#native-terminal-dialog-check).
-This is not cross-platform or human accessibility sign-off. The dialog changes
-are separate from the v1.8.3 panel slice and not deployed.
+This is not cross-platform or human accessibility sign-off. The v1.8.4 panel
+candidate still needs exact-source CI, verified publication, fresh off-host
+restore checks and a digest-pinned cutover; Agent targets must not change.
 
 **Hostname probe family selection (draft, 2026-11-05):** the reported
 multi-node IPv6 hostname is rejected by the conservative mixed-family guard.

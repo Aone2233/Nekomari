@@ -415,7 +415,7 @@ jobs:
           set -euo pipefail
           case "$RELEASE_TAG" in
             v1.7.30|v1.8.0|v1.8.1) prefix=manual- ;;
-            v1.8.2|v1.8.3) prefix='' ;;
+            v1.8.2|v1.8.3|v1.8.4) prefix='' ;;
             *) echo '::error::manual-only Agent publication requires explicit review for this tag'; exit 1 ;;
           esac
           shopt -s nullglob
@@ -516,7 +516,7 @@ jobs:
           name: ${{ needs.resolve.outputs.tag }}
           draft: true
           make_latest: false
-          prerelease: ${{ needs.resolve.outputs.tag == 'v1.8.2' || needs.resolve.outputs.tag == 'v1.8.3' }}
+          prerelease: ${{ needs.resolve.outputs.tag == 'v1.8.2' || needs.resolve.outputs.tag == 'v1.8.3' || needs.resolve.outputs.tag == 'v1.8.4' }}
           overwrite_files: false
           fail_on_unmatched_files: true
           generate_release_notes: true
@@ -536,7 +536,7 @@ jobs:
             | `sbom.spdx.json` | SPDX SBOM for the binaries above (syft) |
             | `SHA256SUMS.txt` | Checksums for every attached file |
 
-            > v1.8.2 and v1.8.3 ship standard Agent filenames. Stable Agent self-update and GitHub
+            > v1.8.2 through v1.8.4 ship standard Agent filenames. Stable Agent self-update and GitHub
             > Latest skip the initial prerelease. Once the same release is promoted,
             > default installers and stable updates can select it. Earlier releases
             > with manual-prefixed assets still require an explicit install.
@@ -548,6 +548,11 @@ jobs:
             v1.8.3 adds bounded, read-only execution history to the admin panel and
             registers shutdown signals before the normal or guide HTTP listener starts.
             Its panel rollout requires no Agent upgrade. Keep GitHub Latest on v1.8.2.
+
+            v1.8.4 fixes terminal dialog focus and cancellation. Go to File announces
+            the highlighted file, and Enter on Cancel never opens it. This is a
+            panel-only rollout; neither an Agent update nor a change of default
+            download or image tags is required.
 
             For v1.8.1 and v1.8.2, upgrade the Panel before an Agent: older Panels can
             interpret the new Agent's unknown probe result as packet loss.
@@ -631,7 +636,7 @@ jobs:
               "manual-komari-agent-windows-amd64.exe", "manual-komari-agent-darwin-amd64",
               "manual-komari-agent-darwin-arm64", "SHA256SUMS.txt", "sbom.spdx.json",
           }
-          staged = sys.argv[2] in {"v1.8.2", "v1.8.3"}
+          staged = sys.argv[2] in {"v1.8.2", "v1.8.3", "v1.8.4"}
           if staged:
               expected = {name.removeprefix("manual-") for name in expected}
           if release["tag_name"] != sys.argv[2] or not release["draft"] or release["prerelease"] != staged:
@@ -641,7 +646,7 @@ jobs:
           PY
           id=$(python3 -c 'import json; print(json.load(open("/tmp/draft-release.json"))["id"])')
           staged=false
-          case "$RELEASE_TAG" in v1.8.2|v1.8.3) staged=true ;; esac
+          case "$RELEASE_TAG" in v1.8.2|v1.8.3|v1.8.4) staged=true ;; esac
           gh api --method PATCH "repos/${RELEASE_REPO}/releases/${id}" -F draft=false -f make_latest=false -F prerelease="$staged" >/dev/null
           gh api "repos/${RELEASE_REPO}/releases/tags/${RELEASE_TAG}" --jq '[.draft,.prerelease,.tag_name] | @tsv'
 
@@ -691,5 +696,5 @@ jobs:
           # script a user would: no source tree, no local build, only the assets.
           sleep 20
           tag="${{ needs.resolve.outputs.tag }}"
-          case "$tag" in v1.8.2|v1.8.3) ;; *) export NEKOMARI_MANUAL_AGENT_ASSET=1 ;; esac
+          case "$tag" in v1.8.2|v1.8.3|v1.8.4) ;; *) export NEKOMARI_MANUAL_AGENT_ASSET=1 ;; esac
           bash deploy/deploy-verify.sh "" 25799 "$tag" "${{ matrix.arch }}"
