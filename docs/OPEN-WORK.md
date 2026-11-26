@@ -503,6 +503,19 @@ The next bounded releases and operational gates, in order:
    [`EXEC-HISTORY-DESIGN.md`](./EXEC-HISTORY-DESIGN.md). Later slices include
    the cost-forecast column, roles UI, frontend budgets and an a11y pass.
 
+**Trust budget (design only, 2026-11-17).** One number per node, computed on the
+server from what the panel already stores: scheduled work versus stored points,
+usable versus unusable samples, agent clock offset, rollup-versus-raw agreement
+and scheduler delay, multiplied rather than averaged, `null` when a factor
+cannot be computed. The interface shows the number and the dominant factor; the
+calculation lives behind an admin API so it can be recomputed and explained.
+[`TRUST-BUDGET-DESIGN.md`](./TRUST-BUDGET-DESIGN.md) records the definition,
+thresholds, storage, job budget and acceptance. Nothing is implemented. Four
+existing defects are prerequisites rather than polish: Windows load average is
+published as 0 instead of unknown, the panel's traffic cycle day is global while
+agents rotate on their own day, `disk` quality is dropped without recording why,
+and no agent reports a clock offset at all.
+
 **Hostname probe family selection (draft, 2026-11-05):** the reported
 multi-node IPv6 hostname is rejected by the conservative mixed-family guard.
 [`PING-DOMAIN-FAMILY-DESIGN.md`](./PING-DOMAIN-FAMILY-DESIGN.md) records a

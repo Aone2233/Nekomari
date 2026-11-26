@@ -177,6 +177,7 @@ checksum check and the systemd unit.
 | [docs/MAC-WAN-RECOVERY.md](./docs/MAC-WAN-RECOVERY.md) | Online key custody, actual pre/post encrypted recovery and owner-reported offline copy |
 | [docs/DEPLOY-VERIFICATION.md](./docs/DEPLOY-VERIFICATION.md) | Deploy verification on a test host, and what it found |
 | [docs/IP-INFO-API.md](./docs/IP-INFO-API.md) | The `/api/*/ip-info/v1` contract, its upstreams, and caching |
+| [docs/TRUST-BUDGET-DESIGN.md](./docs/TRUST-BUDGET-DESIGN.md) | One number per node, computed on the server from stored data, and the four defects that must be fixed before it can be believed |
 | [deploy/README.md](./deploy/README.md) | What each operational script does, and why some hosts need their own |
 
 The table above is the short list worth reading first. Every top-level document
