@@ -8,6 +8,8 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [1.8.4] — 2026-11-26 (opt-in panel release)
+
 - Terminal dialogs keep keyboard focus inside the dialog and start destructive
   confirmations on Cancel. In Go to File, the file name announced by a screen
   reader follows the arrow-key highlight; Tab goes directly to Cancel, and
