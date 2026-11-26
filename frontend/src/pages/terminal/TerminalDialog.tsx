@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 
 import { shouldSubmitOnEnter } from "./dialogKeys";
@@ -76,18 +76,19 @@ export function TerminalDialog({
   // dialog must reset the selection again.
   const [resetKey, setResetKey] = useState<{ open: boolean; firstFieldKey: string | null } | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
-    const handleCompositionEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && event.isComposing && event.target instanceof Node && contentRef.current?.contains(event.target)) {
-        // Radix handles Escape in document capture. Stop it there without
-        // cancelling the browser's default input-method action.
-        event.stopPropagation();
-      }
+    const handleFocusedEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || !(event.target instanceof Element) ||
+        event.target.closest('[role="dialog"], [role="alertdialog"]') !== contentRef.current || !contentRef.current) return;
+      event.stopPropagation();
+      if (event.isComposing || event.defaultPrevented) return;
+      event.preventDefault();
+      onCancel();
     };
-    window.addEventListener("keydown", handleCompositionEscape, true);
-    return () => window.removeEventListener("keydown", handleCompositionEscape, true);
-  }, [open]);
+    window.addEventListener("keydown", handleFocusedEscape, true);
+    return () => window.removeEventListener("keydown", handleFocusedEscape, true);
+  }, [open, onCancel]);
 
   const activeSuggestions = useMemo(() => {
     if (!activeField) return [];

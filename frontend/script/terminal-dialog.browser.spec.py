@@ -203,6 +203,28 @@ class TerminalDialogBrowserTest(unittest.TestCase):
         expect(parent).to_have_count(0)
         expect(page.get_by_test_id("nested")).to_be_focused()
 
+    def test_escape_at_first_child_focus_does_not_reach_parent(self):
+        page = self.open_page()
+        page.get_by_test_id("nested").click()
+        parent = page.get_by_role("alertdialog", name="Parent dialog")
+        child_trigger = parent.get_by_role("button", name="Open child")
+        page.evaluate("""() => {
+            const escapeOnFocus = event => {
+                const target = event.target;
+                if (target.textContent !== 'Cancel' || !target.closest('[role=alertdialog]')?.textContent.includes('Child dialog')) return;
+                document.removeEventListener('focusin', escapeOnFocus, true);
+                window.childEscapeSent = true;
+                target.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
+            };
+            document.addEventListener('focusin', escapeOnFocus, true);
+        }""")
+        child_trigger.click()
+        page.wait_for_function("window.childEscapeSent === true")
+        expect(page.get_by_role("alertdialog", name="Child dialog")).to_have_count(0)
+        expect(child_trigger).to_be_focused()
+        expect(page.get_by_test_id("results")).to_have_attribute("data-submit", "0")
+        expect(page.get_by_test_id("results")).to_have_attribute("data-outer-escape", "0")
+
     def test_removed_trigger_does_not_leave_modal_or_block_focus(self):
         page = self.open_page()
         page.get_by_test_id("removed").click()

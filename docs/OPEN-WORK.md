@@ -520,9 +520,12 @@ RPC, plus suggestion buttons, disabled submission, nested dialogs and mobile.
 Follow-up preserves deliberate post-close focus and checks that submitting Go
 to Line/Column focuses the real Monaco editor with the requested cursor;
 cancelling still returns to the launcher. Synthetic composition-key tests cover
-event routing, but real input methods have not been tested. This is not a
-screen-reader audit and is not yet merged, released or deployed; the CSV owner
-gate and the normal release/backup gates still apply.
+event routing, but real input methods have not been tested. On 2026-11-26,
+PR CI left a nested child open on Escape. Sending Escape at its first focus
+also reproduced that result locally. The follow-up routes Escape to the dialog
+containing the focused target before the document capture handler; composing
+Escape still belongs to the input method. This is not a screen-reader audit.
+The dialog changes are separate from the v1.8.3 panel slice and not deployed.
 
 **Hostname probe family selection (draft, 2026-11-05):** the reported
 multi-node IPv6 hostname is rejected by the conservative mixed-family guard.
