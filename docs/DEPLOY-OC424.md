@@ -3,6 +3,70 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.8.7 panel cutover (2026-11-27, UTC)
+
+At 04:06:14 OC424 switched from v1.8.5 to the v1.8.7 panel index
+`sha256:62ef4b8970009b5581353bf262f35081cc2826904eb6eeb9195e0de97d59cff9`.
+The container was healthy with zero restarts. Loopback and public HTTPS reported
+`v1.8.7 / 2a9940d`, and the running arm64 binary matched the attested release.
+Upgrade checks passed 9/9 on both sides. SQLite `quick_check` passed, history
+row counts did not decrease, and all 17 nodes reported fresh CPU, memory,
+ping latency and loss after the switch. All 16 probe tasks, all client
+identities, targets and v1.8.2 versions, and the local Agent process compared
+equal across the **panel-only** step.
+
+Three anonymous browser visits to each of `/` and `/admin` loaded 19 scripts
+and saw no 401, protected RPC or WebSocket. Before cutover, `/` loaded 34
+scripts (15 from the theme) and saw one denied RPC each time. On the new
+panel `/` returned 302 before loading the theme. The entry and four admin
+chunks, including `NodeDialogContent`, matched the signed arm64 download over
+public HTTPS. No production login or terminal session was used for these UI
+checks; signed-in performance was measured on a fixture, not the public CDN.
+
+MAC-WAN restored the same fresh 04:03:13 encrypted archive (SHA-256
+`55c17fcec07d564d7db5cdbbab32e4a2022e004877d3b7174646ba8d161b1835`) with
+both pinned images before cutover. The distinct 04:08:16 post-cut archive
+(`844824c5341454c532274f8302c1265cccb02d574831adf695468c0f35a7bdac`)
+booted with v1.8.7. Direct SSH to the receiver timed out; its existing
+host-key-pinned reverse tunnel allowed an independent checksum check and repeat
+drill of the post archive before changing any Agents. All boots used isolated
+networking. To roll back the panel image, use the saved compose at
+`/opt/nekomari/rollbacks/nodes-v187-20261127T040614Z-clbsdnqx/previous.yml`,
+recreating only the panel service and keeping the live databases.
+
+### v1.8.7 Agent canaries and first batch
+
+Only after recovery and public panel checks, install the signed release binary
+over the existing unit's executable, one host at a time. The two canaries
+completed at 04:19:08 (BERO, amd64) and 04:24:13 (OC424, arm64); the first
+batch completed at 04:29:11 (HK04) and 04:34:06 (MegaBox), both amd64.
+The old running binary matched the official v1.8.2 checksum before every swap;
+the new `/proc/<MainPID>/exe` matched the attested v1.8.7 checksum and reported
+the expected version. UID, GID, mode and extended attributes compared equal.
+MegaBox retained `cap_net_raw=ep`. No unit configuration or credentials changed.
+
+Each promotion required two separate post-restart windows of CPU, memory, ping
+latency and loss from **all 17** node identities, the expected version split,
+and unchanged identities, update targets and probe rows. The final check found
+four v1.8.7 and thirteen v1.8.2 Agents, no pending targets, and 16 probe tasks.
+The panel container ID and start time were unchanged through all four changes;
+its upgrade checks still passed 9/9. This is a bounded rollout, not fleet
+acceptance or a zero-loss claim. GitHub Latest stayed on v1.8.2.
+
+Each root-only rollback directory is beside its unit's executable and holds
+the original binary under its original name:
+
+| Host | Rollback directory basename |
+|---|---|
+| BERO | `.rollback-v187-20261127T041511Z-fwnffzzd` |
+| OC424 | `.rollback-v187-20261127T041928Z-tlsfjnlw` |
+| HK04 | `.rollback-v187-20261127T042502Z-1dods85f` |
+| MegaBox | `.rollback-v187-20261127T042932Z-pzi6a_ej` |
+
+For an Agent rollback verify the retained v1.8.2 hash, replace the executable
+atomically with its original metadata and capabilities, restart only that unit
+and repeat the process and telemetry checks. Do not roll back the panel database.
+
 ## v1.8.5 panel cutover (2026-11-27, UTC)
 
 At 01:44:06 OC424 switched the server and its embedded admin panel to image index
