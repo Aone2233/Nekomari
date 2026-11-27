@@ -3,6 +3,37 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.8.7 panel cutover (2026-11-27, UTC)
+
+At 04:06:14 OC424 switched from v1.8.5 to the v1.8.7 panel index
+`sha256:62ef4b8970009b5581353bf262f35081cc2826904eb6eeb9195e0de97d59cff9`.
+The container was healthy with zero restarts. Loopback and public HTTPS reported
+`v1.8.7 / 2a9940d`, and the running arm64 binary matched the attested release.
+Upgrade checks passed 9/9 on both sides. SQLite `quick_check` passed, history
+row counts did not decrease, and all 17 nodes reported fresh CPU, memory,
+ping latency and loss after the switch. All 16 probe tasks, all client
+identities, targets and v1.8.2 versions, and the local Agent process compared
+equal across the **panel-only** step.
+
+Three anonymous browser visits to each of `/` and `/admin` loaded 19 scripts
+and saw no 401, protected RPC or WebSocket. Before cutover, `/` loaded 34
+scripts (15 from the theme) and saw one denied RPC each time. On the new
+panel `/` returned 302 before loading the theme. The entry and four admin
+chunks, including `NodeDialogContent`, matched the signed arm64 download over
+public HTTPS. No production login or terminal session was used for these UI
+checks; signed-in performance was measured on a fixture, not the public CDN.
+
+MAC-WAN restored the same fresh 04:03:13 encrypted archive (SHA-256
+`55c17fcec07d564d7db5cdbbab32e4a2022e004877d3b7174646ba8d161b1835`) with
+both pinned images before cutover. The distinct 04:08:16 post-cut archive
+(`844824c5341454c532274f8302c1265cccb02d574831adf695468c0f35a7bdac`)
+booted with v1.8.7. Direct SSH to the receiver timed out; its existing
+host-key-pinned reverse tunnel allowed an independent checksum check and repeat
+drill of the post archive before changing any Agents. All boots used isolated
+networking. To roll back the panel image, use the saved compose at
+`/opt/nekomari/rollbacks/nodes-v187-20261127T040614Z-clbsdnqx/previous.yml`,
+recreating only the panel service and keeping the live databases.
+
 ## v1.8.5 panel cutover (2026-11-27, UTC)
 
 At 01:44:06 OC424 switched the server and its embedded admin panel to image index
