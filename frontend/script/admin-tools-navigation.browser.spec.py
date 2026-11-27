@@ -153,11 +153,12 @@ def run(binary, dist, output):
                                         page.locator(".km-admin-panel-topbar").get_by_role("button", name=strings["common"]["menu_sidebar"], exact=True).click()
                                     page.wait_for_function("width => Math.abs(document.querySelector('.km-admin-panel-nav').getBoundingClientRect().width - width) < 1", arg=width if width < 768 else 240)
                                     link = nav.locator(f'a[href="/admin/{name}"]')
-                                    # Collapsed motion panels keep links in the DOM; visibility
-                                    # alone does not tell us whether their parent clips them.
-                                    expanded = link.evaluate("element => element.closest('a').parentElement.parentElement.getBoundingClientRect().height > 10")
-                                    if not expanded:
-                                        nav.get_by_text(strings["operations"]["title"], exact=True).click()
+                                    group = nav.get_by_role('button', name=strings['operations']['title'], exact=True)
+                                    if group.get_attribute('aria-expanded') == 'false':
+                                        expect(link).to_be_hidden()
+                                        group.focus()
+                                        group.press('Enter')
+                                    expect(group).to_have_attribute('aria-expanded', 'true')
                                     expect(link).to_be_visible()
                                     assert link.get_attribute("target") is None
                                     link.click()

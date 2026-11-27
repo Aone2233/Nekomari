@@ -22,7 +22,9 @@ boots the dashboard behind sign-in. No Agent or moving release default changed.
 The [verified v1.8.7 release](./RELEASING.md#cut-a-release) moved unopened
 row forms off the signed-in list's initial route. Its [17-node fixture](./TESTING.md#admin-cold-start)
 requested 75 JS files, down from 80 but still above the target of fewer than 35.
-Profile the shared admin layout and sidebar imports next. The release includes
+The [post-v1.8.7 sidebar candidate](./TESTING.md#admin-cold-start) removes the
+animation dependency from the layout's initial imports; it is not part of the
+v1.8.7 artifacts. Its 73 requests still exceed the budget. The release includes
 v1.8.6's private Emerald guest shortcut. Neither release has been deployed
 on OC424; a future cutover needs a fresh backup/restore check and separate
 verification of `/` and `/admin` over public HTTPS.
