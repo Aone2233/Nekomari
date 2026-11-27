@@ -21,7 +21,7 @@ release changed no Agent or moving default. The next frontend budget slice is
 service-worker-blocked fixture visits loaded 47 JS requests on `/` and 85 on
 `/admin/servers`, against a target below 35. These are not CDN measurements.
 
-**Admin opening speed (#187, unreleased):** Defer protected routes and sockets
+**Admin opening speed (#187, v1.8.5 candidate):** Defer protected routes and sockets
 until `/api/me` confirms the session. On the two common landing routes, start
 the requested page and its layout together; defer unused node forms. The
 installed-panel [cold-start comparison](./TESTING.md#admin-cold-start) covers
