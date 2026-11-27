@@ -2,6 +2,29 @@
 
 ## Cut a release
 
+**v1.8.10 background admin polling (2026-11-27, 14:58 UTC):** [Release v1.8.10](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.10)
+(ID `460742001`) is an opt-in prerelease at `d6b5920b3a555a7771d0efa46fde4d7a51f8b292`.
+[PR CI](https://github.com/Aone2233/Nekomari/actions/runs/46017271605) and
+[merge CI](https://github.com/Aone2233/Nekomari/actions/runs/46018630894) passed 8/8 each,
+[release and deployment verification](https://github.com/Aone2233/Nekomari/actions/runs/46019940051) passed 10/10,
+and [image publication](https://github.com/Aone2233/Nekomari/actions/runs/46020844439) passed 2/2.
+All nine checksums and eight binary attestations verified against the tagged
+source and release workflow. The linux/amd64 and linux/arm64 binaries in both
+image packages matched the downloads. The panel index is
+`sha256:45698099e814a0d48cc3570a950d848794cea5b21e93fe2abd3ed4f72d5d8323`.
+GitHub Latest remained v1.8.2 and neither package's moving aliases changed.
+
+The installed v1.8.9 and v1.8.10 amd64 downloads each served their actual
+embedded UI on a separate loopback-only synthetic installation. A Chromium
+visibility-event test counted requests to `/api/admin/client/list`: both
+fetched once on mount; over 11 seconds of simulated hidden state the old/new
+counts were 2/0, on returning immediately 0/1, and in the next visible poll
+window 1/1. Two visible notifications did not duplicate the new timer. The
+v1.8.10 download also passed both CSV exports, legal notice retry, keyboard
+release notes, guest sign-in and ten navigation scenarios (five locales, two
+widths). This is a background polling improvement, not a claim of faster
+first paint. The production rollout in this window was **v1.8.9**, not v1.8.10.
+
 **v1.8.9 deferred admin notices (2026-11-27, 14:09 UTC):** [Release v1.8.9](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.9)
 (ID `460681128`) is an opt-in prerelease from `c7037cb90a4e5343f6fa402679e48b0e5d4bb2a3`.
 [PR CI](https://github.com/Aone2233/Nekomari/actions/runs/46009764465) and

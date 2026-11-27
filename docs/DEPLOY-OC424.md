@@ -174,6 +174,20 @@ passed at 08:23:03 and 08:28:10 respectively. Six Agents then reported v1.8.7,
 eleven v1.8.2, with the same identities, 16 probe tasks and no pending targets.
 The production panel container and start time did not change during the batch.
 
+**Third batch (14:33–14:44 UTC, on the accepted v1.8.9 panel).** AKKO-DE
+and RFC each had one running systemd Agent. On each host the stored registration
+UUID and a live interface address matched its panel row; `/proc/<MainPID>/exe`
+matched the official v1.8.2 amd64 file before replacement and the attested
+v1.8.7 file after restart. The original mode, owner and xattrs were preserved.
+The original binaries remain beside their respective executables in
+`.rollback-v187-20261127T143327Z-r8kul6p5` (AKKO-DE) and
+`.rollback-v187-20261127T143917Z-_eg_rm1y` (RFC). Both passed two separate
+17-node CPU, memory, latency and loss windows, with final windows at 14:38:13
+and 14:44:06. Eight Agents then reported v1.8.7 and nine v1.8.2, with the
+same identities, 16 probe rows and no pending targets. The v1.8.9 panel
+container and start time remained unchanged. No further nodes were rolled in
+this observation window.
+
 For an Agent rollback verify the retained v1.8.2 hash, replace the executable
 atomically with its original metadata and capabilities, restart only that unit
 and repeat the process and telemetry checks. Do not roll back the panel database.

@@ -15,8 +15,8 @@ What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit 
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
 **v1.8.9 production (2026-11-27):** OC424 runs the [pinned v1.8.9 panel](./DEPLOY-OC424.md#v189-panel-cutover-2026-11-27-utc).
-Six Agents passed the [v1.8.7 staged gates](./DEPLOY-OC424.md#v187-agent-canaries-and-first-batch);
-the other eleven remain on v1.8.2. Next: continue small, identity-verified batches,
+Eight Agents passed the [v1.8.7 staged gates](./DEPLOY-OC424.md#v187-agent-canaries-and-first-batch);
+the other nine remain on v1.8.2. Next: continue small, identity-verified batches,
 retaining rollback binaries and requiring two fresh telemetry windows per node.
 No fleet-wide target or change to Latest.
 
@@ -28,8 +28,10 @@ The separate private homepage cache replay is [verified closed at two public edg
 The [downloaded v1.8.9 panel](./RELEASING.md#cut-a-release) reproduced 69 JS
 requests on that fixture. This is release acceptance, not production timing.
 Continue reducing signed-in startup requests and track the public precache separately.
-The v1.8.10 panel patch addresses background list polling, not cold-start
-latency. Verify the hidden/visible request sequence on the published binary.
+The [published v1.8.10 panel](./RELEASING.md#cut-a-release) passed the
+hidden/visible request-sequence check on the actual download. It is not
+running on OC424. Observe the v1.8.9 cutover and this Agent wave before
+preparing the next panel switch with a fresh backup and recovery drill.
 
 **v1.8.3 panel slice (2026-11-26, historical):** OC424 ran the [verified execution-history
 panel](./DEPLOY-OC424.md#v183-panel-cutover-2026-11-26-utc). All 17 registered
