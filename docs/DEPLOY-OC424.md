@@ -3,6 +3,37 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.8.9 panel preparation only (2026-11-27, UTC)
+
+The [signed v1.8.9 downloads and images](./RELEASING.md#cut-a-release) passed
+acceptance. OC424 and the separate MAC-WAN receiver pulled the pinned panel
+index `sha256:b56a53c3f1ed6e0f54141c59396112dc70f0832f6ebba91f4fb5edfc827a52fd`.
+MAC-WAN restored the **same** fresh 14:14:48 encrypted snapshot (SHA-256
+`a09e738213a2aa52bcb4ad12152ea47a66a84f6dc81eb8c0f78dd6183dfecc7b`)
+with both v1.8.8 and v1.8.9 in network-isolated containers. The decryption
+identity stayed on the receiver; neither restore touched production data.
+
+Root-only staging directory: `/opt/nekomari/rollbacks/notices-v189-prepared-ctcp9pxs`.
+`previous.yml` is a byte-for-byte copy of the live v1.8.8 compose; `candidate.yml`
+is the proposed v1.8.9 compose. Both were validated with `/opt/nekomari` as the
+Compose project directory; the rendered configs differ **only** in the panel
+image. Neither file was applied. At 14:17 UTC the running container ID and
+start time were unchanged, healthy with zero restarts; its arm64 executable
+matched v1.8.8 and public HTTPS reported `v1.8.8 / 97b2ce5`. Preflight passed
+9/9 before and after staging. All 17 identities had fresh CPU, memory, ping
+latency and loss, with the same six v1.8.7 and eleven v1.8.2 Agents, 16 probe
+tasks and no pending update targets.
+
+**At the authorized cutover:** compare the live compose to `previous.yml` again;
+stop if it drifted. Recheck health, identities, fresh telemetry, target state
+and backup freshness; obtain a new verified snapshot if the window has moved.
+Replace only the panel image using the staged config, keeping the live mounts
+and databases. Require v1.8.9 / c7037cb, the published arm64 binary hash, 9/9
+upgrade checks, fresh samples, clean public guest redirects, and a post-cut
+off-host restore before declaring success. On failure restore `previous.yml`
+and recreate only the panel service, without restoring old databases. No Agent
+change or default-release promotion is part of this switch.
+
 ## v1.8.8 panel cutover and public homepage (2026-11-27, UTC)
 
 OC424 switched at 08:37:51 from v1.8.7 to the [verified v1.8.8 release](./RELEASING.md#cut-a-release),

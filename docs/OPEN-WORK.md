@@ -15,6 +15,9 @@ What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit 
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
 **v1.8.8 production (2026-11-27):** OC424 runs the [pinned v1.8.8 panel](./DEPLOY-OC424.md#v188-panel-cutover-and-public-homepage-2026-11-27-utc).
+The [v1.8.9 panel is staged, not running](./DEPLOY-OC424.md#v189-panel-preparation-only-2026-11-27-utc).
+Next panel action: obtain cutover authorization, recheck the prepared state,
+switch only the panel, then verify the public UI, telemetry and post-cut recovery.
 Six Agents passed the [v1.8.7 staged gates](./DEPLOY-OC424.md#v187-agent-canaries-and-first-batch);
 the other eleven remain on v1.8.2. Next: continue small, identity-verified batches,
 retaining rollback binaries and requiring two fresh telemetry windows per node.
@@ -25,10 +28,9 @@ The [released sidebar](./RELEASING.md#cut-a-release) reduced the signed-in
 17-node fixture from 75 to 73 JS requests, still over the target of fewer than 35.
 The separate private homepage cache replay is [verified closed at two public edges](./DEPLOY-OC424.md#v188-panel-cutover-and-public-homepage-2026-11-27-utc).
 
-The [deferred-notices candidate](./TESTING.md#admin-cold-start) measured 69 JS
-requests on that fixture; it is not in v1.8.8. Continue reducing the signed-in
-route's critical path and track the public precache separately. Remeasure the
-published binary before claiming a release or production improvement.
+The [downloaded v1.8.9 panel](./RELEASING.md#cut-a-release) reproduced 69 JS
+requests on that fixture. This is release acceptance, not production timing.
+Continue reducing signed-in startup requests and track the public precache separately.
 
 **v1.8.3 panel slice (2026-11-26, historical):** OC424 ran the [verified execution-history
 panel](./DEPLOY-OC424.md#v183-panel-cutover-2026-11-26-utc). All 17 registered
