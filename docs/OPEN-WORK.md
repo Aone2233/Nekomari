@@ -23,17 +23,12 @@ No fleet-wide target or change to Latest.
 **Opening speed remaining ([#187](https://github.com/Aone2233/Nekomari/issues/187)):**
 The [released sidebar](./RELEASING.md#cut-a-release) reduced the signed-in
 17-node fixture from 75 to 73 JS requests, still over the target of fewer than 35.
-**Public homepage follow-up:** a cold guest on `/` can still download the private
-theme despite the origin's 302. The [origin/edge comparison](./DEPLOY-OC424.md#v188-panel-cutover-and-public-homepage-2026-11-27-utc)
-found a cached 200 at Cloudflare. Use `/admin` directly for now. The zone owner
-should bypass cache for the exact private panel host and root path, ensure no
-later rule overrides it, then purge just the root URL. Retest alternating an
-ordinary non-navigation GET and a fresh browser navigation; the former must
-not seed a cache HIT for the latter. Do not change static-asset or API caching.
+The separate private homepage cache replay is [verified closed at two public edges](./DEPLOY-OC424.md#v188-panel-cutover-and-public-homepage-2026-11-27-utc).
 
-For the next change, run the [asset report and cold-browser comparison](./TESTING.md#admin-cold-start).
-Compare public and admin entries separately; on-disk precache bytes do not
-measure what a browser requests before the first row becomes visible.
+The [deferred-notices candidate](./TESTING.md#admin-cold-start) measured 69 JS
+requests on that fixture; it is not in v1.8.8. Continue reducing the signed-in
+route's critical path and track the public precache separately. Remeasure the
+published binary before claiming a release or production improvement.
 
 **v1.8.3 panel slice (2026-11-26, historical):** OC424 ran the [verified execution-history
 panel](./DEPLOY-OC424.md#v183-panel-cutover-2026-11-26-utc). All 17 registered

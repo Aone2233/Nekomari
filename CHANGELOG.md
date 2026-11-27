@@ -6,6 +6,12 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [Unreleased]
+
+- The admin panel no longer downloads the legal notice after it has been accepted,
+  or the release notes before they are opened. The update indicator opens with
+  the keyboard and returns focus when dismissed.
+
 ## [1.8.8] — 2026-11-27 (opt-in panel release)
 
 - The admin sidebar no longer downloads a JavaScript animation library to open

@@ -18,6 +18,7 @@ from urllib.error import URLError
 from urllib.request import ProxyHandler, build_opener
 
 from playwright.sync_api import expect, sync_playwright
+from admin_shell_checks import check_admin_shell
 
 
 def seed(path, entity):
@@ -110,6 +111,8 @@ def run(binary, root, admin_chart):
                 try:
                     assert ctx.request.post('/api/login', data=login).json()['status'] == 'success'
                     version = ctx.request.get('/api/version').json()['data']
+                    if admin_chart:
+                        check_admin_shell(browser, ctx, origin)
                     ctx.add_init_script("localStorage.setItem('language','zh-CN')")
                     page = ctx.new_page()
                     page.goto('/instance/' + entity, wait_until='domcontentloaded')

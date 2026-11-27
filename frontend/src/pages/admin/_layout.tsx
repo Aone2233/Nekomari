@@ -3,13 +3,14 @@ import { Outlet } from "react-router-dom";
 import AdminPanelBar from "../../components/admin/AdminPanelBar";
 import { AdminNavigationProvider } from "@/contexts/AdminNavigationProvider";
 import { updateSettingsWithToast, useSettings } from "@/lib/api";
-import { Button, Dialog } from "@radix-ui/themes";
-import { useState } from "react";
-import { getEula } from "@/utils/eula";
+import { Dialog } from "@radix-ui/themes";
+import { lazy, Suspense, useState } from "react";
 import { normalizeLanguage, readStoredLanguage } from "@/utils/language";
 import { useTranslation } from "react-i18next";
+const EulaContent = lazy(() => import("@/components/admin/EulaContent"));
+
 const AdminLayout = () => {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { settings, loading, error, setSettings } = useSettings();
   const lang = readStoredLanguage() || "en";
   const [open, setOpen] = useState(false);
@@ -42,43 +43,18 @@ const AdminLayout = () => {
     <>
       <Dialog.Root open={open}>
         <Dialog.Content className="km-admin-eula-dialog">
-          <Dialog.Content>
-            <Dialog.Title>{t("eula.title")}</Dialog.Title>
-            <div className="km-admin-eula-content flex flex-col gap-2">
-              <div className="max-h-[70vh] overflow-y-auto space-y-4">
-                <pre className="text-wrap">{getEula(i18n.language)}</pre>
-              </div>
-              <div className="flex flex-row gap-2 justify-end items-center">
-                <Button
-                  variant="soft"
-                  color="red"
-                  onClick={() => window.close()}
-                >
-                  {t("eula.reject")}
-                </Button>
-                <Button
-                  variant="solid"
-                  onClick={async () => {
-                    try {
-                      await updateSettingsWithToast(
-                        { eula_accepted: true },
-                        (key) => key
-                      );
-                      setSettings((prev) => ({
-                        ...prev,
-                        eula_accepted: true,
-                      }));
-                      setOpen(false);
-                    } catch {
-                      setOpen(true);
-                    }
-                  }}
-                >
-                  {t("eula.accept")}
-                </Button>
-              </div>
-            </div>
-          </Dialog.Content>
+          <Dialog.Title>{t("eula.title")}</Dialog.Title>
+          <Suspense fallback={<p role="status">{t("loading")}</p>}>
+            <EulaContent onAccept={async () => {
+              try {
+                await updateSettingsWithToast({ eula_accepted: true }, t);
+                setSettings((prev) => ({ ...prev, eula_accepted: true }));
+                setOpen(false);
+              } catch {
+                setOpen(true);
+              }
+            }} />
+          </Suspense>
         </Dialog.Content>
       </Dialog.Root>
       <AdminNavigationProvider>
