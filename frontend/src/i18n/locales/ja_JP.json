@@ -127,6 +127,7 @@
       },
       "enableGpuMonitoring": "詳細な GPU 監視を有効にする",
       "errorLoadNodeList": "ノードリストを読み込めません",
+      "versionUnavailable": "パネルのバージョンを取得できませんでした。再試行してからインストールコマンドをコピーしてください。",
       "errorRefreshNodeList": "リストの更新に失敗しました",
       "excludeNics": "特定のNICを除外",
       "expiredAt": "期限",

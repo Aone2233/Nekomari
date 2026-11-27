@@ -33,7 +33,6 @@ import { IcmpCapabilityBadge } from "@/components/admin/IcmpCapabilityBadge";
 import { ActionButtons } from "./NodeActions";
 import { DetailView } from "./NodeDialogs";
 import { requireClientMutationSuccess } from "./mutationResult";
-import { useIsSnapshotBackend } from "./useIsSnapshotBackend";
 
 const SortableRow = ({
   node,
@@ -41,14 +40,12 @@ const SortableRow = ({
   selectedNodes,
   handleSelectNode,
   settings,
-  isSnapshotBackend,
 }: {
   node: NodeDetail;
   isMobile: boolean;
   selectedNodes: string[];
   handleSelectNode: (uuid: string, checked: boolean) => void;
   settings: any;
-  isSnapshotBackend: boolean;
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: node.uuid });
@@ -187,7 +184,6 @@ const SortableRow = ({
         <ActionButtons
           node={node}
           settings={settings}
-          isSnapshotBackend={isSnapshotBackend}
         />
       </TableCell>
     </TableRow>
@@ -225,7 +221,6 @@ export const NodeTable = ({
   // 添加 localNodes 状态，实现即时 UI 更新
   const [localNodes, setLocalNodes] = useState<NodeDetail[]>(nodes);
   const [isDragging, setIsDragging] = useState(false);
-  const isSnapshotBackend = useIsSnapshotBackend();
   const isMobile = useIsMobile();
   // 与原先 `useEffect(..., [nodes])` 等价：nodes 引用变化时在渲染期间重新同步一次。
   const [syncedNodes, setSyncedNodes] = useState(nodes);
@@ -342,7 +337,6 @@ export const NodeTable = ({
                   selectedNodes={selectedNodes}
                   handleSelectNode={handleSelectNode}
                   settings={settings}
-                  isSnapshotBackend={isSnapshotBackend}
                 />
               ))}
             </SortableContext>

@@ -227,7 +227,7 @@ jobs:
             done
           elif [ "$PACKAGE" = nekomari-agent ]; then
             prefix=manual-
-            case "$TAG" in v1.8.2|v1.8.3|v1.8.4|v1.8.5|v1.8.6|v1.8.7|v1.8.8|v1.8.9|v1.8.10) prefix='' ;; esac
+            case "$TAG" in v1.8.2|v1.8.3|v1.8.4|v1.8.5|v1.8.6|v1.8.7|v1.8.8|v1.8.9|v1.8.10|v1.8.11) prefix='' ;; esac
             gh release download "$TAG" --repo "$REPO" --pattern "${prefix}komari-agent-linux-*" --dir ctx
             for arch in amd64 arm64; do
               name="${prefix}komari-agent-linux-$arch"
@@ -244,7 +244,7 @@ jobs:
       # remains available for explicit deployment, but its moving aliases stay
       # on the last auto-update-compatible release.
       - name: Verify manual Agent publication policy
-        if: matrix.package == 'nekomari-agent' && steps.tag.outputs.tag != 'v1.8.2' && steps.tag.outputs.tag != 'v1.8.3' && steps.tag.outputs.tag != 'v1.8.4' && steps.tag.outputs.tag != 'v1.8.5' && steps.tag.outputs.tag != 'v1.8.6' && steps.tag.outputs.tag != 'v1.8.7' && steps.tag.outputs.tag != 'v1.8.8' && steps.tag.outputs.tag != 'v1.8.9' && steps.tag.outputs.tag != 'v1.8.10'
+        if: matrix.package == 'nekomari-agent' && steps.tag.outputs.tag != 'v1.8.2' && steps.tag.outputs.tag != 'v1.8.3' && steps.tag.outputs.tag != 'v1.8.4' && steps.tag.outputs.tag != 'v1.8.5' && steps.tag.outputs.tag != 'v1.8.6' && steps.tag.outputs.tag != 'v1.8.7' && steps.tag.outputs.tag != 'v1.8.8' && steps.tag.outputs.tag != 'v1.8.9' && steps.tag.outputs.tag != 'v1.8.10' && steps.tag.outputs.tag != 'v1.8.11'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.tag }}
@@ -288,9 +288,9 @@ jobs:
           # 而 "false" 正是非空字符串。
           tags: |
             type=raw,value=${{ steps.tag.outputs.tag }}
-            type=raw,value=latest,enable=${{ !contains(steps.tag.outputs.tag, '-') && steps.tag.outputs.release_verified == 'true' && matrix.package == 'nekomari' && steps.tag.outputs.tag != 'v1.8.1' && steps.tag.outputs.tag != 'v1.8.2' && steps.tag.outputs.tag != 'v1.8.3' && steps.tag.outputs.tag != 'v1.8.4' && steps.tag.outputs.tag != 'v1.8.5' && steps.tag.outputs.tag != 'v1.8.6' && steps.tag.outputs.tag != 'v1.8.7' && steps.tag.outputs.tag != 'v1.8.8' && steps.tag.outputs.tag != 'v1.8.9' && steps.tag.outputs.tag != 'v1.8.10' }}
+            type=raw,value=latest,enable=${{ !contains(steps.tag.outputs.tag, '-') && steps.tag.outputs.release_verified == 'true' && matrix.package == 'nekomari' && steps.tag.outputs.tag != 'v1.8.1' && steps.tag.outputs.tag != 'v1.8.2' && steps.tag.outputs.tag != 'v1.8.3' && steps.tag.outputs.tag != 'v1.8.4' && steps.tag.outputs.tag != 'v1.8.5' && steps.tag.outputs.tag != 'v1.8.6' && steps.tag.outputs.tag != 'v1.8.7' && steps.tag.outputs.tag != 'v1.8.8' && steps.tag.outputs.tag != 'v1.8.9' && steps.tag.outputs.tag != 'v1.8.10' && steps.tag.outputs.tag != 'v1.8.11' }}
             type=semver,pattern={{version}},value=${{ steps.tag.outputs.tag }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }},enable=${{ matrix.package == 'nekomari' && steps.tag.outputs.tag != 'v1.8.1' && steps.tag.outputs.tag != 'v1.8.2' && steps.tag.outputs.tag != 'v1.8.3' && steps.tag.outputs.tag != 'v1.8.4' && steps.tag.outputs.tag != 'v1.8.5' && steps.tag.outputs.tag != 'v1.8.6' && steps.tag.outputs.tag != 'v1.8.7' && steps.tag.outputs.tag != 'v1.8.8' && steps.tag.outputs.tag != 'v1.8.9' && steps.tag.outputs.tag != 'v1.8.10' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.tag.outputs.tag }},enable=${{ matrix.package == 'nekomari' && steps.tag.outputs.tag != 'v1.8.1' && steps.tag.outputs.tag != 'v1.8.2' && steps.tag.outputs.tag != 'v1.8.3' && steps.tag.outputs.tag != 'v1.8.4' && steps.tag.outputs.tag != 'v1.8.5' && steps.tag.outputs.tag != 'v1.8.6' && steps.tag.outputs.tag != 'v1.8.7' && steps.tag.outputs.tag != 'v1.8.8' && steps.tag.outputs.tag != 'v1.8.9' && steps.tag.outputs.tag != 'v1.8.10' && steps.tag.outputs.tag != 'v1.8.11' }}
 
       # 冒烟测试：镜像必须真的能跑起来。
       #

@@ -127,6 +127,7 @@
       },
       "enableGpuMonitoring": "啟用詳細 GPU 監控",
       "errorLoadNodeList": "無法載入節點列表",
+      "versionUnavailable": "無法讀取面板版本，請重試後再複製安裝指令。",
       "errorRefreshNodeList": "重新整理列表失敗",
       "excludeNics": "排除特定網卡",
       "expiredAt": "到期時間",
