@@ -31,7 +31,7 @@ def run(script, cwd, env=None, success=True):
 metadata = step(DOCKER["jobs"]["build-and-push"], "Derive image metadata")["with"]["tags"]
 for moving_tag in ("type=raw,value=latest", "type=semver,pattern={{major}}.{{minor}}"):
     line = next(line for line in metadata.splitlines() if line.startswith(moving_tag))
-    for tag in ("v1.8.1", "v1.8.2", "v1.8.3", "v1.8.4", "v1.8.5", "v1.8.6"):
+    for tag in ("v1.8.1", "v1.8.2", "v1.8.3", "v1.8.4", "v1.8.5", "v1.8.6", "v1.8.7"):
         assert f"steps.tag.outputs.tag != '{tag}'" in line, moving_tag
 
 names = ["komari-agent-linux-amd64", "komari-agent-linux-arm64",
@@ -48,7 +48,7 @@ assert "dist/${{ steps.stage_agents.outputs.prefix }}komari-agent-*" in attest
 create = step(release_job, "Create release")["with"]
 assert step(release_job, "Create release")["id"] == "create_release"
 assert create["draft"] is True and create["make_latest"] is False
-assert create["prerelease"] == "${{ needs.resolve.outputs.tag == 'v1.8.2' || needs.resolve.outputs.tag == 'v1.8.3' || needs.resolve.outputs.tag == 'v1.8.4' || needs.resolve.outputs.tag == 'v1.8.5' || needs.resolve.outputs.tag == 'v1.8.6' }}"
+assert create["prerelease"] == "${{ needs.resolve.outputs.tag == 'v1.8.2' || needs.resolve.outputs.tag == 'v1.8.3' || needs.resolve.outputs.tag == 'v1.8.4' || needs.resolve.outputs.tag == 'v1.8.5' || needs.resolve.outputs.tag == 'v1.8.6' || needs.resolve.outputs.tag == 'v1.8.7' }}"
 assert create["overwrite_files"] is False and create["fail_on_unmatched_files"] is True
 assert steps.index("Refuse an existing release") < steps.index("Create release")
 assert steps.index("Create release") < steps.index("Validate and publish opt-in release")
@@ -69,10 +69,10 @@ with tempfile.TemporaryDirectory() as tmp:
     env = dict(os.environ, GITHUB_OUTPUT=str(output))
     run(stage, root, dict(env, RELEASE_TAG="v1.8.2"))
     assert output.read_text() == "prefix=\n" and sorted(p.name for p in dist.iterdir()) == sorted(names)
-    for tag in ("v1.8.3", "v1.8.4", "v1.8.5", "v1.8.6"):
+    for tag in ("v1.8.3", "v1.8.4", "v1.8.5", "v1.8.6", "v1.8.7"):
         run(stage, root, dict(env, RELEASE_TAG=tag))
         assert output.read_text().splitlines()[-1] == "prefix=" and sorted(p.name for p in dist.iterdir()) == sorted(names)
-    run(stage, root, dict(env, RELEASE_TAG="v1.8.7"), success=False)
+    run(stage, root, dict(env, RELEASE_TAG="v1.8.8"), success=False)
     run(stage, root, dict(env, RELEASE_TAG="v1.8.1"))
     assert output.read_text().splitlines()[-1] == "prefix=manual-"
     assert sorted(p.name for p in dist.iterdir()) == sorted("manual-" + n for n in names)
@@ -134,7 +134,7 @@ else:
         run(publish, root, env, success=False)
     state.write_text(json.dumps(candidate))
     run(publish, root, dict(env, RELEASE_ID="17/../../tags/v1.7.30"), success=False)
-    for tag in ("v1.8.2", "v1.8.3", "v1.8.4", "v1.8.5", "v1.8.6"):
+    for tag in ("v1.8.2", "v1.8.3", "v1.8.4", "v1.8.5", "v1.8.6", "v1.8.7"):
         staged = dict(candidate, tag_name=tag, prerelease=True,
                       assets=[{"name": n.removeprefix("manual-")} for n in asset_names])
         env["RELEASE_TAG"] = tag
@@ -153,7 +153,7 @@ for line in tags.splitlines():
     if "value=latest" in line or "pattern={{major}}.{{minor}}" in line:
         assert "matrix.package == 'nekomari'" in line
 policy = step(DOCKER["jobs"]["build-and-push"], "Verify manual Agent publication policy")
-assert policy["if"] == "matrix.package == 'nekomari-agent' && steps.tag.outputs.tag != 'v1.8.2' && steps.tag.outputs.tag != 'v1.8.3' && steps.tag.outputs.tag != 'v1.8.4' && steps.tag.outputs.tag != 'v1.8.5' && steps.tag.outputs.tag != 'v1.8.6'"
+assert policy["if"] == "matrix.package == 'nekomari-agent' && steps.tag.outputs.tag != 'v1.8.2' && steps.tag.outputs.tag != 'v1.8.3' && steps.tag.outputs.tag != 'v1.8.4' && steps.tag.outputs.tag != 'v1.8.5' && steps.tag.outputs.tag != 'v1.8.6' && steps.tag.outputs.tag != 'v1.8.7'"
 assert "^komari-agent-" in policy["run"]
 
 # Run the real shell with an offline fake gh and assert its checksum failures
@@ -210,7 +210,7 @@ for p in files: shutil.copyfile(p, dest / p.name)
             (case / name).write_text("FROM scratch\n")
         if bad_hash:
             (canonical / "komari-agent-linux-arm64").write_bytes(b"tampered")
-        for tag in ("v1.8.4", "v1.8.5", "v1.8.6"):
+        for tag in ("v1.8.4", "v1.8.5", "v1.8.6", "v1.8.7"):
             run(assemble, case, dict(env, TAG=tag, PACKAGE="nekomari-agent", FAKE_ASSETS=str(canonical)), success=not bad_hash)
         if not bad_hash:
             for arch in ("amd64", "arm64"):

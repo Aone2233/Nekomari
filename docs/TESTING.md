@@ -93,6 +93,13 @@ without starting protected requests. No bundled copy of Emerald or production
 credentials are required. `TestPrivateEmeraldHomeNavigation` covers probes,
 deep links, share credentials and cache policy for both response variants.
 
+For the signed-in server list the spec also observes real asset requests: the
+row-dialog chunk must be absent when the node is visible, and fetched once
+when the name button is activated from the keyboard. The drawer must show that
+node's UUID, take focus and return it to the same trigger on Escape before the
+chart/CSV checks continue. The separate mounted admin-mutations suite covers
+edit and billing error/retry without losing the entered values.
+
 For a timing comparison, use separate old/candidate panel processes on the same
 disposable installation with 17 synthetic nodes. Start a fresh Chromium process
 per visit, block service workers, disable the HTTP cache and use a 1365×768
