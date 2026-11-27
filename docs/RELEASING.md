@@ -2,6 +2,28 @@
 
 ## Cut a release
 
+**v1.8.6 private homepage (2026-11-27, 02:47 UTC):** [Release v1.8.6](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.6)
+is an opt-in prerelease from `1e34a48c8cb0f0810754ce11128650863cfc336b`.
+[Exact main CI](https://github.com/Aone2233/Nekomari/actions/runs/45929154423) passed 8/8,
+[release and published deployment checks](https://github.com/Aone2233/Nekomari/actions/runs/45929942608) 10/10,
+and [image publication](https://github.com/Aone2233/Nekomari/actions/runs/45930532978) 2/2.
+All nine checksums and all eight binary attestations verified against the signer
+workflow, tag and SHA. Both Linux architectures' panel and Agent image binaries
+matched their downloads. The panel index is
+`sha256:e514dbac8636dbc2244e31dcabfb04523b490ac5428c993ad87b857a6afdf6ac`.
+GitHub Latest stayed on v1.8.2. Neither image's moving aliases changed (Agent
+`1.8` absent). This was a GitHub release, not a production cutover.
+
+The attested amd64 panel passed the installed admin CSV and guest sign-in
+regression. In a separate loopback-only private installation with the patched
+Emerald theme, three fresh Chromium processes per published version navigated
+to `/` with service workers blocked, cache disabled, 4× CPU slowdown and 150 ms
+latency (10/5 Mibit/s). Median time to a visible password field was **2,879 →
+2,240 ms** (v1.8.5 → v1.8.6). Theme scripts fell from seven to zero, HTTP 401s
+from one to zero; both versions still loaded 19 admin scripts. The old `/`
+returned 200 and booted the theme; the new `/` returned 302 to `/admin`. This
+is a cold fixture, not a public CDN or a signed-in server-list measurement.
+
 **v1.8.5 admin cold start (2026-11-27):** [Release v1.8.5](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.5)
 is an opt-in prerelease at `60c2d94a3d2812279db1d657fc0ddb3d63f174a5`.
 [Main CI](https://github.com/Aone2233/Nekomari/actions/runs/45922264273) passed 8/8,
