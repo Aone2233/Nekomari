@@ -3,6 +3,42 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.8.8 panel cutover and public homepage (2026-11-27, UTC)
+
+OC424 switched at 08:37:51 from v1.8.7 to the [verified v1.8.8 release](./RELEASING.md#cut-a-release),
+index `sha256:cd9fb874f22d1dd5d147743cc1049e8bff375dd96fd13a8d0789c04cd1da9ecb`.
+The arm64 process matched the published binary. Health was green with zero
+restarts; pre/post upgrade checks passed 9/9. The main database passed
+`quick_check`; task and result counts did not decrease. All 17 registered
+nodes produced new CPU, memory, ping latency and loss samples. All identities,
+six v1.8.7 / eleven v1.8.2 Agent versions, empty targets, 16 probe rows and
+the local Agent process were unchanged across this panel-only switch.
+
+MAC-WAN verified the same 08:28:56 encrypted archive with both pinned images
+before switching (`768fedcecda1a663583e3b518ee80101039f1b2b7594fabc03781d8e0ab8667d`).
+The separate 08:39:21 post-cut archive passed with v1.8.8
+(`9e6cf1532c49fd23ec178b5f3c3e75fa059d3f24e507d7d263c813265fb47628`).
+Each recovery boot had networking disabled on the receiver. The previous
+compose is `/opt/nekomari/rollbacks/sidebar-v188-20261127T083751Z-jf9k1yxe/previous.yml`;
+restore only the panel service, keeping the live databases.
+
+Public HTTPS returned `v1.8.8 / 97b2ce5`. The entry, actual admin layout from
+the release manifest, login and three deferred chunks all matched the arm64
+download byte for byte. **The clean public homepage gate did not pass.** One
+fresh guest timed out waiting 30 s for the login field. A repeat reached it
+after 5,559 ms but fetched seven theme scripts and received one denied RPC.
+The timeout's cause was not established. For the separate fallback symptom,
+the origin and local Nginx both returned `302 /admin`, `private, no-store` for
+anonymous document navigation and an uncacheable 200 for a non-navigation
+probe. The public edge instead served the root as a 200 `cf-cache-status: HIT`
+with an `Age` header and `private, max-age=60`. This is a private-homepage
+cache mismatch, not evidence of an authorization bypass or a reason to revert
+the signed-in sidebar. Three direct public `/admin` visits all passed (19 scripts,
+no theme scripts, denied requests, socket, protected RPC or page errors; login
+field visible in 1,568–3,064 ms, median 1,927 ms). These were guest sessions,
+not production administrator logins. No Cloudflare zone setting was changed. Bypass `/` for
+this hostname at the edge, purge only that URL, then repeat both request types.
+
 ## v1.8.7 panel cutover (2026-11-27, UTC)
 
 At 04:06:14 OC424 switched from v1.8.5 to the v1.8.7 panel index
@@ -62,6 +98,19 @@ the original binary under its original name:
 | OC424 | `.rollback-v187-20261127T041928Z-tlsfjnlw` |
 | HK04 | `.rollback-v187-20261127T042502Z-1dods85f` |
 | MegaBox | `.rollback-v187-20261127T042932Z-pzi6a_ej` |
+
+**Second batch (08:18–08:28 UTC, before the panel upgrade).** ATT and
+Lightlayer were reached via MAC-WAN using pinned SSH host keys. Each host had
+one running Agent; its registered UUID and a live interface address matched
+the same panel row. Its systemd executable matched the official v1.8.2 amd64
+binary before replacement and the attested v1.8.7 download after restart.
+Both kept the unit, executable path, owner, mode and extended attributes.
+Their rollback directories are `.rollback-v187-20261127T081855Z-slvlvggp`
+(ATT) and `.rollback-v187-20261127T082404Z-_cqviw1j` (Lightlayer), beside the
+executable. The second fresh 17-node CPU, memory, latency and loss checks
+passed at 08:23:03 and 08:28:10 respectively. Six Agents then reported v1.8.7,
+eleven v1.8.2, with the same identities, 16 probe tasks and no pending targets.
+The production panel container and start time did not change during the batch.
 
 For an Agent rollback verify the retained v1.8.2 hash, replace the executable
 atomically with its original metadata and capabilities, restart only that unit
@@ -3189,6 +3238,10 @@ node doing the measuring. Checking a task's `type` field is the first thing to d
 when a node "looks jittery".
 
 ## The cacheable shell (v0.1.28) and the Cloudflare rule it needs
+
+**Public, invariant shells only.** Do not apply the historical rule below to
+the private Emerald homepage: its response depends on navigation and session
+state. See the [v1.8.8 origin/edge comparison](#v188-panel-cutover-and-public-homepage-2026-11-27-utc).
 
 The panel's SPA shell used to be served with no caching headers at all, so
 Cloudflare classified it `DYNAMIC` and fetched it from the Singapore origin on

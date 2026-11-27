@@ -14,22 +14,22 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**v1.8.7 production (2026-11-27):** OC424 runs the [verified v1.8.7 panel](./DEPLOY-OC424.md#v187-panel-cutover-2026-11-27-utc).
-BERO, OC424, HK04 and MegaBox passed the [staged Agent gates](./DEPLOY-OC424.md#v187-agent-canaries-and-first-batch);
-the other 13 remain on v1.8.2. Next: map the next small batch to its actual
-service manager and executable, retain rollback artifacts and require fresh
-per-node telemetry before expanding. Do not promote Latest or set fleet-wide
-targets on the strength of four nodes.
+**v1.8.8 production (2026-11-27):** OC424 runs the [pinned v1.8.8 panel](./DEPLOY-OC424.md#v188-panel-cutover-and-public-homepage-2026-11-27-utc).
+Six Agents passed the [v1.8.7 staged gates](./DEPLOY-OC424.md#v187-agent-canaries-and-first-batch);
+the other eleven remain on v1.8.2. Next: continue small, identity-verified batches,
+retaining rollback binaries and requiring two fresh telemetry windows per node.
+No fleet-wide target or change to Latest.
 
 **Opening speed remaining ([#187](https://github.com/Aone2233/Nekomari/issues/187)):**
-The [verified v1.8.7 release](./RELEASING.md#cut-a-release) moved unopened
-row forms off the signed-in list's initial route. Its [17-node fixture](./TESTING.md#admin-cold-start)
-requested 75 JS files, down from 80 but still above the target of fewer than 35.
-The [post-v1.8.7 sidebar candidate](./TESTING.md#admin-cold-start) removes the
-animation dependency from the layout's initial imports; it is staged for v1.8.8,
-not part of the v1.8.7 artifacts. Its 73 requests still exceed the budget. The production
-panel now includes v1.8.6's private Emerald guest shortcut: a fresh guest on
-`/` no longer boots the theme before `/admin`.
+The [released sidebar](./RELEASING.md#cut-a-release) reduced the signed-in
+17-node fixture from 75 to 73 JS requests, still over the target of fewer than 35.
+**Public homepage follow-up:** a cold guest on `/` can still download the private
+theme despite the origin's 302. The [origin/edge comparison](./DEPLOY-OC424.md#v188-panel-cutover-and-public-homepage-2026-11-27-utc)
+found a cached 200 at Cloudflare. Use `/admin` directly for now. The zone owner
+should bypass cache for the exact private panel host and root path, ensure no
+later rule overrides it, then purge just the root URL. Retest alternating an
+ordinary non-navigation GET and a fresh browser navigation; the former must
+not seed a cache HIT for the latter. Do not change static-asset or API caching.
 
 For the next change, run the [asset report and cold-browser comparison](./TESTING.md#admin-cold-start).
 Compare public and admin entries separately; on-disk precache bytes do not

@@ -2,6 +2,28 @@
 
 ## Cut a release
 
+**v1.8.8 admin sidebar (2026-11-27, 08:32 UTC):** [Release v1.8.8](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.8)
+(release ID `460334845`) is an opt-in prerelease from `97b2ce5097c39baff51bfb5fd4ec27aa86d2181c`.
+[PR CI](https://github.com/Aone2233/Nekomari/actions/runs/45963439736) and
+[merge CI](https://github.com/Aone2233/Nekomari/actions/runs/45964731354) passed 8/8 each,
+[release and deployment checks](https://github.com/Aone2233/Nekomari/actions/runs/45965769341) 10/10,
+and [image publication](https://github.com/Aone2233/Nekomari/actions/runs/45966574701) 2/2.
+Nine checksums and eight binary attestations verified. Linux amd64/arm64 panel
+and Agent image binaries matched the downloads. The panel index is
+`sha256:cd9fb874f22d1dd5d147743cc1049e8bff375dd96fd13a8d0789c04cd1da9ecb`.
+GitHub Latest remained v1.8.2; neither moving image alias changed (Agent `1.8` absent).
+
+On the [17-node cold-start fixture](./TESTING.md#admin-cold-start), three fresh
+signed-in Chromium visits per **published** build measured v1.8.7 → v1.8.8:
+median first row **4,581 → 4,509 ms**, 75 → 73 JS requests, 406,315 → 361,416
+JS transfer bytes. The payload reduction is clearer than the small timing change;
+this does not meet the under-35 target or measure production signed-in latency.
+The downloaded amd64 binary passed the guest sign-in, drawer and both admin CSV
+downloads. Its extracted admin files passed all ten navigation scenarios (five
+languages at two widths). The release artifact report counted 180,163 and
+176,481 gzip bytes for the public and admin entry respectively, and 182 public
+precache URLs (4,435,228 raw bytes; 1,310,804 when gzipped individually).
+
 **v1.8.7 signed-in node list (2026-11-27, 03:42 UTC):** [Release v1.8.7](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.7)
 is an opt-in prerelease at `2a9940d4808bd69a22a1463b7e17088bec8cdeef`.
 [Exact main CI](https://github.com/Aone2233/Nekomari/actions/runs/45934276423) passed 8/8,
