@@ -245,6 +245,26 @@ class AdminNodeTableBrowserTest(unittest.TestCase):
             len(self.list_requests()), 3,
             "one request per interval, not one per render")
 
+    def test_background_tab_pauses_and_refreshes_once_on_return(self):
+        self.mount({"body": [node("alpha")]}, {"body": [node("bravo")]}, {"body": [node("charlie")]})
+
+        def visibility(hidden):
+            self.page.evaluate("""hidden => {
+                Object.defineProperty(document, 'hidden', {configurable: true, value: hidden});
+                document.dispatchEvent(new Event('visibilitychange'));
+            }""", hidden)
+
+        visibility(True)
+        self.page.clock.fast_forward(POLL_MS * 12)
+        self.assertEqual(len(self.list_requests()), 1)
+        visibility(False)
+        self.wait_rows(["bravo"])
+        visibility(False)
+        self.assertEqual(len(self.list_requests()), 2)
+        self.advance(POLL_MS)
+        self.wait_rows(["charlie"])
+        self.assertEqual(len(self.list_requests()), 3)
+
     def test_a_failed_poll_shows_the_error_and_the_next_one_recovers(self):
         self.mount(
             {"body": [node("alpha")]},

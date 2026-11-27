@@ -3,6 +3,29 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.8.9 panel cutover (2026-11-27, UTC)
+
+At 14:27:59 UTC the production container started with the [verified v1.8.9
+panel](./RELEASING.md#cut-a-release). The still-fresh pre-cut ciphertext was
+rechecked on MAC-WAN and the live compose matched the staged rollback copy.
+Only the panel service was recreated. Its arm64 executable matched the signed
+download; loopback and public HTTPS reported `v1.8.9 / c7037cb`. Container
+health was green with zero restarts, upgrade checks passed 9/9 on both sides,
+and the main database passed `quick_check`. All 17 identities produced new CPU,
+memory, latency and loss samples after cutover. History counts did not decrease;
+identities, Agent versions and targets, 16 probe rows and the local Agent process
+were unchanged across the cut. The rollback compose for **v1.8.8** remains at
+`/opt/nekomari/rollbacks/notices-v189-prepared-ctcp9pxs/previous.yml`.
+
+The entry and seven admin chunks, including the two deferred notices, matched
+the signed arm64 download over public HTTPS. Six guest browser visits across
+`/` and `/admin` saw no theme scripts, 401s, protected RPCs, sockets or page
+errors; `/` redirected to `/admin`. This is not a production authenticated
+timing. The separate 14:30:39 post-cut archive (SHA-256
+`4c3432ff676fd4820a0d778cf9aba354adbedc09c755207652e7e26cf306736d`)
+passed the network-isolated v1.8.9 recovery drill on MAC-WAN before any further
+Agent upgrade.
+
 ## v1.8.9 panel preparation only (2026-11-27, UTC)
 
 The [signed v1.8.9 downloads and images](./RELEASING.md#cut-a-release) passed
