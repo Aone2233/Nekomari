@@ -22,9 +22,12 @@ per release to `/admin`, each with a new context and service workers blocked,
 observed 66 → 19 scripts, 10 → 0 HTTP 401 responses and 1–2 → 0 WebSocket
 attempts (through 2.5 s after the password field appeared). Median time to see
 the password field was 1,380 → 1,397 ms: **no measured speedup on this public
-path** in this sample. Nothing signed in to production or exercised the theme's
-`/` redirect. For controlled, throttled guest and signed-in timings, see the
-[installed-panel comparison](./TESTING.md#admin-cold-start).
+path** in this sample. In a separate post-cut comparison (fresh Chromium per
+visit, three visits per route, alternating order), opening `/` first loaded
+15 theme scripts and saw one RPC 401, then navigated to `/admin` and loaded its
+19 scripts. The password field appeared in a median 2,031 ms via `/` vs 1,404 ms
+directly. No production account signed in. For controlled, throttled guest and
+signed-in timings, see the [installed-panel comparison](./TESTING.md#admin-cold-start).
 
 MAC-WAN restored the fresh 01:18:58 pre-cut encrypted archive (SHA-256
 `5b89bf495ca4b9c9c61bc4a3cccd04af73b20c96c5dece1ddfa12670baf60f44`)
