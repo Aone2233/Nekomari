@@ -91,11 +91,11 @@ def run(binary, root, admin_chart):
                     'login_notification': False, 'notification_enabled': False}).json()['status'] == 'success'
                 entity = request.post('/api/admin/client/add', data={'name': 'CSV fixture'}).json()['uuid']
                 if admin_chart:
-                    theme = root / 'data/theme/csv-fixture'
+                    theme = root / 'data/theme/emerald-insights'
                     (theme / 'dist').mkdir(parents=True)
-                    (theme / 'komari-theme.json').write_text(json.dumps({'name': 'CSV fixture', 'short': 'csv-fixture'}))
+                    (theme / 'komari-theme.json').write_text(json.dumps({'name': 'CSV fixture', 'short': 'emerald-insights'}))
                     (theme / 'dist/index.html').write_text('<!doctype html><title>Fixture</title><p>Theme owns this page</p>')
-                    assert request.get('/api/admin/theme/set?theme=csv-fixture').json()['status'] == 'success'
+                    assert request.get('/api/admin/theme/set?theme=emerald-insights').json()['status'] == 'success'
             finally:
                 request.dispose()
         finally:
@@ -153,6 +153,16 @@ def run(binary, root, admin_chart):
                         page.goto('/admin/servers/nonexistent/charts')
                         expect(page.get_by_text('无法加载此节点。')).to_be_visible()
                         expect(page.get_by_role('button', name='导出 CSV', exact=True)).to_have_count(0)
+                        public_context = browser.new_context(base_url=origin)
+                        try:
+                            public_home = public_context.new_page()
+                            public_home.goto('/')
+                            expect(public_home.get_by_text('Theme owns this page')).to_be_visible()
+                        finally:
+                            public_context.close()
+                        assert ctx.request.post('/api/admin/settings/', data={'private_site': True}).json()['status'] == 'success'
+                        page.goto('/')
+                        expect(page.get_by_text('Theme owns this page')).to_be_visible()
                         guest = browser.new_context(base_url=origin, locale='zh-CN')
                         try:
                             guest.add_init_script("localStorage.setItem('language','zh-CN')")
@@ -163,6 +173,12 @@ def run(binary, root, admin_chart):
                                     activity.append(request.url.split('?')[0])
                             anon.on('request', observe)
                             anon.on('websocket', lambda ws: activity.append(ws.url.split('?')[0]))
+                            response = anon.goto('/')
+                            expect(anon).to_have_url(origin + '/admin')
+                            expect(anon.locator('input[type=password]:visible')).to_be_visible()
+                            redirect = response.request.redirected_from
+                            assert redirect and redirect.url == origin + '/' and redirect.response().status == 302
+                            assert not activity, 'private home started protected work before sign-in'
                             target = origin + '/admin/servers/' + entity + '/charts?window=1h#chart'
                             anon.route('**/api/me', lambda route: route.fulfill(status=503, body='unavailable'))
                             anon.goto(target)

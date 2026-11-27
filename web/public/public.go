@@ -262,12 +262,12 @@ const shellCacheControl = "public, max-age=60, must-revalidate"
 // 后靠 ETag 走 304，不会把这几 KB 重复传一遍。
 //
 // 这里不能像带内容哈希的构建产物那样用 immutable —— 外壳文件名不带哈希，它必须能更新。
-func writeShell(c *gin.Context, body []byte) {
+func writeShell(c *gin.Context, body []byte, cacheControl string) {
 	sum := fnv.New64a()
 	_, _ = sum.Write(body)
 	etag := fmt.Sprintf("\"%x\"", sum.Sum64())
 	c.Header("ETag", etag)
-	c.Header("Cache-Control", shellCacheControl)
+	c.Header("Cache-Control", cacheControl)
 	if strings.Contains(c.GetHeader("If-None-Match"), etag) {
 		c.Status(http.StatusNotModified)
 		return
@@ -280,6 +280,19 @@ func writeShell(c *gin.Context, body []byte) {
 	}
 	// c.Data 会带上 Content-Length；靠 chunked 传输的响应 CDN 更不愿意缓存。
 	c.Data(http.StatusOK, "text/html; charset=utf-8", body)
+}
+
+func isUncredentialedHomeNavigation(c *gin.Context) bool {
+	if c.Request.Method != http.MethodGet || c.Request.URL.RawQuery != "" || c.GetHeader("Authorization") != "" ||
+		c.GetHeader("Sec-Fetch-Mode") != "navigate" || c.GetHeader("Sec-Fetch-Dest") != "document" {
+		return false
+	}
+	for _, name := range []string{"session_token", "temp_key"} {
+		if _, err := c.Request.Cookie(name); err == nil {
+			return false
+		}
+	}
+	return true
 }
 
 func stripServiceWorkerRegistration(html string) string {
@@ -439,6 +452,7 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 			config.CustomBodyKey:  "",
 			config.SitenameKey:    "Nekomari Monitor",
 			config.ThemeKey:       DefaultTheme,
+			config.PrivateSiteKey: nil,
 		})
 		return cfg
 	}
@@ -646,6 +660,15 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 		cfg := getConfig()
 
 		currentTheme := cfg[config.ThemeKey].(string)
+		cacheControl := shellCacheControl
+		if !forceDefaultTheme && reqPath == "/" && currentTheme == "emerald-insights" && cfg[config.PrivateSiteKey] == true {
+			cacheControl = "private, no-store"
+			if isUncredentialedHomeNavigation(c) {
+				c.Header("Cache-Control", cacheControl)
+				c.Redirect(http.StatusFound, "/admin")
+				return
+			}
+		}
 		shouldReplace := true
 
 		// 特殊页面：强制使用 default 主题，且不进行内容替换
@@ -684,7 +707,7 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 
 		// 如果不替换，保留系统内置页面内容。
 		if !shouldReplace {
-			writeShell(c, []byte(htmlStr))
+			writeShell(c, []byte(htmlStr), cacheControl)
 			return
 		}
 
@@ -696,7 +719,7 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 			"</body>", cfg[config.CustomBodyKey].(string)+"</body>",
 		)
 
-		writeShell(c, []byte(replacer.Replace(htmlStr)))
+		writeShell(c, []byte(replacer.Replace(htmlStr)), cacheControl)
 	}
 
 	// ================= 路由定义 =================
@@ -869,6 +892,10 @@ func static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc), force
 			}
 		}()
 		reqPath := c.Request.URL.Path
+		if reqPath == "/" {
+			serveIndex(c)
+			return
+		}
 		cfg := getConfig()
 		currentTheme := cfg[config.ThemeKey].(string)
 		if forceDefaultTheme {
