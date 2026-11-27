@@ -8,6 +8,8 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [1.8.5] — 2026-11-27 (opt-in panel release)
+
 - The admin sign-in screen no longer starts the dashboard, fetches protected
   settings or opens the monitoring socket before there is a session. Signing
   in opens the originally requested route without reloading the document.
