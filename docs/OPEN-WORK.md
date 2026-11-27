@@ -14,20 +14,17 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**v1.8.4 production (2026-11-26):** OC424 runs the [verified terminal-dialog
-panel](./DEPLOY-OC424.md#v184-panel-cutover-2026-11-26-utc). The panel-only
-release changed no Agent or moving default. The next frontend budget slice is
-[tracked in #187](https://github.com/Aone2233/Nekomari/issues/187): cold,
-service-worker-blocked fixture visits loaded 47 JS requests on `/` and 85 on
-`/admin/servers`, against a target below 35. These are not CDN measurements.
+**v1.8.5 production (2026-11-27):** OC424 runs the [verified admin cold-start
+fix](./DEPLOY-OC424.md#v185-panel-cutover-2026-11-27-utc). A guest no longer
+boots the dashboard behind sign-in. No Agent or moving release default changed.
 
-**Admin opening speed (#187, v1.8.5 candidate):** Defer protected routes and sockets
-until `/api/me` confirms the session. On the two common landing routes, start
-the requested page and its layout together; defer unused node forms. The
-installed-panel [cold-start comparison](./TESTING.md#admin-cold-start) covers
-guest sign-in and the signed-in server list, not a production device or the
-third-party theme's `/` → `/admin` redirect. The signed-in list remains above
-the 35-request target; no Agent or production configuration change is needed.
+**Opening speed remaining ([#187](https://github.com/Aone2233/Nekomari/issues/187)):**
+The signed-in node list still requested 80 JS files in the [17-node cold-start
+fixture](./TESTING.md#admin-cold-start), against a target below 35. Profile its
+initial imports before changing the chunks. Direct guest visits now load 19
+scripts, but the small public sample did not show a wall-clock improvement.
+Measure the third-party homepage redirect separately from direct `/admin`
+visits; the rollout did not change it.
 
 **v1.8.3 panel slice (2026-11-26, historical):** OC424 ran the [verified execution-history
 panel](./DEPLOY-OC424.md#v183-panel-cutover-2026-11-26-utc). All 17 registered

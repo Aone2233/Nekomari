@@ -3,6 +3,38 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.8.5 panel cutover (2026-11-27, UTC)
+
+At 01:44:06 OC424 switched the server and its embedded admin panel to image index
+`sha256:c793ee57d86ce5ad78ab377f7f0481095210a2985dbfc11e8176e1782dbc9c54`.
+Pre/post upgrade checks passed 9/9. Loopback and public HTTPS returned
+`v1.8.5 / 60c2d94`, and the running arm64 binary matched the attested download.
+The container was healthy with zero restarts; SQLite `quick_check` passed and
+history rows did not shrink. All 17 registered Agents remained on v1.8.2, with
+unchanged identities and targets; every node produced fresh CPU, memory, ping
+latency and loss after cutover. All 16 ping tasks and the local Agent process
+compared equal across the switch. The prior rollout listed 17 tasks; a completed
+deletion at 01:09:35 predates this cutover. No task was restored or edited.
+
+Public HTTPS served the exact admin entry, login, install-command and discovery
+scripts embedded in the published arm64 binary. Three anonymous Chromium visits
+per release to `/admin`, each with a new context and service workers blocked,
+observed 66 → 19 scripts, 10 → 0 HTTP 401 responses and 1–2 → 0 WebSocket
+attempts (through 2.5 s after the password field appeared). Median time to see
+the password field was 1,380 → 1,397 ms: **no measured speedup on this public
+path** in this sample. Nothing signed in to production or exercised the theme's
+`/` redirect. For controlled, throttled guest and signed-in timings, see the
+[installed-panel comparison](./TESTING.md#admin-cold-start).
+
+MAC-WAN restored the fresh 01:18:58 pre-cut encrypted archive (SHA-256
+`5b89bf495ca4b9c9c61bc4a3cccd04af73b20c96c5dece1ddfa12670baf60f44`)
+with both the pinned v1.8.4 and v1.8.5 images. The distinct 01:46:18 post-cut
+archive (`1e52dc30bc5d05f7fa72179c07c35445948a9b7bf76f1f601b6dbf6bd32d9f60`)
+booted with v1.8.5. These were network-isolated drills of online backups, not
+atomic multi-database snapshots. For an image-only rollback, restore the saved
+compose at `/opt/nekomari/rollbacks/cold-v185-20261127T014406Z-y1m4chyo/previous.yml`
+and recreate only the panel service, leaving the live databases in place.
+
 ## v1.8.4 panel cutover (2026-11-26, UTC)
 
 At 14:30:54 OC424 switched only the panel, to index
