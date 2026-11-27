@@ -6,6 +6,12 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [1.8.10] — 2026-11-27 (opt-in panel release)
+
+- The admin server list pauses its five-second polling timer while the tab is
+  hidden. Returning to it immediately refreshes the list and resumes the usual
+  cadence; there is no extra fetch on initial mount. No Agent update is needed.
+
 ## [1.8.9] — 2026-11-27 (opt-in panel release)
 
 - The admin panel no longer downloads the legal notice after it has been accepted,
