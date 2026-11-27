@@ -2,6 +2,19 @@
 
 ## Cut a release
 
+**v1.8.5 admin cold start (2026-11-27):** [Release v1.8.5](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.5)
+is an opt-in prerelease at `60c2d94a3d2812279db1d657fc0ddb3d63f174a5`.
+[Main CI](https://github.com/Aone2233/Nekomari/actions/runs/45922264273) passed 8/8,
+[release and published deployment checks](https://github.com/Aone2233/Nekomari/actions/runs/45923210369) 10/10,
+and [image publication](https://github.com/Aone2233/Nekomari/actions/runs/45923904588) 2/2.
+All nine checksums and eight binary attestations verified against that tag,
+source and release workflow. Both Linux architectures' panel and Agent image
+binaries matched the downloads. The published amd64 panel passed the isolated
+default and admin CSV tests (including guest retry and deep-link sign-in) and
+execution-history browser test. GitHub Latest remained v1.8.2; neither image's
+`latest` or `1.8` alias changed (Agent `1.8` absent). See the [production
+check and recovery record](./DEPLOY-OC424.md#v185-panel-cutover-2026-11-27-utc).
+
 **v1.8.4 terminal dialogs (2026-11-26):** [Release v1.8.4](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.4)
 is an opt-in prerelease from `7003444`, not GitHub Latest. [Exact CI](https://github.com/Aone2233/Nekomari/actions/runs/45835951954)
 passed 8/8, [release and published deployment verification](https://github.com/Aone2233/Nekomari/actions/runs/45837668922)
