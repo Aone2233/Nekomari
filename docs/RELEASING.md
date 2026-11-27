@@ -2,6 +2,29 @@
 
 ## Cut a release
 
+**v1.8.9 deferred admin notices (2026-11-27, 14:09 UTC):** [Release v1.8.9](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.9)
+(ID `460681128`) is an opt-in prerelease from `c7037cb90a4e5343f6fa402679e48b0e5d4bb2a3`.
+[PR CI](https://github.com/Aone2233/Nekomari/actions/runs/46009764465) and
+[merge CI](https://github.com/Aone2233/Nekomari/actions/runs/46011255595) passed 8/8 each,
+[release and deployment checks](https://github.com/Aone2233/Nekomari/actions/runs/46012530046) 10/10,
+and [image publication](https://github.com/Aone2233/Nekomari/actions/runs/46013567293) 2/2.
+All nine checksums and eight binary attestations verified against the tag,
+source commit and release workflow. Both Linux architectures' panel and Agent
+image binaries matched their downloads. The panel index is
+`sha256:b56a53c3f1ed6e0f54141c59396112dc70f0832f6ebba91f4fb5edfc827a52fd`.
+GitHub Latest remained v1.8.2; neither package's moving aliases changed (Agent `1.8` absent).
+
+Three [cold signed-in visits](./TESTING.md#admin-cold-start) per **downloaded**
+version on the same 17-node fixture measured v1.8.8 → v1.8.9: 73 → 69 JS
+requests, 361,416 → 338,508 transfer bytes, median first visible node 4,420 →
+4,292 ms. The timing ranges overlap; these are not production timings. The
+downloaded amd64 panel passed both admin CSV exports, guest sign-in, keyboard
+release notes with focus return, and legal notice failure/retry/persistence;
+closed notices were not fetched. The same binary with its own extracted assets
+passed ten navigation scenarios across five languages and two widths. The
+public precache grew to 184 URLs (4,435,970 raw bytes; 1,311,471 individually
+gzipped); fewer signed-in requests did not reduce this separate budget.
+
 **v1.8.8 admin sidebar (2026-11-27, 08:32 UTC):** [Release v1.8.8](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.8)
 (release ID `460334845`) is an opt-in prerelease from `97b2ce5097c39baff51bfb5fd4ec27aa86d2181c`.
 [PR CI](https://github.com/Aone2233/Nekomari/actions/runs/45963439736) and
