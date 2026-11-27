@@ -14,11 +14,13 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**v1.8.9 production (2026-11-27):** OC424 runs the [pinned v1.8.9 panel](./DEPLOY-OC424.md#v189-panel-cutover-2026-11-27-utc).
-Eight Agents passed the [v1.8.7 staged gates](./DEPLOY-OC424.md#v187-agent-canaries-and-first-batch);
-the other nine remain on v1.8.2. Next: continue small, identity-verified batches,
-retaining rollback binaries and requiring two fresh telemetry windows per node.
-No fleet-wide target or change to Latest.
+**v1.8.10 production (2026-11-27):** OC424 runs the [pinned v1.8.10 panel](./DEPLOY-OC424.md#v1810-panel-cutover-2026-11-27-utc).
+Of 19 registrations, eight passed the [v1.8.7 staged gates](./DEPLOY-OC424.md#v187-agent-canaries-and-first-batch),
+two newly registered on v1.8.7, and nine remain on v1.8.2. No Agent changed
+in the panel window. Next: establish independent host-to-registration evidence
+for the next candidate (Po0/SB01 interface-address checks did not match).
+Keep a local rollback binary and require two fresh telemetry windows per node.
+No pending targets, fleet-wide rollout or change to GitHub Latest.
 
 **Opening speed remaining ([#187](https://github.com/Aone2233/Nekomari/issues/187)):**
 The [released sidebar](./RELEASING.md#cut-a-release) reduced the signed-in
@@ -28,10 +30,14 @@ The separate private homepage cache replay is [verified closed at two public edg
 The [downloaded v1.8.9 panel](./RELEASING.md#cut-a-release) reproduced 69 JS
 requests on that fixture. This is release acceptance, not production timing.
 Continue reducing signed-in startup requests and track the public precache separately.
-The [published v1.8.10 panel](./RELEASING.md#cut-a-release) passed the
-hidden/visible request-sequence check on the actual download. It is not
-running on OC424. Observe the v1.8.9 cutover and this Agent wave before
-preparing the next panel switch with a fresh backup and recovery drill.
+The [deployed v1.8.10 fix](./DEPLOY-OC424.md#v1810-panel-cutover-2026-11-27-utc)
+stops background node-list polling. The old/new signed downloads reproduced
+2/0 requests in 11 simulated hidden seconds and 0/1 immediately on return.
+This reduces background traffic; it does not meet or measure the signed-in
+first-open request budget. The production guest smoke also saw one 8.29 s login
+outlier that three fresh-browser timing traces did not reproduce. Collect
+navigation and resource timings on the next slow visit before attributing it
+to the CDN, backend or JS.
 
 **v1.8.3 panel slice (2026-11-26, historical):** OC424 ran the [verified execution-history
 panel](./DEPLOY-OC424.md#v183-panel-cutover-2026-11-26-utc). All 17 registered
