@@ -2,6 +2,26 @@
 
 ## Cut a release
 
+**v1.8.7 signed-in node list (2026-11-27, 03:42 UTC):** [Release v1.8.7](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.7)
+is an opt-in prerelease at `2a9940d4808bd69a22a1463b7e17088bec8cdeef`.
+[Exact main CI](https://github.com/Aone2233/Nekomari/actions/runs/45934276423) passed 8/8,
+[release and published deployment checks](https://github.com/Aone2233/Nekomari/actions/runs/45935130505) 10/10,
+and [image publication](https://github.com/Aone2233/Nekomari/actions/runs/45935827653) 2/2.
+All nine checksums and eight binary attestations verified against the source,
+tag and signer workflow. Both Linux architectures' panel and Agent image binaries
+matched their downloads. The panel index is
+`sha256:62ef4b8970009b5581353bf262f35081cc2826904eb6eeb9195e0de97d59cff9`.
+GitHub Latest stayed on v1.8.2, and neither image's moving aliases changed
+(Agent `1.8` absent). This was not a production or Agent rollout.
+
+On the [17-node cold-start fixture](./TESTING.md#admin-cold-start), three fresh
+Chromium visits per published version measured **5,227 → 4,739 ms** median to
+the first visible node on authenticated `/admin/servers` (v1.8.6 → v1.8.7).
+Each visit transferred 80 → 75 same-origin JS files and 427,600 → 406,315 JS
+bytes. The attested amd64 binary also passed the keyboard drawer, focus return,
+both admin CSV downloads and guest sign-in tests. This does not measure a
+production account, CDN or device, or meet the under-35-request target.
+
 **v1.8.6 private homepage (2026-11-27, 02:47 UTC):** [Release v1.8.6](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.6)
 is an opt-in prerelease from `1e34a48c8cb0f0810754ce11128650863cfc336b`.
 [Exact main CI](https://github.com/Aone2233/Nekomari/actions/runs/45929154423) passed 8/8,

@@ -19,17 +19,13 @@ fix](./DEPLOY-OC424.md#v185-panel-cutover-2026-11-27-utc). A guest no longer
 boots the dashboard behind sign-in. No Agent or moving release default changed.
 
 **Opening speed remaining ([#187](https://github.com/Aone2233/Nekomari/issues/187)):**
-The v1.8.6 signed-in node list requested 80 JS files in the [17-node cold-start
-fixture](./TESTING.md#admin-cold-start), against a target below 35. Its static
-imports included the drawer and form controls even when no row action was used.
-The v1.8.7 candidate moves them off the initial route. The shared admin layout
-is the next place to profile, not a reason to merge all chunks. Direct guest visits load 19
-scripts, but the small public sample did not show a wall-clock improvement.
-The [verified v1.8.6 release](./RELEASING.md#cut-a-release) skips the theme
-bootstrap for a fresh private Emerald guest; its published binary passed the
-isolated homepage comparison. It has not been deployed on OC424. A future
-cutover needs fresh backup/restore checks and a public `/` vs `/admin` check;
-the signed-in list budget remains separate.
+The [verified v1.8.7 release](./RELEASING.md#cut-a-release) moved unopened
+row forms off the signed-in list's initial route. Its [17-node fixture](./TESTING.md#admin-cold-start)
+requested 75 JS files, down from 80 but still above the target of fewer than 35.
+Profile the shared admin layout and sidebar imports next. The release includes
+v1.8.6's private Emerald guest shortcut. Neither release has been deployed
+on OC424; a future cutover needs a fresh backup/restore check and separate
+verification of `/` and `/admin` over public HTTPS.
 
 **v1.8.3 panel slice (2026-11-26, historical):** OC424 ran the [verified execution-history
 panel](./DEPLOY-OC424.md#v183-panel-cutover-2026-11-26-utc). All 17 registered
