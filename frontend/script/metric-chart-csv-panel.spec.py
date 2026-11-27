@@ -157,9 +157,31 @@ def run(binary, root, admin_chart):
                         try:
                             guest.add_init_script("localStorage.setItem('language','zh-CN')")
                             anon = guest.new_page()
-                            anon.goto('/admin/servers/' + entity + '/charts')
-                            expect(anon.get_by_role('dialog').filter(has_text='登录到 Nekomari 控制面板。')).to_be_visible()
+                            activity = []
+                            def observe(request):
+                                if '/api/admin/' in request.url or '/api/rpc2' in request.url:
+                                    activity.append(request.url.split('?')[0])
+                            anon.on('request', observe)
+                            anon.on('websocket', lambda ws: activity.append(ws.url.split('?')[0]))
+                            target = origin + '/admin/servers/' + entity + '/charts?window=1h#chart'
+                            anon.route('**/api/me', lambda route: route.fulfill(status=503, body='unavailable'))
+                            anon.goto(target)
+                            expect(anon.get_by_role('alert')).to_be_visible()
+                            assert not activity, 'protected content started with an unknown session'
+                            anon.unroute('**/api/me')
+                            anon.get_by_role('button', name='重试', exact=True).click()
+                            dialog = anon.get_by_role('dialog').filter(has_text='登录到 Nekomari 控制面板。')
+                            expect(dialog).to_be_visible()
+                            assert not activity, f'protected content started before login: {activity}'
+                            document_start = anon.evaluate('performance.timeOrigin')
                             expect(anon.get_by_text('导出 CSV', exact=True)).to_have_count(0)
+                            dialog.locator('[name=username]').fill(login['username'])
+                            dialog.locator('[name=password]').fill(login['password'])
+                            dialog.locator('[type=submit]').click()
+                            expect(anon.get_by_role('button', name='导出 CSV', exact=True)).to_be_visible()
+                            expect(anon).to_have_url(target)
+                            assert anon.evaluate('performance.timeOrigin') == document_start, 'login reloaded the document'
+                            assert activity, 'expected protected content to start after login'
                         finally:
                             guest.close()
                         print('PASS: custom public theme unchanged; admin list to both downloads; missing node and guest')

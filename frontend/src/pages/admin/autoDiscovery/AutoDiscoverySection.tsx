@@ -20,7 +20,7 @@ import {
   quoteShellArg,
   quoteShellArgs,
 } from "@/utils/shellQuote";
-import type { Platform } from "../nodeTable/GenerateCommandButton";
+import type { Platform } from "../nodeTable/InstallCommandContent";
 import { useIsSnapshotBackend } from "../nodeTable/useIsSnapshotBackend";
 
 /**

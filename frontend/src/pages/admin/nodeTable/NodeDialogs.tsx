@@ -53,18 +53,27 @@ import { requireClientMutationSuccess } from "./mutationResult";
  */
 
 export function DetailView({ node }: { node: NodeDetail }) {
-  const { t } = useTranslation();
   const isMobile = useIsMobile();
 
   return (
     <Drawer direction={isMobile ? "bottom" : "right"}>
       <DrawerTrigger asChild>
-        <div className="h-8 flex items-center hover:underline cursor-pointer font-bold text-base">
+        <button type="button" className="h-8 flex items-center hover:underline cursor-pointer font-bold text-base">
           <Flag flag={node.region} size="6" />
           {node.name.length > 25 ? node.name.slice(0, 25) + "..." : node.name}
-        </div>
+        </button>
       </DrawerTrigger>
       <DrawerContent>
+        <MachineDetails node={node} />
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+function MachineDetails({ node }: { node: NodeDetail }) {
+  const { t } = useTranslation();
+  return (
+    <>
         <DrawerHeader className="gap-1">
           <DrawerTitle>{node.name}</DrawerTitle>
           <DrawerDescription>
@@ -283,8 +292,7 @@ export function DetailView({ node }: { node: NodeDetail }) {
             <Button>{t("admin.nodeDetail.done", "完成")}</Button>
           </DrawerClose>
         </DrawerFooter>
-      </DrawerContent>
-    </Drawer>
+    </>
   );
 }
 

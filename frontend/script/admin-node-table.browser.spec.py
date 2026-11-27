@@ -127,6 +127,23 @@ class AdminNodeTableBrowserTest(unittest.TestCase):
 
     # -- helpers ------------------------------------------------------------
 
+    def test_install_form_opens_on_demand_and_keeps_the_row_draft(self):
+        self.mount({"body": [node("alpha"), node("bravo")]})
+        triggers = self.page.get_by_title("Install command", exact=True)
+        triggers.first.click()
+        dialog = self.page.get_by_role("dialog", name="Install command")
+        dialog.get_by_role("radio", name="Windows", exact=True).click()
+        windows_command = dialog.locator("textarea").input_value()
+        self.assertTrue(windows_command)
+        self.page.keyboard.press("Escape")
+        self.advance(500)
+        triggers.nth(1).click()
+        self.assertNotEqual(dialog.locator("textarea").input_value(), windows_command)
+        self.page.keyboard.press("Escape")
+        self.advance(500)
+        triggers.first.click()
+        expect(dialog.locator("textarea")).to_have_value(windows_command)
+
     def test_server_details_opens_without_slot_error(self):
         self.mount({"body": [node("alpha", name="Detail regression")]})
         self.page.get_by_test_id("node-row").get_by_text("Detail regression", exact=True).click()

@@ -21,6 +21,14 @@ release changed no Agent or moving default. The next frontend budget slice is
 service-worker-blocked fixture visits loaded 47 JS requests on `/` and 85 on
 `/admin/servers`, against a target below 35. These are not CDN measurements.
 
+**Admin opening speed (#187, unreleased):** Defer protected routes and sockets
+until `/api/me` confirms the session. On the two common landing routes, start
+the requested page and its layout together; defer unused node forms. The
+installed-panel [cold-start comparison](./TESTING.md#admin-cold-start) covers
+guest sign-in and the signed-in server list, not a production device or the
+third-party theme's `/` → `/admin` redirect. The signed-in list remains above
+the 35-request target; no Agent or production configuration change is needed.
+
 **v1.8.3 panel slice (2026-11-26, historical):** OC424 ran the [verified execution-history
 panel](./DEPLOY-OC424.md#v183-panel-cutover-2026-11-26-utc). All 17 registered
 Agents remain on v1.8.2; this panel rollout changed neither their targets nor

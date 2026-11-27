@@ -5,9 +5,16 @@ import React from "react";
 import { Navigate } from "react-router-dom";
 
 const Index = lazy(() => import("./pages/Index"));
-const AdminLayout = lazy(() => import("./pages/admin/_layout"));
-const Admin = lazy(() => import("./pages/admin"));
-const Dashboard = lazy(() => import("./pages/admin/dashboard"));
+const loadServers = () => import("./pages/admin");
+const loadDashboard = () => import("./pages/admin/dashboard");
+const AdminLayout = lazy(() => {
+  const layout = import("./pages/admin/_layout");
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, "");
+  const landing = path === "/admin/servers" ? loadServers : path === "/admin" || path === "/admin/dashboard" ? loadDashboard : null;
+  return landing ? Promise.all([layout, landing()]).then(([module]) => module) : layout;
+});
+const Admin = lazy(loadServers);
+const Dashboard = lazy(loadDashboard);
 const NotFound = lazy(() => import("./pages/404"));
 
 export const routes: RouteObject[] = [

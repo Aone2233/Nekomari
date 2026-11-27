@@ -29,6 +29,7 @@ await i18n.init({
         "admin.nodeTable.nodeList": "Node list",
         "admin.nodeTable.searchByName": "Search by name",
         "admin.nodeTable.addNode": "Add node",
+        "admin.nodeTable.installCommand": "Install command",
         "admin.nodeTable.nameOptional": "Name (optional)",
         "admin.nodeTable.name": "Name",
         "admin.nodeTable.billing": "Billing",

@@ -1,11 +1,12 @@
-import { useRef, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Dialog, Flex, Text, TextField } from "@radix-ui/themes";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { useNodeDetails } from "@/contexts/NodeDetailsContext";
-import { AutoDiscoverySection } from "./AutoDiscoverySection";
 import { requireClientMutationSuccess } from "../nodeTable/mutationResult";
+
+const AutoDiscoverySection = lazy(() => import("./AutoDiscoverySection").then(module => ({ default: module.AutoDiscoverySection })));
 
 /**
  * The node list's title bar: the search box, the selected count, and the
@@ -89,10 +90,9 @@ export const Header = ({
                 {t("admin.nodeTable.addNode")}
               </Button>
             </Flex>
-            <AutoDiscoverySection
-              settings={settings}
-              loading={settingsLoading}
-            />
+            <Suspense fallback={<p role="status">{t("loading")}</p>}>
+              <AutoDiscoverySection settings={settings} loading={settingsLoading} />
+            </Suspense>
           </Dialog.Content>
         </Dialog.Root>
       </Flex>
