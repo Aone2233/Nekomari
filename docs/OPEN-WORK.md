@@ -17,8 +17,10 @@ holds the evidence and the acceptance criteria for each item. This file is the l
 **v1.8.10 production (2026-11-27):** OC424 runs the [pinned v1.8.10 panel](./DEPLOY-OC424.md#v1810-panel-cutover-2026-11-27-utc).
 Of 19 registrations, eight passed the [v1.8.7 staged gates](./DEPLOY-OC424.md#v187-agent-canaries-and-first-batch),
 two newly registered on v1.8.7, and nine remain on v1.8.2. No Agent changed
-in the panel window. Next: establish independent host-to-registration evidence
-for the next candidate (Po0/SB01 interface-address checks did not match).
+in the panel window. Hold further rollout until the operator identifies the
+[two explicit container stops](https://github.com/Aone2233/Nekomari/issues/208)
+and a stable observation window passes. Then establish independent host-to-
+registration evidence for the next candidate (Po0/SB01 addresses did not match).
 Keep a local rollback binary and require two fresh telemetry windows per node.
 No pending targets, fleet-wide rollout or change to GitHub Latest.
 
@@ -34,7 +36,9 @@ The [deployed v1.8.10 fix](./DEPLOY-OC424.md#v1810-panel-cutover-2026-11-27-utc)
 stops background node-list polling. The old/new signed downloads reproduced
 2/0 requests in 11 simulated hidden seconds and 0/1 immediately on return.
 This reduces background traffic; it does not meet or measure the signed-in
-first-open request budget. The production guest smoke also saw one 8.29 s login
+first-open request budget: [the two signed downloads each fetched 69 JS files
+in three cold fixture visits](https://github.com/Aone2233/Nekomari/issues/187#issuecomment-7222246966).
+The production guest smoke also saw one 8.29 s login
 outlier that three fresh-browser timing traces did not reproduce. Collect
 navigation and resource timings on the next slow visit before attributing it
 to the CDN, backend or JS.

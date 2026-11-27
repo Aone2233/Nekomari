@@ -60,6 +60,17 @@ pending targets and all four metrics fresh for all 19 nodes. The tag remains
 an opt-in prerelease; GitHub Latest is v1.8.2 and both packages' moving
 aliases matched the pre-release checks. No new tag was needed for deployment.
 
+**Later observation, 15:45 UTC.** The same container started again at 15:35:28
+and 15:42:22. For both stops the Docker daemon journal matched its exact ID,
+exit code 0 and `hasBeenManuallyStopped=true`, without a daemon shutdown.
+The zero restart counter is not evidence of uninterrupted uptime. The caller
+has not been established. The panel check passed 9/9 after the first stop;
+public and loopback still served the pinned version after the second. JPSB2
+had a 337-second gap between stored ping samples (15:34:54 and 15:40:31).
+This is missing telemetry, not measured packet loss or proof of a cause.
+At 15:45 all 19 nodes again had all four metrics fresh and the roster and
+probe fingerprint matched. See [the lifecycle follow-up](https://github.com/Aone2233/Nekomari/issues/208).
+
 No Agent binary was replaced during this window. On Po0 and SB01 the stored
 registration UUID and running v1.8.2 binary matched, but **neither** host had
 a global interface address matching its panel row. That does not by itself
