@@ -19,7 +19,10 @@ Of 19 registrations, eight passed the [v1.8.7 staged gates](./DEPLOY-OC424.md#v1
 two newly registered on v1.8.7, and nine remain on v1.8.2. No Agent changed
 in the panel window. Hold further rollout until the operator identifies the
 [two explicit container stops](https://github.com/Aone2233/Nekomari/issues/208)
-and a stable observation window passes. Then establish independent host-to-
+on OC424. The operator confirmed restarting a newly added probe; that does not
+identify the caller of the panel stops. At 18:52 UTC the same container still
+had its 15:42 start time, the upgrade check passed 9/9 and all four metrics
+were fresh on all 19 nodes. Then establish independent host-to-
 registration evidence for the next candidate (Po0/SB01 addresses did not match).
 Keep a local rollback binary and require two fresh telemetry windows per node.
 No pending targets, fleet-wide rollout or change to GitHub Latest.

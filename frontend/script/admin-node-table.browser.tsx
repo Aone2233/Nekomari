@@ -6,7 +6,9 @@ import { Theme } from "@radix-ui/themes";
 import { Toaster } from "sonner";
 import { NodeDetailsProvider } from "../src/contexts/NodeDetailsProvider";
 import { AccountContext } from "../src/contexts/AccountContext";
-import { RPC2Provider } from "../src/contexts/RPC2Provider";
+import { RPC2Context } from "../src/contexts/RPC2Context";
+import { RPC2Client } from "../src/lib/rpc2";
+import { RPC2ConnectionState } from "../src/types/rpc2";
 import { Layout } from "../src/pages/admin/index";
 import "@radix-ui/themes/styles.css";
 
@@ -43,6 +45,7 @@ await i18n.init({
         "common.group": "Group",
         "common.delete": "Delete",
         "common.cancel": "Cancel",
+        "common.retry": "Retry",
         "common.save": "Save",
         "common.confirm_delete": "Confirm",
         "copy_success": "Copied",
@@ -73,6 +76,7 @@ const SETTINGS = "/api/admin/settings";
 // later poll.
 type FixtureWindow = Window & {
   nodeListQueue: QueuedResponse[];
+  backendVersions?: unknown[];
   nodeListHolds: Map<string, (response: QueuedResponse) => void>;
   adminNodeTableFixture: {
     queue: (response: QueuedResponse) => void;
@@ -114,6 +118,10 @@ window.fetch = async (input: RequestInfo | URL) => {
   const url = String(input);
   urlCalls.push(url);
 
+  if (url === "/api/version") {
+    const version = fixtureWindow.backendVersions?.shift() ?? "v1.8.10";
+    return Response.json({ status: "success", data: { version } });
+  }
   if (url === SETTINGS) {
     return new Response(JSON.stringify({ status: "success", data: settingsPayload }), {
       status: 200,
@@ -161,13 +169,13 @@ Object.assign(fixtureWindow, {
   },
 });
 
+const client = new RPC2Client("/api/rpc2", { autoConnect: false });
+
 createRoot(document.getElementById("root")!).render(
   <I18nextProvider i18n={i18n}>
     <Theme>
-      {/* The page reads settings through a context and one of its rows asks the
-          RPC2 client whether the backend is the snapshot build, so both
-          providers have to be the real ones. */}
-      <RPC2Provider>
+      <RPC2Context.Provider value={{ client, connectionState: RPC2ConnectionState.DISCONNECTED,
+        isConnected: false, error: null, connect: async () => {}, disconnect: () => {} }}>
         <AccountContext.Provider value={{ account: { logged_in: true, username: "fixture", uuid: "fixture", sso_id: "", sso_type: "", "2fa_enabled": false }, loading: false, error: null, refresh: () => {} }}>
         <NodeDetailsProvider>
           <MemoryRouter>
@@ -175,7 +183,7 @@ createRoot(document.getElementById("root")!).render(
           </MemoryRouter>
         </NodeDetailsProvider>
         </AccountContext.Provider>
-      </RPC2Provider>
+      </RPC2Context.Provider>
       <Toaster />
     </Theme>
   </I18nextProvider>,

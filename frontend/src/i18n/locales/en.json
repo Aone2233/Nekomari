@@ -127,6 +127,7 @@
       },
       "enableGpuMonitoring": "Enable detailed GPU monitoring",
       "errorLoadNodeList": "Unable to load the node list",
+      "versionUnavailable": "Could not read the panel version. Retry before copying an install command.",
       "errorRefreshNodeList": "Failed to refresh the list",
       "excludeNics": "Exclude specific network interfaces.",
       "expiredAt": "Expired at",

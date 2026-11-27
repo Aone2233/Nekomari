@@ -415,7 +415,7 @@ jobs:
           set -euo pipefail
           case "$RELEASE_TAG" in
             v1.7.30|v1.8.0|v1.8.1) prefix=manual- ;;
-            v1.8.2|v1.8.3|v1.8.4|v1.8.5|v1.8.6|v1.8.7|v1.8.8|v1.8.9|v1.8.10) prefix='' ;;
+            v1.8.2|v1.8.3|v1.8.4|v1.8.5|v1.8.6|v1.8.7|v1.8.8|v1.8.9|v1.8.10|v1.8.11) prefix='' ;;
             *) echo '::error::manual-only Agent publication requires explicit review for this tag'; exit 1 ;;
           esac
           shopt -s nullglob
@@ -516,7 +516,7 @@ jobs:
           name: ${{ needs.resolve.outputs.tag }}
           draft: true
           make_latest: false
-          prerelease: ${{ needs.resolve.outputs.tag == 'v1.8.2' || needs.resolve.outputs.tag == 'v1.8.3' || needs.resolve.outputs.tag == 'v1.8.4' || needs.resolve.outputs.tag == 'v1.8.5' || needs.resolve.outputs.tag == 'v1.8.6' || needs.resolve.outputs.tag == 'v1.8.7' || needs.resolve.outputs.tag == 'v1.8.8' || needs.resolve.outputs.tag == 'v1.8.9' || needs.resolve.outputs.tag == 'v1.8.10' }}
+          prerelease: ${{ needs.resolve.outputs.tag == 'v1.8.2' || needs.resolve.outputs.tag == 'v1.8.3' || needs.resolve.outputs.tag == 'v1.8.4' || needs.resolve.outputs.tag == 'v1.8.5' || needs.resolve.outputs.tag == 'v1.8.6' || needs.resolve.outputs.tag == 'v1.8.7' || needs.resolve.outputs.tag == 'v1.8.8' || needs.resolve.outputs.tag == 'v1.8.9' || needs.resolve.outputs.tag == 'v1.8.10' || needs.resolve.outputs.tag == 'v1.8.11' }}
           overwrite_files: false
           fail_on_unmatched_files: true
           generate_release_notes: true
@@ -536,7 +536,7 @@ jobs:
             | `sbom.spdx.json` | SPDX SBOM for the binaries above (syft) |
             | `SHA256SUMS.txt` | Checksums for every attached file |
 
-            > v1.8.2 through v1.8.10 ship standard Agent filenames. Stable Agent self-update and GitHub
+            > v1.8.2 through v1.8.11 ship standard Agent filenames. Stable Agent self-update and GitHub
             > Latest skip the initial prerelease. Once the same release is promoted,
             > default installers and stable updates can select it. Earlier releases
             > with manual-prefixed assets still require an explicit install.
@@ -576,6 +576,9 @@ jobs:
 
             v1.8.10 pauses periodic server-list requests while the admin tab is hidden
             and refreshes once on return. No Agent upgrade is required.
+
+            v1.8.11 defers the per-node install version check until its dialog opens.
+            An unreadable version offers retry instead of an unpinned install command.
 
             For v1.8.1 and v1.8.2, upgrade the Panel before an Agent: older Panels can
             interpret the new Agent's unknown probe result as packet loss.
@@ -659,7 +662,7 @@ jobs:
               "manual-komari-agent-windows-amd64.exe", "manual-komari-agent-darwin-amd64",
               "manual-komari-agent-darwin-arm64", "SHA256SUMS.txt", "sbom.spdx.json",
           }
-          staged = sys.argv[2] in {"v1.8.2", "v1.8.3", "v1.8.4", "v1.8.5", "v1.8.6", "v1.8.7", "v1.8.8", "v1.8.9", "v1.8.10"}
+          staged = sys.argv[2] in {"v1.8.2", "v1.8.3", "v1.8.4", "v1.8.5", "v1.8.6", "v1.8.7", "v1.8.8", "v1.8.9", "v1.8.10", "v1.8.11"}
           if staged:
               expected = {name.removeprefix("manual-") for name in expected}
           if release["tag_name"] != sys.argv[2] or not release["draft"] or release["prerelease"] != staged:
@@ -669,7 +672,7 @@ jobs:
           PY
           id=$(python3 -c 'import json; print(json.load(open("/tmp/draft-release.json"))["id"])')
           staged=false
-          case "$RELEASE_TAG" in v1.8.2|v1.8.3|v1.8.4|v1.8.5|v1.8.6|v1.8.7|v1.8.8|v1.8.9|v1.8.10) staged=true ;; esac
+          case "$RELEASE_TAG" in v1.8.2|v1.8.3|v1.8.4|v1.8.5|v1.8.6|v1.8.7|v1.8.8|v1.8.9|v1.8.10|v1.8.11) staged=true ;; esac
           gh api --method PATCH "repos/${RELEASE_REPO}/releases/${id}" -F draft=false -f make_latest=false -F prerelease="$staged" >/dev/null
           gh api "repos/${RELEASE_REPO}/releases/tags/${RELEASE_TAG}" --jq '[.draft,.prerelease,.tag_name] | @tsv'
 
@@ -719,5 +722,5 @@ jobs:
           # script a user would: no source tree, no local build, only the assets.
           sleep 20
           tag="${{ needs.resolve.outputs.tag }}"
-          case "$tag" in v1.8.2|v1.8.3|v1.8.4|v1.8.5|v1.8.6|v1.8.7|v1.8.8|v1.8.9|v1.8.10) ;; *) export NEKOMARI_MANUAL_AGENT_ASSET=1 ;; esac
+          case "$tag" in v1.8.2|v1.8.3|v1.8.4|v1.8.5|v1.8.6|v1.8.7|v1.8.8|v1.8.9|v1.8.10|v1.8.11) ;; *) export NEKOMARI_MANUAL_AGENT_ASSET=1 ;; esac
           bash deploy/deploy-verify.sh "" 25799 "$tag" "${{ matrix.arch }}"

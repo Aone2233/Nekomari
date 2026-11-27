@@ -11,11 +11,9 @@ import { RotateTokenButton } from "./RotateTokenButton";
 export const ActionButtons = ({
   node,
   settings,
-  isSnapshotBackend,
 }: {
   node: NodeDetail;
   settings: any;
-  isSnapshotBackend: boolean;
 }) => {
   const { t } = useTranslation();
   return (
@@ -26,7 +24,6 @@ export const ActionButtons = ({
       <GenerateCommandButton
         node={node}
         settings={settings}
-        isSnapshotBackend={isSnapshotBackend}
       />
       <IconButton
         title={t("terminal.title")}

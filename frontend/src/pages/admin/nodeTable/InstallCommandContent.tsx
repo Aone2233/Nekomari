@@ -13,6 +13,7 @@ import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import type { NodeDetail } from "@/contexts/NodeDetailsContext";
 import Tips from "@/components/ui/tips";
+import { requireApiSuccess } from "@/lib/apiResponse";
 import {
   quotePowerShellArg,
   quoteShellArg,
@@ -53,10 +54,43 @@ type InstallOptions = {
 export type InstallCommandProps = {
   node: NodeDetail;
   settings: any;
-  isSnapshotBackend: boolean;
 };
 
-export default function InstallCommandContent({ node, settings, isSnapshotBackend }: InstallCommandProps) {
+export default function InstallCommandContent(props: InstallCommandProps) {
+  const { t } = useTranslation();
+  const [attempt, setAttempt] = React.useState(0);
+  const [backend, setBackend] = React.useState<"loading" | "error" | "release" | "snapshot">("loading");
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    async function readVersion() {
+      try {
+        const response = await fetch("/api/version", { cache: "no-store", signal: controller.signal });
+        const { data } = await requireApiSuccess<{ version?: unknown }>(response);
+        const version = typeof data?.version === "string" ? data.version.trim() : "";
+        if (!version) throw new Error("Missing backend version");
+        if (!controller.signal.aborted) setBackend(version.toLowerCase().startsWith("snapshot") ? "snapshot" : "release");
+      } catch {
+        if (!controller.signal.aborted) setBackend("error");
+      }
+    }
+    void readVersion();
+    return () => controller.abort();
+  }, [attempt]);
+
+  if (backend === "snapshot" || backend === "release") {
+    return <InstallCommandForm {...props} snapshot={backend === "snapshot"} />;
+  }
+  return <Dialog.Content>
+    <Dialog.Title>{t("admin.nodeTable.installCommand")}</Dialog.Title>
+    {backend === "loading" ? <p role="status">{t("loading")}</p> : <>
+      <p role="alert">{t("admin.nodeTable.versionUnavailable")}</p>
+      <Button onClick={() => { setBackend("loading"); setAttempt(previous => previous + 1); }}>{t("common.retry")}</Button>
+    </>}
+  </Dialog.Content>;
+}
+
+function InstallCommandForm({ node, settings, snapshot }: InstallCommandProps & { snapshot: boolean }) {
   const [selectedPlatform, setSelectedPlatform] =
     React.useState<Platform>("linux");
   const [installOptions, setInstallOptions] = React.useState<InstallOptions>({
@@ -74,7 +108,7 @@ export default function InstallCommandContent({ node, settings, isSnapshotBacken
     includeMountpoints: "",
     interval: "",
     monthRotate: "",
-    installVersion: "",
+    installVersion: snapshot ? "snapshot" : "",
   });
 
   const [enableGhproxy, setEnableGhproxy] = React.useState(false);
@@ -87,20 +121,7 @@ export default function InstallCommandContent({ node, settings, isSnapshotBacken
     React.useState(false);
   const [enableInterval, setEnableInterval] = React.useState(false);
   const [enableMonthRotate, setEnableMonthRotate] = React.useState(false);
-  const [enableInstallVersion, setEnableInstallVersion] = React.useState(false);
-  // 与原先 `useEffect(..., [isSnapshotBackend])` 等价：依赖变化时在渲染期间同步。
-  const [syncedIsSnapshotBackend, setSyncedIsSnapshotBackend] =
-    React.useState(isSnapshotBackend);
-  if (syncedIsSnapshotBackend !== isSnapshotBackend) {
-    setSyncedIsSnapshotBackend(isSnapshotBackend);
-    if (isSnapshotBackend) {
-      setEnableInstallVersion(true);
-      setInstallOptions((prev) => ({
-        ...prev,
-        installVersion: prev.installVersion.trim() || "snapshot",
-      }));
-    }
-  }
+  const [enableInstallVersion, setEnableInstallVersion] = React.useState(snapshot);
 
   const generateCommand = () => {
     const host = function () {

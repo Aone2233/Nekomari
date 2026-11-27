@@ -17,6 +17,7 @@ the region flag's title), so "which nodes are on screen" is read from the
 """
 
 import json
+import re
 import socket
 import subprocess
 import tempfile
@@ -129,12 +130,14 @@ class AdminNodeTableBrowserTest(unittest.TestCase):
 
     def test_install_form_opens_on_demand_and_keeps_the_row_draft(self):
         self.mount({"body": [node("alpha"), node("bravo")]})
+        self.assertEqual(self.version_calls(), [])
         triggers = self.page.get_by_title("Install command", exact=True)
         triggers.first.click()
         dialog = self.page.get_by_role("dialog", name="Install command")
         dialog.get_by_role("radio", name="Windows", exact=True).click()
         windows_command = dialog.locator("textarea").input_value()
         self.assertTrue(windows_command)
+        self.assertNotIn("--version", windows_command)
         self.page.keyboard.press("Escape")
         self.advance(500)
         triggers.nth(1).click()
@@ -143,6 +146,22 @@ class AdminNodeTableBrowserTest(unittest.TestCase):
         self.advance(500)
         triggers.first.click()
         expect(dialog.locator("textarea")).to_have_value(windows_command)
+        self.assertEqual(self.version_calls(), ["/api/version", "/api/version"])
+
+    def version_calls(self):
+        calls = self.page.evaluate("() => window.adminNodeTableFixture.urlCalls()")
+        return [url for url in calls if url in ("/api/version", "/api/rpc2")]
+
+    def test_unknown_version_offers_retry_not_a_release_command(self):
+        self.page.add_init_script('window.backendVersions = [" ", "snapshot-abc"]')
+        self.mount({"body": [node("alpha")]})
+        self.page.get_by_title("Install command", exact=True).click()
+        dialog = self.page.get_by_role("dialog", name="Install command")
+        expect(dialog.get_by_role("alert")).to_be_visible()
+        expect(dialog.locator("textarea")).to_have_count(0)
+        dialog.get_by_role("button", name="Retry").click()
+        expect(dialog.locator("textarea")).to_have_value(re.compile(r"--version snapshot(?:\s|$)"))
+        self.assertEqual(self.version_calls(), ["/api/version", "/api/version"])
 
     def test_server_details_opens_without_slot_error(self):
         self.mount({"body": [node("alpha", name="Detail regression")]})

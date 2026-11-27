@@ -127,6 +127,7 @@
       },
       "enableGpuMonitoring": "Aktifkan pemantauan GPU terperinci",
       "errorLoadNodeList": "Gagal memuat daftar node",
+      "versionUnavailable": "Gagal membaca versi panel. Coba lagi sebelum menyalin perintah instalasi.",
       "errorRefreshNodeList": "Gagal memperbarui daftar",
       "excludeNics": "Kecualikan antarmuka jaringan tertentu.",
       "expiredAt": "Kedaluwarsa pada",
