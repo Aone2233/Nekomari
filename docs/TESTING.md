@@ -100,6 +100,20 @@ without starting protected requests. No bundled copy of Emerald or production
 credentials are required. `TestPrivateEmeraldHomeNavigation` covers probes,
 deep links, share credentials and cache policy for both response variants.
 
+The admin-chart run also supplies a synthetic newer release. On the real node
+list, neither the accepted legal notice nor the unopened release notes may be
+requested. The update button must open the notes with Enter and regain focus on
+Escape. A Chinese installation with the notice still outstanding must show the
+full text, remain open on a failed settings write and persist acceptance on retry.
+
+In a 17-node comparison of the **v1.8.8 download and the local deferred-notices
+candidate**, the admin layout's static import closure decreased from 48 to 42 JS
+files (252,094 → 230,372 gzip bytes). Three fresh signed-in visits per build
+transferred 73 → 69 JS files and 361,416 → 332,649 JS bytes. Median first node
+was 4,483 → 4,218 ms; these small samples overlap and are not production latency.
+The public precache is a separate budget, not a saving: 182 → 184 URLs and
+4,435,228 → 4,435,970 raw bytes for these builds.
+
 For the signed-in server list the spec also observes real asset requests: the
 row-dialog chunk must be absent when the node is visible, and fetched once
 when the name button is activated from the keyboard. The drawer must show that

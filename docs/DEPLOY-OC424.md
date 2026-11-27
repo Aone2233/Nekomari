@@ -36,8 +36,16 @@ cache mismatch, not evidence of an authorization bypass or a reason to revert
 the signed-in sidebar. Three direct public `/admin` visits all passed (19 scripts,
 no theme scripts, denied requests, socket, protected RPC or page errors; login
 field visible in 1,568–3,064 ms, median 1,927 ms). These were guest sessions,
-not production administrator logins. No Cloudflare zone setting was changed. Bypass `/` for
-this hostname at the edge, purge only that URL, then repeat both request types.
+not production administrator logins. No Cloudflare zone setting was changed during cutover.
+
+At 13:05 UTC, after the operator applied a bypass for this hostname's exact `/`
+path and purged that URL, five alternating probe/navigation pairs (three via FRA,
+two via SIN) returned `200` / `302 /admin` respectively. Both variants were
+`private, no-store` and `cf-cache-status: DYNAMIC`. Six fresh public guest browser
+contexts (three per route) reached the login form with 19 scripts, no theme scripts,
+401s, protected RPCs, sockets or page errors. From `/`, the login field appeared
+in 1,237–1,579 ms. This closed the edge replay observation, not the independent
+signed-in node-list performance budget.
 
 ## v1.8.7 panel cutover (2026-11-27, UTC)
 
