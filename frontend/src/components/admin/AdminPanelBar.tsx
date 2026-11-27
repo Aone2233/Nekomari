@@ -7,7 +7,6 @@ import {
   IconButton,
   Text,
 } from "@radix-ui/themes";
-import { AnimatePresence, motion, type Variants } from "framer-motion"; // 引入 Framer Motion
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { formatTime } from "@/components/status/slaFormat";
@@ -93,8 +92,13 @@ function isMenuActive(item: ExtendedMenuItem, pathname: string): boolean {
 
 const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
   const { call } = useRPC2Call();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
+  const [previousMobile, setPreviousMobile] = useState(isMobile);
+  if (previousMobile !== isMobile) {
+    setPreviousMobile(isMobile);
+    setSidebarOpen(!isMobile);
+  }
   const ishttps = window.location.protocol === "https:";
   const [t, i18n] = useTranslation();
   const location = useLocation();
@@ -300,13 +304,6 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
       ignore = true;
     };
   }, [publicInfo, versionInfo]);
-  // Handle responsive behavior
-  useEffect(() => {
-    const handleResize = () => setSidebarOpen(!isMobile);
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [isMobile]);
 
   // 主题配置和插件注入页面分别作为“主题”“插件”主菜单的二级菜单。
   const mergedBaseMenuItems: ExtendedMenuItem[] = useMemo(() => {
@@ -343,46 +340,6 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
       ? menuOverrides.values
       : null;
 
-  // 侧边栏动画变体
-  const sidebarVariants: Variants = {
-    open: {
-      width: isMobile ? "100vw" : "240px",
-      opacity: 1,
-      transition: {
-        type: "spring",
-        stiffness: 300,
-        damping: 30,
-      },
-    },
-    closed: {
-      width: 0,
-      opacity: isMobile ? 0 : 1, // 移动端完全透明
-      transition: {
-        type: "spring",
-        stiffness: 300,
-        damping: 30,
-      },
-    },
-  };
-
-  // 内容区域动画变体
-  const contentVariants = {
-    open: {
-      opacity: isMobile ? 0 : 1,
-      x: isMobile ? "100%" : 0,
-      transition: {
-        duration: 0.3,
-      },
-    },
-    closed: {
-      opacity: 1,
-      x: 0,
-      transition: {
-        duration: 0.3,
-      },
-    },
-  };
-
   function logout() {
     // Session boundary: do not let a later render reuse this session's settings.
     void invalidateSettingsCache();
@@ -402,12 +359,7 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
         }}
       >
         {/* Navbar */}
-        <motion.nav
-          className="km-admin-panel-topbar col-span-2"
-          initial={{ y: 0 }}
-          animate={{ y: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
-        >
+        <nav className="km-admin-panel-topbar col-span-2">
           <Flex
             gap="3"
             p="2"
@@ -420,6 +372,8 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
                 variant="ghost"
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 title={t("common.menu_sidebar", "Menu")}
+                aria-expanded={sidebarOpen}
+                aria-controls="km-admin-sidebar"
                 aria-label={t("common.menu_sidebar", "Menu")}
                 style={{
                   display: isMobile && sidebarOpen ? "none" : "flex",
@@ -516,17 +470,15 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
               </IconButton>
             </Flex>
           </Flex>
-        </motion.nav>
+        </nav>
 
         {/* Sidebar */}
-        <AnimatePresence>
-          <motion.div
-            variants={sidebarVariants}
-            initial="closed"
-            animate={sidebarOpen ? "open" : "closed"}
-            exit="closed"
-            className="km-admin-panel-nav"
+          <div
+            id="km-admin-sidebar"
+            inert={!sidebarOpen}
+            className="km-admin-panel-nav motion-safe:transition-[width] motion-safe:duration-200"
             style={{
+              width: sidebarOpen ? (isMobile ? "100vw" : 240) : 0,
               backgroundColor: "var(--accent-1)",
               height: "100%",
               position: isMobile ? "absolute" : "relative",
@@ -623,9 +575,10 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
                     if (item.children && item.children.length) {
                       return (
                         <div key={item.path}>
-                          <Flex
-                            className="p-2 gap-2 border-l-[4px] border-transparent cursor-pointer hover:bg-accent-3 rounded-md"
-                            align="center"
+                          <button
+                            type="button"
+                            aria-expanded={isOpen}
+                            className="flex w-full items-center text-start p-2 gap-2 border-l-[4px] border-transparent cursor-pointer hover:bg-accent-3 rounded-md"
                             onClick={() => {
                               setMenuOverrides((previous) => {
                                 const values =
@@ -667,17 +620,8 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
                                 transition: "transform 0.2s",
                               }}
                             />
-                          </Flex>
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={
-                              isOpen
-                                ? { height: "auto", opacity: 1 }
-                                : { height: 0, opacity: 0 }
-                            }
-                            transition={{ duration: 0.2 }}
-                            style={{ overflow: "hidden" }}
-                          >
+                          </button>
+                          <div hidden={!isOpen}>
                             <Flex direction="column" className="ml-4 gap-1">
                               {item.children.map((child: MenuItem) => (
                                 <SidebarItem
@@ -702,7 +646,7 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
                                 />
                               ))}
                             </Flex>
-                          </motion.div>
+                          </div>
                         </div>
                       );
                     }
@@ -735,13 +679,10 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
                 )}
               </Flex>
             </Flex>
-          </motion.div>
-        </AnimatePresence>
+          </div>
 
         {/* Main Content */}
-        <motion.div
-          variants={contentVariants}
-          animate={sidebarOpen ? "open" : "closed"}
+        <div
           className="km-admin-panel-content"
           style={{
             backgroundColor: "var(--accent-3)",
@@ -789,7 +730,7 @@ const AdminPanelBar = ({ content }: AdminPanelBarProps) => {
               content
             )}
           </div>
-        </motion.div>
+        </div>
       </Grid>
     </>
   );

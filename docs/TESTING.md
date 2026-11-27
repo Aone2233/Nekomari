@@ -100,6 +100,16 @@ node's UUID, take focus and return it to the same trigger on Escape before the
 chart/CSV checks continue. The separate mounted admin-mutations suite covers
 edit and billing error/retry without losing the entered values.
 
+`admin-tools-navigation.browser.spec.py` opens the actual tools through the
+sidebar in five locales at desktop and phone widths. It checks that a closed
+group hides its links, then uses Enter on the disclosure before following the
+link. In the 17-node cold-start fixture, the post-v1.8.7 sidebar candidate
+reduced the admin layout's static JS closure from 50 to 48 files (294,917 →
+252,094 bytes, each file gzipped at level 9). Three signed-in browser visits
+per build transferred 75 → 73 JS files and 406,315 → 355,151 JS bytes;
+median first visible node was 5,247 → 4,576 ms. The comparison used the v1.8.7
+release and a local candidate, not two public deployments.
+
 For a timing comparison, use separate old/candidate panel processes on the same
 disposable installation with 17 synthetic nodes. Start a fresh Chromium process
 per visit, block service workers, disable the HTTP cache and use a 1365×768

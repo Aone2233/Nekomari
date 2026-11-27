@@ -8,6 +8,10 @@ Nekomari's own.
 
 ## [Unreleased]
 
+- The admin sidebar no longer downloads a JavaScript animation library to open
+  the menu. Resizing within the same breakpoint preserves the menu choice;
+  collapsed groups no longer leave invisible links in the keyboard tab order.
+
 ## [1.8.7] — 2026-11-27 (opt-in panel release)
 
 - The signed-in server list no longer loads the machine details drawer or
