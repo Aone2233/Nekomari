@@ -34,6 +34,39 @@ networking. To roll back the panel image, use the saved compose at
 `/opt/nekomari/rollbacks/nodes-v187-20261127T040614Z-clbsdnqx/previous.yml`,
 recreating only the panel service and keeping the live databases.
 
+### v1.8.7 Agent canaries and first batch
+
+Only after recovery and public panel checks, install the signed release binary
+over the existing unit's executable, one host at a time. The two canaries
+completed at 04:19:08 (BERO, amd64) and 04:24:13 (OC424, arm64); the first
+batch completed at 04:29:11 (HK04) and 04:34:06 (MegaBox), both amd64.
+The old running binary matched the official v1.8.2 checksum before every swap;
+the new `/proc/<MainPID>/exe` matched the attested v1.8.7 checksum and reported
+the expected version. UID, GID, mode and extended attributes compared equal.
+MegaBox retained `cap_net_raw=ep`. No unit configuration or credentials changed.
+
+Each promotion required two separate post-restart windows of CPU, memory, ping
+latency and loss from **all 17** node identities, the expected version split,
+and unchanged identities, update targets and probe rows. The final check found
+four v1.8.7 and thirteen v1.8.2 Agents, no pending targets, and 16 probe tasks.
+The panel container ID and start time were unchanged through all four changes;
+its upgrade checks still passed 9/9. This is a bounded rollout, not fleet
+acceptance or a zero-loss claim. GitHub Latest stayed on v1.8.2.
+
+Each root-only rollback directory is beside its unit's executable and holds
+the original binary under its original name:
+
+| Host | Rollback directory basename |
+|---|---|
+| BERO | `.rollback-v187-20261127T041511Z-fwnffzzd` |
+| OC424 | `.rollback-v187-20261127T041928Z-tlsfjnlw` |
+| HK04 | `.rollback-v187-20261127T042502Z-1dods85f` |
+| MegaBox | `.rollback-v187-20261127T042932Z-pzi6a_ej` |
+
+For an Agent rollback verify the retained v1.8.2 hash, replace the executable
+atomically with its original metadata and capabilities, restart only that unit
+and repeat the process and telemetry checks. Do not roll back the panel database.
+
 ## v1.8.5 panel cutover (2026-11-27, UTC)
 
 At 01:44:06 OC424 switched the server and its embedded admin panel to image index

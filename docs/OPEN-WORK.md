@@ -14,9 +14,12 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**v1.8.5 production (2026-11-27):** OC424 runs the [verified admin cold-start
-fix](./DEPLOY-OC424.md#v185-panel-cutover-2026-11-27-utc). A guest no longer
-boots the dashboard behind sign-in. No Agent or moving release default changed.
+**v1.8.7 production (2026-11-27):** OC424 runs the [verified v1.8.7 panel](./DEPLOY-OC424.md#v187-panel-cutover-2026-11-27-utc).
+BERO, OC424, HK04 and MegaBox passed the [staged Agent gates](./DEPLOY-OC424.md#v187-agent-canaries-and-first-batch);
+the other 13 remain on v1.8.2. Next: map the next small batch to its actual
+service manager and executable, retain rollback artifacts and require fresh
+per-node telemetry before expanding. Do not promote Latest or set fleet-wide
+targets on the strength of four nodes.
 
 **Opening speed remaining ([#187](https://github.com/Aone2233/Nekomari/issues/187)):**
 The [verified v1.8.7 release](./RELEASING.md#cut-a-release) moved unopened
@@ -24,10 +27,9 @@ row forms off the signed-in list's initial route. Its [17-node fixture](./TESTIN
 requested 75 JS files, down from 80 but still above the target of fewer than 35.
 The [post-v1.8.7 sidebar candidate](./TESTING.md#admin-cold-start) removes the
 animation dependency from the layout's initial imports; it is not part of the
-v1.8.7 artifacts. Its 73 requests still exceed the budget. The release includes
-v1.8.6's private Emerald guest shortcut. Neither release has been deployed
-on OC424; a future cutover needs a fresh backup/restore check and separate
-verification of `/` and `/admin` over public HTTPS.
+v1.8.7 artifacts. Its 73 requests still exceed the budget. The production
+panel now includes v1.8.6's private Emerald guest shortcut: a fresh guest on
+`/` no longer boots the theme before `/admin`.
 
 **v1.8.3 panel slice (2026-11-26, historical):** OC424 ran the [verified execution-history
 panel](./DEPLOY-OC424.md#v183-panel-cutover-2026-11-26-utc). All 17 registered
