@@ -8,6 +8,12 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [1.8.7] — 2026-11-27 (opt-in panel release)
+
+- The signed-in server list no longer loads the machine details drawer or
+  initializes the edit and billing forms for every node before they are opened.
+  The drag handles share one viewport subscription across the table.
+
 ## [1.8.6] — 2026-11-27 (opt-in panel release)
 
 - A fresh anonymous browser opening a private Emerald Insights homepage now

@@ -115,8 +115,23 @@ def run(binary, root, admin_chart):
                     page.goto('/instance/' + entity, wait_until='domcontentloaded')
                     if admin_chart:
                         expect(page.get_by_text('Theme owns this page')).to_be_visible()
+                        dialog_chunks = []
+                        page.on('request', lambda request: dialog_chunks.append(request.url) if '/NodeDialogContent-' in request.url else None)
                         page.goto('/admin/servers')
                         row = page.get_by_test_id('node-row').filter(has_text='CSV fixture')
+                        details = row.get_by_role('button', name='CSV fixture')
+                        expect(details).to_be_visible()
+                        assert not dialog_chunks, 'row forms loaded before a node action'
+                        details.focus()
+                        details.press('Enter')
+                        drawer = page.get_by_role('dialog', name='CSV fixture')
+                        expect(drawer).to_be_visible()
+                        expect(drawer.locator('#detail-uuid')).to_have_text(entity)
+                        assert drawer.evaluate('(dialog) => dialog.contains(document.activeElement)')
+                        page.keyboard.press('Escape')
+                        expect(drawer).to_be_hidden()
+                        expect(details).to_be_focused()
+                        assert len(dialog_chunks) == 1, 'expected one on-demand row form chunk'
                         row.get_by_role('link', name='图表与导出').click()
                         expect(page).to_have_url(origin + '/admin/servers/' + entity + '/charts')
                         expect(page.get_by_role('heading', name='CSV fixture · 图表与导出')).to_be_visible()

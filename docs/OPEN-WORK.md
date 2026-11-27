@@ -19,9 +19,11 @@ fix](./DEPLOY-OC424.md#v185-panel-cutover-2026-11-27-utc). A guest no longer
 boots the dashboard behind sign-in. No Agent or moving release default changed.
 
 **Opening speed remaining ([#187](https://github.com/Aone2233/Nekomari/issues/187)):**
-The signed-in node list still requested 80 JS files in the [17-node cold-start
-fixture](./TESTING.md#admin-cold-start), against a target below 35. Profile its
-initial imports before changing the chunks. Direct guest visits now load 19
+The v1.8.6 signed-in node list requested 80 JS files in the [17-node cold-start
+fixture](./TESTING.md#admin-cold-start), against a target below 35. Its static
+imports included the drawer and form controls even when no row action was used.
+The v1.8.7 candidate moves them off the initial route. The shared admin layout
+is the next place to profile, not a reason to merge all chunks. Direct guest visits load 19
 scripts, but the small public sample did not show a wall-clock improvement.
 The [verified v1.8.6 release](./RELEASING.md#cut-a-release) skips the theme
 bootstrap for a fresh private Emerald guest; its published binary passed the

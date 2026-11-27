@@ -37,12 +37,14 @@ import { useIsSnapshotBackend } from "./useIsSnapshotBackend";
 
 const SortableRow = ({
   node,
+  isMobile,
   selectedNodes,
   handleSelectNode,
   settings,
   isSnapshotBackend,
 }: {
   node: NodeDetail;
+  isMobile: boolean;
   selectedNodes: string[];
   handleSelectNode: (uuid: string, checked: boolean) => void;
   settings: any;
@@ -51,7 +53,6 @@ const SortableRow = ({
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: node.uuid });
   const { t } = useTranslation();
-  const isMobile = useIsMobile();
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -225,6 +226,7 @@ export const NodeTable = ({
   const [localNodes, setLocalNodes] = useState<NodeDetail[]>(nodes);
   const [isDragging, setIsDragging] = useState(false);
   const isSnapshotBackend = useIsSnapshotBackend();
+  const isMobile = useIsMobile();
   // 与原先 `useEffect(..., [nodes])` 等价：nodes 引用变化时在渲染期间重新同步一次。
   const [syncedNodes, setSyncedNodes] = useState(nodes);
   if (syncedNodes !== nodes) {
@@ -336,6 +338,7 @@ export const NodeTable = ({
                 <SortableRow
                   key={node.uuid}
                   node={node}
+                  isMobile={isMobile}
                   selectedNodes={selectedNodes}
                   handleSelectNode={handleSelectNode}
                   settings={settings}
