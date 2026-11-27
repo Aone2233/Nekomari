@@ -56,7 +56,7 @@ EXPECTED_REPOSITORY = "Aone2233/Nekomari"
 # The policy, verbatim from docs/RELEASING.md: latest requires a non-prerelease
 # tag AND a verified release run. The `== 'true'` comparison is load-bearing --
 # GitHub treats any non-empty string as true, and the string "false" is not empty.
-EXPECTED_MINOR_ENABLE = "matrix.package == 'nekomari' && steps.tag.outputs.tag != 'v1.8.1' && steps.tag.outputs.tag != 'v1.8.2' && steps.tag.outputs.tag != 'v1.8.3' && steps.tag.outputs.tag != 'v1.8.4' && steps.tag.outputs.tag != 'v1.8.5'"
+EXPECTED_MINOR_ENABLE = "matrix.package == 'nekomari' && steps.tag.outputs.tag != 'v1.8.1' && steps.tag.outputs.tag != 'v1.8.2' && steps.tag.outputs.tag != 'v1.8.3' && steps.tag.outputs.tag != 'v1.8.4' && steps.tag.outputs.tag != 'v1.8.5' && steps.tag.outputs.tag != 'v1.8.6'"
 EXPECTED_LATEST_ENABLE = "!contains(steps.tag.outputs.tag, '-') && steps.tag.outputs.release_verified == 'true' && " + EXPECTED_MINOR_ENABLE
 
 # Expressions in a `run:` script whose value a git ref name can influence.
@@ -202,6 +202,7 @@ CASES = [
     Case("v1.8.3 panel slice keeps moving tags", "workflow_run", "success", "v1.8.3", True, "true", False),
     Case("v1.8.4 panel slice keeps moving tags", "workflow_run", "success", "v1.8.4", True, "true", False),
     Case("v1.8.5 cold-start fix keeps moving tags", "workflow_run", "success", "v1.8.5", True, "true", False),
+    Case("v1.8.6 private homepage keeps moving tags", "workflow_run", "success", "v1.8.6", True, "true", False),
     Case("workflow_run failure", "workflow_run", "failure", "v1.6.9", True, "false", False),
     Case("workflow_run timed_out", "workflow_run", "timed_out", "v1.6.9", True, "false", False),
     Case("workflow_run action_required", "workflow_run", "action_required", "v1.6.9", True, "false", False),
@@ -284,6 +285,7 @@ def eval_github_expression(expr: str, case: Case, verified: str, package: str = 
         "steps.tag.outputs.tag != 'v1.8.3'": case.tag != "v1.8.3",
         "steps.tag.outputs.tag != 'v1.8.4'": case.tag != "v1.8.4",
         "steps.tag.outputs.tag != 'v1.8.5'": case.tag != "v1.8.5",
+        "steps.tag.outputs.tag != 'v1.8.6'": case.tag != "v1.8.6",
     }
     for atom, value in replacements.items():
         translated = translated.replace(atom, repr(value))

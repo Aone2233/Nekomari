@@ -8,6 +8,13 @@ Nekomari's own.
 
 ## [Unreleased]
 
+## [1.8.6] — 2026-11-27 (opt-in panel release)
+
+- A fresh anonymous browser opening a private Emerald Insights homepage now
+  goes directly to `/admin` instead of downloading the theme to discover it
+  needs to sign in. Public panels, existing sessions, share links and probes
+  keep the theme response. No Agent upgrade is needed.
+
 ## [1.8.5] — 2026-11-27 (opt-in panel release)
 
 - The admin sign-in screen no longer starts the dashboard, fetches protected

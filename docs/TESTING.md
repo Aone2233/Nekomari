@@ -86,6 +86,13 @@ requests. Signing in through the actual form must reveal the requested chart
 without a second document navigation, preserving its query and fragment. The
 server still enforces authorization; the UI gate only avoids unnecessary work.
 
+The same browser spec installs a marker theme with the `emerald-insights` short
+name: a public guest and a signed-in private browser must see its homepage;
+a fresh private guest must reach the real login via an HTTP 302 from `/`,
+without starting protected requests. No bundled copy of Emerald or production
+credentials are required. `TestPrivateEmeraldHomeNavigation` covers probes,
+deep links, share credentials and cache policy for both response variants.
+
 For a timing comparison, use separate old/candidate panel processes on the same
 disposable installation with 17 synthetic nodes. Start a fresh Chromium process
 per visit, block service workers, disable the HTTP cache and use a 1365×768

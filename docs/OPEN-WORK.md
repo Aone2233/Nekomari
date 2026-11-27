@@ -23,9 +23,11 @@ The signed-in node list still requested 80 JS files in the [17-node cold-start
 fixture](./TESTING.md#admin-cold-start), against a target below 35. Profile its
 initial imports before changing the chunks. Direct guest visits now load 19
 scripts, but the small public sample did not show a wall-clock improvement.
-The third-party homepage still boots its theme before sending guests to
-`/admin`. Investigate an earlier redirect that preserves public panels and
-signed-in theme visits; direct admin links already avoid this extra load.
+The v1.8.6 release slice short-circuits a fresh guest's browser navigation to
+the private Emerald homepage. The [v1.8.5 production baseline](./DEPLOY-OC424.md#v185-panel-cutover-2026-11-27-utc)
+paid for 15 theme scripts and one denied RPC before `/admin`. Verify the
+published binary separately from any OC424 cutover; do not infer production
+improvement from a fixture.
 
 **v1.8.3 panel slice (2026-11-26, historical):** OC424 ran the [verified execution-history
 panel](./DEPLOY-OC424.md#v183-panel-cutover-2026-11-26-utc). All 17 registered
