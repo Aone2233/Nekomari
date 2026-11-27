@@ -3,6 +3,71 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.8.10 panel cutover (2026-11-27, UTC)
+
+The 17-node gate stopped before the first switch: GLBB and JPSB2 registered at
+15:11 already reporting v1.8.7. Removing just these two registrations and
+their entries in the two all-client probe assignments reproduced the previous
+17-node fingerprint exactly. Both new nodes had recent CPU, memory, ping
+latency and loss. This brought the panel to 19 registrations, not ten Agent
+upgrades by the operator: eight had passed the staged v1.8.7 rollout, two
+arrived on that version, and nine reported v1.8.2.
+
+The 15:19 switch failed the strict before/after comparison and automatically
+reverted **only the panel image**. The v1.8.9 container was healthy at 15:22,
+both endpoints reported `c7037cb`, and its upgrade check passed 9/9. An
+independent comparison against the 15:15 encrypted snapshot isolated one
+changed field: GLBB's display name. The other registration fields (including
+versions and target state) and every probe field were identical. There was no
+reason to undo the rename, restore a database, or exempt names from the gate.
+
+For the retry MAC-WAN took a fresh **15:24:57** snapshot (SHA-256
+`1a3aa303bb669204d8ddc623e4958573455b42ce314cfc7dc34a90828f5e592c`).
+Both pinned v1.8.9 and v1.8.10 booted from that same ciphertext with networking
+disabled. The recreated panel started at **15:27:49** using the [published
+v1.8.10 image](./RELEASING.md#cut-a-release), index
+`sha256:45698099e814a0d48cc3570a950d848794cea5b21e93fe2abd3ed4f72d5d8323`.
+The previous compose is `/opt/nekomari/rollbacks/poll-v1810-prepared-oytn7_7b/previous.yml`;
+only the panel image differs. Recreate only that service if rolling back,
+preserving the current databases and node registrations.
+
+The retry passed the original strict comparisons, including display names.
+The running arm64 executable matched the attested download, SQLite's main
+database passed `quick_check`, and the version was `v1.8.10 / d6b5920` with
+zero container restarts. The production upgrade check passed 9/9. All 19
+registrations produced CPU, memory, latency and loss after the switch; their
+versions, targets, 16 probe rows and the OC424 Agent process stayed unchanged.
+Task/result counts went from 10,266/122,752 to 10,278/122,800.
+
+Public HTTPS served nine assets byte-for-byte matching the attested arm64
+binary, including the chunk containing the node-list visibility handler.
+Six fresh guest contexts (three each at `/` and `/admin`) reached the login
+form without protected requests, 401s, WebSockets, theme scripts or page
+errors. Each homepage navigation first received a 302 to `/admin`. Login-field
+time was 1,079–8,290 ms (median 1,689); the slow visit was to `/`. Three
+additional fresh Chromium processes did not reproduce the outlier: 1,064–1,346
+ms to the form, 218–434 ms from navigation start to the document's first byte.
+This does not explain the 8.29 s sample or measure authenticated startup.
+On two isolated installations of the actual signed downloads, the old/new
+11-second hidden list request counts again measured 2/0, and the immediate
+request counts on return were 0/1.
+
+MAC-WAN independently restored the new **15:30:33** post-cut ciphertext
+(`890f68402f130babe337c1c84ecce33a19d3f89aeda4265d626cac7274664d88`)
+with v1.8.10 and networking disabled. At 15:32 the same panel container was
+healthy, with zero restarts, the same registration/probe fingerprint, no
+pending targets and all four metrics fresh for all 19 nodes. The tag remains
+an opt-in prerelease; GitHub Latest is v1.8.2 and both packages' moving
+aliases matched the pre-release checks. No new tag was needed for deployment.
+
+No Agent binary was replaced during this window. On Po0 and SB01 the stored
+registration UUID and running v1.8.2 binary matched, but **neither** host had
+a global interface address matching its panel row. That does not by itself
+identify a wrong host; the required second check was inconclusive. PZYC's
+active unit had the old binary but no adjacent `auto-discovery.json`; the
+tested TW routes refused the connection. Do not bypass these identity gates
+or use a fleet-wide target. The two new registrations are not verified canaries.
+
 ## v1.8.9 panel cutover (2026-11-27, UTC)
 
 At 14:27:59 UTC the production container started with the [verified v1.8.9
