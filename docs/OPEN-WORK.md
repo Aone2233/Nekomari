@@ -31,6 +31,10 @@ not part of the v1.8.7 artifacts. Its 73 requests still exceed the budget. The p
 panel now includes v1.8.6's private Emerald guest shortcut: a fresh guest on
 `/` no longer boots the theme before `/admin`.
 
+For the next change, run the [asset report and cold-browser comparison](./TESTING.md#admin-cold-start).
+Compare public and admin entries separately; on-disk precache bytes do not
+measure what a browser requests before the first row becomes visible.
+
 **v1.8.3 panel slice (2026-11-26, historical):** OC424 ran the [verified execution-history
 panel](./DEPLOY-OC424.md#v183-panel-cutover-2026-11-26-utc). All 17 registered
 Agents remain on v1.8.2; this panel rollout changed neither their targets nor

@@ -79,6 +79,13 @@ lint rules do not cover every shape the React Compiler rejects.
 
 ### Admin cold start
 
+After `npm run build` in `frontend/`, run `npm run --silent report:assets`.
+It reports each public/admin entry separately from its Vite manifest, then
+counts distinct public precache URLs and sums their raw and individual gzip-9
+sizes. Pass `-- /path/to/dist` to inspect an existing production build. These
+are artifact sizes, not the JS request count or time to first visible node;
+measure those in the browser as described here.
+
 The installed `metric-chart-csv-panel.spec.py --admin-chart` regression starts
 from a guest deep link. A failed account read must offer Retry, and neither a
 guest nor an unknown session should open the monitoring socket or send protected

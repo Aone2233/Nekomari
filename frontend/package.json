@@ -9,6 +9,7 @@
     "build": "tsc -b && vite build && node script/build-standalone.mjs",
     "lint": "eslint . --max-warnings 0",
     "audit:compiler": "node script/audit-compiler.mjs",
+    "report:assets": "node script/asset-budget.mjs",
     "preview": "vite preview",
     "i18n:sync": "node ./script/i18n-sync.mjs",
     "i18n:sync:dry": "node ./script/i18n-sync.mjs --dry-run"
