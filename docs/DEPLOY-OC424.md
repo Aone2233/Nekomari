@@ -109,6 +109,13 @@ At 07:37 the same PID, rollback file, panel and four 19/19 freshness checks
 still passed. Twelve Agents reported v1.8.7 (ten staged, two new), seven
 v1.8.2. No release, fleet target or other service was changed.
 
+Windows-WAN was inspected read-only over its pinned SSH route. The single
+running Agent's executable path matched the action of a running SYSTEM
+scheduled task; the file matched the published v1.8.2 Windows amd64 digest.
+The task's working directory was also the executable directory; it had no
+registration record (`auto-discovery.json`). This did
+not tie the process to the panel row; no update or task restart was attempted.
+
 ## v1.8.10 panel cutover (2026-11-27, UTC)
 
 The 17-node gate stopped before the first switch: GLBB and JPSB2 registered at

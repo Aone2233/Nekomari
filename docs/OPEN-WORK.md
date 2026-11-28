@@ -21,9 +21,10 @@ Of 19 registrations, ten passed staged v1.8.7 upgrades (the [earlier eight](./DE
 two registered on v1.8.7, and seven remain on v1.8.2. The operator accepted
 the uncertainty about the [previous stops](https://github.com/Aone2233/Nekomari/issues/208) and authorized
 continuing; this does not identify the Docker caller. The panel-only cutover
-and off-host recovery passed. Next: read-only preflight on Windows-WAN, which
-still reports v1.8.2. Match its registration to the live Windows service and
-verify a signed artifact and service-specific rollback before any change.
+and off-host recovery passed. Windows-WAN still reports v1.8.2. Its SYSTEM
+scheduled task and old binary were verified, but there is no adjacent
+registration file. Next: independently match the running Agent to its panel
+row and verify a scheduled-task rollback before changing that host.
 Upgrade one host at a time and require two fresh telemetry windows.
 No pending targets or fleet-wide rollout; GitHub Latest remains v1.8.2.
 Recheck unexpected changes to the panel's start
