@@ -77,6 +77,45 @@ interface nor the pinned SSH peer established a unique address match, and
 `/proc/stat` boot time disagreed with wall time minus `/proc/uptime` beyond
 the two-second local tolerance. SB01 did not pass preflight and was not restarted.
 
+### SB01 single-Agent canary (2026-11-28, UTC)
+
+The earlier preflight compared an SSH ingress address with an Agent-reported
+egress address. On the host-key-verified route the SSH connection terminated
+on a private local interface. From the running Agent's network namespace, the
+configured panel's HTTPS edge trace and an independent HTTPS IP service both
+saw the IPv4 address unique to SB01's panel row. This is an **egress** match;
+the public SSH peer itself still does not match the registered address.
+
+SB01's `/proc/uptime` is an `lxcfs` mount: it matched PID 1's age and was
+about 1,431 seconds shorter than kernel uptime. The Linux Agent reads
+`sysinfo(2)` uptime, not that file. `CLOCK_BOOTTIME` and the uptime derived
+from `/proc/stat`'s `btime` agreed with `sysinfo` within two seconds. Of 19
+fresh uptime series, only SB01's implied that boot time (within five seconds).
+The adjacent registration UUID, unique four-field inventory match and running
+OpenRC-supervised executable were checked again before replacement.
+
+At 06:26 only SB01's `nekomari-agent` service was restarted, from the official
+v1.8.2 binary to the v1.8.7 amd64 binary attested to the release workflow and
+tag commit. The previous executable is retained at
+`/opt/nekomari-agent/.rollback-v187-20261128T062645Z-4ifw1dvr/komari-agent-linux-amd64`.
+The init script, runlevels, registration, process arguments and executable
+ownership, permissions and extended attributes matched across the restart.
+
+At 06:28:03 and 06:30:02 all 19 registrations had new CPU, memory, latency
+and loss samples in disjoint post-restart windows. The new PID and executable
+and the rollback copy were rechecked. The panel container ID and start time,
+roster and 16 probe rows remained unchanged; no update targets were pending.
+At 07:37 the same PID, rollback file, panel and four 19/19 freshness checks
+still passed. Twelve Agents reported v1.8.7 (ten staged, two new), seven
+v1.8.2. No release, fleet target or other service was changed.
+
+Windows-WAN was inspected read-only over its pinned SSH route. The single
+running Agent's executable path matched the action of a running SYSTEM
+scheduled task; the file matched the published v1.8.2 Windows amd64 digest.
+The task's working directory was also the executable directory; it had no
+registration record (`auto-discovery.json`). This did
+not tie the process to the panel row; no update or task restart was attempted.
+
 ## v1.8.10 panel cutover (2026-11-27, UTC)
 
 The 17-node gate stopped before the first switch: GLBB and JPSB2 registered at
