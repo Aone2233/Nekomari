@@ -3,6 +3,45 @@
 The live Nekomari panel. This file is the runbook: what runs where, how it was
 restored, and the two hostname/TLS traps that cost the most time.
 
+## v1.8.11 panel cutover (2026-11-28, UTC)
+
+The operator attributed the two earlier stops to likely node-enrollment
+maintenance and authorized continuing. The Docker caller was not independently
+identified. Before switching, the v1.8.10 container ID and its 15:42:22 start
+on November 27 still matched the previous observation. Upgrade checks passed
+9/9 and the same 19 registrations had recent CPU, memory, latency and loss.
+
+The first restricted backup transfer failed without publishing an archive;
+its generic child-process error did not establish a cause. The retry used the
+same restricted producer and pinned SSH host keys. MAC-WAN restored the fresh
+02:42:12 ciphertext (SHA-256 `2763cc0ac2f18e85ebf7084990bf047573f30acd2257370d8bec7daec2dff3a5`)
+with **both** pinned images, networking disabled, before any service change.
+
+At 02:46:20 OC424 recreated only the panel service with the [v1.8.11 release](./RELEASING.md#cut-a-release),
+index `sha256:8d05fe424fc6076552a1cb60b748f9527d74d2ed2f894c1d3e39126d7be63b6a`.
+The running arm64 binary matched the attested download; the new container was
+healthy with zero restarts, the upgrade check passed 9/9, and the main database
+passed `quick_check`. Task/result counts increased from 10,813/129,540 to
+10,826/129,571. All 19 identities reported **after the new panel was healthy**
+for each of the four metrics. Registration details, Agent versions, targets,
+16 probe rows and the local Agent PID were unchanged across the switch.
+The rollback compose is `/opt/nekomari/rollbacks/installer-v1811-prepared-ruo8px88/previous.yml`;
+it restores just the v1.8.10 image, keeping the live databases and mounts.
+
+Public HTTPS returned `v1.8.11 / cad5014`. The entry and eight admin chunks,
+including the per-node installer, matched the attested binary byte for byte.
+Six fresh anonymous visits to `/` and `/admin` reached the login form in
+1,214–2,539 ms (median 1,534.5 ms). Homepage navigation redirected with 302;
+no theme scripts, protected calls, 401s, sockets or page errors were observed.
+This is a guest login check, not a timing of the signed-in node list.
+MAC-WAN also restored the distinct 02:48:26 **post-cut** ciphertext
+(`d80704678e5deb85e89cb92c0d92bebce64ce8df54107129743a7429cb1f83ea`)
+with the pinned v1.8.11 image and networking disabled.
+In a second, disjoint post-cut window all four metrics advanced for all 19
+nodes again. The container ID and start time, the registration/probe
+fingerprint and version split still matched. GitHub Latest remained v1.8.2;
+both packages' moving aliases matched their release baselines.
+
 ## v1.8.10 panel cutover (2026-11-27, UTC)
 
 The 17-node gate stopped before the first switch: GLBB and JPSB2 registered at

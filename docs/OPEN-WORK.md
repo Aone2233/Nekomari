@@ -14,23 +14,18 @@ current. Three tables, none of them live.
 What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit document
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
-**v1.8.10 production (2026-11-27):** OC424 runs the [pinned v1.8.10 panel](./DEPLOY-OC424.md#v1810-panel-cutover-2026-11-27-utc).
+**v1.8.11 production (2026-11-28):** OC424 runs the [pinned v1.8.11 panel](./DEPLOY-OC424.md#v1811-panel-cutover-2026-11-28-utc).
 Of 19 registrations, eight passed the [v1.8.7 staged gates](./DEPLOY-OC424.md#v187-agent-canaries-and-first-batch),
 two newly registered on v1.8.7, and nine remain on v1.8.2. No Agent changed
-in the panel window. Hold further rollout until the operator identifies the
-[two explicit container stops](https://github.com/Aone2233/Nekomari/issues/208)
-on OC424. The operator confirmed restarting a newly added probe; that does not
-identify the caller of the panel stops. At 18:52 UTC the same container still
-had its 15:42 start time, the upgrade check passed 9/9 and all four metrics
-were fresh on all 19 nodes. Then establish independent host-to-
-registration evidence for the next candidate (Po0/SB01 addresses did not match).
-Keep a local rollback binary and require two fresh telemetry windows per node.
-No pending targets, fleet-wide rollout or change to GitHub Latest.
-
-The [v1.8.11 opt-in release](./RELEASING.md#cut-a-release) passed downloaded
-artifact acceptance; it has **not** replaced v1.8.10 on OC424. After the
-lifecycle hold clears, take a fresh encrypted backup and verify it restores
-with both pinned panel images before switching the panel alone.
+in the panel window. The operator accepted the uncertainty about the
+[previous stops](https://github.com/Aone2233/Nekomari/issues/208) and authorized
+continuing; this does not identify the Docker caller. The panel-only cutover
+and off-host recovery passed. Next: establish independent host-to-registration
+evidence for an Agent candidate (Po0/SB01 interface addresses did not match).
+Keep its local rollback binary, update one host at a time and require two
+fresh telemetry windows per node. No pending targets or fleet-wide rollout;
+GitHub Latest remains v1.8.2. Recheck unexpected changes to the panel's start
+time rather than relying on its restart counter alone.
 
 **Opening speed remaining ([#187](https://github.com/Aone2233/Nekomari/issues/187)):**
 The [released sidebar](./RELEASING.md#cut-a-release) reduced the signed-in
