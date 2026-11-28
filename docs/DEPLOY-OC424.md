@@ -150,6 +150,32 @@ task was restarted, and four fresh metric checks still passed for 19/19 nodes.
 An isolated ACL fixture did not reproduce the exact starting descriptors, so
 it is not evidence that a different in-place edit would be safe.
 
+### Windows-WAN protected-directory canary (2026-11-28, UTC)
+
+With operator approval, the existing SYSTEM scheduled task was moved to
+`%ProgramFiles%\Nekomari-Agent-v1.8.7`, a new directory accessible only to
+SYSTEM and Administrators. The original install directory and its parent ACL
+were not changed. The downloaded executable matched the Windows amd64 SHA-256
+in the v1.8.7 release-workflow attestation. The new credential file was a
+byte-for-byte copy with private permissions; no credential was rotated.
+
+Before starting v1.8.7, the stopped task was pointed at the new action, then
+switched back to its original action. The v1.8.2 process started from the
+original path and all four metrics had fresh samples for 19/19 nodes by
+12:34:01. This rehearsed the rollback, not just the task XML import. The task
+definition outside the executable, working directory and credential-file path,
+and the task's own security descriptor, were checked across both action changes.
+
+For the cutover, `net_static.json` was copied and hash-checked while the old
+process was stopped so the directory move did not reset monthly traffic state.
+The new process was verified at 12:34:56. The 12:35:10–12:36:04 and
+12:37:26–12:38:07 windows each had new CPU, memory, ping latency and loss
+samples for all 19 registrations. At 12:38:27 the new PID was unchanged, the
+original executable and task export were intact, and the same v1.8.11 panel
+container, roster and 16 probe rows matched. Thirteen Agents reported v1.8.7
+(eleven staged, two registered on it), six v1.8.2; no targets were pending.
+No other Agent, panel service, release or GitHub Latest pointer changed.
+
 ## v1.8.10 panel cutover (2026-11-27, UTC)
 
 The 17-node gate stopped before the first switch: GLBB and JPSB2 registered at
