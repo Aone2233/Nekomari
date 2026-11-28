@@ -68,6 +68,51 @@ func TestWriteJSONContextSkipsBusyWriter(t *testing.T) {
 	}
 }
 
+func TestWriteJSONContextCompletionReleasesWriter(t *testing.T) {
+	const pairs = 512
+	received := make(chan int, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		conn, err := (&websocket.Upgrader{}).Upgrade(response, request, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		var count int
+		for count < 2*pairs {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				break
+			}
+			count++
+		}
+		received <- count
+	}))
+	defer server.Close()
+	raw, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn := NewSafeConn(raw)
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	for range pairs {
+		if err := conn.WriteJSONContextWait(ctx, "permit"); err != nil {
+			t.Fatal(err)
+		}
+		if err := conn.WriteJSONContext(ctx, "result"); err != nil {
+			t.Fatalf("single sequential writer: %v", err)
+		}
+	}
+	select {
+	case count := <-received:
+		if count != 2*pairs {
+			t.Fatalf("received %d frames; want %d", count, 2*pairs)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+}
+
 func TestWriteJSONContextWaitHonorsDeadlineWhenWriterBusy(t *testing.T) {
 	conn := &SafeConn{}
 	conn.mu.Lock()

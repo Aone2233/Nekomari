@@ -42,6 +42,41 @@ nodes again. The container ID and start time, the registration/probe
 fingerprint and version split still matched. GitHub Latest remained v1.8.2;
 both packages' moving aliases matched their release baselines.
 
+### Po0 single-Agent canary (2026-11-28, UTC)
+
+The local interface still did not match Po0's registered address. Before
+upgrading, the actual SSH peer reached from MAC-WAN with strict host-key
+checking matched the panel's unique registered IPv4 address. The active
+systemd service's adjacent registration UUID matched that same row. Its kernel,
+CPU model, online CPU count and RAM total matched exactly one inventory row.
+As a separate live check, Po0's OS boot time matched the boot time inferred
+from its latest uptime sample (within five seconds), and none of the other 18.
+These checks were repeated immediately before replacement; the decision did
+not rely on the display name or assume that a local address was public.
+
+At 03:37:59, only Po0's `nekomari-agent.service` was restarted. Its running
+amd64 executable matched the official v1.8.2 checksum before replacement and
+the attested v1.8.7 download after restart. The original binary is retained at
+`/root/nekomari-agent/.rollback-v187-20261128T033759Z-k_hir7m0/komari-agent-linux-amd64`.
+The unit configuration, registration file, owner, permissions and extended
+attributes were preserved. No panel service or other Agent was restarted by
+this rollout.
+
+At 03:39:05 and 03:41:03 two disjoint post-restart windows had new CPU,
+memory, ping latency and loss samples for all 19 registrations. Po0 retained
+the verified new PID and executable. The roster and 16 probe rows still matched,
+no update targets were pending, and the v1.8.11 panel container ID and start
+time did not change. Eleven Agents reported v1.8.7 (including the two that
+registered on it), eight v1.8.2. This was a single-node rollout, not a change
+to GitHub Latest or the rest of the fleet.
+
+SB01 was checked read-only. Its supervised OpenRC child was still the official
+v1.8.2 executable; the adjacent registration UUID, four hardware fields and
+telemetry-derived boot time pointed to its row. However, neither a local
+interface nor the pinned SSH peer established a unique address match, and
+`/proc/stat` boot time disagreed with wall time minus `/proc/uptime` beyond
+the two-second local tolerance. SB01 did not pass preflight and was not restarted.
+
 ## v1.8.10 panel cutover (2026-11-27, UTC)
 
 The 17-node gate stopped before the first switch: GLBB and JPSB2 registered at

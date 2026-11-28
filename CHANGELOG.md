@@ -6,6 +6,12 @@ This fork is based on Komari `1.5.0-fix1` (commit `0ca87aa`, the last release be
 upstream was archived); see [FORK.md](./FORK.md) for provenance. Releases below are
 Nekomari's own.
 
+## [Unreleased]
+
+- The Agent no longer treats a completed WebSocket write as a busy connection.
+  A fast pinned probe could otherwise discard its result and close a healthy
+  socket just after sending its permit response.
+
 ## [1.8.11] — 2026-11-27 (opt-in panel release)
 
 - Opening the server list no longer looks up the panel version for an unopened

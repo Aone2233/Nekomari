@@ -80,24 +80,25 @@ func (sc *SafeConn) writeJSONContext(ctx context.Context, v interface{}, wait bo
 	}
 	done := make(chan error, 1)
 	go func() {
-		defer sc.mu.Unlock()
-		if err := ctx.Err(); err != nil {
+		var err error
+		defer func() {
+			sc.mu.Unlock()
 			done <- err
+		}()
+		if err = ctx.Err(); err != nil {
 			return
 		}
-		if err := sc.conn.SetWriteDeadline(deadline); err != nil {
+		if err = sc.conn.SetWriteDeadline(deadline); err != nil {
 			sc.Abort()
-			done <- err
 			return
 		}
-		err := sc.conn.WriteJSON(v)
+		err = sc.conn.WriteJSON(v)
 		if restoreErr := sc.conn.SetWriteDeadline(time.Time{}); err == nil {
 			err = restoreErr
 		}
 		if err != nil {
 			sc.Abort()
 		}
-		done <- err
 	}()
 	select {
 	case err := <-done:
