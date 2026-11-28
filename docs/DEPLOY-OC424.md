@@ -116,6 +116,66 @@ The task's working directory was also the executable directory; it had no
 registration record (`auto-discovery.json`). This did
 not tie the process to the panel row; no update or task restart was attempted.
 
+### Windows-WAN preflight (2026-11-28, UTC)
+
+At 11:33 the single SYSTEM Agent, its running scheduled task and its on-disk v1.8.2 digest still
+matched. The CPU model, logical core count and visible RAM matched exactly one
+inventory row. Neither the local addresses nor the observed public egress
+identified that row. `Win32_OperatingSystem.LastBootUpTime` was not the clock
+the Agent uses: on two reads, `GetTickCount64` implied a boot time within one
+second of Windows-WAN's fresh uptime series, and none of the other 18 matched
+within six seconds. The v1.8.7 Windows artifact's checksum and release-workflow
+attestation passed off-host.
+
+The Windows rollout stopped before staging. The existing executable passed
+the write-permission check, but its parent directory grants the built-in
+Users group inherited permission to create files and directories. This does
+not prove users can modify the existing executable; it makes the directory
+unsuitable for staging a replacement or rollback for a task running as SYSTEM.
+No ACL, file, task or version was changed on the host. At handoff the panel
+instance and roster matched, and all four telemetry checks still passed 19/19.
+
+**Directory-only hardening attempt and rollback (11:48 UTC).** With operator
+approval, the task XML, original v1.8.2 executable and security descriptors
+were backed up in a separate SYSTEM/Administrators-only recovery directory.
+The original executable's digest and the exported task were verified before
+the edit. Removing the directory's inherited Users write rule also changed
+the existing executable's security descriptor; the exact-match check stopped
+the rollout. A descriptor change is not proof that access was broadened.
+
+Rollback restored the original owner, group and DACL on the directory and all
+14 descendants. The parent `ProgramData` descriptor, task definition, credential
+fingerprint, binary and PID matched the baseline. No candidate was staged, no
+task was restarted, and four fresh metric checks still passed for 19/19 nodes.
+An isolated ACL fixture did not reproduce the exact starting descriptors, so
+it is not evidence that a different in-place edit would be safe.
+
+### Windows-WAN protected-directory canary (2026-11-28, UTC)
+
+With operator approval, the existing SYSTEM scheduled task was moved to
+`%ProgramFiles%\Nekomari-Agent-v1.8.7`, a new directory accessible only to
+SYSTEM and Administrators. The original install directory and its parent ACL
+were not changed. The downloaded executable matched the Windows amd64 SHA-256
+in the v1.8.7 release-workflow attestation. The new credential file was a
+byte-for-byte copy with private permissions; no credential was rotated.
+
+Before starting v1.8.7, the stopped task was pointed at the new action, then
+switched back to its original action. The v1.8.2 process started from the
+original path and all four metrics had fresh samples for 19/19 nodes by
+12:34:01. This rehearsed the rollback, not just the task XML import. The task
+definition outside the executable, working directory and credential-file path,
+and the task's own security descriptor, were checked across both action changes.
+
+For the cutover, `net_static.json` was copied and hash-checked while the old
+process was stopped so the directory move did not reset monthly traffic state.
+The new process was verified at 12:34:56. The 12:35:10–12:36:04 and
+12:37:26–12:38:07 windows each had new CPU, memory, ping latency and loss
+samples for all 19 registrations. At 12:38:27 the new PID was unchanged, the
+original executable and task export were intact, and the same v1.8.11 panel
+container, roster and 16 probe rows matched. Thirteen Agents reported v1.8.7
+(eleven staged, two registered on it), six v1.8.2; no targets were pending.
+No other Agent, panel service, release or GitHub Latest pointer changed.
+
 ## v1.8.10 panel cutover (2026-11-27, UTC)
 
 The 17-node gate stopped before the first switch: GLBB and JPSB2 registered at

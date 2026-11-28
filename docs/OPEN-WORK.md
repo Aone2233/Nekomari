@@ -15,17 +15,18 @@ What changed on 2026-10-13 is in `CHANGELOG.md` under `[Unreleased]`; the audit 
 holds the evidence and the acceptance criteria for each item. This file is the list.
 
 **v1.8.11 production (2026-11-28):** OC424 runs the [pinned v1.8.11 panel](./DEPLOY-OC424.md#v1811-panel-cutover-2026-11-28-utc).
-Of 19 registrations, ten passed staged v1.8.7 upgrades (the [earlier eight](./DEPLOY-OC424.md#v187-agent-canaries-and-first-batch),
-[Po0](./DEPLOY-OC424.md#po0-single-agent-canary-2026-11-28-utc) and
-[SB01](./DEPLOY-OC424.md#sb01-single-agent-canary-2026-11-28-utc)),
-two registered on v1.8.7, and seven remain on v1.8.2. The operator accepted
+Of 19 registrations, eleven passed staged v1.8.7 upgrades (the [earlier eight](./DEPLOY-OC424.md#v187-agent-canaries-and-first-batch),
+[Po0](./DEPLOY-OC424.md#po0-single-agent-canary-2026-11-28-utc),
+[SB01](./DEPLOY-OC424.md#sb01-single-agent-canary-2026-11-28-utc) and
+[Windows-WAN](./DEPLOY-OC424.md#windows-wan-protected-directory-canary-2026-11-28-utc)),
+two registered on v1.8.7, and six remain on v1.8.2. The operator accepted
 the uncertainty about the [previous stops](https://github.com/Aone2233/Nekomari/issues/208) and authorized
 continuing; this does not identify the Docker caller. The panel-only cutover
-and off-host recovery passed. Windows-WAN still reports v1.8.2. Its SYSTEM
-scheduled task and old binary were verified, but there is no adjacent
-registration file. Next: independently match the running Agent to its panel
-row and verify a scheduled-task rollback before changing that host.
-Upgrade one host at a time and require two fresh telemetry windows.
+and off-host recovery passed. Keep Windows-WAN's original v1.8.2 installation
+and task export for rollback. Next: read-only preflight on one of the six
+remaining nodes; match its running Agent to the registration and verify its
+local rollback path before changing it. Require two fresh telemetry windows
+per node; the Windows task procedure is not a fleet-wide update method.
 No pending targets or fleet-wide rollout; GitHub Latest remains v1.8.2.
 Recheck unexpected changes to the panel's start
 time rather than relying on its restart counter alone.
