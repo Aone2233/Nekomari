@@ -27,6 +27,11 @@ registration evidence for the next candidate (Po0/SB01 addresses did not match).
 Keep a local rollback binary and require two fresh telemetry windows per node.
 No pending targets, fleet-wide rollout or change to GitHub Latest.
 
+The [v1.8.11 opt-in release](./RELEASING.md#cut-a-release) passed downloaded
+artifact acceptance; it has **not** replaced v1.8.10 on OC424. After the
+lifecycle hold clears, take a fresh encrypted backup and verify it restores
+with both pinned panel images before switching the panel alone.
+
 **Opening speed remaining ([#187](https://github.com/Aone2233/Nekomari/issues/187)):**
 The [released sidebar](./RELEASING.md#cut-a-release) reduced the signed-in
 17-node fixture from 75 to 73 JS requests, still over the target of fewer than 35.

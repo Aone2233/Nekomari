@@ -2,6 +2,27 @@
 
 ## Cut a release
 
+**v1.8.11 on-demand install version (2026-11-27, 20:01 UTC):** [Opt-in release](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.11)
+from `cad50142b10611ab4214f000ede0c89edfe65c80`.
+[PR CI](https://github.com/Aone2233/Nekomari/actions/runs/46057858533) and
+[main CI](https://github.com/Aone2233/Nekomari/actions/runs/46058944171) each passed 8/8;
+[release and deployment verification](https://github.com/Aone2233/Nekomari/actions/runs/46059939959)
+passed 10/10 and [image publication](https://github.com/Aone2233/Nekomari/actions/runs/46060817766)
+passed 2/2. Nine checksums and eight binary attestations verified; the amd64
+and arm64 panel and Agent binaries in the images matched the downloads. Panel
+index: `sha256:8d05fe424fc6076552a1cb60b748f9527d74d2ed2f894c1d3e39126d7be63b6a`.
+GitHub Latest remained v1.8.2 and neither package's moving tags changed.
+
+On isolated installations of the downloaded v1.8.10 and v1.8.11 panels,
+Chromium counted two vs. one `common:getVersion` calls when opening the signed-in
+node list, across both HTTP and WebSocket; neither issued a version GET on entry.
+On v1.8.11, opening the install dialog with `/api/version` returning 503 showed
+an error and no command. Retry against the actual server produced the release
+command. Both CSV downloads, the legal notice retry, keyboard release notes and
+ten navigation scenarios passed on the new download. This eliminates an eager
+version lookup; it does not establish faster first paint or meet the JS request
+budget. No production panel or Agent was changed as part of publication.
+
 **v1.8.10 background admin polling (2026-11-27, 14:58 UTC):** [Release v1.8.10](https://github.com/Aone2233/Nekomari/releases/tag/v1.8.10)
 (ID `460742001`) is an opt-in prerelease at `d6b5920b3a555a7771d0efa46fde4d7a51f8b292`.
 [PR CI](https://github.com/Aone2233/Nekomari/actions/runs/46017271605) and
