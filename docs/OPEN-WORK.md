@@ -22,9 +22,13 @@ two registered on v1.8.7, and seven remain on v1.8.2. The operator accepted
 the uncertainty about the [previous stops](https://github.com/Aone2233/Nekomari/issues/208) and authorized
 continuing; this does not identify the Docker caller. The panel-only cutover
 and off-host recovery passed. Windows-WAN still reports v1.8.2. Its SYSTEM
-scheduled task and old binary were verified, but there is no adjacent
-registration file. Next: independently match the running Agent to its panel
-row and verify a scheduled-task rollback before changing that host.
+scheduled task, hardware and live uptime now identify the registration, but
+ordinary users can create files in its install directory. The [read-only
+follow-up](./DEPLOY-OC424.md#windows-wan-preflight-2026-11-28-utc) stopped
+before staging. Next: agree the scope of directory ACL hardening or a dedicated
+protected install location; verify effective permissions, task startup and a
+scheduled-task rollback before installing v1.8.7. Do not change the parent
+`ProgramData` ACL or substitute another node for this stopped canary.
 Upgrade one host at a time and require two fresh telemetry windows.
 No pending targets or fleet-wide rollout; GitHub Latest remains v1.8.2.
 Recheck unexpected changes to the panel's start

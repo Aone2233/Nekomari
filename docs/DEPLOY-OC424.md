@@ -116,6 +116,25 @@ The task's working directory was also the executable directory; it had no
 registration record (`auto-discovery.json`). This did
 not tie the process to the panel row; no update or task restart was attempted.
 
+### Windows-WAN preflight (2026-11-28, UTC)
+
+At 11:33 the single SYSTEM Agent, its running scheduled task and its on-disk v1.8.2 digest still
+matched. The CPU model, logical core count and visible RAM matched exactly one
+inventory row. Neither the local addresses nor the observed public egress
+identified that row. `Win32_OperatingSystem.LastBootUpTime` was not the clock
+the Agent uses: on two reads, `GetTickCount64` implied a boot time within one
+second of Windows-WAN's fresh uptime series, and none of the other 18 matched
+within six seconds. The v1.8.7 Windows artifact's checksum and release-workflow
+attestation passed off-host.
+
+The Windows rollout stopped before staging. The existing executable passed
+the write-permission check, but its parent directory grants the built-in
+Users group inherited permission to create files and directories. This does
+not prove users can modify the existing executable; it makes the directory
+unsuitable for staging a replacement or rollback for a task running as SYSTEM.
+No ACL, file, task or version was changed on the host. At handoff the panel
+instance and roster matched, and all four telemetry checks still passed 19/19.
+
 ## v1.8.10 panel cutover (2026-11-27, UTC)
 
 The 17-node gate stopped before the first switch: GLBB and JPSB2 registered at
