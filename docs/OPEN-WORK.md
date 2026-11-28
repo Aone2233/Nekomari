@@ -23,11 +23,13 @@ the uncertainty about the [previous stops](https://github.com/Aone2233/Nekomari/
 continuing; this does not identify the Docker caller. The panel-only cutover
 and off-host recovery passed. Windows-WAN still reports v1.8.2. Its SYSTEM
 scheduled task, hardware and live uptime now identify the registration, but
-ordinary users can create files in its install directory. The [read-only
-follow-up](./DEPLOY-OC424.md#windows-wan-preflight-2026-11-28-utc) stopped
-before staging. Next: agree the scope of directory ACL hardening or a dedicated
-protected install location; verify effective permissions, task startup and a
-scheduled-task rollback before installing v1.8.7. Do not change the parent
+ordinary users can create files in its install directory. The approved
+[directory-only ACL edit rolled back](./DEPLOY-OC424.md#windows-wan-preflight-2026-11-28-utc)
+when inheritance changed the executable's descriptor. Next: reproduce the
+original ACLs and verify propagation off-host before retrying, or obtain
+operator approval for a separate protected install directory and a reversible
+task-path change. The task-start and binary-rollback rehearsal and both fresh
+v1.8.7 telemetry windows are still outstanding. Do not change the parent
 `ProgramData` ACL or substitute another node for this stopped canary.
 Upgrade one host at a time and require two fresh telemetry windows.
 No pending targets or fleet-wide rollout; GitHub Latest remains v1.8.2.

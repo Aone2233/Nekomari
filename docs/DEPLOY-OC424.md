@@ -135,6 +135,21 @@ unsuitable for staging a replacement or rollback for a task running as SYSTEM.
 No ACL, file, task or version was changed on the host. At handoff the panel
 instance and roster matched, and all four telemetry checks still passed 19/19.
 
+**Directory-only hardening attempt and rollback (11:48 UTC).** With operator
+approval, the task XML, original v1.8.2 executable and security descriptors
+were backed up in a separate SYSTEM/Administrators-only recovery directory.
+The original executable's digest and the exported task were verified before
+the edit. Removing the directory's inherited Users write rule also changed
+the existing executable's security descriptor; the exact-match check stopped
+the rollout. A descriptor change is not proof that access was broadened.
+
+Rollback restored the original owner, group and DACL on the directory and all
+14 descendants. The parent `ProgramData` descriptor, task definition, credential
+fingerprint, binary and PID matched the baseline. No candidate was staged, no
+task was restarted, and four fresh metric checks still passed for 19/19 nodes.
+An isolated ACL fixture did not reproduce the exact starting descriptors, so
+it is not evidence that a different in-place edit would be safe.
+
 ## v1.8.10 panel cutover (2026-11-27, UTC)
 
 The 17-node gate stopped before the first switch: GLBB and JPSB2 registered at
